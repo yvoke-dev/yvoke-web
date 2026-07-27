@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Feedback')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('feedback')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Feedback</h1>
+                    <p class="page-subtitle">Analyze user ratings, satisfaction levels, and perform follow-up knowledge audits.</p>
+                </div>
+            </div>
+
+            <!-- Metrics Overview Cards -->
+            <div class="grid-3">
+                <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; min-height: 140px;">
+                    <div>
+                        <span class="form-label" style="font-size: 0.75rem;">Satisfaction Ratio</span>
+                        <h2 style="font-size: 2.25rem; font-weight: 700; color: var(--color-success); margin-top: 0.5rem;" 
+                            th:text="${#numbers.formatDecimal(positiveRatio, 1, 1)} + '%'">100%</h2>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <div style="height: 8px; background-color: var(--color-danger); border-radius: 4px; overflow: hidden; display: flex; width: 100%;">
+                            <div th:style="'width: ' + ${positiveRatio} + '%; height: 100%; background-color: var(--color-success);'"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.35rem; color: var(--text-secondary);">
+                            <span>Positive</span>
+                            <span>Negative</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; min-height: 140px;">
+                    <div>
+                        <span class="form-label" style="font-size: 0.75rem;">Positive Feedback</span>
+                        <h2 style="font-size: 2.25rem; font-weight: 700; color: var(--text-primary); margin-top: 0.5rem;" th:text="${positiveCount}">0</h2>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.85rem;">
+                        Total helpful ratings logged.
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; min-height: 140px;">
+                    <div>
+                        <span class="form-label" style="font-size: 0.75rem;">Negative Feedback</span>
+                        <h2 style="font-size: 2.25rem; font-weight: 700; color: var(--color-danger); margin-top: 0.5rem;" th:text="${negativeCount}">0</h2>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.85rem;">
+                        Total unhelpful ratings logged.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Panel -->
+            <div class="filters-panel">
+                <form th:action="@{/admin/feedback}" method="get" id="filter-form" class="filters-grid">
+                    <div class="form-group">
+                        <label for="rating-filter" class="form-label">Rating</label>
+                        <select name="rating" id="rating-filter" class="form-select" onchange="this.form.submit()">
+                            <option value="" th:selected="${selectedRating == null || selectedRating == ''}">All Ratings</option>
+                            <option value="good" th:selected="${selectedRating == 'good'}">👍 Helpful</option>
+                            <option value="bad" th:selected="${selectedRating == 'bad'}">👎 Unhelpful</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reviewed-filter" class="form-label">Status</label>
+                        <select name="reviewed" id="reviewed-filter" class="form-select" onchange="this.form.submit()">
+                            <option value="" th:selected="${selectedReviewed == null}">All Statuses</option>
+                            <option value="false" th:selected="${selectedReviewed == false}">Pending</option>
+                            <option value="true" th:selected="${selectedReviewed == true}">Reviewed</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="time-filter" class="form-label">Time Range</label>
+                        <select name="timeRange" id="time-filter" class="form-select" onchange="this.form.submit()">
+                            <option value="all" th:selected="${selectedTimeRange == 'all'}">All Time</option>
+                            <option value="day" th:selected="${selectedTimeRange == 'day'}">Last 24 Hours</option>
+                            <option value="week" th:selected="${selectedTimeRange == 'week'}">Last 7 Days</option>
+                            <option value="month" th:selected="${selectedTimeRange == 'month'}">Last 30 Days</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sort-filter" class="form-label">Sort By</label>
+                        <select name="sort" id="sort-filter" class="form-select" onchange="this.form.submit()">
+                            <option value="newest" th:selected="${selectedSort == 'newest'}">Newest First</option>
+                            <option value="oldest" th:selected="${selectedSort == 'oldest'}">Oldest First</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Feedback Audits Table -->
+            <div class="card">
+                <h2 class="card-title">Feedback Audits</h2>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 160px;">Date/Time</th>
+                                <th style="width: 120px; text-align: center;">Rating</th>
+                                <th>Feedback Comment</th>
+                                <th style="width: 140px; text-align: center;">Conversation</th>
+                                <th style="width: 120px; text-align: center;">Reviewed</th>
+                                <th style="width: 280px;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="comment : ${feedbackList}">
+                                <td class="mono-text" style="font-size: 0.85rem;" th:text="${#temporals.format(comment.createdAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC'}">Date</td>
+                                <td style="text-align: center;">
+                                    <span th:if="${comment.rating == 1}" class="badge badge-success">👍 Helpful</span>
+                                    <span th:if="${comment.rating == -1}" class="badge badge-danger">👎 Unhelpful</span>
+                                </td>
+                                <td th:text="${comment.comment != null && !comment.comment.isEmpty() ? comment.comment : 'No comment provided.'}" 
+                                    th:style="${comment.comment != null && !comment.comment.isEmpty() ? 'font-style: italic; color: hsl(172, 90%, 38%); font-weight: 500;' : 'color: var(--text-muted); font-size: 0.85rem;'}">Comment</td>
+                                <td style="text-align: center;">
+                                    <a th:href="@{/chat/{id}(id=${comment.conversationId})}" 
+                                       target="_blank" 
+                                       class="btn btn-secondary" 
+                                       style="font-size: 0.8rem; padding: 0.35rem 0.65rem; display: inline-flex; align-items: center; gap: 0.35rem; font-family: monospace;">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                            <polyline points="15 3 21 3 21 9"></polyline>
+                                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                                        </svg>
+                                        <span th:text="${#strings.substring(comment.conversationId, 0, 8)}">Link</span>
+                                    </a>
+                                </td>
+                                
+                                <!-- Reviewed Cell -->
+                                <td th:fragment="reviewed-cell" th:id="'reviewed-cell-' + ${comment != null ? comment.feedbackId : feedbackId}" style="text-align: center;">
+                                    <label class="switch-container">
+                                        <input type="checkbox" 
+                                               th:checked="${comment != null ? comment.reviewed : reviewed}" 
+                                               th:attr="hx-post=@{/admin/feedback/{id}/toggle-reviewed(id=${comment != null ? comment.feedbackId : feedbackId})},hx-target='#reviewed-cell-' + ${comment != null ? comment.feedbackId : feedbackId}"
+                                               hx-trigger="change"
+                                               hx-swap="outerHTML"
+                                               name="reviewed"
+                                               value="true"
+                                               class="reviewed-checkbox"/>
+                                        <span class="slider"></span>
+                                    </label>
+                                </td>
+
+                                <!-- Notes Cell -->
+                                <td th:fragment="notes-cell" 
+                                    th:id="'notes-cell-' + ${comment != null ? comment.feedbackId : feedbackId}"
+                                    th:data-notes="${comment != null ? comment.notes : notes}">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; max-width: 250px;">
+                                        <div class="notes-text-display" 
+                                             th:text="${(comment != null ? comment.notes : notes) != null && !(comment != null ? comment.notes : notes).isBlank() ? (comment != null ? comment.notes : notes) : 'No notes added.'}"
+                                             th:classappend="${(comment != null ? comment.notes : notes) != null && !(comment != null ? comment.notes : notes).isBlank() ? '' : 'notes-empty'}"
+                                             style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; font-size: 0.9rem;">
+                                             Notes content
+                                        </div>
+                                        
+                                        <div style="display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0;">
+                                            <span th:if="${notes != null}" class="save-indicator show" style="animation: fadeOut 1.5s forwards;">✓</span>
+                                            <button class="btn-icon" 
+                                                    type="button" 
+                                                    onclick="openNotesDialog(this)"
+                                                    title="Edit Notes"
+                                                    style="width: 28px; height: 28px; border-radius: var(--radius-sm); padding: 0; display: flex; align-items: center; justify-content: center;">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                    <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(feedbackList)}">
+                                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">No feedback entries found matching active filters.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" th:if="${totalPages > 1}">
+                    <div class="pagination-info">
+                        Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${filteredCount}"></span> total entries)
+                    </div>
+                    <div class="pagination-controls">
+                        <a th:if="${currentPage > 0}" 
+                           th:href="@{/admin/feedback(page=${currentPage - 1}, rating=${selectedRating}, reviewed=${selectedReviewed}, timeRange=${selectedTimeRange}, sort=${selectedSort})}" 
+                           class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" 
+                           th:href="@{/admin/feedback(page=${currentPage + 1}, rating=${selectedRating}, reviewed=${selectedReviewed}, timeRange=${selectedTimeRange}, sort=${selectedSort})}" 
+                           class="btn btn-secondary">Next &raquo;</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notes Edit Modal Dialog -->
+    <dialog id="notes-dialog" class="notes-dialog-modal">
+        <div class="notes-dialog-header">
+            <h3 class="notes-dialog-title">Edit Notes</h3>
+            <button class="notes-dialog-close-btn" onclick="document.getElementById('notes-dialog').close()" title="Close dialog">&times;</button>
+        </div>
+        <form id="notes-form" hx-post="" hx-target="" hx-swap="outerHTML" onsubmit="document.getElementById('notes-dialog').close()">
+            <div class="notes-dialog-content">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="dialog-notes-textarea" class="form-label" style="margin-bottom: 0.5rem; display: block;">Audit Notes</label>
+                    <textarea id="dialog-notes-textarea" 
+                              name="notes" 
+                              class="form-input" 
+                              rows="6" 
+                              placeholder="Type detailed annotations or notes..."
+                              style="width: 100%; resize: vertical; min-height: 150px; font-family: inherit; font-size: 0.95rem; line-height: 1.5;"></textarea>
+                </div>
+            </div>
+            <div class="notes-dialog-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('notes-dialog').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Notes</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Page Specific Switch Toggle & Save Animations -->
+    <style>
+        /* Toggle Switch Styles */
+        .switch-container {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+        
+        .switch-container input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border-color);
+            transition: .3s;
+            border-radius: 34px;
+            border: 1px solid var(--border-color-hover);
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-secondary);
+            transition: .3s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: var(--color-success-dim);
+            border-color: var(--color-success);
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(22px);
+            background-color: var(--color-success);
+        }
+        
+        /* Notes container and Save Indicator */
+        .notes-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .notes-text-display {
+            color: var(--text-primary);
+        }
+
+        .notes-empty {
+            color: var(--text-muted) !important;
+            font-size: 0.85rem !important;
+            font-style: italic !important;
+        }
+        
+        .save-indicator {
+            font-size: 0.95rem;
+            color: var(--color-success);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            margin-right: 0.25rem;
+        }
+        
+        .save-indicator.show {
+            opacity: 1;
+        }
+
+        /* Notes Modal Dialog Styles */
+        .notes-dialog-modal {
+            display: none; /* Hidden by default */
+            background-color: var(--bg-surface-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 550px;
+            width: 90%;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            flex-direction: column;
+            
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            margin: 0;
+        }
+        
+        .notes-dialog-modal[open] {
+            display: flex;
+        }
+        
+        .notes-dialog-modal::backdrop {
+            background-color: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+        }
+        
+        .notes-dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        
+        .notes-dialog-title {
+            font-size: 1.20rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .notes-dialog-close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.75rem;
+            cursor: pointer;
+            line-height: 1;
+            transition: var(--transition-base);
+            padding: 0 0.25rem;
+        }
+        
+        .notes-dialog-close-btn:hover {
+            color: var(--color-danger);
+        }
+        
+        .notes-dialog-content {
+            flex-grow: 1;
+            margin-bottom: 1.5rem;
+        }
+        
+        .notes-dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1rem;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+
+    <!-- Dialog JS Helper -->
+    <script>
+        function openNotesDialog(button) {
+            const cell = button.closest('td');
+            const feedbackId = cell.id.replace('notes-cell-', '');
+            const currentNotes = cell.getAttribute('data-notes') || '';
+            
+            const dialog = document.getElementById('notes-dialog');
+            const form = document.getElementById('notes-form');
+            const textarea = document.getElementById('dialog-notes-textarea');
+            
+            // Set dynamic endpoints
+            form.setAttribute('hx-post', `/admin/feedback/${feedbackId}/notes`);
+            form.setAttribute('hx-target', `#notes-cell-${feedbackId}`);
+            
+            // Process HTMX dynamic bindings
+            htmx.process(form);
+            
+            // Populate value
+            textarea.value = currentNotes;
+            
+            // Show modal
+            dialog.showModal();
+        }
+    </script>
+</body>
+</html>

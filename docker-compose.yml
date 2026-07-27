@@ -1,0 +1,64 @@
+name: yvoke
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+    image: yvoke/pgvector-pg_search:pg16-0.24.0
+    container_name: yvoke-postgres
+    shm_size: 1gb
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data2:/var/lib/postgresql/data
+    env_file:
+      - .env
+    command: >
+      postgres
+      -c max_connections=1024
+      -c shared_preload_libraries=pg_search
+      -c hnsw.iterative_scan=relaxed_order
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db-migration:
+    build:
+      context: .
+      dockerfile: docker/db/Dockerfile
+    container_name: yvoke-db-migration
+    env_file:
+      - .env
+    command: migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yvoke-app
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Local compose is a development harness: activate the 'local' profile so mock auth (SEC-09)
+      # and the plaintext-secret fallback (SEC-05) are permitted here. Real deployments run without
+      # a dev profile and must therefore configure real auth + APP_SECRET_KEY/APP_SECRET_SALT.
+      SPRING_PROFILES_ACTIVE: local
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db-migration:
+        condition: service_completed_successfully
+
+
+volumes:
+  postgres_data2:
+  uploads_data:
+
+
+

@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('System Prompts Management')}"></head>
+<body>
+    <!-- FontAwesome icons for EasyMDE toolbar -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- EasyMDE Markdown Editor -->
+    <link rel="stylesheet" th:href="@{/css/easymde.min.css}">
+    <script th:src="@{/js/easymde.min.js}"></script>
+    <!-- Marked Markdown Parser + HTML sanitizer (self-hosted; sanitize before innerHTML) -->
+    <script th:src="@{/js/marked.min.js}"></script>
+    <script th:src="@{/js/purify.min.js}"></script>
+
+    <style>
+        /* EasyMDE Dark Theme overrides */
+        .editor-toolbar {
+            background-color: var(--bg-surface) !important;
+            border-color: var(--border-color) !important;
+            border-top-left-radius: var(--radius-md) !important;
+            border-top-right-radius: var(--radius-md) !important;
+        }
+        .editor-toolbar button {
+            color: var(--text-secondary) !important;
+            transition: var(--transition-base);
+        }
+        .editor-toolbar button:hover, 
+        .editor-toolbar button.active {
+            background-color: var(--bg-surface-hover) !important;
+            color: var(--text-primary) !important;
+        }
+        .editor-toolbar i.separator {
+            border-left-color: var(--border-color) !important;
+        }
+        .CodeMirror {
+            background-color: var(--bg-surface-elevated) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-bottom-left-radius: var(--radius-md) !important;
+            border-bottom-right-radius: var(--radius-md) !important;
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 0.85rem !important;
+            min-height: 250px;
+        }
+        .CodeMirror-cursor {
+            border-left: 1px solid var(--text-primary) !important;
+        }
+        /* Restrain markdown header sizes inside the editor area */
+        .CodeMirror .cm-header-1 { font-size: 1.2rem !important; color: var(--color-accent) !important; }
+        .CodeMirror .cm-header-2 { font-size: 1.1rem !important; color: var(--color-accent) !important; }
+        .CodeMirror .cm-header-3 { font-size: 1.0rem !important; color: var(--color-accent) !important; }
+        .editor-preview-side, .editor-preview {
+            background-color: var(--bg-base) !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Modal styling */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            /* 100% of the fixed containing block, not 100vw: vw includes the vertical scrollbar, so
+               a full-screen backdrop would be wider than the content area and force the page to
+               scroll sideways on platforms with classic scrollbars. */
+            width: 100%;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 1100px;
+            max-width: 95%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: 85vh;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .btn-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.75rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0 0.5rem;
+            transition: var(--transition-base);
+        }
+        .btn-close:hover {
+            color: var(--text-primary);
+        }
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        /* Markdown rendering within modal */
+        .markdown-body {
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+        .markdown-body h1, 
+        .markdown-body h2, 
+        .markdown-body h3 {
+            color: var(--color-accent);
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        .markdown-body h1 { font-size: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem; }
+        .markdown-body h2 { font-size: 1.3rem; }
+        .markdown-body h3 { font-size: 1.15rem; }
+        .markdown-body p {
+            margin-bottom: 1rem;
+        }
+        .markdown-body code {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: var(--bg-surface-elevated);
+            padding: 0.2rem 0.4rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            color: hsl(172, 90%, 75%);
+        }
+        .markdown-body pre {
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        .markdown-body pre code {
+            background-color: transparent;
+            padding: 0;
+            color: var(--text-primary);
+        }
+        .markdown-body ul, 
+        .markdown-body ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+        /* Style markdown tables inside the modal */
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9em;
+        }
+        .markdown-body th,
+        .markdown-body td {
+            border: 1px solid var(--border-color);
+            padding: 0.6rem 0.85rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .markdown-body th {
+            background-color: var(--bg-surface-elevated);
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+    </style>
+
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('prompts')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">System Prompts</h1>
+                    <p class="page-subtitle">Configure system prompts for Knowledge Graph extraction and Chat.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <!-- Active Default Chat Prompt Card -->
+            <div class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                <form th:action="@{/admin/prompts/active}" method="post" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Active Default Chat System Prompt</h2>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Select the default system prompt to use for all general chat threads.</p>
+                    <div style="display: flex; gap: 1rem; align-items: center; max-width: 500px; margin-top: 0.25rem;">
+                        <select id="activeChatPrompt" name="activeChatPrompt" class="form-select" style="flex: 1; padding: 0.5rem;" required>
+                            <option th:each="p : ${chatPrompts}"
+                                    th:value="${p.name}"
+                                    th:text="${p.name}"
+                                    th:title="${p.description}"
+                                    th:selected="${p.name == activeChatPrompt}">default-chat</option>
+                        </select>
+                        <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1.25rem;">Update</button>
+                    </div>
+                </form>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 2rem; align-items: start;">
+                <!-- Prompts List -->
+                <div>
+                    <div th:if="${#lists.isEmpty(prompts)}" class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 1rem;">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <p style="font-size: 1.1rem; font-weight: 500;">No Prompts Configured</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--text-muted);">Configure default system prompts to see them here.</p>
+                    </div>
+
+                    <div th:each="prompt : ${prompts}" class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="flex: 1; margin-right: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${prompt.name}">default-rag</span>
+                                    <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background-color: var(--bg-surface-elevated); color: var(--color-accent); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm);" th:text="${prompt.type}">RAG</span>
+                                </div>
+                                <p style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.75rem;" th:text="${prompt.description}">Description</p>
+                            </div>
+
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <!-- View Button -->
+                                <button type="button" class="btn btn-secondary" 
+                                        th:attr="data-name=${prompt.name}, data-type=${prompt.type}, data-system-prompt=${prompt.systemPrompt}"
+                                        onclick="viewPromptTemplate(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
+                                    View
+                                </button>
+
+                                <!-- Export Button -->
+                                <a th:href="@{/admin/prompts/export(name=${prompt.name})}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;" title="Export Prompt to .md file">
+                                    Export
+                                </a>
+
+                                <!-- Edit Button -->
+                                <button type="button" class="btn btn-secondary" 
+                                        th:attr="data-name=${prompt.name}, data-type=${prompt.type}, data-description=${prompt.description}, data-system-prompt=${prompt.systemPrompt}, data-readonly=${prompt.readOnly}"
+                                        onclick="editPrompt(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
+                                        th:text="${prompt.readOnly} ? 'View Code' : 'Edit'">
+                                    Edit
+                                </button>
+                                
+                                <!-- Delete Button -->
+                                <form th:if="${!prompt.readOnly}" th:action="@{/admin/prompts/delete}" method="post" onsubmit="return confirm('Are you sure you want to delete this system prompt?');" style="display: inline;">
+                                    <input type="hidden" name="name" th:value="${prompt.name}" />
+                                    <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Prompt">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create/Update Form Card -->
+                <div class="card" style="position: sticky; top: 2rem; padding: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h2 class="card-title" id="form-title" style="margin: 0;">Create System Prompt</h2>
+                        <button type="button" id="clear-btn" class="btn btn-secondary" onclick="resetForm()" style="display: none; padding: 0.25rem 0.5rem; font-size: 0.75rem;">New</button>
+                    </div>
+
+                    <!-- Loader Helper -->
+                    <div class="form-group" style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1.25rem;">
+                        <label class="form-label">Import Prompt File (.md)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="file" id="prompt-file-input" accept=".md" class="form-input" style="padding: 0.35rem 0.5rem; font-size: 0.85rem;" />
+                            <button type="button" class="btn btn-secondary" onclick="loadPromptFile()" style="padding: 0.4rem 1rem; font-size: 0.85rem; white-space: nowrap;">
+                                Load
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="prompt-form" th:action="@{/admin/prompts}" method="post">
+                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div class="form-group">
+                                <label for="name" class="form-label">System Name (Identifier)</label>
+                                <input type="text" id="name" name="name" class="form-input" placeholder="e.g. entra-kg" required />
+                                <span class="help-text" id="name-help" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Unique name/identifier of this prompt.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="type" class="form-label">Prompt Type</label>
+                                <select id="type" name="type" class="form-select" required>
+                                    <option value="KG">KG (Knowledge Graph Extraction)</option>
+                                    <option value="SUMMARIZE">SUMMARIZE (Manual Section Summarization)</option>
+                                    <option value="CHAT">CHAT (Agentic System Instruction)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="description" class="form-label">Description</label>
+                                <input type="text" id="description" name="description" class="form-input" placeholder="Brief explanation of what this prompt is for..." />
+                            </div>
+                            <div class="form-group">
+                                <label for="systemPrompt" class="form-label">Prompt Content (Markdown)</label>
+                                <textarea id="systemPrompt" name="systemPrompt" class="form-input" placeholder="Paste the system prompt instructions here..." style="min-height: 250px; resize: vertical; font-family: monospace; font-size: 0.85rem; line-height: 1.4;"></textarea>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button type="submit" class="btn btn-primary w-100" id="submit-btn">
+                                    Create Prompt
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Viewing Prompt Template -->
+    <div id="view-modal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content animate-fade-in">
+            <div class="modal-header">
+                <h3 id="modal-title" style="margin: 0; color: var(--color-accent); font-size: 1.25rem; font-weight: 600;">Prompt Name</h3>
+                <button type="button" class="btn-close" onclick="closeViewModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-body-content" class="markdown-body">
+                    <!-- Content rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        let easyMDE;
+
+        document.addEventListener("DOMContentLoaded", function() {
+            // Initialize EasyMDE Markdown Editor
+            easyMDE = new EasyMDE({
+                element: document.getElementById('systemPrompt'),
+                autoSync: true,
+                spellChecker: false,
+                status: false,
+                minHeight: "250px",
+                placeholder: "Paste the system prompt instructions here...",
+                toolbar: [
+                    "bold", "italic", "heading", "|",
+                    "quote", "unordered-list", "ordered-list", "|",
+                    "link", "table", "|",
+                    "preview", "side-by-side", "fullscreen", "|",
+                    "guide"
+                ]
+            });
+
+            // Ensure value is synchronized before form submission
+            const form = document.getElementById('prompt-form');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    if (easyMDE) {
+                        const val = easyMDE.value();
+                        document.getElementById('systemPrompt').value = val;
+                        if (!val.trim()) {
+                            alert('Prompt Content is required.');
+                            e.preventDefault();
+                            return false;
+                        }
+                    }
+                });
+            }
+
+            // Bind click outside to close view modal
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('view-modal');
+                if (event.target === modal) {
+                    closeViewModal();
+                }
+            });
+
+            // Bind Escape key to close view modal
+            window.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    closeViewModal();
+                }
+            });
+        });
+
+        function viewPromptTemplate(button) {
+            const name = button.getAttribute('data-name');
+            const systemPrompt = button.getAttribute('data-system-prompt');
+            
+            document.getElementById('modal-title').textContent = name;
+            
+            // Render markdown preview in the modal
+            try {
+                document.getElementById('modal-body-content').innerHTML = DOMPurify.sanitize(marked.parse(systemPrompt));
+            } catch (e) {
+                document.getElementById('modal-body-content').textContent = systemPrompt;
+            }
+            
+            document.getElementById('view-modal').style.display = 'flex';
+        }
+
+        function closeViewModal() {
+            document.getElementById('view-modal').style.display = 'none';
+        }
+
+        function editPrompt(button) {
+            const name = button.getAttribute('data-name');
+            const type = button.getAttribute('data-type');
+            const description = button.getAttribute('data-description') || '';
+            const systemPrompt = button.getAttribute('data-system-prompt');
+            const isReadOnly = button.getAttribute('data-readonly') === 'true';
+
+            document.getElementById('name').value = name;
+            document.getElementById('name').readOnly = true; // Primary key can't be changed during edit
+            document.getElementById('type').value = type;
+            document.getElementById('type').disabled = isReadOnly;
+            document.getElementById('description').value = description;
+            document.getElementById('description').readOnly = isReadOnly;
+
+            if (easyMDE) {
+                easyMDE.value(systemPrompt);
+                easyMDE.codemirror.setOption('readOnly', isReadOnly);
+            }
+
+            const submitBtn = document.getElementById('submit-btn');
+            if (isReadOnly) {
+                submitBtn.style.display = 'none';
+                document.getElementById('form-title').textContent = 'View System Prompt';
+            } else {
+                submitBtn.style.display = 'block';
+                submitBtn.textContent = 'Save Changes';
+                document.getElementById('form-title').textContent = 'Edit System Prompt';
+            }
+
+            document.getElementById('clear-btn').style.display = 'inline-block';
+        }
+
+        function resetForm() {
+            document.getElementById('prompt-form').reset();
+            document.getElementById('name').readOnly = false;
+            document.getElementById('type').disabled = false;
+            document.getElementById('description').readOnly = false;
+
+            if (easyMDE) {
+                easyMDE.value('');
+                easyMDE.codemirror.setOption('readOnly', false);
+            }
+
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.style.display = 'block';
+            submitBtn.textContent = 'Create Prompt';
+            
+            document.getElementById('form-title').textContent = 'Create System Prompt';
+            document.getElementById('clear-btn').style.display = 'none';
+        }
+
+        function loadPromptFile() {
+            const fileInput = document.getElementById('prompt-file-input');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a system prompt markdown (.md) file first.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                
+                // Set default values based on file name (excluding extension)
+                const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                let name = nameWithoutExt;
+                let typeStr = 'CHAT'; // default to CHAT
+                let description = '';
+                let promptText = content;
+
+                // Parse frontmatter
+                if (content.startsWith('---')) {
+                    const endOfFrontmatter = content.indexOf('---', 3);
+                    if (endOfFrontmatter > 0) {
+                        const yaml = content.substring(3, endOfFrontmatter);
+                        promptText = content.substring(endOfFrontmatter + 3).trim();
+
+                        const lines = yaml.split('\n');
+                        for (let line of lines) {
+                            line = line.trim();
+                            if (line.startsWith('name:')) {
+                                name = line.substring(5).trim().replace(/^['"]|['"]$/g, '');
+                            } else if (line.startsWith('type:')) {
+                                typeStr = line.substring(5).trim().replace(/^['"]|['"]$/g, '').toUpperCase();
+                            } else if (line.startsWith('description:')) {
+                                description = line.substring(12).trim().replace(/^['"]|['"]$/g, '');
+                            } else if (line.startsWith('title:') && !description) {
+                                description = line.substring(6).trim().replace(/^['"]|['"]$/g, '');
+                            }
+                        }
+                    }
+                }
+
+                // Map typeStr to valid options
+                let selectedType = 'CHAT';
+                if (typeStr === 'KG' || typeStr === 'KNOWLEDGE_GRAPH' || typeStr === 'KNOWLEDGE-GRAPH') {
+                    selectedType = 'KG';
+                } else if (typeStr === 'DB' || typeStr === 'DATABASE') {
+                    selectedType = 'SUMMARIZE';
+                } else if (typeStr === 'SUMMARIZE' || typeStr === 'SUMMARY') {
+                    selectedType = 'SUMMARIZE';
+                } else if (typeStr === 'CHAT' || typeStr === 'AGENTIC' || typeStr === 'RAG') {
+                    selectedType = 'CHAT';
+                }
+
+                document.getElementById('name').value = name;
+                document.getElementById('type').value = selectedType;
+                document.getElementById('description').value = description;
+                if (easyMDE) {
+                    easyMDE.value(promptText);
+                }
+            }
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>

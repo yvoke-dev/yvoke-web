@@ -1,0 +1,43 @@
+<div th:fragment="message(msg)" class="message-row" th:classappend="${msg.role == 'user' ? 'message-user' : (msg.status == 'generating' ? 'message-assistant sync-loading' : 'message-assistant')}" th:id="'msg-' + ${msg.id}" th:attr="data-status=${msg.status}">
+    <div class="message-avatar">
+        <span th:if="${msg.role == 'user'}">U</span>
+        <img th:if="${msg.role == 'assistant'}" th:src="@{/images/logo-32.png}" alt="Yvoke Logo" style="width: 22px; height: 22px;" />
+    </div>
+    <div class="message-bubble">
+        <span th:if="${msg.playbook != null}" class="playbook-tag" th:text="'📋 ' + ${msg.playbook}">Playbook Tag</span>
+        
+        <!-- If generating (non-streaming placeholder) -->
+        <div th:if="${msg.role == 'assistant' and msg.status == 'generating'}" class="message-content" data-raw-content="">
+            <div class="sync-loader-container">
+                <div class="sync-loader-dots">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </div>
+                <span class="sync-loader-text">Thinking</span>
+            </div>
+        </div>
+        
+        <!-- Standard message content -->
+        <div th:if="${msg.status != 'generating'}" class="message-content" th:attr="data-raw-content=${msg.content}" th:text="${msg.content}">
+            Message body
+        </div>
+        
+        <!-- Feedback buttons only for assistant messages -->
+        <div class="message-meta" th:if="${msg.role == 'assistant'}" th:style="${msg.status == 'generating'} ? 'display: none;' : ''">
+            <!-- Thumbs up / down feedback -->
+            <th:block th:if="${msg.status != 'generating'}">
+                <div th:replace="~{chat/fragments/feedback-buttons :: feedback-buttons(messageId=${msg.id}, feedback=${feedbacks != null ? feedbacks[msg.id] : null})}"></div>
+                
+                <div class="token-usage" th:if="${msg.promptTokens != null and msg.promptTokens > 0}">
+                    Prompt: <span th:text="${msg.promptTokens}">0</span>
+                    <th:block th:if="${msg.cachedTokens != null and msg.cachedTokens > 0}"> | Cached: <span th:text="${msg.cachedTokens}">0</span></th:block>
+                    | Completion: <span th:text="${msg.completionTokens}">0</span>
+                    <th:block th:if="${msg.thoughtTokens != null and msg.thoughtTokens > 0}"> | Thoughts: <span th:text="${msg.thoughtTokens}">0</span></th:block>
+                    | Total: <span th:text="${msg.totalTokens}">0</span>
+                </div>
+            </th:block>
+        </div>
+    </div>
+</div>
+

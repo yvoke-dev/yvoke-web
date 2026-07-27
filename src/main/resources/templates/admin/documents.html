@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Corpus Browser')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('documents')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Corpus Browser</h1>
+                    <p class="page-subtitle">View and browse ingested documents, versions, and chunk structures.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-panel">
+                <form th:action="@{/admin/documents}" method="get" class="filters-grid">
+                    <!-- Preserve search parameters -->
+                    <input type="hidden" name="searchId" th:value="${selectedSearchId}" th:if="${selectedSearchId != null}" />
+                    <input type="hidden" name="searchTitle" th:value="${selectedSearchTitle}" th:if="${selectedSearchTitle != null}" />
+
+                    <div class="form-group">
+                        <label for="collection" class="form-label">Collection</label>
+                        <select id="collection" name="collection" class="form-select">
+                            <option value="">All Collections</option>
+                            <option th:each="c : ${collections}" th:value="${c}" th:text="${c}" th:selected="${c == selectedCollection}"></option>
+                        </select>
+                    </div>
+
+
+
+                    <div class="form-group">
+                        <label for="kind" class="form-label">Kind</label>
+                        <select id="kind" name="kind" class="form-select">
+                            <option value="">All Kinds</option>
+                            <option th:each="k : ${kinds}" th:value="${k}" th:text="${k}" th:selected="${k == selectedKind}"></option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tag" class="form-label">Tag</label>
+                        <select id="tag" name="tag" class="form-select">
+                            <option value="">All Tags</option>
+                            <option th:each="t : ${allTags}" th:value="${t}" th:text="${t}" th:selected="${t == selectedTag}"></option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            Apply Filters
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Search Panel -->
+            <div class="filters-panel">
+                <form th:action="@{/admin/documents}" method="get" style="display: flex; gap: 1.25rem; align-items: flex-end; flex-wrap: wrap;">
+                    <input type="hidden" name="collection" th:value="${selectedCollection}" th:if="${selectedCollection != null}" />
+                    <input type="hidden" name="kind" th:value="${selectedKind}" th:if="${selectedKind != null}" />
+                    <input type="hidden" name="tag" th:value="${selectedTag}" th:if="${selectedTag != null}" />
+
+                    <div class="form-group" style="flex: 1; min-width: 280px;">
+                        <label for="searchId" class="form-label">Search by ID</label>
+                        <input type="text" id="searchId" name="searchId" class="form-input" placeholder="Search document by full or partial ID (e.g. 273cb8a2)" th:value="${selectedSearchId}" />
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 280px;">
+                        <label for="searchTitle" class="form-label">Search by Title</label>
+                        <input type="text" id="searchTitle" name="searchTitle" class="form-input" placeholder="Search document by title or manual name" th:value="${selectedSearchTitle}" />
+                    </div>
+                    <div style="min-width: 120px;">
+                        <button type="submit" class="btn btn-primary w-100">
+                            Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Documents Table -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Ingested Documents</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <span class="badge badge-info" th:text="${totalCount} + ' total'">0 total</span>
+                        <!-- Collection/Tag delete buttons -->
+                        <span th:if="${selectedCollection != null && !selectedCollection.isEmpty()}">
+                            <form th:action="@{/admin/lifecycle/delete-collection}" method="post" style="display:inline;" onsubmit="return confirm('Are you absolutely sure you want to delete the entire collection \'' + this.collection.value + '\'? All documents, chunks, graph entities, and relationships in this collection will be permanently deleted.');">
+                                <input type="hidden" name="collection" th:value="${selectedCollection}"/>
+                                <button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.85rem; border-color: var(--color-danger); color: var(--color-danger);">Delete Collection</button>
+                            </form>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Title / Manual</th>
+                                <th>Collection</th>
+                                <th>Kind</th>
+                                <th>Chunks</th>
+                                <th>Status</th>
+                                <th>Tags</th>
+                                <th style="text-align: center;">KG</th>
+                                <th style="width: 100px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="doc : ${documents}">
+                                <td>
+                                    <div>
+                                        <a th:href="@{/admin/documents/{id}(id=${doc.id()})}"
+                                           class="document-title-link"
+                                           th:title="${doc.title()}"
+                                           th:text="${#strings.length(doc.title()) > 60 ? #strings.substring(doc.title(), 0, 60) + '...' : doc.title()}">Title</a>
+                                    </div>
+                                </td>
+                                <td th:text="${doc.collection()}">Collection</td>
+                                <td>
+                                    <span class="badge badge-muted" th:text="${doc.kind()}">Kind</span>
+                                </td>
+                                <td class="mono-text" th:text="${doc.chunkCount()}">0</td>
+                                <td>
+                                    <span class="badge" 
+                                          th:classappend="${doc.ingestionStatus() == 'completed' ? 'badge-success' : (doc.ingestionStatus() == 'failed' ? 'badge-danger' : 'badge-warning')}"
+                                          th:text="${doc.ingestionStatus()}">completed</span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                        <span th:each="t : ${doc.tags()}" class="badge badge-info" th:text="${t}" style="font-size: 0.75rem; padding: 0.15rem 0.35rem; line-height: 1;">tag</span>
+                                        <span th:if="${#lists.isEmpty(doc.tags())}" style="color: var(--text-secondary); font-size: 0.85rem; font-style: italic;">No tags</span>
+                                    </div>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span class="badge badge-muted" th:unless="${doc.kgProcessed()}">No</span>
+                                    <span class="badge badge-danger" th:if="${doc.kgProcessed() and doc.kgFailedChunks() > 0}"
+                                          th:text="${doc.kgFailedChunks() + ' failed'}"
+                                          th:title="${doc.kgFailedChunks() + ' chunk(s) failed KG extraction'}">0 failed</span>
+                                    <span class="badge badge-success" th:if="${doc.kgProcessed() and doc.kgFailedChunks() == 0}">Yes</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
+                                        <button th:unless="${doc.kgProcessed()}"
+                                                type="button"
+                                                class="btn btn-secondary"
+                                                onclick="openExtractKgDialog(this)"
+                                                th:data-document-id="${doc.id()}"
+                                                th:data-collection="${doc.collection()}"
+                                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.3rem; width: 2rem; height: 2rem;"
+                                                title="Extract Knowledge Graph"
+                                                aria-label="Extract Knowledge Graph">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <circle cx="18" cy="5" r="3"></circle>
+                                                <circle cx="6" cy="12" r="3"></circle>
+                                                <circle cx="18" cy="19" r="3"></circle>
+                                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                            </svg>
+                                        </button>
+                                        <form th:if="${doc.kgProcessed()}" th:action="@{/admin/documents/{id}/process-kg(id=${doc.id()})}" method="post" style="display:inline;" onsubmit="return confirm('Run Knowledge Graph extraction for this document? This enqueues a background job.');">
+                                            <button type="submit" class="btn btn-secondary"
+                                                    style="display: inline-flex; align-items: center; justify-content: center; padding: 0.3rem; width: 2rem; height: 2rem;"
+                                                    title="Re-run KG extraction"
+                                                    aria-label="Re-run KG extraction">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <circle cx="18" cy="5" r="3"></circle>
+                                                    <circle cx="6" cy="12" r="3"></circle>
+                                                    <circle cx="18" cy="19" r="3"></circle>
+                                                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                        <form th:action="@{/admin/lifecycle/delete-document/{id}(id=${doc.id()})}" method="post" style="display:inline;" onsubmit="return confirm('Are you absolutely sure you want to delete this document? All associated chunks will be deleted permanently.');">
+                                            <button type="submit" class="btn btn-secondary"
+                                                    style="display: inline-flex; align-items: center; justify-content: center; padding: 0.3rem; width: 2rem; height: 2rem; border-color: var(--color-danger); color: var(--color-danger);"
+                                                    title="Delete document" aria-label="Delete document">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(documents)}">
+                                <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                                    No documents found matching the filters.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" th:if="${totalPages > 1}">
+                    <div class="pagination-info">
+                        Showing page <span th:text="${currentPage + 1}">1</span> of <span th:text="${totalPages}">1</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/documents(collection=${selectedCollection}, tag=${selectedTag}, kind=${selectedKind}, tag=${selectedTag}, searchId=${selectedSearchId}, searchTitle=${selectedSearchTitle}, page=${currentPage - 1})}" class="btn btn-secondary">
+                            Previous
+                        </a>
+                        <a th:if="${currentPage + 1 < totalPages}" th:href="@{/admin/documents(collection=${selectedCollection}, tag=${selectedTag}, kind=${selectedKind}, tag=${selectedTag}, searchId=${selectedSearchId}, searchTitle=${selectedSearchTitle}, page=${currentPage + 1})}" class="btn btn-secondary">
+                            Next
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Extract KG Dialog -->
+    <dialog id="extract-kg-dialog" class="notes-dialog-modal">
+        <div class="notes-dialog-header">
+            <h3 class="notes-dialog-title">Extract Knowledge Graph</h3>
+            <button class="notes-dialog-close-btn" onclick="document.getElementById('extract-kg-dialog').close()" title="Close dialog">&times;</button>
+        </div>
+        <form id="extract-kg-form" method="post" th:action="@{/admin/documents}">
+            <div class="notes-dialog-content" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                    Extract entities and relations from this document into a target collection and version. This execution runs as an asynchronous background job.
+                </p>
+                
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="dialogCollectionSelect" class="form-label" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Collection</label>
+                    <select id="dialogCollectionSelect" name="collection" class="form-select" style="width: 100%;" required onchange="updateDialogTags()">
+                        <option value="">-- Select Collection --</option>
+                        <option th:each="c : ${allCollections}" th:value="${c.name}" th:text="${c.name}"></option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="dialogTagGroup" style="margin-bottom: 0;">
+                    <label for="dialogTagSelect" class="form-label" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Tag</label>
+                    <select id="dialogTagSelect" name="tag" class="form-select" style="width: 100%;">
+                        <option value="">-- Select Tag --</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="dialogKgPromptSelect" class="form-label" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Knowledge Graph Prompt</label>
+                    <select id="dialogKgPromptSelect" name="kgPrompt" class="form-select" style="width: 100%;" required>
+                        <option value="">Loading prompts...</option>
+                    </select>
+                    <p id="noDialogKgPromptWarning" class="text-danger" style="display: none; font-size: 0.85rem; font-weight: 500; margin-top: 0.5rem;">
+                        Error: No system prompts of type KG are configured. Please create one in the System Prompts tab first.
+                    </p>
+                </div>
+            </div>
+            <div class="notes-dialog-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('extract-kg-dialog').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Extract Knowledge</button>
+            </div>
+        </form>
+    </dialog>
+
+    <style>
+        /* Extract KG Modal Dialog Styles */
+        .notes-dialog-modal {
+            display: none; /* Hidden by default */
+            background-color: var(--bg-surface-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            flex-direction: column;
+            
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            margin: 0;
+        }
+        
+        .notes-dialog-modal[open] {
+            display: flex;
+        }
+        
+        .notes-dialog-modal::backdrop {
+            background-color: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+        }
+        
+        .notes-dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        
+        .notes-dialog-title {
+            font-size: 1.20rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .notes-dialog-close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.75rem;
+            cursor: pointer;
+            line-height: 1;
+            transition: var(--transition-base);
+            padding: 0 0.25rem;
+        }
+        
+        .notes-dialog-close-btn:hover {
+            color: var(--color-danger);
+        }
+        
+        .notes-dialog-content {
+            flex-grow: 1;
+            margin-bottom: 1.5rem;
+        }
+        
+        .notes-dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1rem;
+        }
+
+        /* Document Title Clickable Link Styles */
+        .document-title-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: var(--transition-base);
+        }
+        .document-title-link:hover {
+            color: var(--color-accent);
+            text-decoration: underline;
+        }
+    </style>
+
+    <!-- Hidden Collections Data for JS -->
+    <div id="collections-data" style="display: none;">
+        <div th:each="c : ${allCollections}" th:data-name="${c.name}">
+            <span th:each="v : ${c.tags}" th:text="${v}"></span>
+        </div>
+    </div>
+
+    <script>
+        const collectionTags = {};
+        document.querySelectorAll('#collections-data > div').forEach(el => {
+            const name = el.getAttribute('data-name');
+            const versions = [];
+            el.querySelectorAll('span').forEach(span => {
+                versions.push(span.textContent);
+            });
+            collectionTags[name] = versions;
+        });
+
+        function updateDialogKgPromptTooltip() {
+            const kgSelect = document.getElementById('dialogKgPromptSelect');
+            const selectedOpt = kgSelect.options[kgSelect.selectedIndex];
+            kgSelect.title = selectedOpt ? (selectedOpt.getAttribute('title') || '') : '';
+        }
+        document.getElementById('dialogKgPromptSelect').addEventListener('change', updateDialogKgPromptTooltip);
+
+        // Handle KG extraction form submission and validation
+        document.getElementById('extract-kg-form').addEventListener('submit', function(event) {
+            const kgSelect = document.getElementById('dialogKgPromptSelect');
+            if (!kgSelect.value) {
+                event.preventDefault();
+                alert('Error: A Knowledge Graph Prompt is required to extract a Knowledge Graph. Please configure one in the System Prompts management tab first.');
+                return;
+            }
+            document.getElementById('extract-kg-dialog').close();
+        });
+
+        function openExtractKgDialog(button) {
+            const documentId = button.getAttribute('data-document-id');
+            const currentCollection = button.getAttribute('data-collection');
+            const currentTag = button.getAttribute('data-version');
+
+            const dialog = document.getElementById('extract-kg-dialog');
+            const form = document.getElementById('extract-kg-form');
+            const colSelect = document.getElementById('dialogCollectionSelect');
+            
+            // Set form action
+            form.action = `/admin/documents/${documentId}/process-kg`;
+            
+            // Set initial collection selection to the document's current collection if it matches
+            colSelect.value = currentCollection || "";
+            
+            // Populate/update versions dropdown
+            updateDialogTags(currentTag);
+            
+            // Fetch KG prompts dynamically
+            fetch('/admin/prompts/kg-options')
+                .then(response => response.text())
+                .then(html => {
+                    const kgSelect = document.getElementById('dialogKgPromptSelect');
+                    kgSelect.innerHTML = html;
+                    const hasKgPrompts = kgSelect.options.length > 0;
+                    document.getElementById('noDialogKgPromptWarning').style.display = hasKgPrompts ? 'none' : 'block';
+                    updateDialogKgPromptTooltip();
+                });
+            
+            dialog.showModal();
+        }
+
+        function updateDialogTags(selectedTag) {
+            const colSelect = document.getElementById('dialogCollectionSelect');
+            const verSelect = document.getElementById('dialogTagSelect');
+            const verGroup = document.getElementById('dialogTagGroup');
+            
+            const selectedCol = colSelect.value;
+            const versions = collectionTags[selectedCol] || [];
+            
+            // Clear existing options
+            verSelect.innerHTML = '';
+            
+            if (versions.length === 0) {
+                // If collection has no versions, hide/disable version selection
+                verGroup.style.display = 'none';
+                verSelect.removeAttribute('required');
+            } else {
+                verGroup.style.display = 'block';
+                verSelect.setAttribute('required', 'required');
+                
+                // Add a default select option
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = '-- Select Tag --';
+                verSelect.appendChild(defaultOpt);
+                
+                versions.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    if (v === selectedTag) {
+                        opt.selected = true;
+                    }
+                    verSelect.appendChild(opt);
+                });
+            }
+        }
+
+        /*
+         * Rescope the Tag filter when the Collection filter changes.
+         *
+         * The server scopes this list too, but only when it renders the page — which on this form
+         * is only after "Apply Filters", so the tags on screen belonged to the collection you had
+         * just navigated away from. collectionTags above already carries every collection's
+         * declared tags, so this needs no request.
+         */
+        function updateFilterTags() {
+            const colSelect = document.getElementById('collection');
+            const tagSelect = document.getElementById('tag');
+            if (!colSelect || !tagSelect) return;
+
+            const { options, selected } =
+                window.CorpusTagFilter.tagOptionsFor(collectionTags, colSelect.value,
+                    tagSelect.value);
+
+            tagSelect.innerHTML = '';
+            const allOpt = document.createElement('option');
+            allOpt.value = '';
+            allOpt.textContent = 'All Tags';
+            tagSelect.appendChild(allOpt);
+
+            options.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                opt.selected = t === selected;
+                tagSelect.appendChild(opt);
+            });
+        }
+
+        // The bootstrap that defines window.CorpusTagFilter is a module, so it runs AFTER this
+        // classic script — binding the listener is fine here (it fires later), but calling
+        // updateFilterTags() at top level would throw on an undefined CorpusTagFilter. There is no
+        // initial call to make anyway: the server already rendered the correct scope.
+        document.getElementById('collection')?.addEventListener('change', updateFilterTags);
+    </script>
+    <script type="module" th:src="@{/js/admin/corpus-tag-filter-bootstrap.js}"></script>
+</body>
+</html>

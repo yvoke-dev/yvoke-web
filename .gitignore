@@ -1,0 +1,58 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+## STS ##
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+
+## IntelliJ IDEA ##
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.idea_modules/
+
+## NetBeans ##
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+## VS Code ##
+.vscode/
+
+## OS ##
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+desktop_app/node_modules/
+
+# Node. The JS test tier has zero dependencies and needs no install, so there should never be a
+# root node_modules/ — this is here so that if someone does run `npm i`, it cannot be committed.
+/node_modules/
+npm-debug.log*
+
+# Converter data, caches, and test outputs
+data/
+scratch_out/
+
+# Python cache and temporary conversion scripts
+**/__pycache__/
+scripts/tmp_*
+backup/postgres_backup.sql
+
+scripts/git-*
+# Claude Code local (per-user) settings
+.claude/settings.local.json
+
+# Docs (local-only, not tracked)
+docs/

@@ -1,0 +1,53 @@
+{
+  "title_h1": "OIM Authentication Guide",
+  "sections": [
+    {
+      "depth": 2,
+      "title": "Introduction",
+      "heading_path": [],
+      "chunk_text": "## Introduction\n\nThis is the introduction to authentication in One Identity Manager. It explains\nthe high-level concepts that the rest of the manual builds upon.\n"
+    },
+    {
+      "depth": 3,
+      "title": "Goals",
+      "heading_path": [
+        "Introduction"
+      ],
+      "chunk_text": "> Section path: Introduction\n\n### Goals\n\nThe goals section describes what authentication aims to achieve: verifying the\nidentity of a principal before granting access to protected resources.\n"
+    },
+    {
+      "depth": 2,
+      "title": "Authentication Modules",
+      "heading_path": [],
+      "chunk_text": "## Authentication Modules\n\n\n"
+    },
+    {
+      "depth": 3,
+      "title": "OAuth Module",
+      "heading_path": [
+        "Authentication Modules"
+      ],
+      "chunk_text": "> Section path: Authentication Modules\n\n### OAuth Module\n\nThe OAuth module implements the OAuth 2.0 authorization framework. It supports\nthe authorization code grant and the client credentials grant.\n"
+    },
+    {
+      "depth": 3,
+      "title": "SAML Module",
+      "heading_path": [
+        "Authentication Modules"
+      ],
+      "chunk_text": "> Section path: Authentication Modules\n\n### SAML Module\n\nThe SAML module integrates with SAML 2.0 identity providers for browser-based\nsingle sign-on across federated domains.\n"
+    },
+    {
+      "depth": 2,
+      "title": "Large Section (part 1/2)",
+      "heading_path": [],
+      "chunk_text": "## Large Section (part 1/2)\n\nParagraph one. AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication AuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthenticationAuthentication.\n\nParagraph two. ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule ModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModuleModule.\n\nParagraph three. SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection SectionSectionSectionSectionSectionSectionSectionSectionSectionSection.\n\nParagraph four. BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary.\n"
+    },
+    {
+      "depth": 2,
+      "title": "Large Section (part 2/2)",
+      "heading_path": [],
+      "chunk_text": "## Large Section (part 2/2)\n\nParagraph five. OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow OverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflowOverflow.\n"
+    }
+  ]
+}

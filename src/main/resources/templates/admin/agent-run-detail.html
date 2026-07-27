@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Agent Run Trace')}"></head>
+<body>
+    <div class="admin-layout">
+        <aside th:replace="~{admin/layout :: sidebar('agent-runs')}"></aside>
+
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Agent Run Trace</h1>
+                    <p class="page-subtitle mono-text" th:text="${run.id}"></p>
+                </div>
+                <a th:href="@{/admin/agent-runs}" class="btn btn-secondary">&laquo; All runs</a>
+            </div>
+
+            <!-- Run summary -->
+            <div class="card">
+                <h2 class="card-title">Summary</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <tbody>
+                            <tr><th>Profile</th><td th:text="${run.profileName}"></td></tr>
+                            <tr><th>Status</th>
+                                <td><span class="badge"
+                                    th:classappend="${run.status == 'done' ? 'badge-success' : (run.status == 'error' ? 'badge-danger' : (run.status == 'cancelled' ? 'badge-warning' : 'badge-muted'))}"
+                                    th:text="${run.status}"></span></td></tr>
+                            <tr><th>Review rounds</th><td th:text="${run.reviewRounds}"></td></tr>
+                            <tr><th>Tokens (prompt / completion / total)</th>
+                                <td th:text="${run.promptTokens + ' / ' + run.completionTokens + ' / ' + run.totalTokens}"></td></tr>
+                            <tr><th>Started / Finished</th>
+                                <td class="mono-text" th:text="${run.startedAt + '  →  ' + run.finishedAt}"></td></tr>
+                            <tr><th>Conversation</th>
+                                <td><a th:href="@{/chat/{id}(id=${run.conversationId})}" target="_blank"
+                                       class="mono-text" th:text="${run.conversationId}"
+                                       style="color: var(--color-accent); text-decoration: none; font-weight: 600;"></a></td></tr>
+                            <tr><th>Answer message</th><td class="mono-text" th:text="${run.messageId}"></td></tr>
+                            <tr th:if="${run.errorSummary != null}"><th>Error</th><td class="text-danger" th:text="${run.errorSummary}"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div th:if="${run.finalVerdict != null}" style="margin-top: 1rem;">
+                    <strong>Final verdict</strong>
+                    <pre class="mono-text" style="white-space: pre-wrap; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;" th:text="${run.finalVerdict}"></pre>
+                </div>
+            </div>
+
+            <!-- Failure details. The summary row above shows only the first line; a table cell
+                 collapses newlines, so the full diagnosis needs a <pre> of its own. th:text (never
+                 th:utext) because this string carries provider text we did not author. -->
+            <div class="card" th:if="${run.error != null}">
+                <h2 class="card-title text-danger">Failure details</h2>
+                <p class="page-subtitle">What the run was doing when it died, and the decoded provider fault.</p>
+                <pre class="mono-text" style="white-space: pre-wrap; word-break: break-word; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--color-danger); padding: 0.75rem; border-radius: 6px; max-height: 480px; overflow: auto;" th:text="${run.error}"></pre>
+            </div>
+
+            <!-- Steps -->
+            <div class="card" th:each="step : ${steps}">
+                <h2 class="card-title">
+                    <span class="badge"
+                          th:classappend="${step.role == 'orchestrator' ? 'badge-info' : (step.role == 'reviewer' ? 'badge-success' : 'badge-muted')}"
+                          th:text="${step.seq + '. ' + step.role}"></span>
+                    <span th:if="${step.playbookName != null}" class="mono-text" th:text="${step.playbookName}" style="margin-left: .5rem;"></span>
+                    <span th:if="${step.status == 'failed'}" class="badge badge-danger" style="margin-left: .5rem;">failed</span>
+                </h2>
+                <p class="page-subtitle">
+                    model <span class="mono-text" th:text="${step.model}"></span>,
+                    thinking <span th:text="${step.thinkingLevel}"></span>,
+                    round <span th:text="${step.round}"></span>,
+                    tokens <span th:text="${step.totalTokens}"></span>
+                </p>
+
+                <div th:if="${step.error != null}" style="margin-bottom: 1rem;">
+                    <strong class="text-danger">Step failure</strong>
+                    <pre class="mono-text" style="white-space: pre-wrap; word-break: break-word; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--color-danger); padding: 0.75rem; border-radius: 6px; max-height: 320px; overflow: auto;" th:text="${step.error}"></pre>
+                </div>
+
+                <div th:if="${step.verdict != null}" style="margin-bottom: 1rem;">
+                    <strong>Verdict</strong>
+                    <pre class="mono-text" style="white-space: pre-wrap; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;" th:text="${step.verdict}"></pre>
+                </div>
+
+                <details open>
+                    <summary style="cursor: pointer; font-weight: 600; margin-bottom: .5rem;">Output (thinking &amp; tool calls)</summary>
+                    <pre style="white-space: pre-wrap; word-break: break-word; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px; max-height: 480px; overflow: auto;" th:text="${step.output}"></pre>
+                </details>
+
+                <details style="margin-top: .5rem;">
+                    <summary style="cursor: pointer; font-weight: 600;">Input (prompt sent to this agent)</summary>
+                    <pre style="white-space: pre-wrap; word-break: break-word; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px; max-height: 320px; overflow: auto;" th:text="${step.input}"></pre>
+                </details>
+
+                <details style="margin-top: .5rem;">
+                    <summary style="cursor: pointer; font-weight: 600;">Raw message trace (JSON — tool calls &amp; evidence)</summary>
+                    <pre class="mono-text" style="white-space: pre-wrap; word-break: break-word; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px; max-height: 480px; overflow: auto;" th:text="${step.messages}"></pre>
+                </details>
+            </div>
+
+            <div class="card" th:if="${#lists.isEmpty(steps)}">
+                <p style="text-align: center; color: var(--text-secondary); padding: 2rem;">No steps recorded for this run.</p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

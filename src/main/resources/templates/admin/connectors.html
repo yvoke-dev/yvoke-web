@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Connectors Configuration')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('connectors')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Connectors</h1>
+                    <p class="page-subtitle">Connected Confluence sites. Each instance crawls one space below one root page and ingests into one collection and tag.</p>
+                </div>
+                <form th:action="@{/admin/connectors/confluence/sync-all}" method="post" style="margin: 0;"
+                      onsubmit="return confirm('Start a sync for every enabled Confluence instance?');">
+                    <button type="submit" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.5rem;"
+                            th:disabled="${#lists.isEmpty(instances)}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Sync All Enabled
+                    </button>
+                </form>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${warning}" class="card animate-fade-in" style="background-color: var(--color-warning-dim); border-color: var(--color-warning); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-warning" style="font-weight: 500;" th:text="${warning}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 2rem; align-items: start;">
+                <!-- Instance List -->
+                <div>
+                    <div th:if="${#lists.isEmpty(instances)}" class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 1rem;">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                        <p style="font-size: 1.1rem; font-weight: 500;">No Confluence Instances Configured</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--text-muted);">Add a connected Confluence site on the right.</p>
+                    </div>
+
+                    <div th:each="instance : ${instances}" class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                            <div style="flex: 1; margin-right: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${instance.name}">iCC Wiki</h3>
+                                    <span class="badge badge-muted" th:text="${instance.slug}">icc-wiki</span>
+                                    <span th:if="${instance.enabled}" class="badge badge-success">Enabled</span>
+                                    <span th:unless="${instance.enabled}" class="badge badge-muted">Disabled</span>
+
+                                    <!-- Token health: three visually distinct states, so a key rotation is
+                                         visible BEFORE a sync is attempted. -->
+                                    <span th:if="${instance.tokenHealth.name() == 'OK'}" class="badge badge-success" title="A token is stored and was encrypted with the key currently configured.">Token OK</span>
+                                    <span th:if="${instance.tokenHealth.name() == 'MISSING'}" class="badge badge-warning" title="No API token is stored — this instance cannot sync.">Token Missing</span>
+                                    <span th:if="${instance.tokenHealth.name() == 'UNDECRYPTABLE'}" class="badge badge-danger" title="A token is stored but the key that encrypted it is gone — re-enter it.">Token Undecryptable</span>
+                                </div>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;" th:text="${instance.domain}">https://acme.atlassian.net/wiki</p>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <!-- Edit: copies the row's values into the single form on the right. -->
+                                <button type="button" class="btn btn-secondary btn-edit-instance" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
+                                        th:attr="data-id=${instance.id}, data-name=${instance.name}, data-slug=${instance.slug}, data-domain=${instance.domain}, data-email=${instance.email}, data-space=${instance.space}, data-root-page-id=${instance.rootPageId}, data-include-labels=${instance.includeLabels}, data-exclude-labels=${instance.excludeLabels}, data-collection=${instance.targetCollection}, data-tag=${instance.targetTag}, data-attachments=${instance.processAttachments}, data-enabled=${instance.enabled}">
+                                    Edit
+                                </button>
+
+                                <form th:action="@{/admin/connectors/confluence/delete}" method="post" style="display: inline; margin: 0;"
+                                      onsubmit="return confirm('Delete this Confluence instance? Its queued jobs will be cancelled and a crawl still running stops at its next page batch. Documents already ingested are kept.');">
+                                    <input type="hidden" name="id" th:value="${instance.id}" />
+                                    <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Instance">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Target summary -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; background-color: var(--bg-surface); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Source</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div>Space: <span style="font-family: monospace;" th:text="${instance.space}">DOCS</span></div>
+                                    <div>Root page: <span style="font-family: monospace;" th:text="${instance.rootPageId}">12345</span></div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;" th:text="${instance.email}">svc@example.com</div>
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Target</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div th:text="${instance.targetCollection}">OIM - Docs</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Tag: <span th:text="${instance.targetTag != null ? instance.targetTag : 'none'}">10.0</span></div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${instance.processAttachments} ? 'Attachments: processed' : 'Attachments: skipped'">Attachments: skipped</div>
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Label Filters</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div>Include: <span style="font-family: monospace;" th:text="${instance.hasIncludeLabels()} ? ${instance.includeLabels} : 'none'">public</span></div>
+                                    <div>Exclude: <span style="font-family: monospace;" th:text="${instance.excludeLabels != null and !instance.excludeLabels.isBlank()} ? ${instance.excludeLabels} : 'none'">draft</span></div>
+                                    <!-- Curation drift: pages nobody labelled are invisible to the KB forever. The
+                                         count is produced by the crawl itself and reported on its job. -->
+                                    <p th:if="${instance.hasIncludeLabels()}" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                        Each sync reports how many pages under the root carry none of these labels — see the sync job.
+                                    </p>
+                                    <p th:unless="${instance.hasIncludeLabels()}" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                        No include label: every page under the root is ingested, so unlabelled pages cannot be counted.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row actions -->
+                        <div style="display: flex; gap: 0.75rem; margin-top: 1rem; align-items: center;">
+                            <form th:action="@{/admin/connectors/confluence/sync}" method="post" style="margin: 0;">
+                                <input type="hidden" name="id" th:value="${instance.id}" />
+                                <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.9rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem;"
+                                        th:disabled="${!instance.enabled}">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                    Sync Now
+                                </button>
+                            </form>
+                            <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.9rem; font-size: 0.85rem;"
+                                    th:attr="hx-post=@{/admin/connectors/confluence/test(id=${instance.id})}, hx-target='#test-results-' + ${instance.id}, hx-indicator='#test-indicator-' + ${instance.id}">
+                                Test Connection
+                            </button>
+                            <div class="htmx-indicator" th:id="'test-indicator-' + ${instance.id}" style="color: var(--text-secondary); font-size: 0.85rem;">
+                                <span class="spinner"></span> Connecting…
+                            </div>
+                        </div>
+                        <div th:id="'test-results-' + ${instance.id}" style="font-size: 0.9rem; margin-top: 0.75rem;"></div>
+                    </div>
+                </div>
+
+                <!-- Create/Edit Form Card -->
+                <div class="card" style="padding: 1.5rem; position: sticky; top: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                        <h2 id="form-title" class="card-title" style="margin: 0; font-size: 1.1rem; font-weight: 600;">Add Confluence Instance</h2>
+                        <button type="button" id="btn-reset" class="btn btn-secondary" style="display: none; padding: 0.25rem 0.5rem; font-size: 0.75rem;">New</button>
+                    </div>
+
+                    <form id="instance-form" th:action="@{/admin/connectors/confluence}" method="post" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <input type="hidden" name="id" id="instanceId" value="" />
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label" for="name">Name</label>
+                                <input type="text" id="name" name="name" class="form-input" placeholder="e.g. iCC Wiki" required />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="slug">Slug</label>
+                                <input type="text" id="slug" name="slug" class="form-input" placeholder="e.g. icc-wiki"
+                                       pattern="[a-z0-9][a-z0-9-]*" required />
+                                <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                    Lower-case, digits and dashes. Appears in the job kind.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="domain">Confluence Domain URL</label>
+                            <input type="url" id="domain" name="domain" class="form-input" placeholder="https://company.atlassian.net" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="email">Atlassian Account E-mail</label>
+                            <input type="email" id="email" name="email" class="form-input" placeholder="user@company.com" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="apiToken">Atlassian API Token</label>
+                            <input type="password" id="apiToken" name="apiToken" class="form-input" autocomplete="new-password"
+                                   placeholder="••••••••••••••••••••••••" />
+                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                Leave blank to keep the stored token. It is never shown again once saved.
+                            </p>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label" for="space">Space Key</label>
+                                <input type="text" id="space" name="space" class="form-input" placeholder="e.g. DOCS" required />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="rootPageId">Root Page ID</label>
+                                <input type="text" id="rootPageId" name="rootPageId" class="form-input" placeholder="e.g. 98765432"
+                                       inputmode="numeric" pattern="[0-9]+" required />
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label" for="includeLabels">Include Labels</label>
+                                <input type="text" id="includeLabels" name="includeLabels" class="form-input" placeholder="e.g. public, knowledge-base" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="excludeLabels">Exclude Labels</label>
+                                <input type="text" id="excludeLabels" name="excludeLabels" class="form-input" placeholder="e.g. draft, archive" />
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label" for="collectionSelect">Target Collection</label>
+                                <select id="collectionSelect" name="targetCollection" class="form-select" required
+                                        hx-get="/admin/collections/tag-options"
+                                        hx-target="#tag-container"
+                                        hx-trigger="change"
+                                        hx-swap="outerHTML">
+                                    <option value="" selected>Choose collection…</option>
+                                    <option th:each="c : ${collections}" th:value="${c.name}" th:text="${c.name}"></option>
+                                </select>
+                            </div>
+
+                            <div th:fragment="tag-container" id="tag-container" class="form-group" th:style="${#lists.isEmpty(versions)} ? 'display: none;' : ''">
+                                <label class="form-label" for="tagSelect">Target Tag</label>
+                                <select id="tagSelect" name="targetTag" class="form-select" th:required="${!#lists.isEmpty(versions)}">
+                                    <option value="" th:selected="${selectedTag == null}">Choose tag…</option>
+                                    <option th:each="v : ${tags}" th:value="${v}" th:text="${v}" th:selected="${v == selectedTag}"></option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- The two `_<field>` hidden inputs are Spring's checkbox field markers.
+                             An unchecked checkbox submits NO parameter at all; the marker is what
+                             WebDataBinder keys off to bind FALSE instead of leaving the value
+                             missing. (Thymeleaf emits them automatically for th:field; this form
+                             binds by name, so they are written out by hand.) -->
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="hidden" name="_processAttachments" value="on" />
+                                <input type="checkbox" id="processAttachments" name="processAttachments" value="true" style="width: auto;" />
+                                <span class="form-label" style="margin-bottom: 0;">Process attachments (PDF, Word, text)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 0.6rem;">
+                                <input type="hidden" name="_enabled" value="on" />
+                                <input type="checkbox" id="enabled" name="enabled" value="true" checked style="width: auto;" />
+                                <span class="form-label" style="margin-bottom: 0;">Enabled (may crawl and ingest)</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;" id="submit-btn">Save Instance</button>
+                            <button type="button" class="btn btn-secondary"
+                                    hx-post="/admin/connectors/confluence/test"
+                                    hx-include="#instance-form"
+                                    hx-target="#form-test-results"
+                                    hx-indicator="#form-test-indicator">
+                                Test
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="form-test-indicator" class="htmx-indicator" style="text-align: center; padding: 1rem 0; color: var(--text-secondary); font-size: 0.85rem;">
+                        <span class="spinner"></span>
+                        <p style="margin-top: 0.4rem;">Connecting to Confluence…</p>
+                    </div>
+                    <div id="form-test-results" style="font-size: 0.85rem; margin-top: 1rem;"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            display: inline-block; width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.15); border-radius: 50%;
+            border-top-color: var(--color-accent); animation: spin 1s ease-in-out infinite;
+            vertical-align: middle;
+        }
+        .htmx-indicator { display: none; }
+        .htmx-request.htmx-indicator { display: block; }
+        .htmx-request .htmx-indicator { display: block; }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const formTitle = document.getElementById('form-title');
+            const idInput = document.getElementById('instanceId');
+            const nameInput = document.getElementById('name');
+            const slugInput = document.getElementById('slug');
+            const domainInput = document.getElementById('domain');
+            const emailInput = document.getElementById('email');
+            const tokenInput = document.getElementById('apiToken');
+            const spaceInput = document.getElementById('space');
+            const rootPageIdInput = document.getElementById('rootPageId');
+            const includeLabelsInput = document.getElementById('includeLabels');
+            const excludeLabelsInput = document.getElementById('excludeLabels');
+            const collectionSelect = document.getElementById('collectionSelect');
+            const attachmentsInput = document.getElementById('processAttachments');
+            const enabledInput = document.getElementById('enabled');
+            const btnReset = document.getElementById('btn-reset');
+
+            // The tag <select> is filled by htmx when the collection changes, so the tag an edited
+            // row already uses can only be selected once that swap has landed.
+            //
+            // The listener sits on document.body, so EVERY htmx swap on the page settles through
+            // it — including a Test Connection fragment landing between the Edit click and the
+            // tag-options swap. Applying pendingTag to the stale <select> would leave it with no
+            // matching option, silently blanking the value; the edit would then save an empty
+            // target_tag and the next ingest would lose its version scoping. Only the tag swap
+            // counts.
+            let pendingTag = null;
+            document.body.addEventListener('htmx:afterSettle', function (evt) {
+                if (pendingTag === null) return;
+                const settled = (evt.detail && evt.detail.target) || evt.target;
+                if (!settled || settled.id !== 'tag-container') return;
+                const tagSelect = document.getElementById('tagSelect');
+                if (!tagSelect) return;
+                tagSelect.value = pendingTag;
+                pendingTag = null;
+            });
+
+            document.querySelectorAll('.btn-edit-instance').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    formTitle.textContent = 'Edit: ' + this.dataset.name;
+                    idInput.value = this.dataset.id || '';
+                    nameInput.value = this.dataset.name || '';
+                    slugInput.value = this.dataset.slug || '';
+                    domainInput.value = this.dataset.domain || '';
+                    emailInput.value = this.dataset.email || '';
+                    spaceInput.value = this.dataset.space || '';
+                    rootPageIdInput.value = this.dataset.rootPageId || '';
+                    includeLabelsInput.value = this.dataset.includeLabels || '';
+                    excludeLabelsInput.value = this.dataset.excludeLabels || '';
+                    attachmentsInput.checked = this.dataset.attachments === 'true';
+                    enabledInput.checked = this.dataset.enabled === 'true';
+                    // Never repopulated: the stored token is not sent to the browser, and a blank
+                    // field means "keep it".
+                    tokenInput.value = '';
+
+                    pendingTag = this.dataset.tag || '';
+                    collectionSelect.value = this.dataset.collection || '';
+                    collectionSelect.dispatchEvent(new Event('change'));
+
+                    btnReset.style.display = 'inline-block';
+                    formTitle.scrollIntoView({ block: 'nearest' });
+                });
+            });
+
+            btnReset.addEventListener('click', function () {
+                formTitle.textContent = 'Add Confluence Instance';
+                document.getElementById('instance-form').reset();
+                idInput.value = '';
+                pendingTag = null;
+                btnReset.style.display = 'none';
+            });
+        });
+    </script>
+</body>
+</html>

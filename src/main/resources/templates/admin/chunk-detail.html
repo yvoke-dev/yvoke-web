@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Chunk Details')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('documents')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <a th:href="@{/admin/documents/{docId}(docId=${chunk.documentId()})}" class="btn btn-secondary" style="margin-bottom: 1rem; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                        &larr; Back to Document
+                    </a>
+                    <h1 class="page-title">Chunk Inspector</h1>
+                    <p class="page-subtitle" th:text="'Chunk ID: ' + ${chunk.id()}"></p>
+                </div>
+            </div>
+
+            <!-- Detail Grid -->
+            <div class="grid-2">
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Properties</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Document ID</span>
+                            <span class="telemetry-value">
+                                <a th:href="@{/admin/documents/{docId}(docId=${chunk.documentId()})}" class="mono-text" th:text="${#strings.substring(chunk.documentId().toString(),0,8)}" style="color: var(--color-accent); font-weight: 500;">docId</a>
+                            </span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Collection</span>
+                            <span class="telemetry-value" th:text="${chunk.collection()}">Collection</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Tag</span>
+                            <span class="telemetry-value mono-text" th:text="${chunk.tag()}">Tag</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Kind</span>
+                            <span class="telemetry-value"><span class="badge badge-muted" th:text="${chunk.kind()}">Kind</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Hierarchy & Navigation</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Heading</span>
+                            <span class="telemetry-value" th:text="${chunk.heading()}" style="font-weight: 600;">Heading</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Sort Order</span>
+                            <span class="telemetry-value mono-text" th:text="'#' + ${chunk.sortOrder()}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Depth</span>
+                            <span class="telemetry-value mono-text" th:text="${chunk.depth()}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Embedding Presence</span>
+                            <span class="telemetry-value">
+                                <span class="badge badge-success" th:if="${hasEmbedding}">Present</span>
+                                <span class="badge badge-danger" th:if="${!hasEmbedding}">Missing</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Heading Path breadcrumb -->
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-title">Heading Path Breadcrumb</div>
+                <div class="mono-text" style="background-color: var(--bg-surface-elevated); padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); color: var(--color-accent);"
+                     th:text="${#lists.isEmpty(chunk.headingPath()) ? '/' : #strings.listJoin(chunk.headingPath(), ' > ')}">
+                    /
+                </div>
+            </div>
+
+            <!-- Chunk Text -->
+            <div class="card">
+                <div class="card-title">Chunk Raw Content</div>
+                <div style="background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.5rem; white-space: pre-wrap; font-size: 0.95rem; line-height: 1.7; overflow-x: auto;"
+                     th:text="${chunk.text()}">Text</div>
+            </div>
+
+            <!-- Metadata JSON -->
+            <div class="card">
+                <div class="card-title">Raw Metadata</div>
+                <pre class="json-view" th:text="${metadataJson}">{}</pre>
+            </div>
+
+            <!-- Surfaced by searches -->
+            <div class="card">
+                <div class="card-title">Surfaced by Chat Messages / Telemetry Logs</div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 200px;">Conversation</th>
+                                <th style="width: 120px;">Role</th>
+                                <th>Message Content</th>
+                                <th style="width: 180px;">Surfaced At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="msg : ${surfacedMessages}">
+                                <td>
+                                    <span th:text="${msg.get('conversation_title') != null ? msg.get('conversation_title') : 'Unnamed Chat'}" style="font-weight: 600;">Conversation Title</span>
+                                    <div class="mono-text" style="font-size: 0.75rem; color: var(--text-muted);" th:text="${#strings.substring(msg.get('conversation_id').toString(), 0, 8)}">conv_id</div>
+                                </td>
+                                <td>
+                                    <span class="badge" th:classappend="${msg.get('role') == 'user' ? 'badge-info' : 'badge-success'}" th:text="${msg.get('role')}">user</span>
+                                </td>
+                                <td th:text="${msg.get('content')}" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Snippet</td>
+                                <td th:text="${msg.get('created_at') != null ? #temporals.format(msg.get('created_at'), 'yyyy-MM-dd HH:mm') + ' UTC' : '-'}">Date</td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(surfacedMessages)}">
+                                <td colspan="4" style="text-align: center; padding: 2.5rem; color: var(--text-secondary);">
+                                    This chunk has not been surfaced by any chat retrievals yet.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

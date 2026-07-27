@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Document Details')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('documents')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <a th:href="@{/admin/documents}" class="btn btn-secondary" style="margin-bottom: 1rem; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                        &larr; Back to Corpus
+                    </a>
+                    <h1 class="page-title" th:text="${document.title()}">Document</h1>
+                    <p class="page-subtitle" th:text="'Document ID: ' + ${document.id()}"></p>
+                </div>
+                <div>
+                    <form th:action="@{/admin/lifecycle/delete-document/{id}(id=${document.id()})}" method="post" onsubmit="return confirm('Are you absolutely sure you want to delete this document? All associated chunks will be deleted permanently.');">
+                        <button type="submit" class="btn btn-secondary" style="border-color: var(--color-danger); color: var(--color-danger);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.25rem;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                            Delete Document
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Alerts (tag add/remove outcomes; a refused tag change lands here) -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500; margin: 0;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500; margin: 0;" th:text="${error}"></p>
+            </div>
+
+            <!-- Detail Grid -->
+            <div class="grid-2">
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Properties</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Collection</span>
+                            <span class="telemetry-value" th:text="${document.collection()}">Collection</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Kind</span>
+                            <span class="telemetry-value"><span class="badge badge-muted" th:text="${document.kind()}">Kind</span></span>
+                        </div>
+                        <div class="telemetry-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem; border-bottom: none;">
+                            <span class="telemetry-label">Tags</span>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; width: 100%;">
+                                <div th:each="t : ${document.tags()}" class="badge badge-info" style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <span th:text="${t}">Tag</span>
+                                    <form th:action="@{/admin/documents/{id}/remove-tag(id=${document.id()})}" method="post" style="display: inline;">
+                                        <input type="hidden" name="tag" th:value="${t}" />
+                                        <button type="submit" style="background: none; border: none; padding: 0; color: inherit; cursor: pointer; display: flex; align-items: center;" title="Remove Tag">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                </div>
+                                <span th:if="${#lists.isEmpty(document.tags())}" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">None</span>
+                            </div>
+                            <form th:action="@{/admin/documents/{id}/add-tag(id=${document.id()})}" method="post" style="display: flex; gap: 0.25rem; width: 100%; margin-top: 0.25rem;">
+                                <input type="text" name="tag" class="form-input" placeholder="Add tag..." required style="padding: 0.25rem 0.5rem; font-size: 0.8rem; flex-grow: 1; height: auto;" list="all-tags-list" />
+                                <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; height: auto; min-height: 28px; line-height: 1;">+</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+ 
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Status & Ops</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Ingestion Status</span>
+                            <span class="telemetry-value">
+                                <span class="badge" 
+                                      th:classappend="${document.ingestionStatus() == 'completed' ? 'badge-success' : (document.ingestionStatus() == 'failed' ? 'badge-danger' : 'badge-warning')}"
+                                      th:text="${document.ingestionStatus()}">completed</span>
+                            </span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Chunks count</span>
+                            <span class="telemetry-value mono-text" th:text="${chunkCount}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Created At</span>
+                            <span class="telemetry-value" th:text="${document.createdAt() != null ? #temporals.format(document.createdAt(), 'yyyy-MM-dd HH:mm') + ' UTC' : '-'}">Date</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Summaries -->
+            <div class="card" th:if="${not #lists.isEmpty(sectionSummaries)}" style="margin-top: 2rem;">
+                <div class="card-title" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    Section Summaries
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div th:each="summary : ${sectionSummaries}" 
+                         th:style="'padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background-color: var(--bg-surface-elevated); margin-left: ' + ${(summary.depth - 1) * 1.5} + 'rem; border-left: 4px solid var(--color-accent);'">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <span class="badge badge-muted" th:text="${'Depth ' + summary.depth}">Depth 1</span>
+                        </div>
+                        <h4 style="margin: 0 0 0.5rem 0; font-size: 1.05rem; font-weight: 600; color: var(--text-primary);" 
+                            th:text="${summary.pathStr}">Heading Path</h4>
+                        <p style="margin: 0; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap;" 
+                           th:text="${summary.summary}">Summary text</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metadata JSON -->
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-title">Raw Document Metadata</div>
+                <pre class="json-view" th:text="${metadataJson}">{}</pre>
+            </div>
+
+            <!-- Chunk List -->
+            <div class="card">
+                <div class="card-title">Document Chunks Sequence</div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px;">Order</th>
+                                <th style="width: 120px;">Chunk ID</th>
+                                <th>Heading Path / Breadcrumb</th>
+                                <th>Text Preview</th>
+                                <th style="width: 140px; text-align: center;">Embedding</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="chunk : ${chunks}">
+                                <td class="mono-text" th:text="'#' + ${chunk.sortOrder()}">#0</td>
+                                <td>
+                                    <a th:href="@{/admin/chunks/{id}(id=${chunk.id()})}" class="mono-text text-accent" th:text="${#strings.substring(chunk.id().toString(),0,8)}" style="color: var(--color-accent); font-weight: 500;">id</a>
+                                </td>
+                                <td>
+                                    <div style="font-weight: 600;" th:text="${chunk.heading()}">Heading</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);" 
+                                         th:text="${#lists.isEmpty(chunk.headingPath()) ? '/' : #strings.listJoin(chunk.headingPath(), ' &gt; ')}">
+                                        Heading Path
+                                    </div>
+                                </td>
+                                <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--text-secondary);"
+                                    th:text="${#strings.length(chunk.text()) > 150 ? #strings.substring(chunk.text(), 0, 150) + '...' : chunk.text()}">Text</td>
+                                <td style="text-align: center;">
+                                    <!-- Embedded badge -->
+                                    <span class="badge badge-success" th:if="${chunk.score() >= 0}">Present</span>
+                                    <span class="badge badge-danger" th:if="${chunk.score() < 0}">Missing</span>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(chunks)}">
+                                <td colspan="5" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                                    This document has no chunks yet.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <datalist id="all-tags-list">
+                <option th:each="t : ${allTags}" th:value="${t}"></option>
+            </datalist>
+        </main>
+    </div>
+</body>
+</html>

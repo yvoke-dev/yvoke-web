@@ -1,0 +1,17 @@
+-- Drops the `tags` registry table. The tag vocabulary is derived from the TEXT[] columns that
+-- actually carry it (collections.tags for corpus/version tags, conversations.tags for chat folders).
+--
+-- The registry was a second source of truth with exactly one writer — TagRepository.getOrCreateTag,
+-- reached only from addTagTo{Collection,Document,Conversation} — so it learned a tag precisely when
+-- one arrived through an admin form or the ingest enqueue, and missed every writer that sets the
+-- array directly. The corpus import is the loudest of those: yvoke-exports/lib/objects.py issues
+-- `INSERT INTO collections (…) ON CONFLICT … tags = EXCLUDED.tags`, and the content import writes
+-- documents/chunks/entities/relationships/json_objects the same way. Measured on the live database
+-- before this migration: the registry held 2 names (content, schema) while 10.0 and 9.3.1 were on
+-- 27 collections, 22,162 documents, 155,276 chunks, 21,510 entities and 55,677 relationships. The
+-- admin tag dropdowns read the registry, so those two versions were unfilterable and unsuggestable.
+--
+-- Nothing depends on the table: no foreign key points at it or out of it, it carries no index
+-- beyond its own PK/UNIQUE, and `tags.id` was never read outside getOrCreateTag. Every name it held
+-- is recoverable from the arrays, so the drop loses nothing.
+DROP TABLE IF EXISTS tags;

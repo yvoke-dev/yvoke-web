@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{chat/layout :: header('Chat')}"></head>
+<body>
+    <div class="chat-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{chat/layout :: sidebar}"></aside>
+
+        <!-- Main Content -->
+        <main class="chat-main">
+            <div class="chat-empty-state">
+                <img th:src="@{/images/logo-128.png}" alt="Yvoke Logo" style="width: 80px; height: 80px; margin-bottom: 1.5rem;" />
+                <p style="margin-bottom: 0;">Start a new chat or select a previous chat from the sidebar navigation.</p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

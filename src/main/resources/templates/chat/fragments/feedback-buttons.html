@@ -1,0 +1,38 @@
+<div class="feedback-buttons-container" th:id="'feedback-container-' + ${messageId}" th:fragment="feedback-buttons">
+    <div class="feedback-rating-row">
+        <!-- Thumbs up button. Deliberately sends no comment: the user's free text must not travel in
+             a URL (access logs, browser history, Referer). The server keeps any stored comment when
+             the rating changes. -->
+        <button class="feedback-btn feedback-thumbs-up"
+                th:classappend="${feedback != null && feedback.rating == 1 ? 'active' : ''}"
+                th:hx-post="@{/chat/message/{messageId}/feedback(messageId=${messageId}, rating=1)}"
+                th:hx-target="'#feedback-container-' + ${messageId}"
+                hx-swap="outerHTML"
+                title="Thumbs up">
+            👍
+        </button>
+
+        <!-- Thumbs down button -->
+        <button class="feedback-btn feedback-thumbs-down"
+                th:classappend="${feedback != null && feedback.rating == -1 ? 'active' : ''}"
+                th:hx-post="@{/chat/message/{messageId}/feedback(messageId=${messageId}, rating=-1)}"
+                th:hx-target="'#feedback-container-' + ${messageId}"
+                hx-swap="outerHTML"
+                title="Thumbs down">
+            👎
+        </button>
+        
+        <span th:if="${feedback != null && feedback.comment != null && !#strings.isEmpty(feedback.comment)}" class="feedback-saved-indicator">Feedback saved ✅</span>
+    </div>
+
+    <!-- Comment section is revealed if a rating is registered -->
+    <div class="feedback-comment-section" th:if="${feedback != null}">
+        <form th:hx-post="@{/chat/message/{messageId}/feedback(messageId=${messageId}, rating=${feedback.rating})}"
+              th:hx-target="'#feedback-container-' + ${messageId}"
+              hx-swap="outerHTML"
+              class="feedback-comment-form">
+            <textarea name="comment" rows="8" placeholder="Tell us more about the answer quality..." class="form-control" required th:text="${feedback.comment}"></textarea>
+            <button type="submit" class="btn btn-secondary btn-small submit-comment-btn">Submit Feedback</button>
+        </form>
+    </div>
+</div>

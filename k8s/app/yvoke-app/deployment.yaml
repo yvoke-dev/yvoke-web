@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yvoke-app
+  labels:
+    app.kubernetes.io/name: yvoke-app
+    app.kubernetes.io/component: yvoke-app
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: yvoke-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: yvoke-app
+        app.kubernetes.io/component: yvoke-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8080"
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload
+                    operator: NotIn
+                    values:
+                      - database
+      automountServiceAccountToken: false
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: yvoke-postgres
+          command:
+            - /bin/sh
+            - -ec
+            - until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -d "$POSTGRES_DATABASE"; do echo waiting for postgres; sleep 2; done
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+        - name: flyway-migrate
+          image: yvoke/db-migration:latest
+          imagePullPolicy: Always
+          args:
+            - migrate
+          envFrom:
+            - configMapRef:
+                name: yvoke-postgres
+          env:
+            - name: FLYWAY_URL
+              value: "jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)"
+            - name: FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: yvoke-postgres-auth
+                  key: username
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: yvoke-postgres-auth
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: yvoke-app
+          image: yvoke/app:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: yvoke-app-config
+            - configMapRef:
+                name: yvoke-postgres
+            - secretRef:
+                name: yvoke-app-secrets
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: yvoke-postgres-auth
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: yvoke-postgres-auth
+                  key: password
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: management
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: management
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              ephemeral-storage: 256Mi
+              memory: 1Gi
+            limits:
+              cpu: 1
+              ephemeral-storage: 1Gi
+              memory: 1Gi
+          volumeMounts:
+            - name: uploads-volume
+              mountPath: /app/uploads
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: uploads-volume
+          persistentVolumeClaim:
+            claimName: yvoke-uploads-pvc

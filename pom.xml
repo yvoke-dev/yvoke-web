@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <groupId>de.pal-software.ai</groupId>
+    <artifactId>yvoke</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>yvoke</name>
+    <description>Knowledge Base</description>
+    <properties>
+        <java.version>25</java.version>
+        <spring-ai.version>2.0.0-RC1</spring-ai.version>
+        <skipUnitTests>false</skipUnitTests>
+        <!-- Node test tier for the browser-side chat scripts (see exec-maven-plugin below). -->
+        <skipJsTests>false</skipJsTests>
+        <jacoco.version>0.8.15</jacoco.version>
+        <playwright.version>1.61.0</playwright.version>
+        <!-- Populated at runtime by jacoco:prepare-agent / prepare-agent-integration. Empty defaults
+             keep the surefire/failsafe argLine valid when coverage isn't collected. Referenced with
+             @{...} (late replacement) so the agent JVM arg set during the build is actually applied. -->
+        <surefireArgLine></surefireArgLine>
+        <failsafeArgLine></failsafeArgLine>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.thymeleaf.extras</groupId>
+            <artifactId>thymeleaf-extras-springsecurity6</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+        <!-- HTML Parsing and Markdown Conversion -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-html2md-converter</artifactId>
+            <version>0.62.2</version>
+        </dependency>
+        <!-- Tika for Attachment Parsing -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <!-- Spring AI. NOTE: the OpenAI model starter's chat/embedding autoconfig is unused (chat goes
+             through the custom LlmClient, embeddings through the Voyage-backed EmbeddingService), but it
+             transitively provides the victools jsonschema library that ToolCallbacks/MCP tool-schema
+             generation requires — do not remove it without adding com.github.victools explicitly. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.genai</groupId>
+            <artifactId>google-genai</artifactId>
+            <version>1.60.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.openai</groupId>
+            <artifactId>openai-java</artifactId>
+            <version>4.41.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.4.1</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Playwright drives real Chromium for the browser e2e suite (*E2EIT, -Pe2e-tests). -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${playwright.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>de.palsoftware.yvoke.YvokeApplication</mainClass>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>add-it-test-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                            <goal>add-test-resource</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/it/java</source>
+                            </sources>
+                            <resources>
+                                <resource>
+                                    <directory>src/it/resources</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>${skipUnitTests}</skipTests>
+                    <argLine>@{surefireArgLine}</argLine>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <!-- JaCoCo: aggregated code coverage across unit (surefire) + integration (failsafe) tiers.
+                 prepare-agent instruments unit runs -> jacoco-ut.exec; prepare-agent-integration
+                 instruments IT runs (only when -Pit-tests binds failsafe) -> jacoco-it.exec; at `verify`
+                 the two are merged and one HTML/XML report is written to target/site/jacoco-aggregate.
+                 Report-only for now (no coverage gate) — see docs/testing-plan.md Phase 0/4. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare-unit</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <destFile>${project.build.directory}/jacoco-ut.exec</destFile>
+                            <propertyName>surefireArgLine</propertyName>
+                            <!-- Don't accumulate hits across re-runs on a non-clean target (would let
+                                 stale coverage pass the ratchet locally). -->
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-prepare-it</id>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+                            <propertyName>failsafeArgLine</propertyName>
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-merge</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>jacoco-ut.exec</include>
+                                        <include>jacoco-it.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-report-aggregate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.45.0</version>
+                <configuration>
+                    <java>
+                        <eclipse>
+                            <file>${project.basedir}/config/eclipse-java-google-style.xml</file>
+                        </eclipse>
+                    </java>
+                </configuration>
+                <executions>
+                    <!-- ARC-06: enforce formatting on every build (fails on drift). Run `spotless:apply` to fix. -->
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <!--
+                      Browser-side test tier. thread.js's citation rendering is pure string→string
+                      work that no Java tier can observe: MockMvc never executes it, and browser e2e
+                      costs ~20s per method and cannot load mermaid/KaTeX at all (they are CDN-only
+                      and AbstractE2E aborts non-localhost requests). Three rendering regressions in
+                      one week came from that blind spot, so the pure helpers were extracted to
+                      static/js/chat/citation-render.js and are tested here with node:test.
+                      No npm install: there are zero dependencies. Skip with -DskipJsTests=true.
+                    -->
+                    <execution>
+                        <id>js-tests</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>node</executable>
+                            <arguments>
+                                <!-- Coverage floors, set below the current numbers (99.1 line /
+                                     96.6 branch / 97.8 funcs, source-only) so routine work does not
+                                     trip them but a substantial untested addition does. Test files
+                                     are excluded: counting them pushes the figure toward 100% and
+                                     hides gaps in the code actually under test. -->
+                                <argument>--experimental-test-coverage</argument>
+                                <argument>--test-coverage-exclude=src/test/**</argument>
+                                <argument>--test-coverage-lines=95</argument>
+                                <argument>--test-coverage-branches=90</argument>
+                                <argument>--test-coverage-functions=90</argument>
+                                <argument>--test</argument>
+                                <!-- A glob, not a single file: a second test file must not silently
+                                     go unrun. Node resolves the pattern itself (there is no shell
+                                     here to expand it). -->
+                                <argument>${project.basedir}/src/test/js/**/*.test.js</argument>
+                            </arguments>
+                            <skip>${skipJsTests}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    <profiles>
+        <!-- Fast integration tests (real Postgres via Testcontainers). Excludes the slow browser
+             e2e suite (*E2EIT) so the inner IT loop doesn't pay for Chromium boot. -->
+        <profile>
+            <id>it-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <argLine>@{failsafeArgLine}</argLine>
+                            <excludes>
+                                <exclude>**/*E2EIT.java</exclude>
+                            </excludes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>run-it</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Coverage ratchet: fail `verify -Pit-tests` if the merged unit+IT aggregate
+                         drops below the floor. Scoped to this profile so a unit-only `verify` (which
+                         legitimately reports ~49%) never trips it. Floors sit a little under the
+                         current numbers (instr/line ~79%, branch ~59%); raise them as coverage grows.
+                         Runs at `verify`, after the base jacoco `merge`+`report` produce the merged
+                         data file. -->
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>${jacoco.version}</version>
+                        <executions>
+                            <execution>
+                                <id>jacoco-check-ratchet</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                                <configuration>
+                                    <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                                    <haltOnFailure>true</haltOnFailure>
+                                    <rules>
+                                        <rule>
+                                            <element>BUNDLE</element>
+                                            <limits>
+                                                <limit>
+                                                    <counter>INSTRUCTION</counter>
+                                                    <value>COVEREDRATIO</value>
+                                                    <minimum>0.77</minimum>
+                                                </limit>
+                                                <limit>
+                                                    <counter>LINE</counter>
+                                                    <value>COVEREDRATIO</value>
+                                                    <minimum>0.77</minimum>
+                                                </limit>
+                                                <limit>
+                                                    <counter>BRANCH</counter>
+                                                    <value>COVEREDRATIO</value>
+                                                    <minimum>0.55</minimum>
+                                                </limit>
+                                            </limits>
+                                        </rule>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <!-- Browser end-to-end suite only (Playwright, *E2EIT). Boots the app on a random port with a
+             mocked LlmClient and drives real Chromium. Opt-in so it stays out of the fast IT loop. -->
+        <profile>
+            <id>e2e-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <argLine>@{failsafeArgLine}</argLine>
+                            <includes>
+                                <include>**/*E2EIT.java</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>run-e2e</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

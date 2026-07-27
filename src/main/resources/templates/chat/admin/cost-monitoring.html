@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Cost Monitoring')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('costs')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Cost Monitoring</h1>
+                    <p class="page-subtitle">Track token usage and estimated costs across LLM models and agent runs.</p>
+                </div>
+            </div>
+
+            <script type="module" th:src="@{/js/admin/date-presets-bootstrap.js}"></script>
+            <script>
+                function onTimePresetChange(selectEl) {
+                    // Range maths lives in a tested module (src/test/js/admin-small.test.js); this
+                    // handler only moves the result into the inputs.
+                    const range = window.DatePresets.presetRange(selectEl.value, new Date());
+                    if (range.start === null) return;
+                    document.getElementById('explorerStartDate').value = range.start;
+                    document.getElementById('explorerEndDate').value = range.end;
+                }
+
+                function onViewLevelChange(radio) {
+                    const val = radio.value;
+                    const typeRoleGroup = document.getElementById('typeRoleFilterGroup');
+                    const typeRoleSelect = document.getElementById('selectedSourcesSelect');
+                    const pbGroup = document.getElementById('playbookFilterGroup');
+                    const pbSelect = document.getElementById('selectedPlaybooksSelect');
+
+                    if (typeRoleSelect) {
+                        if (val !== 'RAW') {
+                            typeRoleSelect.disabled = true;
+                            if (typeRoleGroup) typeRoleGroup.style.opacity = '0.4';
+                            Array.from(typeRoleSelect.options).forEach(opt => opt.selected = false);
+                        } else {
+                            typeRoleSelect.disabled = false;
+                            if (typeRoleGroup) typeRoleGroup.style.opacity = '1';
+                        }
+                    }
+
+                    if (pbSelect) {
+                        if (val !== 'MESSAGE') {
+                            pbSelect.disabled = true;
+                            if (pbGroup) pbGroup.style.opacity = '0.4';
+                            Array.from(pbSelect.options).forEach(opt => opt.selected = false);
+                        } else {
+                            pbSelect.disabled = false;
+                            if (pbGroup) pbGroup.style.opacity = '1';
+                        }
+                    }
+
+                    if (radio.form) {
+                        radio.form.requestSubmit();
+                    }
+                }
+            </script>
+
+            <!-- Content Area for HTMX replacement -->
+            <div id="cost-content">
+                <div th:fragment="cost-fragment">
+                    
+                    <form hx-get="/admin/costs/fragment/explorer" hx-target="#cost-content" class="filter-form">
+                            <!-- 1. View Level Card -->
+                            <div class="card" style="margin-bottom: 1.25rem; padding: 1.25rem;">
+                                <h2 class="card-title" style="margin-bottom: 0.8rem;">View Level</h2>
+                                <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                    <label style="cursor: pointer; font-size: 0.9em; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem; background: var(--input-bg, #0d1117); padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #3a3f50);">
+                                        <input type="radio" name="viewLevel" value="CONVERSATION" th:checked="${viewLevel == 'CONVERSATION' or viewLevel == null}" onchange="onViewLevelChange(this)">
+                                        💬 Conversation Level
+                                    </label>
+                                    <label style="cursor: pointer; font-size: 0.9em; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem; background: var(--input-bg, #0d1117); padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #3a3f50);">
+                                        <input type="radio" name="viewLevel" value="MESSAGE" th:checked="${viewLevel == 'MESSAGE'}" onchange="onViewLevelChange(this)">
+                                        ✉️ Message Level
+                                    </label>
+                                    <label style="cursor: pointer; font-size: 0.9em; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem; background: var(--input-bg, #0d1117); padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #3a3f50);">
+                                        <input type="radio" name="viewLevel" value="RAW" th:checked="${viewLevel == 'RAW'}" onchange="onViewLevelChange(this)">
+                                        📜 Granular LLM Calls
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 2. Explorer Filter Options Card -->
+                            <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+                                <h2 class="card-title" style="margin-bottom: 1rem;">Filter Options</h2>
+
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; align-items: start;">
+                                    
+                                    <!-- 1. Time Presets & Dates -->
+                                    <div>
+                                        <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Time Period</label>
+                                        <select name="timePreset" class="input-field" style="width: 100%; padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid var(--border-color, #3a3f50); background-color: var(--input-bg, #0d1117); color: #fff;" onchange="onTimePresetChange(this)">
+                                            <option value="this_month" th:selected="${timePreset == 'this_month'}">📅 This Month</option>
+                                            <option value="last_month" th:selected="${timePreset == 'last_month'}">⏮️ Last Month</option>
+                                            <option value="all" th:selected="${timePreset == 'all'}">🌐 All Time</option>
+                                            <option value="custom" th:selected="${timePreset == 'custom'}">⚙️ Custom Range</option>
+                                        </select>
+                                        
+                                        <div style="display: flex; gap: 0.4rem; margin-top: 0.5rem;">
+                                            <input type="date" name="startDate" id="explorerStartDate" th:value="${startDate}" class="input-field" style="flex: 1; height: 33px; padding: 0.4rem 0.5rem; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; box-sizing: border-box;">
+                                            <input type="date" name="endDate" id="explorerEndDate" th:value="${endDate}" class="input-field" style="flex: 1; height: 33px; padding: 0.4rem 0.5rem; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; box-sizing: border-box;">
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Model Filter (Multiselect) -->
+                                    <div>
+                                        <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Models (Multiselect)</label>
+                                        <select name="selectedModels" multiple class="input-field" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
+                                            <option th:each="m : ${availableModels}" th:value="${m}" th:text="${m}" th:selected="${#lists.contains(selectedModels, m)}"></option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 3. User Filter (Multiselect) -->
+                                    <div>
+                                        <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Users (Multiselect)</label>
+                                        <select name="selectedUserIds" multiple class="input-field" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
+                                            <option th:each="u : ${availableUsers}" th:value="${u.id}" th:text="${u.display_name != null ? u.display_name : u.email}" th:selected="${#lists.contains(selectedUserIds, u.id)}"></option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 4. Type / Role Filter (Multiselect) - Active only on Granular LLM Calls -->
+                                    <div id="typeRoleFilterGroup" th:style="${viewLevel == 'RAW' ? '' : 'opacity: 0.4;'}">
+                                        <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Type / Role (Multiselect)</label>
+                                        <select name="selectedSources" id="selectedSourcesSelect" multiple class="input-field" th:disabled="${viewLevel != 'RAW'}" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
+                                            <option th:each="s : ${availableSources}" th:value="${s}" th:text="${s}" th:selected="${#lists.contains(selectedSources, s)}"></option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 5. Profiles & Playbooks Filter (Multiselect) - Active only on Message Level -->
+                                    <div id="playbookFilterGroup" th:style="${viewLevel == 'MESSAGE' ? '' : 'opacity: 0.4;'}">
+                                        <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Profiles & Playbooks (Multiselect)</label>
+                                        <select name="selectedPlaybooks" id="selectedPlaybooksSelect" multiple class="input-field" th:disabled="${viewLevel != 'MESSAGE'}" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
+                                            <option th:each="pb : ${availablePlaybooks}" th:value="${pb}" th:text="${pb}" th:selected="${#lists.contains(selectedPlaybooks, pb)}"></option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Action Row -->
+                                <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                                    <button type="button" 
+                                            hx-get="/admin/costs/fragment/explorer?timePreset=this_month" 
+                                            hx-include="[name='viewLevel']:checked"
+                                            hx-target="#cost-content" 
+                                            class="btn" 
+                                            style="padding: 0.5rem 1.5rem; background-color: transparent; color: #aaa; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; font-weight: 600; cursor: pointer;">
+                                        🧹 Clear Filters
+                                    </button>
+                                    <button type="submit" class="btn" style="padding: 0.5rem 2rem; background-color: var(--color-accent, #007bff); color: #fff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">🔍 Apply Filter</button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <!-- Summary Header Card -->
+                        <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(0,123,255,0.05), rgba(40,167,69,0.05)); border: 1px solid var(--border-color, #3a3f50);">
+                            <div>
+                                <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Total Billed Cost</span>
+                                <div style="font-size: 2em; font-weight: 800; color: #28a745; margin-top: 0.2rem;">
+                                    $<span th:text="${explorerReport.totalCostUsd}">0.000000</span>
+                                </div>
+                                <div th:if="${explorerReport.hasGatewayActivity()}"
+                                     style="font-size: 0.75em; color: #777; margin-top: 0.2rem;">
+                                    Calls the AI gateway replayed from cache are billed at $0
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 2rem; text-align: right;">
+                                <div th:if="${explorerReport.hasGatewayActivity()}">
+                                    <div style="font-size: 0.8em; color: #888;">Saved by Cache</div>
+                                    <div style="font-size: 1.2em; font-weight: 700; color: #28a745;">
+                                        $<span th:text="${explorerReport.costAvoidedUsd}">0.000000</span>
+                                    </div>
+                                    <div style="font-size: 0.75em; color: #777;">
+                                        <span th:text="${explorerReport.cacheHitRatePercent()}">0</span>% hit
+                                        (<span th:text="${explorerReport.replayedCalls}">0</span> replayed /
+                                        <span th:text="${explorerReport.forwardedCalls}">0</span> forwarded)
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.8em; color: #888;" th:text="${explorerReport.viewLevel == 'CONVERSATION' ? 'Avg / Conversation' : (explorerReport.viewLevel == 'MESSAGE' ? 'Avg / Message' : 'Avg / LLM Call')}">Avg / Item</div>
+                                    <div style="font-size: 1.2em; font-weight: 700; color: #17a2b8;">
+                                        $<span th:text="${explorerReport.averageCostUsd()}">0.000000</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.8em; color: #888;">Total Tokens</div>
+                                    <div style="font-size: 1.2em; font-weight: 700;" th:text="${#numbers.formatInteger(explorerReport.totalTokens, 1, 'COMMA')}">0</div>
+                                    <div style="font-size: 0.75em; color: #777;">
+                                        P: <span th:text="${#numbers.formatInteger(explorerReport.totalPromptTokens, 1, 'COMMA')}">0</span> | 
+                                        C: <span th:text="${#numbers.formatInteger(explorerReport.totalCompletionTokens, 1, 'COMMA')}">0</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.8em; color: #888;">Filtered Items</div>
+                                    <div style="font-size: 1.2em; font-weight: 700;">
+                                        <span th:text="${explorerReport.totalCount}">0</span>
+                                        <span th:text="${explorerReport.viewLevel == 'CONVERSATION' ? 'Conversations' : (explorerReport.viewLevel == 'MESSAGE' ? 'Message Turns' : 'LLM Calls')}"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1. Conversation Level Table -->
+                        <div class="card" th:if="${explorerReport.viewLevel == 'CONVERSATION'}">
+                            <h2 class="card-title">Filtered Conversations</h2>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Conversation ID</th>
+                                            <th>User</th>
+                                            <th>Models Used</th>
+                                            <th>MAS Profiles</th>
+                                            <th>Playbooks Used</th>
+                                            <th>Msgs</th>
+                                            <th>Steps</th>
+                                            <th>Total Tokens</th>
+                                            <th>Total Cost (USD)</th>
+                                            <th>Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="row : ${explorerReport.conversations}">
+                                            <td>
+                                                <a th:href="@{'/chat/' + ${row.conversationId}}" target="_blank" style="color: var(--color-accent, #007bff); text-decoration: underline; font-family: monospace; font-size: 0.85em; font-weight: 600;" th:text="${row.conversationId}">ID</a>
+                                            </td>
+                                            <td th:text="${row.userName != null ? row.userName : '—'}">User</td>
+                                            <td>
+                                                <span th:text="${row.modelsUsed}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;"></span>
+                                            </td>
+                                            <td>
+                                                <span th:if="${row.masProfilesUsed != null and !row.masProfilesUsed.isBlank()}" th:text="${row.masProfilesUsed}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">OIM</span>
+                                                <span th:if="${row.masProfilesUsed == null or row.masProfilesUsed.isBlank()}" style="color: #666;">—</span>
+                                            </td>
+                                            <td>
+                                                <span th:if="${row.playbooksUsed != null and !row.playbooksUsed.isBlank()}" th:text="${row.playbooksUsed}" style="font-size: 0.8em; color: #17a2b8;">playbook</span>
+                                                <span th:if="${row.playbooksUsed == null or row.playbooksUsed.isBlank()}" style="color: #666;">—</span>
+                                            </td>
+                                            <td th:text="${row.messageCount}">0</td>
+                                            <td th:text="${row.agentStepCount}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.totalTokens, 1, 'COMMA')}">0</td>
+                                            <td style="color: #28a745; font-weight: bold;">$<span th:text="${row.estimatedCostUsd}">0.00</span></td>
+                                            <td style="font-size: 0.8em; color: #888;" th:text="${row.lastActivityAt != null ? #temporals.format(row.lastActivityAt.atZone(T(java.time.ZoneId).systemDefault()), 'yyyy-MM-dd HH:mm:ss') : '—'}">—</td>
+                                        </tr>
+                                        <tr th:if="${#lists.isEmpty(explorerReport.conversations)}">
+                                            <td colspan="10" style="text-align: center; color: #888; padding: 2rem;">No matching conversations found for the selected filters.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 2. Message Level Table (Grouped per Message ID) -->
+                        <div class="card" th:if="${explorerReport.viewLevel == 'MESSAGE'}">
+                            <h2 class="card-title">Filtered Message Turns</h2>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Message ID</th>
+                                            <th>Conversation ID</th>
+                                            <th>User</th>
+                                            <th>Playbook / Profile</th>
+                                            <th>Models Used</th>
+                                            <th>Sub-Calls</th>
+                                            <th>Prompt</th>
+                                            <th>Completion</th>
+                                            <th>Cached</th>
+                                            <th>Thought</th>
+                                            <th>Total Cost (USD)</th>
+                                            <th>Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="row : ${explorerReport.messages}">
+                                            <td>
+                                                <span th:text="${row.messageId != null ? row.messageId : '—'}" style="font-family: monospace; font-size: 0.85em; font-weight: 600; color: #b197fc;">ID</span>
+                                            </td>
+                                            <td>
+                                                <a th:href="@{'/chat/' + ${row.conversationId}}" target="_blank" style="color: var(--color-accent, #007bff); text-decoration: underline; font-family: monospace; font-size: 0.85em; font-weight: 600;" th:text="${row.conversationId}">ID</a>
+                                            </td>
+                                            <td th:text="${row.userName != null ? row.userName : '—'}">User</td>
+                                            <td>
+                                                <span th:if="${row.playbook != null and !row.playbook.isBlank()}" th:text="${row.playbook}" style="font-size: 0.85em; color: #17a2b8; font-weight: 500;">playbook</span>
+                                                <span th:if="${row.playbook == null or row.playbook.isBlank()}" style="color: #666;">—</span>
+                                            </td>
+                                            <td>
+                                                <span th:text="${row.model}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;">model</span>
+                                            </td>
+                                            <td>
+                                                <span style="background: rgba(0,123,255,0.15); color: #66b0ff; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">
+                                                    <span th:text="${row.callCount}">1</span> calls
+                                                </span>
+                                            </td>
+                                            <td th:text="${#numbers.formatInteger(row.promptTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.completionTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.cachedTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.thoughtTokens, 1, 'COMMA')}">0</td>
+                                            <td style="color: #28a745; font-weight: bold;">$<span th:text="${row.estimatedCostUsd}">0.00</span></td>
+                                            <td style="font-size: 0.8em; color: #888;" th:text="${row.createdAt != null ? #temporals.format(row.createdAt.atZone(T(java.time.ZoneId).systemDefault()), 'yyyy-MM-dd HH:mm:ss') : '—'}">—</td>
+                                        </tr>
+                                        <tr th:if="${#lists.isEmpty(explorerReport.messages)}">
+                                            <td colspan="12" style="text-align: center; color: #888; padding: 2rem;">No matching message turns found for the selected filters.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 3. Granular LLM Calls Table (RAW) -->
+                        <div class="card" th:if="${explorerReport.viewLevel == 'RAW'}">
+                            <h2 class="card-title">Filtered Granular LLM Calls</h2>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Type / Role</th>
+                                            <th>Message ID</th>
+                                            <th>Playbook / Profile</th>
+                                            <th>Conversation ID</th>
+                                            <th>User</th>
+                                            <th>Model</th>
+                                            <th>Prompt</th>
+                                            <th>Completion</th>
+                                            <th>Cached</th>
+                                            <th>Thought</th>
+                                            <th>Cost (USD)</th>
+                                            <th>Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="row : ${explorerReport.messages}">
+                                            <td>
+                                                <span th:if="${row.itemType == 'MESSAGE' and row.role == 'assistant'}" style="color: #28a745; font-weight: 600;">🤖 assistant</span>
+                                                <span th:if="${row.itemType == 'MAS_STEP'}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">
+                                                    ⚡ MAS: <span th:text="${row.role}">specialist</span> (<span th:text="${row.masProfile != null ? row.masProfile : 'agent'}">OIM</span>)
+                                                </span>
+                                                <span th:if="${row.itemType == 'MESSAGE' and row.role != 'assistant'}" th:text="${row.role}"></span>
+                                            </td>
+                                            <td>
+                                                <span th:text="${row.messageId != null ? row.messageId : '—'}" style="font-family: monospace; font-size: 0.85em; color: #aaa;">ID</span>
+                                            </td>
+                                            <td>
+                                                <span th:if="${row.playbook != null and !row.playbook.isBlank()}" th:text="${row.playbook}" style="font-size: 0.85em; color: #17a2b8; font-weight: 500;">playbook</span>
+                                                <span th:if="${row.playbook == null or row.playbook.isBlank()}" style="color: #666;">—</span>
+                                            </td>
+                                            <td>
+                                                <a th:href="@{'/chat/' + ${row.conversationId}}" target="_blank" style="color: var(--color-accent, #007bff); text-decoration: underline; font-family: monospace; font-size: 0.85em; font-weight: 600;" th:text="${row.conversationId}">ID</a>
+                                            </td>
+                                            <td th:text="${row.userName != null ? row.userName : '—'}">User</td>
+                                            <td th:text="${row.model}" style="font-family: monospace; font-size: 0.85em;">model</td>
+                                            <td th:text="${#numbers.formatInteger(row.promptTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.completionTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.cachedTokens, 1, 'COMMA')}">0</td>
+                                            <td th:text="${#numbers.formatInteger(row.thoughtTokens, 1, 'COMMA')}">0</td>
+                                            <td style="color: #28a745; font-weight: bold;">$<span th:text="${row.estimatedCostUsd}">0.00</span></td>
+                                            <td style="font-size: 0.8em; color: #888;" th:text="${row.createdAt != null ? #temporals.format(row.createdAt.atZone(T(java.time.ZoneId).systemDefault()), 'yyyy-MM-dd HH:mm:ss') : '—'}">—</td>
+                                        </tr>
+                                        <tr th:if="${#lists.isEmpty(explorerReport.messages)}">
+                                            <td colspan="12" style="text-align: center; color: #888; padding: 2rem;">No matching LLM calls found for the selected filters.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Forward keyset pagination (Slice 3): only shown when a further page exists. -->
+                            <div th:if="${explorerReport.nextCursor != null}" style="text-align: center; padding: 1rem 0 0.25rem;">
+                                <button type="button" class="btn btn-secondary"
+                                        th:attr="hx-get=@{/admin/costs/fragment/explorer(cursor=${explorerReport.nextCursor})}"
+                                        hx-include=".filter-form"
+                                        hx-target="#cost-content"
+                                        hx-swap="innerHTML">
+                                    Next page →
+                                </button>
+                            </div>
+                        </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

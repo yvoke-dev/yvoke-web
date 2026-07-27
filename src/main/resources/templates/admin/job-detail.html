@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Job Details')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('jobs')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Job Progress</h1>
+                    <p class="page-subtitle" th:text="'Ingestion job ' + ${job.id}"></p>
+                </div>
+                <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <!-- Stop Job Button/Form -->
+                    <form th:if="${job.status.name() == 'QUEUED' || job.status.name() == 'RUNNING'}"
+                          id="stopForm"
+                          th:action="@{/admin/jobs/{id}/stop(id=${job.id})}"
+                          method="post"
+                          style="display: inline;"
+                          onsubmit="return confirm('Are you sure you want to stop this job?');">
+                        <button type="submit" class="btn btn-danger" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg>
+                            Stop Job
+                        </button>
+                    </form>
+                    <a th:href="@{/admin/jobs}" class="btn btn-secondary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                        Back to Jobs
+                    </a>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500; margin: 0;" th:text="${success}"></p>
+            </div>
+            <div th:if="${warning}" class="card animate-fade-in" style="background-color: var(--color-warning-dim); border-color: var(--color-warning); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-warning" style="font-weight: 500; margin: 0;" th:text="${warning}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500; margin: 0;" th:text="${error}"></p>
+            </div>
+
+            <!-- Ingestion Details Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 400px; gap: 2rem;">
+                
+                <!-- Progress and Steps Card -->
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0;">Execution Progress</h2>
+                        <div>
+                            <span id="statusBadge" class="badge" th:classappend="${job.status.name() == 'QUEUED' ? 'badge-warning' : (job.status.name() == 'RUNNING' ? 'badge-info' : (job.status.name() == 'COMPLETED' ? 'badge-success' : (job.status.name() == 'CANCELLED' ? 'badge-muted' : 'badge-danger')))}" th:text="${#strings.capitalize(#strings.toLowerCase(job.status))}"></span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar Container -->
+                    <div style="margin-bottom: 2.5rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">
+                            <span>Progress</span>
+                            <span id="progressText" th:text="${job.progress} + '%'">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 12px; background-color: var(--bg-surface-elevated); border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color);">
+                            <div id="progressBar" th:style="'width: ' + ${job.progress} + '%; height: 100%; background: linear-gradient(90deg, var(--color-accent), hsl(190, 90%, 45%)); transition: width 0.3s ease;'"></div>
+                        </div>
+                        <p id="progressMessage" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; font-weight: 500; min-height: 1.25rem;"></p>
+                    </div>
+
+                    <!-- Pipeline Steps Diagram -->
+                    <h3 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1.5rem; letter-spacing: 0.5px;">Pipeline Step Sequence</h3>
+                    <div class="steps-container" style="display: flex; flex-direction: column; gap: 1rem;">
+                        
+                        <div th:each="step, stat : ${steps}" 
+                             th:id="'step-' + ${step.dbValue()}" 
+                             class="step-item" 
+                             style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background-color: var(--bg-surface-elevated); transition: var(--transition-base);">
+                            <div class="step-bullet" 
+                                 th:text="${stat.count}"
+                                 style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--text-muted); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">1</div>
+                            <div>
+                                <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.15rem;" 
+                                    th:text="${step.label()}">Step Label</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary);" 
+                                   th:text="${step.description()}">Step Description</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Job Info and Metadata Sidebar -->
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    
+                    <!-- Metadata Card -->
+                    <div class="card" style="margin-bottom: 0;">
+                        <h3 class="card-title" style="font-size: 1.05rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1rem; letter-spacing: 0.5px;">Job Information</h3>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.9rem;">
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                                <span style="color: var(--text-secondary);">Job Type</span>
+                                <span th:text="${job.kind}" style="font-weight: 600;"></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                                <span style="color: var(--text-secondary);">Target Collection</span>
+                                <span th:text="${job.collection}" style="font-weight: 600;"></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                                <span style="color: var(--text-secondary);">Target Tag</span>
+                                <span th:text="${job.tag}" style="font-weight: 600;"></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                                <span style="color: var(--text-secondary);">Attempts</span>
+                                <span th:text="${job.attempts}" style="font-weight: 600;"></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; flex-direction: column; gap: 0.25rem;">
+                                <span style="color: var(--text-secondary);">Source File</span>
+                                <span th:text="${job.sourceRef}" style="font-family: var(--font-mono); font-size: 0.8rem; word-break: break-all; font-weight: 500;"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Terminal Counts Card -->
+                    <div id="jobCountsCard" class="card" th:style="${job.counts == null ? 'display: none; margin-bottom: 0;' : 'margin-bottom: 0;'}">
+                        <h3 class="card-title" style="font-size: 1.05rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1.25rem; letter-spacing: 0.5px;">Indexed Counts</h3>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Documents</span>
+                            <span id="countDocs" class="telemetry-value" th:text="${job.counts != null ? job.counts.docs : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Chunks</span>
+                            <span id="countChunks" class="telemetry-value" th:text="${job.counts != null ? job.counts.chunks : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Entities</span>
+                            <span id="countEntities" class="telemetry-value" th:text="${job.counts != null ? job.counts.entities : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Relationships</span>
+                            <span id="countEdges" class="telemetry-value" th:text="${job.counts != null ? job.counts.edges : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">JSON Objects</span>
+                            <span id="countJsonObjects" class="telemetry-value" th:text="${job.counts != null ? job.counts.jsonObjects : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Skipped Entities</span>
+                            <span id="countSkippedEntities" class="telemetry-value" th:text="${job.counts != null ? job.counts.skippedEntities : 0}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Skipped Relationships</span>
+                            <span id="countSkippedEdges" class="telemetry-value" th:text="${job.counts != null ? job.counts.skippedEdges : 0}">0</span>
+                        </div>
+                    </div>
+
+                    <!--
+                      What the run actually did, kept because the progress message that used to
+                      carry it is transient: the broker has no replay buffer and the terminal
+                      snapshot blanks it. connectors.html points the operator here for the
+                      unlabelled-page count, so it has to survive the run.
+                    -->
+                    <div id="summaryCard" class="card"
+                         th:if="${job.summary != null and !job.summary.isBlank()}"
+                         style="margin-bottom: 1rem;">
+                        <h3 class="card-title"
+                            style="font-size: 1.05rem; text-transform: uppercase; margin-bottom: 0.75rem; letter-spacing: 0.5px;">Run summary</h3>
+                        <p id="summaryMessage" style="font-size: 0.9rem;" th:text="${job.summary}"></p>
+                    </div>
+
+                    <!--
+                      Outcome card. Styled by STATUS, not by the presence of `error`: a cancelled
+                      job carries its explanation in the same column, so keying off `error` alone
+                      rendered a deliberate stop as a red failure while the badge beside it read a
+                      muted "Cancelled" — the page contradicting itself, and an operator sent to
+                      investigate a fault that never happened.
+                    -->
+                    <div id="errorCard" class="card"
+                         th:classappend="${job.status.name() == 'CANCELLED' ? 'job-outcome-cancelled' : 'job-outcome-failed'}"
+                         th:style="${job.error == null ? 'display: none; margin-bottom: 0;' : 'margin-bottom: 0;'}">
+                        <h3 id="errorCardTitle" class="card-title"
+                            style="font-size: 1.05rem; text-transform: uppercase; margin-bottom: 0.75rem; letter-spacing: 0.5px;"
+                            th:text="${job.status.name() == 'CANCELLED' ? 'Cancellation details' : 'Failure details'}">Failure details</h3>
+                        <p id="errorMessage" style="font-size: 0.9rem;" th:text="${job.error}"></p>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Step styling stylesheet -->
+    <style>
+        .job-outcome-failed {
+            background-color: var(--color-danger-dim);
+            border-color: var(--color-danger);
+        }
+        .job-outcome-failed .card-title,
+        .job-outcome-failed #errorMessage {
+            color: var(--color-danger);
+        }
+        .job-outcome-cancelled {
+            background-color: var(--bg-surface-hover);
+            border-color: var(--border-color);
+        }
+        .job-outcome-cancelled .card-title,
+        .job-outcome-cancelled #errorMessage {
+            color: var(--text-secondary);
+        }
+        .step-item.active {
+            border-color: var(--color-accent) !important;
+            background-color: var(--color-accent-dim) !important;
+        }
+        .step-item.active .step-bullet {
+            border-color: var(--color-accent) !important;
+            color: var(--color-accent) !important;
+            background-color: var(--bg-surface-hover) !important;
+        }
+        .step-item.completed {
+            border-color: var(--color-success) !important;
+            background-color: var(--color-success-dim) !important;
+        }
+        .step-item.completed .step-bullet {
+            border-color: var(--color-success) !important;
+            color: var(--color-success) !important;
+            background-color: var(--bg-surface-hover) !important;
+        }
+    </style>
+
+    <script type="module" th:src="@{/js/admin/job-status-bootstrap.js}"></script>
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        const jobId = /*[[${job.id}]]*/ '';
+        const initialStatus = /*[[${job.status.name()}]]*/ '';
+        const initialStep = /*[[${job.step != null ? job.step.dbValue() : ''}]]*/ '';
+        const stepsOrder = /*[[${stepDbValues}]]*/ [];
+
+
+
+
+        // Thin delegates to a tested module (src/test/js/admin-small.test.js). `stepsOrder` is
+        // the server-injected ${stepDbValues}, passed in rather than read as page state.
+        // Kept as function declarations, not const arrows: declarations hoist, so callers earlier
+        // in this script keep working exactly as before (see the TDZ pitfall in CLAUDE.md).
+        function capitalize(s) {
+            return window.JobStatus.capitalize(s);
+        }
+
+        function getStatusClass(status) {
+            return window.JobStatus.getStatusClass(status);
+        }
+
+        function isStepCompleted(stepName, currentStep, status) {
+            return window.JobStatus.isStepCompleted(stepName, currentStep, status, stepsOrder);
+        }
+
+        function updateStepUI(currentStep, status) {
+            stepsOrder.forEach(stepName => {
+                const stepEl = document.getElementById('step-' + stepName);
+                if (stepEl) {
+                    if (status.toLowerCase() === 'running' && currentStep === stepName) {
+                        stepEl.className = 'step-item active';
+                    } else if (isStepCompleted(stepName, currentStep, status)) {
+                        stepEl.className = 'step-item completed';
+                    } else {
+                        stepEl.className = 'step-item';
+                    }
+                }
+            });
+        }
+
+        // Initialize UI with database values on load
+        // Deferred for the same reason as ingest.html: window.JobStatus comes from a module
+        // script, which runs after this one but before DOMContentLoaded.
+        document.addEventListener('DOMContentLoaded', function () {
+            updateStepUI(initialStep, initialStatus);
+        });
+
+        // Connect SSE only if job is not terminal. Spelled out rather than delegating to
+        // window.JobStatus: this runs at classic-script time, before the deferred module script has
+        // defined it (see the module/TDZ pitfall in CLAUDE.md).
+        if (initialStatus !== 'COMPLETED' && initialStatus !== 'FAILED' && initialStatus !== 'CANCELLED') {
+            const eventSource = new EventSource('/api/jobs/v1/' + jobId + '/progress');
+
+            eventSource.addEventListener('progress', function(event) {
+                const data = JSON.parse(event.data);
+                
+                // Update progress bar
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                progressBar.style.width = data.progress + '%';
+                progressText.textContent = data.progress + '%';
+
+                // Update progress message
+                const progressMessage = document.getElementById('progressMessage');
+                if (progressMessage) {
+                    progressMessage.textContent = data.message || '';
+                }
+
+                // Update status badge
+                const statusBadge = document.getElementById('statusBadge');
+                statusBadge.className = 'badge ' + getStatusClass(data.status);
+                statusBadge.textContent = capitalize(data.status);
+
+                // Update step sequence UI
+                updateStepUI(data.step, data.status);
+
+                // Handle completed / failed / cancelled. This callback runs long after the deferred
+                // module script, so window.JobStatus is safe here — and keeping the terminal rule
+                // in one tested place is what stops a cancelled job holding the stream open.
+                if (window.JobStatus.isTerminalStatus(data.status)) {
+                    eventSource.close();
+                    const stopForm = document.getElementById('stopForm');
+                    if (stopForm) {
+                        stopForm.style.display = 'none';
+                    }
+                    if (data.status.toLowerCase() === 'completed') {
+                        document.getElementById('jobCountsCard').style.display = 'block';
+                        if (data.counts) {
+                            document.getElementById('countDocs').textContent = data.counts.docs;
+                            document.getElementById('countChunks').textContent = data.counts.chunks;
+                            document.getElementById('countEntities').textContent = data.counts.entities;
+                            document.getElementById('countEdges').textContent = data.counts.edges;
+                            document.getElementById('countJsonObjects').textContent = data.counts.jsonObjects;
+                            document.getElementById('countSkippedEntities').textContent = data.counts.skippedEntities;
+                            document.getElementById('countSkippedEdges').textContent = data.counts.skippedEdges;
+                        }
+                    } else {
+                        // Failed or cancelled: both carry an explanation worth showing, but a
+                        // deliberate stop must not be dressed as a fault.
+                        const cancelled = data.status === 'CANCELLED' || data.status === 'cancelled';
+                        const card = document.getElementById('errorCard');
+                        card.style.display = 'block';
+                        card.classList.toggle('job-outcome-cancelled', cancelled);
+                        card.classList.toggle('job-outcome-failed', !cancelled);
+                        document.getElementById('errorCardTitle').textContent =
+                            cancelled ? 'Cancellation details' : 'Failure details';
+                        document.getElementById('errorMessage').textContent =
+                            data.error || (cancelled ? 'Cancelled.' : 'Unknown error occurred.');
+                    }
+                }
+            });
+
+            eventSource.onerror = function() {
+                console.log("SSE EventSource encountered an error. Connection closed.");
+                eventSource.close();
+            };
+        }
+        /*]]>*/
+    </script>
+</body>
+</html>

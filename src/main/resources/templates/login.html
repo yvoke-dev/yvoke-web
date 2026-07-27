@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulated Sign In — Yvoke</title>
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/logo-32.png}">
+    <link rel="icon" type="image/png" sizes="16x16" th:href="@{/images/logo-16.png}">
+    <link rel="stylesheet" th:href="@{/css/index.css}">
+    <style>
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--bg-base);
+            padding: 1.5rem;
+        }
+        .login-card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 440px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        .login-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+        .login-logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--color-accent), hsl(190, 90%, 45%));
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-base);
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .login-logo-text {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        .login-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        .error-message {
+            background-color: var(--color-danger-dim);
+            border: 1px solid var(--color-danger);
+            color: var(--color-danger);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .logout-message {
+            background-color: var(--color-success-dim);
+            border: 1px solid var(--color-success);
+            color: var(--color-success);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .quick-select-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+        .quick-select-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .quick-btn {
+            background-color: var(--bg-surface-elevated);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: var(--radius-md);
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition-base);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .quick-btn:hover {
+            border-color: var(--color-accent);
+            background-color: var(--bg-surface-hover);
+        }
+        .quick-btn .role {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 1.5rem 0;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .divider:not(:empty)::before {
+            margin-right: .5em;
+        }
+        .divider:not(:empty)::after {
+            margin-left: .5em;
+        }
+        .login-form .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .login-btn {
+            width: 100%;
+            margin-top: 1.5rem;
+        }
+    </style>
+    <script>
+        function selectProfile(username) {
+            document.getElementById('username').value = username;
+            document.getElementById('password').value = 'password';
+        }
+    </script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <img th:src="@{/images/logo-48.png}" alt="Yvoke Logo" style="width: 32px; height: 32px;" />
+                <span class="login-logo-text">Yvoke</span>
+            </div>
+            
+            <div class="login-header">
+                <h2 class="login-title">Simulated Authentication</h2>
+                <p class="login-subtitle">Sign in locally with mock development users</p>
+            </div>
+            
+            <div th:if="${param.error}" class="error-message">
+                Invalid username or password.
+            </div>
+            <div th:if="${param.logout}" class="logout-message">
+                You have been signed out successfully.
+            </div>
+            
+            <span class="quick-select-title">Quick Select Profile</span>
+            <div class="quick-select-grid">
+                <button type="button" class="quick-btn" onclick="selectProfile('user')">
+                    <strong>Mock User</strong>
+                    <span class="role">ROLE_USER</span>
+                </button>
+                <button type="button" class="quick-btn" onclick="selectProfile('admin')">
+                    <strong>Mock Admin</strong>
+                    <span class="role">ROLE_ADMIN</span>
+                </button>
+            </div>
+            
+            <div class="divider">or use credentials</div>
+            
+            <form th:action="@{/login}" method="post" class="login-form">
+                <div class="form-group">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" placeholder="e.g. user or admin" required autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="Any password" required autocomplete="current-password">
+                </div>
+                
+                <button type="submit" class="btn btn-primary login-btn">Sign In</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

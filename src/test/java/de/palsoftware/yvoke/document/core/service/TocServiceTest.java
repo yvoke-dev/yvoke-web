@@ -1,0 +1,103 @@
+package de.palsoftware.yvoke.document.core.service;
+
+import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.model.TocNode;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
+
+import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+class TocServiceTest {
+
+    private ChunkRepository chunkRepository;
+    private DocumentRepository documentRepository;
+    private TocService tocService;
+
+    private UUID docId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        chunkRepository = Mockito.mock(ChunkRepository.class);
+        documentRepository = Mockito.mock(DocumentRepository.class);
+        org.springframework.jdbc.core.simple.JdbcClient jdbcClient =
+            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.class);
+        org.springframework.jdbc.core.simple.JdbcClient.StatementSpec statementSpec =
+            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.StatementSpec.class);
+        @SuppressWarnings("unchecked")
+        org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec<Object> mappedQuerySpec =
+            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec.class);
+        when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
+        when(statementSpec.param(anyString(), any())).thenReturn(statementSpec);
+        @SuppressWarnings("unchecked")
+        org.springframework.jdbc.core.RowMapper<Object> rowMapper =
+            any(org.springframework.jdbc.core.RowMapper.class);
+        when(statementSpec.query(rowMapper)).thenReturn(mappedQuerySpec);
+        when(mappedQuerySpec.list()).thenReturn(Collections.emptyList());
+        tocService = new TocService(chunkRepository, documentRepository, jdbcClient);
+    }
+
+    @Test
+    void testGetTocSubtreeCountsAndSorting() {
+        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual", "Manual Title",
+            Map.of("tag", "9.3", "source_file", "manual1.md"), "completed", List.of(),
+            java.time.Instant.now());
+
+        // Seed chunks forming the hierarchy:
+        // Chapter 1 (sort_order = 10)
+        // Section A (sort_order = 20)
+        // Subsection 1 (sort_order = 30)
+        // Section B (sort_order = 40)
+        // Chapter 2 (sort_order = 50)
+        ChunkPathRow c1 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 1", 10);
+        ChunkPathRow c2 =
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section A", 20);
+        ChunkPathRow c3 = new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1", "Section A"),
+            "Subsection 1", 30);
+        ChunkPathRow c4 =
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section B", 40);
+        ChunkPathRow c5 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 2", 50);
+
+        when(documentRepository.findByManual(eq("manual1"), eq("OIM")))
+            .thenReturn(Optional.of(doc));
+        when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))
+            .thenReturn(List.of(c1, c2, c3, c4, c5));
+
+        // Test full TOC (hardcoded depth <= 2)
+        List<TocNode> toc = tocService.getToc("manual1", "OIM");
+
+        // Output entries should exclude Subsection 1 because its depth is 3 (pl=3) and maxDepth=2
+        // Entries should be: Chapter 1, Chapter 1 > Section A, Chapter 1 > Section B, Chapter 2
+        assertEquals(4, toc.size());
+
+        // Validate sorted by minSortOrder: Chapter 1 (10) < Chapter 1 > Section A (20) < Chapter 1
+        // >
+        // Section B (40) <
+        // Chapter 2 (50)
+        assertEquals(List.of("Chapter 1"), toc.get(0).path());
+        assertEquals(10, toc.get(0).minSortOrder());
+        // Subtree count for Chapter 1 includes itself + Section A + Subsection 1 + Section B = 4
+        // chunks
+        assertEquals(4, toc.get(0).subtreeChunkCount());
+
+        assertEquals(List.of("Chapter 1", "Section A"), toc.get(1).path());
+        assertEquals(20, toc.get(1).minSortOrder());
+        // Subtree count for Section A includes itself + Subsection 1 = 2 chunks
+        assertEquals(2, toc.get(1).subtreeChunkCount());
+
+        assertEquals(List.of("Chapter 1", "Section B"), toc.get(2).path());
+        assertEquals(40, toc.get(2).minSortOrder());
+        assertEquals(1, toc.get(2).subtreeChunkCount());
+
+        assertEquals(List.of("Chapter 2"), toc.get(3).path());
+        assertEquals(50, toc.get(3).minSortOrder());
+        assertEquals(1, toc.get(3).subtreeChunkCount());
+    }
+}

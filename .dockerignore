@@ -1,0 +1,17 @@
+.git
+.gitignore
+.idea
+*.iml
+*.iws
+*.ipr
+.vscode
+.DS_Store
+Thumbs.db
+.env
+.env.*
+target/
+!target/*.jar
+node_modules
+.antigravity
+plan
+*.md

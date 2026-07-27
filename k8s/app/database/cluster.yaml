@@ -1,0 +1,68 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: yvoke-postgres
+spec:
+  description: Yvoke PostgreSQL cluster (k3s)
+  imageName: edipal/yvoke-postgres-pg_search:16-0.24.0
+  imagePullPolicy: Always
+  postgresUID: 999
+  postgresGID: 999
+  instances: 1
+  enableSuperuserAccess: true
+  superuserSecret:
+    name: yvoke-postgres-superuser
+  affinity:
+    enablePodAntiAffinity: false
+    nodeSelector:
+      workload: database
+  bootstrap:
+    initdb:
+      database: postgres
+      owner: postgres
+      secret:
+        name: yvoke-postgres-auth
+  postgresql:
+    shared_preload_libraries:
+      - pg_search
+      - pg_stat_statements
+    parameters:
+      max_connections: "50"
+      shared_buffers: "1GB"
+      effective_cache_size: "3GB"
+      work_mem: "20MB"
+      maintenance_work_mem: "256MB"
+      wal_compression: "lz4"
+      wal_level: "replica"
+      max_wal_size: "2GB"
+      min_wal_size: "512MB"
+      wal_buffers: "16MB"
+      checkpoint_completion_target: "0.9"
+      checkpoint_timeout: "15min"
+      huge_pages: "off"
+      max_worker_processes: "4"
+      max_parallel_workers: "3"
+      max_parallel_workers_per_gather: "2"
+      max_parallel_maintenance_workers: "2"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      default_statistics_target: "100"
+      log_min_duration_statement: "200"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: "all"
+      track_io_timing: "on"
+      jit: "off"
+      # pgvector 0.8+: when a filtered HNSW search (collection/tag clauses) yields fewer
+      # matches than LIMIT, keep scanning the index instead of returning a short result.
+      hnsw.iterative_scan: "relaxed_order"
+  storage:
+    storageClass: local-path-custom
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+

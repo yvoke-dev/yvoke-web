@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('User Conversations')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('conversations')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">User Conversations</h1>
+                    <p class="page-subtitle">Inspect user-initiated conversations across the system in read-only mode.</p>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="card">
+                <h2 class="card-title">All Conversations</h2>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Created At</th>
+                                <th>User</th>
+                                <th>Conversation ID</th>
+                                <th>Title</th>
+                                <th>Source</th>
+                                <th>Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="conv : ${conversations}">
+                                <td th:text="${conv.createdAt != null ? #temporals.format(conv.createdAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC' : ''}"></td>
+                                <td>
+                                    <div th:if="${conv.userDisplayName != null || conv.userEmail != null}">
+                                        <strong th:text="${conv.userDisplayName != null ? conv.userDisplayName : 'Unknown'}"></strong>
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${conv.userEmail}"></div>
+                                    </div>
+                                    <span th:if="${conv.userDisplayName == null && conv.userEmail == null}" class="text-secondary" style="font-style: italic;">Anonymous / Deleted</span>
+                                </td>
+                                <td>
+                                    <a th:href="@{/chat/{id}(id=${conv.id})}" target="_blank" class="mono-text" th:text="${conv.id}" style="color: var(--color-accent); text-decoration: none; font-weight: 600;"></a>
+                                </td>
+                                <td th:text="${conv.title}"></td>
+                                <td>
+                                    <span class="badge badge-muted" th:text="${conv.source}"></span>
+                                </td>
+                                <td th:text="${conv.updatedAt != null ? #temporals.format(conv.updatedAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC' : ''}"></td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(conversations)}">
+                                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No conversations found in the system.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" th:if="${totalPages > 1}">
+                    <div class="pagination-info">
+                        Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${totalCount}"></span> total conversations)
+                    </div>
+                    <div class="pagination-controls">
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1})}" class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1})}" class="btn btn-secondary">Next &raquo;</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

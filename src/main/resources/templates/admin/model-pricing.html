@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Model Pricing')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('pricing')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h1 class="page-title">Model Pricing</h1>
+                    <p class="page-subtitle">Configure token rates (per 1,000,000 tokens) for LLMs used in chat, RAG, KG extraction, and multi-agent workflows.</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <form th:action="@{/admin/pricing/import}" method="post" enctype="multipart/form-data" id="importPricingForm" style="margin: 0;">
+                        <input type="file" id="pricingFileInput" name="file" accept=".json" style="display: none;" onchange="document.getElementById('importPricingForm').submit();" />
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('pricingFileInput').click();" title="Import Pricing from JSON file">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.4rem; vertical-align: middle;">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            Import
+                        </button>
+                    </form>
+                    <a th:href="@{/admin/pricing/export}" class="btn btn-secondary" title="Export Pricing to JSON file">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.4rem; vertical-align: middle;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Export
+                    </a>
+                    <button type="button" class="btn btn-primary" onclick="openPricingModal()">
+                        + Add Model Pricing
+                    </button>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim, rgba(40,167,69,0.15)); border: 1px solid var(--color-success, #28a745); padding: 1rem 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-md, 8px);">
+                <p class="text-success" style="font-weight: 500; color: #28a745; margin: 0;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim, rgba(220,53,69,0.15)); border: 1px solid var(--color-danger, #dc3545); padding: 1rem 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-md, 8px);">
+                <p class="text-danger" style="font-weight: 500; color: #dc3545; margin: 0;" th:text="${error}"></p>
+            </div>
+
+            <!-- Stats Overview Row -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+                <div class="card" style="padding: 1.25rem;">
+                    <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #888);">Total Tracked Models</span>
+                    <div style="font-size: 1.8em; font-weight: 800; color: var(--text-primary, #fff); margin-top: 0.2rem;" th:text="${totalModelsCount}">0</div>
+                </div>
+                <div class="card" style="padding: 1.25rem;">
+                    <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #888);">Models With Usage</span>
+                    <div style="font-size: 1.8em; font-weight: 800; color: ${usedCount > 0 ? '#3b82f6' : '#888'}; margin-top: 0.2rem;" th:text="${usedCount}">0</div>
+                </div>
+                <div class="card" style="padding: 1.25rem;">
+                    <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #888);">Pricing Configured</span>
+                    <div style="font-size: 1.8em; font-weight: 800; color: #28a745; margin-top: 0.2rem;" th:text="${configuredCount}">0</div>
+                </div>
+                <div class="card" style="padding: 1.25rem;">
+                    <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #888);">Pricing Missing</span>
+                    <div style="font-size: 1.8em; font-weight: 800; color: ${missingCount > 0 ? '#dc3545' : '#888'}; margin-top: 0.2rem;" th:text="${missingCount}">0</div>
+                </div>
+            </div>
+
+            <!-- Main Pricing Table -->
+            <div class="card">
+                <h2 class="card-title" style="margin-bottom: 1rem;">Used & Configured Models</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Model Name</th>
+                                <th style="width: 100px; text-align: center;">Status</th>
+                                <th>Prompt ($ / 1M)</th>
+                                <th>Completion ($ / 1M)</th>
+                                <th>Cached ($ / 1M)</th>
+                                <th>Thought ($ / 1M)</th>
+                                <th>Usage Count</th>
+                                <th style="width: 80px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="m : ${modelStatuses}">
+                                <td>
+                                    <span class="mono-text" style="font-weight: 600; font-size: 0.9em;" th:text="${m.modelName}">model-name</span>
+                                </td>
+                                <td style="text-align: center; white-space: nowrap;">
+                                    <!-- Pricing status icon with tooltip -->
+                                    <span th:if="${m.hasPricing}" title="Pricing Configured" style="color: #28a745; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin-right: 0.35rem; cursor: help;" aria-label="Pricing Configured">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                    </span>
+                                    <span th:if="${!m.hasPricing}" title="Pricing Missing" style="color: #dc3545; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin-right: 0.35rem; cursor: help;" aria-label="Pricing Missing">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    </span>
+                                    <!-- Usage status badge with tooltip -->
+                                    <span th:if="${m.usageCount > 0}" class="badge badge-info" th:title="${#numbers.formatInteger(m.usageCount, 1, 'COMMA') + ' call(s) recorded in conversations'}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.3); padding: 0.15rem 0.45rem; border-radius: 10px; font-weight: 500; font-size: 0.72rem; display: inline-flex; align-items: center; vertical-align: middle;">Active</span>
+                                    <span th:if="${m.usageCount == 0}" class="badge badge-secondary" title="No usage recorded in system" style="background: rgba(136,136,136,0.12); color: #888; border: 1px solid rgba(136,136,136,0.25); padding: 0.15rem 0.45rem; border-radius: 10px; font-weight: 500; font-size: 0.72rem; display: inline-flex; align-items: center; vertical-align: middle;">No usage</span>
+                                </td>
+                                <td th:text="${m.hasPricing ? '$' + #numbers.formatDecimal(m.promptPricePerMillion, 1, 4) : '—'}" style="font-family: monospace;">$0.0000</td>
+                                <td th:text="${m.hasPricing ? '$' + #numbers.formatDecimal(m.completionPricePerMillion, 1, 4) : '—'}" style="font-family: monospace;">$0.0000</td>
+                                <td th:text="${m.hasPricing ? '$' + #numbers.formatDecimal(m.cachedPricePerMillion, 1, 4) : '—'}" style="font-family: monospace;">$0.0000</td>
+                                <td th:text="${m.hasPricing ? '$' + #numbers.formatDecimal(m.thoughtPricePerMillion, 1, 4) : '—'}" style="font-family: monospace;">$0.0000</td>
+                                <td>
+                                    <span style="font-weight: 600;" th:text="${#numbers.formatInteger(m.usageCount, 1, 'COMMA')}">0</span>
+                                    <span style="font-size: 0.75em; color: var(--text-muted, #888);">calls</span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 0.35rem; align-items: center; justify-content: center;">
+                                        <button type="button" class="btn btn-icon" title="Edit Pricing"
+                                                th:attr="data-name=${m.modelName}, data-prompt=${m.promptPricePerMillion != null ? m.promptPricePerMillion : 0.00}, data-completion=${m.completionPricePerMillion != null ? m.completionPricePerMillion : 0.00}, data-cached=${m.cachedPricePerMillion != null ? m.cachedPricePerMillion : 0.00}, data-thought=${m.thoughtPricePerMillion != null ? m.thoughtPricePerMillion : 0.00}"
+                                                onclick="editModelPricing(this)">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                            </svg>
+                                        </button>
+                                        <form th:if="${m.hasPricing}" th:action="@{/admin/pricing/delete}" method="post" style="margin: 0;" onsubmit="return confirm('Delete pricing for ' + this.modelName.value + '?');">
+                                            <input type="hidden" name="modelName" th:value="${m.modelName}" />
+                                            <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Pricing">
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(modelStatuses)}">
+                                <td colspan="8" style="text-align: center; color: var(--text-muted, #888); padding: 2rem;">No models found in configuration or usage history.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Model Pricing Edit Modal -->
+            <div id="pricingModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center;">
+                <div class="modal-card" style="background: var(--card-bg, #161b22); border: 1px solid var(--border-color, #30363d); border-radius: 8px; width: 100%; max-width: 520px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                        <h2 id="modalTitle" class="modal-title" style="margin: 0; font-size: 1.2em; font-weight: 700;">Edit Model Pricing</h2>
+                        <button type="button" onclick="closePricingModal()" style="background: none; border: none; color: #888; font-size: 1.5em; cursor: pointer; line-height: 1;">&times;</button>
+                    </div>
+
+                    <form th:action="@{/admin/pricing/save}" method="post">
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.4rem; color: #ccc;">Model Name</label>
+                            <input type="text" id="modalModelName" name="modelName" class="input-field" required placeholder="e.g. gemini-3.6-flash" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #30363d); box-sizing: border-box;" />
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.4rem; color: #ccc;">Prompt Price ($ / 1M)</label>
+                                <input type="number" step="0.0001" min="0" id="modalPrompt" name="prompt" class="input-field" required value="0.00" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #30363d); box-sizing: border-box;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.4rem; color: #ccc;">Completion Price ($ / 1M)</label>
+                                <input type="number" step="0.0001" min="0" id="modalCompletion" name="completion" class="input-field" required value="0.00" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #30363d); box-sizing: border-box;" />
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.4rem; color: #ccc;">Cached Price ($ / 1M)</label>
+                                <input type="number" step="0.0001" min="0" id="modalCached" name="cached" class="input-field" required value="0.00" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #30363d); box-sizing: border-box;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 0.4rem; color: #ccc;">Thought Price ($ / 1M)</label>
+                                <input type="number" step="0.0001" min="0" id="modalThought" name="thought" class="input-field" required value="0.00" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #30363d); box-sizing: border-box;" />
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" onclick="closePricingModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save Pricing</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <script>
+                function openPricingModal() {
+                    document.getElementById('modalTitle').textContent = 'Add Model Pricing';
+                    document.getElementById('modalModelName').value = '';
+                    document.getElementById('modalModelName').readOnly = false;
+                    document.getElementById('modalPrompt').value = '0.0000';
+                    document.getElementById('modalCompletion').value = '0.0000';
+                    document.getElementById('modalCached').value = '0.0000';
+                    document.getElementById('modalThought').value = '0.0000';
+                    document.getElementById('pricingModal').style.display = 'flex';
+                }
+
+                function editModelPricing(btn) {
+                    const name = btn.getAttribute('data-name');
+                    const prompt = btn.getAttribute('data-prompt');
+                    const completion = btn.getAttribute('data-completion');
+                    const cached = btn.getAttribute('data-cached');
+                    const thought = btn.getAttribute('data-thought');
+
+                    document.getElementById('modalTitle').textContent = 'Edit Model Pricing: ' + name;
+                    document.getElementById('modalModelName').value = name;
+                    document.getElementById('modalModelName').readOnly = true;
+                    document.getElementById('modalPrompt').value = prompt;
+                    document.getElementById('modalCompletion').value = completion;
+                    document.getElementById('modalCached').value = cached;
+                    document.getElementById('modalThought').value = thought;
+                    document.getElementById('pricingModal').style.display = 'flex';
+                }
+
+                function closePricingModal() {
+                    document.getElementById('pricingModal').style.display = 'none';
+                }
+            </script>
+        </main>
+    </div>
+</body>
+</html>

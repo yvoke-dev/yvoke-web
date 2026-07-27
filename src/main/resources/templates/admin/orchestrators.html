@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Orchestrators Management')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('orchestrators')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Orchestrators</h1>
+                    <p class="page-subtitle">Configure multi-agent orchestrator profiles with per-profile review limits, specialist call caps, role playbooks, and model settings.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 2rem; align-items: start;">
+                <!-- Profiles List -->
+                <div>
+                    <div th:if="${#lists.isEmpty(profiles)}" class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 1rem;">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>
+                            <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/>
+                        </svg>
+                        <p style="font-size: 1.1rem; font-weight: 500;">No Orchestrator Profiles Configured</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--text-muted);">Create a new orchestrator profile on the right.</p>
+                    </div>
+
+                    <div th:each="profile : ${profiles}" class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                            <div style="flex: 1; margin-right: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${profile.name}">OIM</h3>
+                                    <span style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;">
+                                        Max Review Rounds: <strong th:text="${profile.maxReviewRounds}" style="color: var(--text-primary);">2</strong>
+                                    </span>
+                                    <span style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;">
+                                        Max Specialist Calls: <strong th:text="${profile.maxSpecialistCalls}" style="color: var(--text-primary);">8</strong>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <!-- Export Button -->
+                                <a th:href="@{/admin/orchestrators/export(name=${profile.name})}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;" title="Export Profile to .json file">
+                                    Export
+                                </a>
+
+                                <!-- Edit Button -->
+                                <button type="button" class="btn btn-secondary btn-edit-profile" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
+                                        th:attr="data-name=${profile.name}, data-max-review=${profile.maxReviewRounds}, data-max-calls=${profile.maxSpecialistCalls}, data-orch-pb=${profile.orchestratorPlaybook}, data-rev-pb=${profile.reviewerPlaybook}, data-spec-pbs=${profile.specialistPlaybooks != null ? #strings.listJoin(profile.specialistPlaybooks, ',') : ''}, data-orch-model=${profile.orchestratorModel}, data-orch-thinking=${profile.orchestratorThinkingLevel}, data-rev-model=${profile.reviewerModel}, data-rev-thinking=${profile.reviewerThinkingLevel}, data-spec-model=${profile.specialistModel}, data-spec-thinking=${profile.specialistThinkingLevel}">
+                                    Edit
+                                </button>
+                                
+                                <!-- Delete Button -->
+                                <form th:action="@{/admin/orchestrators/delete}" method="post" style="display: inline; margin: 0;" onsubmit="return confirm('Are you sure you want to delete this profile?');">
+                                    <input type="hidden" name="name" th:value="${profile.name}" />
+                                    <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Profile">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Roles / Playbooks summary -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; background-color: var(--bg-surface); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Orchestrator Role</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div>Playbook: <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-primary);" th:text="${profile.orchestratorPlaybook}">-</span></div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.orchestratorModel != null ? profile.orchestratorModel : 'Default'}"></span> (<span th:text="${profile.orchestratorThinkingLevel != null ? profile.orchestratorThinkingLevel : 'Default'}"></span>)</div>
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Reviewer Role</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div>Playbook: <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-primary);" th:text="${profile.reviewerPlaybook}">-</span></div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.reviewerModel != null ? profile.reviewerModel : 'Default'}"></span> (<span th:text="${profile.reviewerThinkingLevel != null ? profile.reviewerThinkingLevel : 'Default'}"></span>)</div>
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Specialist Role</strong>
+                                <div style="margin-top: 0.35rem; font-size: 0.9rem;">
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Model: <span th:text="${profile.specialistModel != null ? profile.specialistModel : 'Default'}"></span> (<span th:text="${profile.specialistThinkingLevel != null ? profile.specialistThinkingLevel : 'Default'}"></span>)</div>
+                                    <div style="margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                                        <span th:each="specPb : ${profile.specialistPlaybooks}" style="font-family: monospace; font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary);" th:text="${specPb}"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create/Edit Form Card -->
+                <div class="card" style="padding: 1.5rem; position: sticky; top: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                        <h2 id="form-title" class="card-title" style="margin: 0; font-size: 1.1rem; font-weight: 600;">Create Orchestrator Profile</h2>
+                        <button type="button" id="btn-reset" class="btn btn-secondary" style="display: none; padding: 0.25rem 0.5rem; font-size: 0.75rem;">New</button>
+                    </div>
+
+                    <!-- Loader Helper -->
+                    <div class="form-group" style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1.25rem;">
+                        <label class="form-label">Import Profile File (.json)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="file" id="profile-file-input" accept=".json" class="form-input" style="padding: 0.35rem 0.5rem; font-size: 0.85rem;" />
+                            <button type="button" class="btn btn-secondary" onclick="loadProfileFile()" style="padding: 0.4rem 1rem; font-size: 0.85rem; white-space: nowrap;">
+                                Load
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <form id="profile-form" th:action="@{/admin/orchestrators}" method="post" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div class="form-group">
+                            <label for="name" class="form-label">Profile Name</label>
+                            <input type="text" name="name" id="name" required class="form-input" placeholder="e.g. OIM" />
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="maxReviewRounds" class="form-label">Max Review Rounds</label>
+                                <input type="number" name="maxReviewRounds" id="maxReviewRounds" value="2" min="1" max="10" required class="form-input" />
+                            </div>
+                            <div class="form-group">
+                                <label for="maxSpecialistCalls" class="form-label">Max Specialist Calls</label>
+                                <input type="number" name="maxSpecialistCalls" id="maxSpecialistCalls" value="8" min="1" max="50" required class="form-input" />
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="orchestratorPlaybook" class="form-label">Orchestrator Playbook</label>
+                            <select name="orchestratorPlaybook" id="orchestratorPlaybook" required class="form-input">
+                                <option value="">-- Select Playbook --</option>
+                                <option th:each="pb : ${orchestratorPlaybooks}" th:value="${pb.name}" th:text="${pb.title + ' (' + pb.name + ')'}"></option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reviewerPlaybook" class="form-label">Reviewer Playbook</label>
+                            <select name="reviewerPlaybook" id="reviewerPlaybook" required class="form-input">
+                                <option value="">-- Select Playbook --</option>
+                                <option th:each="pb : ${reviewerPlaybooks}" th:value="${pb.name}" th:text="${pb.title + ' (' + pb.name + ')'}"></option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Specialist Playbooks</label>
+                            <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-color); padding: 0.6rem 0.75rem; border-radius: var(--radius-md); background-color: var(--bg-surface-elevated); display: flex; flex-direction: column; gap: 0.4rem;">
+                                <div th:each="pb : ${specialistPlaybooks}">
+                                    <label style="font-size: 0.85rem; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" name="specialistPlaybooks" th:value="${pb.name}" class="spec-checkbox" style="width: auto; margin: 0; accent-color: var(--color-accent);" />
+                                        <span th:text="${pb.title + ' (' + pb.name + ')'}"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Role Overrides -->
+                        <div style="border-top: 1px solid var(--border-color); margin-top: 0.5rem; padding-top: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                            <h3 style="font-size: 0.85rem; font-weight: 600; color: var(--color-accent); margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Role Model & Thinking Settings</h3>
+                            
+                            <!-- Orchestrator Model -->
+                            <div class="form-group">
+                                <label for="orchestratorModel" class="form-label" style="font-size: 0.75rem;">Orchestrator Model & Thinking</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                    <select name="orchestratorModel" id="orchestratorModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Model</option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                    </select>
+                                    <select name="orchestratorThinkingLevel" id="orchestratorThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Thinking</option>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Reviewer Model -->
+                            <div class="form-group">
+                                <label for="reviewerModel" class="form-label" style="font-size: 0.75rem;">Reviewer Model & Thinking</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                    <select name="reviewerModel" id="reviewerModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Model</option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                    </select>
+                                    <select name="reviewerThinkingLevel" id="reviewerThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Thinking</option>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Specialist Model -->
+                            <div class="form-group">
+                                <label for="specialistModel" class="form-label" style="font-size: 0.75rem;">Specialist Model & Thinking</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                    <select name="specialistModel" id="specialistModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Model</option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                    </select>
+                                    <select name="specialistThinkingLevel" id="specialistThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                        <option value="">Default Thinking</option>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 0.5rem;">
+                            <button type="submit" class="btn btn-primary w-100" id="submit-btn">
+                                Save Profile
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const formTitle = document.getElementById('form-title');
+            const nameInput = document.getElementById('name');
+            const maxReviewInput = document.getElementById('maxReviewRounds');
+            const maxCallsInput = document.getElementById('maxSpecialistCalls');
+            const orchPbInput = document.getElementById('orchestratorPlaybook');
+            const revPbInput = document.getElementById('reviewerPlaybook');
+            const orchModelInput = document.getElementById('orchestratorModel');
+            const orchThinkingInput = document.getElementById('orchestratorThinkingLevel');
+            const revModelInput = document.getElementById('reviewerModel');
+            const revThinkingInput = document.getElementById('reviewerThinkingLevel');
+            const specModelInput = document.getElementById('specialistModel');
+            const specThinkingInput = document.getElementById('specialistThinkingLevel');
+            const specCheckboxes = document.querySelectorAll('.spec-checkbox');
+            const btnReset = document.getElementById('btn-reset');
+
+            document.querySelectorAll('.btn-edit-profile').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    formTitle.textContent = 'Edit Profile: ' + this.dataset.name;
+                    nameInput.value = this.dataset.name;
+                    nameInput.readOnly = true;
+                    maxReviewInput.value = this.dataset.maxReview || 2;
+                    maxCallsInput.value = this.dataset.maxCalls || 8;
+                    orchPbInput.value = this.dataset.orchPb || '';
+                    revPbInput.value = this.dataset.revPb || '';
+
+                    orchModelInput.value = this.dataset.orchModel || '';
+                    orchThinkingInput.value = this.dataset.orchThinking || '';
+                    revModelInput.value = this.dataset.revModel || '';
+                    revThinkingInput.value = this.dataset.revThinking || '';
+                    specModelInput.value = this.dataset.specModel || '';
+                    specThinkingInput.value = this.dataset.specThinking || '';
+
+                    const specPbs = (this.dataset.specPbs || '').split(',').map(s => s.trim());
+                    specCheckboxes.forEach(cb => {
+                        cb.checked = specPbs.includes(cb.value);
+                    });
+
+                    btnReset.style.display = 'inline-block';
+                });
+            });
+
+            btnReset.addEventListener('click', function () {
+                formTitle.textContent = 'Create Orchestrator Profile';
+                document.getElementById('profile-form').reset();
+                nameInput.readOnly = false;
+                specCheckboxes.forEach(cb => cb.checked = false);
+                btnReset.style.display = 'none';
+            });
+        });
+
+        function loadProfileFile() {
+            const fileInput = document.getElementById('profile-file-input');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select an orchestrator profile JSON (.json) file first.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const profile = JSON.parse(e.target.result);
+                    if (!profile.name) {
+                        alert('Invalid profile JSON: missing "name" field.');
+                        return;
+                    }
+
+                    document.getElementById('form-title').textContent = 'Edit Profile: ' + profile.name;
+                    const nameInput = document.getElementById('name');
+                    nameInput.value = profile.name;
+                    document.getElementById('maxReviewRounds').value = profile.maxReviewRounds || 2;
+                    document.getElementById('maxSpecialistCalls').value = profile.maxSpecialistCalls || 8;
+                    document.getElementById('orchestratorPlaybook').value = profile.orchestratorPlaybook || '';
+                    document.getElementById('reviewerPlaybook').value = profile.reviewerPlaybook || '';
+                    document.getElementById('orchestratorModel').value = profile.orchestratorModel || '';
+                    document.getElementById('orchestratorThinkingLevel').value = profile.orchestratorThinkingLevel || '';
+                    document.getElementById('reviewerModel').value = profile.reviewerModel || '';
+                    document.getElementById('reviewerThinkingLevel').value = profile.reviewerThinkingLevel || '';
+                    document.getElementById('specialistModel').value = profile.specialistModel || '';
+                    document.getElementById('specialistThinkingLevel').value = profile.specialistThinkingLevel || '';
+
+                    const specPbs = profile.specialistPlaybooks || [];
+                    document.querySelectorAll('.spec-checkbox').forEach(cb => {
+                        cb.checked = specPbs.includes(cb.value);
+                    });
+
+                    document.getElementById('btn-reset').style.display = 'inline-block';
+                } catch (err) {
+                    alert('Failed to parse JSON file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>

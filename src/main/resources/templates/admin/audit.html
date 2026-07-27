@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('System Audit Trail')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar Navigation -->
+        <aside th:replace="~{admin/layout :: sidebar('audit')}"></aside>
+
+        <!-- Content Area -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">System Audit Trail</h1>
+                    <p class="page-subtitle">Historical log of all administrative and lifecycle write operations.</p>
+                </div>
+            </div>
+
+            <!-- Audit Logs Table Card -->
+            <div class="card">
+                <h2 class="card-title">Activity Trail</h2>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Actor ID</th>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Operation Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="log : ${logs}">
+                                <td class="mono-text" th:text="${#temporals.format(log.createdAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC'}"></td>
+                                <td>
+                                    <span class="badge badge-muted" th:text="${log.entraOid}" style="text-transform: none; font-family: monospace;"></span>
+                                </td>
+                                <td>
+                                    <span class="badge" th:classappend="${
+                                        log.action == 'DELETE_DOCUMENT' || log.action == 'DELETE_TAG' || log.action == 'DELETE_COLLECTION' ? 'badge-danger' : 
+                                        (log.action == 'RESET_TAG' ? 'badge-warning' : 
+                                        (log.action == 'INGEST_DATA' ? 'badge-info' : 'badge-success'))
+                                    }" th:text="${log.action}"></span>
+                                </td>
+                                <td class="mono-text" th:text="${log.target}" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></td>
+                                <td>
+                                    <details style="cursor: pointer; font-size: 0.9rem;">
+                                        <summary style="color: var(--color-accent); font-weight: 500; outline: none; margin-bottom: 0.5rem;">
+                                            Show details
+                                        </summary>
+                                        <pre class="json-view" style="margin-top: 0.5rem; max-width: 500px; max-height: 200px; overflow: auto; font-size: 0.8rem;" th:text="${log.detail}"></pre>
+                                    </details>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(logs)}">
+                                <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No audit logs recorded yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" th:if="${totalPages > 1}">
+                    <div class="pagination-info">
+                        Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${totalCount}"></span> total entries)
+                    </div>
+                    <div class="pagination-controls">
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/audit(page=${currentPage - 1})}" class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/audit(page=${currentPage + 1})}" class="btn btn-secondary">Next &raquo;</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

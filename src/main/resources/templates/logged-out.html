@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signed Out — Yvoke</title>
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/logo-32.png}">
+    <link rel="icon" type="image/png" sizes="16x16" th:href="@{/images/logo-16.png}">
+    <link rel="stylesheet" th:href="@{/css/index.css}">
+    <style>
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--bg-base);
+            padding: 1.5rem;
+        }
+        .login-card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 440px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            text-align: center;
+        }
+        .login-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+        .login-logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--color-accent), hsl(190, 90%, 45%));
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-base);
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .login-logo-text {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .logout-icon-wrapper {
+            margin: 1.5rem auto 1.5rem auto;
+            width: 72px;
+            height: 72px;
+            background-color: var(--bg-surface-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-accent);
+        }
+        .logout-title {
+            font-size: 1.35rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+        }
+        .logout-subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+        .login-again-btn {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <img th:src="@{/images/logo-48.png}" alt="Yvoke Logo" style="width: 32px; height: 32px;" />
+                <span class="login-logo-text">Yvoke</span>
+            </div>
+            
+            <div class="logout-icon-wrapper">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+            </div>
+            
+            <h2 class="logout-title">You have been signed out</h2>
+            <p class="logout-subtitle">Thank you for using Yvoke. Your session has ended securely.</p>
+            
+            <a th:href="@{/login}" class="btn btn-primary login-again-btn">Sign In Again</a>
+        </div>
+    </div>
+</body>
+</html>

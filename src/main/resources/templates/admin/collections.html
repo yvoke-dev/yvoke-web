@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Collections Management')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('collections')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Collections Management</h1>
+                    <p class="page-subtitle">Configure dynamically registered corpus collections and version tags.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start;">
+                <!-- Collections List -->
+                <div>
+                    <div th:if="${#lists.isEmpty(collections)}" class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 1rem;">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <p style="font-size: 1.1rem; font-weight: 500;">No Collections Configured</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--text-muted);">Create a new collection on the right to get started.</p>
+                    </div>
+
+                    <div th:each="col : ${collections}" class="card animate-fade-in" style="margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                            <div>
+                                <h3 style="font-size: 1.3rem; font-weight: 600; color: var(--color-accent);" th:text="${col.name}">Collection Name</h3>
+                                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.25rem;" th:text="${col.description != null && !col.description.isEmpty() ? col.description : 'No description provided.'}">Description</p>
+                                
+                                <!-- Tags Section -->
+                                <div style="margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+                                    <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-right: 0.25rem;">Tags:</span>
+                                    <div th:each="t : ${col.tags}" class="badge badge-info" style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                        <span th:text="${t}">tag</span>
+                                        <form th:action="@{/admin/collections/remove-tag}" method="post" style="display: inline;">
+                                            <input type="hidden" name="collectionId" th:value="${col.id}" />
+                                            <input type="hidden" name="tag" th:value="${t}" />
+                                            <button type="submit" style="background: none; border: none; padding: 0; color: inherit; cursor: pointer; display: flex; align-items: center;" title="Remove Tag">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <span th:if="${#lists.isEmpty(col.tags)}" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-right: 0.5rem;">None</span>
+                                    <!-- Add Tag Form -->
+                                    <form th:action="@{/admin/collections/add-tag}" method="post" style="display: inline-flex; gap: 0.25rem; align-items: center;">
+                                        <input type="hidden" name="collectionId" th:value="${col.id}" />
+                                        <input type="text" name="tag" class="form-input" placeholder="Add tag..." required style="padding: 0.2rem 0.5rem; font-size: 0.75rem; width: 100px; height: auto;" list="all-tags-list" />
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; height: auto; min-height: 24px; line-height: 1;">+</button>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <!-- Delete Collection Form -->
+                            <form th:action="@{/admin/collections/delete}" method="post" onsubmit="return confirm('Are you sure you want to delete this collection? This will cascade-delete all associated documents, chunks, and knowledge graphs.');">
+                                <input type="hidden" name="name" th:value="${col.name}" />
+                                <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Collection">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- One datalist for every card's "Add tag..." input: it was rendered INSIDE
+                         the collection loop, so a page with N collections emitted N elements with
+                         the same id and the browser bound them all to the first one anyway. -->
+                    <datalist id="all-tags-list">
+                        <option th:each="t : ${allTags}" th:value="${t}"></option>
+                    </datalist>
+
+                <!-- Create Collection Form Card -->
+                <div class="card" style="position: sticky; top: 2rem;">
+                    <h2 class="card-title">Register Collection</h2>
+                    <form th:action="@{/admin/collections}" method="post">
+                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div class="form-group">
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" id="name" name="name" class="form-input" placeholder="e.g. OIM-DB" required />
+                            </div>
+                            <div class="form-group">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea id="description" name="description" class="form-input" placeholder="Describe the purpose of this collection..." style="min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    Create Collection
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

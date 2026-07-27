@@ -1,0 +1,10 @@
+{
+  "name": "yvoke-web-js",
+  "private": true,
+  "type": "module",
+  "description": "Node test tier for the browser-side chat scripts. No runtime dependencies: the browser loads these files directly (marked/DOMPurify/htmx are vendored under src/main/resources/static/js), and the tests use node:test only.",
+  "scripts": {
+    "test": "node --test 'src/test/js/**/*.test.js'",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-exclude='src/test/**' --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=90 --test 'src/test/js/**/*.test.js'"
+  }
+}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${status == 403 ? 'Access Denied' : (status == 404 ? 'Page Not Found' : 'An Error Occurred')} + ' — Yvoke'">Error — Yvoke</title>
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/logo-32.png}">
+    <link rel="icon" type="image/png" sizes="16x16" th:href="@{/images/logo-16.png}">
+    <link rel="stylesheet" th:href="@{/css/index.css}">
+    <style>
+        .error-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--bg-base);
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Subtle glowing background circles */
+        .error-container::before,
+        .error-container::after {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(100px);
+            z-index: 1;
+            opacity: 0.12;
+        }
+
+        .error-container::before {
+            background: var(--color-danger);
+            top: 15%;
+            left: 20%;
+            animation: floatGlow1 8s ease-in-out infinite alternate;
+        }
+
+        .error-container::after {
+            background: var(--color-accent);
+            bottom: 15%;
+            right: 20%;
+            animation: floatGlow2 8s ease-in-out infinite alternate;
+        }
+
+        @keyframes floatGlow1 {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(30px, -20px) scale(1.1); }
+        }
+
+        @keyframes floatGlow2 {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(-30px, 20px) scale(1.1); }
+        }
+
+        .error-card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 500px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            position: relative;
+            z-index: 10;
+            animation: errorCardEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes errorCardEntrance {
+            0% {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .error-icon-wrapper {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background-color: var(--color-danger-dim);
+            color: var(--color-danger);
+            border: 1px solid hsla(355, 78%, 56%, 0.3);
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
+        }
+
+        .error-icon-wrapper.info {
+            background-color: var(--color-accent-dim);
+            color: var(--color-accent);
+            border: 1px solid hsla(172, 90%, 38%, 0.3);
+            box-shadow: 0 0 20px rgba(20, 184, 166, 0.1);
+        }
+
+        .error-code {
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--color-danger), #ff7b7b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -2px;
+        }
+
+        .error-code.info {
+            background: linear-gradient(135deg, var(--color-accent), hsl(190, 90%, 45%));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .error-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            letter-spacing: -0.3px;
+        }
+
+        .error-description {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .error-details-box {
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-bottom: 2rem;
+            text-align: left;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        .error-details-row {
+            display: flex;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-details-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .error-details-label {
+            font-weight: 600;
+            width: 80px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .error-details-value {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .error-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        @media (min-width: 480px) {
+            .error-actions {
+                flex-direction: row;
+                justify-content: center;
+            }
+            .error-actions .btn {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-card">
+            <!-- Icon -->
+            <div class="error-icon-wrapper" th:classappend="${status == 404} ? 'info' : ''">
+                <!-- Lock Icon for 403 -->
+                <svg th:if="${status == 403}" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <!-- Help Circle Icon for 404 -->
+                <svg th:if="${status == 404}" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <!-- Alert Triangle Icon for 500 or others -->
+                <svg th:if="${status != 403 && status != 404}" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </div>
+
+            <!-- Status Code -->
+            <div class="error-code" th:classappend="${status == 404} ? 'info' : ''" th:text="${status != null ? status : '500'}">403</div>
+
+            <!-- Title -->
+            <h1 class="error-title" th:text="${status == 403 ? 'Access Denied' : (status == 404 ? 'Page Not Found' : 'Unexpected Error')}">Access Denied</h1>
+
+            <!-- Description -->
+            <p class="error-description" th:text="${status == 403 ? 'You do not have administrative permissions to view this resource. This area is restricted to administrators only.' : (status == 404 ? 'The page you are looking for does not exist, has been removed, or has had its name changed.' : 'An unexpected error occurred. Please try again later.')}">
+                You do not have administrative permissions to view this resource. This area is restricted to administrators only.
+            </p>
+
+            <!-- Technical Details Box -->
+            <div class="error-details-box">
+                <div class="error-details-row">
+                    <div class="error-details-label">Error:</div>
+                    <div class="error-details-value" th:text="${error != null ? error : 'Forbidden'}">Forbidden</div>
+                </div>
+                <div class="error-details-row" th:if="${path}">
+                    <div class="error-details-label">Path:</div>
+                    <div class="error-details-value" th:text="${path}">/admin</div>
+                </div>
+                <div class="error-details-row" th:if="${message != null && message != '' && message != 'No message available'}">
+                    <div class="error-details-label">Details:</div>
+                    <div class="error-details-value" th:text="${message}">Access is denied</div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="error-actions">
+                <a th:href="@{/chat}" class="btn btn-primary" style="text-decoration: none;">Go to Chat</a>
+                <a th:href="@{/login}" class="btn btn-secondary" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-primary); text-decoration: none;">Return to Login</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

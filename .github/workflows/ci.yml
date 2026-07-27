@@ -1,0 +1,161 @@
+# CI for yvoke-web — see docs/testing-plan.md (Phase 0/1).
+#
+# `test` runs the full unit + integration suite (JaCoCo aggregated) on every push/PR. `e2e` runs the
+# Playwright browser suite (non-blocking until proven stable in CI). Both build the custom Postgres
+# image `yvoke/pgvector-pg_search:pg16-0.24.0` locally (it is NOT in a registry) and load it into the
+# runner's Docker daemon so Testcontainers finds it without a pull.
+#
+# The hermetic test path needs NO secrets: the LLM is mocked and mock auth runs under the `test`
+# Spring profile (activated by PostgresTestContainerInitializer).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit + integration tests (coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build & load the custom Postgres (pgvector + ParadeDB pg_search) image the ITs depend on.
+      # GHA layer cache keeps the ParadeDB .deb download from being repaid on every run.
+      - name: Build pgvector + pg_search Postgres image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker/postgres
+          tags: yvoke/pgvector-pg_search:pg16-0.24.0
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # The JS test tier (node --test, bound to the Maven `test` phase) needs node on PATH.
+      # ubuntu-latest happens to ship one, but pin it so a runner-image change cannot alter or
+      # remove the version the build depends on.
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # -Pit-tests excludes *E2EIT (those run in the e2e job), so this is unit + fast IT only.
+      - name: Build, test (unit + IT) and generate coverage
+        run: ./mvnw --batch-mode --no-transfer-progress verify -Pit-tests
+
+      - name: Upload JaCoCo aggregate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-aggregate
+          path: target/site/jacoco-aggregate
+          if-no-files-found: warn
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+          if-no-files-found: warn
+
+      # OPTIONAL — post the coverage summary as a PR comment. Uses a third-party action; pin to a
+      # digest and verify the tag before enabling. Requires `permissions: pull-requests: write`.
+      #
+      # - name: Comment coverage on PR
+      #   if: github.event_name == 'pull_request'
+      #   uses: madrapps/jacoco-report@<verified-tag-or-sha>
+      #   with:
+      #     paths: ${{ github.workspace }}/target/site/jacoco-aggregate/jacoco.xml
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     title: Code coverage
+      #     min-coverage-overall: 0        # report-only for now; raise once ratcheting (Phase 4)
+      #     min-coverage-changed-files: 0
+
+  e2e:
+    name: Browser end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    needs: test
+    # Non-blocking until the browser suite is proven stable in CI (docs/testing-plan.md Phase 1/2).
+    # Flip to false to make e2e a required gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pgvector + pg_search Postgres image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker/postgres
+          tags: yvoke/pgvector-pg_search:pg16-0.24.0
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # The JS test tier (node --test, bound to the Maven `test` phase) needs node on PATH.
+      # ubuntu-latest happens to ship one, but pin it so a runner-image change cannot alter or
+      # remove the version the build depends on.
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          # Fall back to the last Chromium download on unrelated pom edits (only a version bump
+          # should actually re-download).
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      # Install Chromium + the Linux system libraries it needs (auto-download alone omits the libs).
+      - name: Install Playwright browser + system deps
+        run: >
+          ./mvnw --batch-mode --no-transfer-progress
+          org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.mainClass=com.microsoft.playwright.CLI
+          -Dexec.args="install --with-deps chromium"
+          -Dexec.classpathScope=test
+
+      - name: Run browser e2e tests
+        run: ./mvnw --batch-mode --no-transfer-progress verify -Pe2e-tests -DskipUnitTests=true
+
+      - name: Upload e2e reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: target/failsafe-reports
+          if-no-files-found: ignore

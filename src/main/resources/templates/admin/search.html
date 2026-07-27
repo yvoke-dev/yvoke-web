@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Test Search Console')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('search')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Test Search Console</h1>
+                    <p class="page-subtitle">Configure search parameters, toggle vector & keyword lanes, and inspect live retrieval telemetry.</p>
+                </div>
+            </div>
+
+            <!-- Configuration & Test Panel -->
+            <div class="card">
+                <div class="card-title">Search Configurations</div>
+                <form th:action="@{/admin/search}" method="get" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div style="display: flex; gap: 1rem;">
+                        <div class="form-group" style="flex-grow: 1;">
+                            <label for="query" class="form-label">Search Query</label>
+                            <input type="text" id="query" name="query" th:value="${query}" class="form-input" placeholder="Enter natural language query or keywords..." required>
+                        </div>
+                        <div class="form-group" style="width: 150px;">
+                            <label for="limit" class="form-label">Limit (Top-K)</label>
+                            <input type="number" id="limit" name="limit" th:value="${limit != null ? limit : 8}" class="form-input" min="1" max="50">
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label for="collection" class="form-label">Collection</label>
+                            <select id="collection" name="collection" class="form-select"
+                                    hx-get="/admin/collections/tag-options"
+                                    hx-target="#tag-container"
+                                    hx-trigger="change"
+                                    hx-swap="outerHTML">
+                                <option th:each="col : ${collections}"
+                                        th:value="${col.name}"
+                                        th:text="${col.description != null && !col.description.isEmpty() ? col.name + ' (' + col.description + ')' : col.name}"
+                                        th:selected="${col.name == collection}">
+                                </option>
+                            </select>
+                        </div>
+
+                        <div th:fragment="tag-container" id="tag-container" class="form-group">
+                            <label for="tag" class="form-label">Tag</label>
+                            <select id="tag" name="tag" class="form-select">
+                                <option value="" th:selected="${tag == null || tag == ''}">All Tags / No Filter</option>
+                                <option th:each="v : ${tags}" th:value="${v}" th:text="${v}" th:selected="${v == tag}"></option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 3rem; background-color: var(--bg-base); padding: 1rem 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <input type="checkbox" id="semantic" name="semantic" th:checked="${semantic == null ? true : semantic}" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-accent);">
+                            <label for="semantic" style="font-weight: 500; cursor: pointer;">Enable Vector Semantic Lane</label>
+                        </div>
+
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <input type="checkbox" id="fulltext" name="fulltext" th:checked="${fulltext == null ? true : fulltext}" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-accent);">
+                            <label for="fulltext" style="font-weight: 500; cursor: pointer;">Enable BM25 Fulltext Lane</label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="btn btn-primary">
+                            Run Retrieval Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Results Section -->
+            <div class="search-console-grid" th:if="${results != null}">
+                
+                <!-- Chunks (Left) -->
+                <div>
+                    <div class="card">
+                        <div class="card-title">Retrieved Chunks</div>
+                        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                            <div th:each="res, stat : ${results}" class="card" style="margin-bottom: 0; background-color: var(--bg-surface-elevated); padding: 1.5rem; border-color: var(--border-color-hover);">
+                                
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <span class="mono-text" style="font-weight: 700; color: var(--color-accent); font-size: 1.1rem;" th:text="'#' + ${stat.count}">#1</span>
+                                        <a th:href="@{/admin/chunks/{id}(id=${res.id()})}" class="mono-text" th:text="${#strings.substring(res.id().toString(), 0, 8)}" style="color: var(--text-secondary); text-decoration: none; border-bottom: 1px dashed var(--text-muted);">id</a>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                        <!-- Lane badge -->
+                                        <span class="badge badge-info" th:if="${res.telemetry().inSem() && !res.telemetry().inFt()}">Semantic</span>
+                                        <span class="badge badge-warning" th:if="${!res.telemetry().inSem() && res.telemetry().inFt()}">Fulltext</span>
+                                        <span class="badge badge-success" th:if="${res.telemetry().inSem() && res.telemetry().inFt()}">Both Lanes</span>
+                                        
+                                        <!-- Score badge -->
+                                        <span class="badge badge-muted mono-text" th:text="'Score: ' + ${#numbers.formatDecimal(res.score(), 1, 4)}">Score: 0.00</span>
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom: 1rem;">
+                                    <div class="mono-text" style="font-size: 0.8rem; color: var(--color-accent); font-weight: 600;" 
+                                         th:text="${#lists.isEmpty(res.headingPath()) ? '/' : #strings.listJoin(res.headingPath(), ' > ')}">/</div>
+                                    <div style="font-weight: 600; font-size: 1.05rem;" th:text="${res.heading()}">Heading</div>
+                                    <div class="mono-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                        Document: 
+                                        <a th:if="${res.documentTitle() != null and res.documentTitle().startsWith('http')}" th:href="${res.documentTitle()}" target="_blank" style="color: var(--color-accent); text-decoration: underline;" th:text="${res.documentTitle()}"></a>
+                                        <span th:unless="${res.documentTitle() != null and res.documentTitle().startsWith('http')}" th:text="${res.documentTitle()}"></span>
+                                        <span th:text="' (' + ${res.kind()} + ')'"></span>
+                                    </div>
+                                </div>
+
+                                <div style="background-color: var(--bg-base); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem; max-height: 250px; overflow-y: auto; font-size: 0.9rem; white-space: pre-wrap; line-height: 1.6;" 
+                                     th:text="${res.text()}">Chunk Text</div>
+
+                            </div>
+                            <div th:if="${#lists.isEmpty(results)}" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                No results returned for the query.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Telemetry Stats (Right) -->
+                <div class="telemetry-card">
+                    <div class="card-title" style="margin-bottom: 1.5rem;">Retrieval Telemetry</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
+                        <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Candidate Pools</h4>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Semantic Candidates</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryPool.get('sem')}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Full-text Candidates</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryPool.get('ft')}">0</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
+                        <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Lane Composition</h4>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Total Fused (n)</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryFinal.get('n')}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Sourced by Both Lanes</span>
+                            <span class="telemetry-value mono-text text-success" th:text="${telemetryFinal.get('both')}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Semantic Only</span>
+                            <span class="telemetry-value mono-text text-info" th:text="${telemetryFinal.get('sem_only')}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Full-text Only</span>
+                            <span class="telemetry-value mono-text text-warning" th:text="${telemetryFinal.get('ft_only')}">0</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Reranker Telemetry</h4>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Reranker Promotions</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryRerank.get('promotions')}">0</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">Top-1 Changed?</span>
+                            <span class="telemetry-value">
+                                <span class="badge" th:classappend="${telemetryRerank.get('top1_changed') == true ? 'badge-warning' : 'badge-success'}" th:text="${telemetryRerank.get('top1_changed')}">False</span>
+                            </span>
+                        </div>
+                        <div class="telemetry-item" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
+                            <span class="telemetry-label">Average Position Displacement</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryRerank.get('avg_disp')}">0.0</span>
+                        </div>
+                        <div class="telemetry-item" style="flex-direction: column; align-items: flex-start; border-bottom: none; gap: 0.25rem;">
+                            <span class="telemetry-label">Pre-Rerank RRF Rank Order</span>
+                            <span class="telemetry-value mono-text" th:text="${telemetryRerank.get('rrf_order')}" style="word-break: break-all; font-size: 0.85rem; color: var(--text-secondary);">[]</span>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </main>
+    </div>
+</body>
+</html>

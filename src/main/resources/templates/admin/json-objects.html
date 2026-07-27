@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('JSON Objects')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('json-objects')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">
+                        JSON Objects
+                    </h1>
+                    <p class="page-subtitle">Browse and manage structured JSON objects in your collections.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div class="kg-grid">
+                <!-- Search Panel (Left) -->
+                <div class="kg-search-panel">
+                    <div class="card">
+                        <div class="card-title">JSON Objects</div>
+                        <form th:action="@{/admin/json-objects}" method="get" id="filterForm" style="display: flex; flex-direction: column; gap: 1rem;">
+                            
+                            <div class="form-group">
+                                <label for="collectionSelect" class="form-label">Collection</label>
+                                <select id="collectionSelect" name="collection" class="form-select" onchange="document.getElementById('filterForm').submit()">
+                                    <option th:each="c : ${collections}" th:value="${c.name}" th:text="${c.name}" th:selected="${c.name == selectedCollection}"></option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" th:if="${tags != null && !tags.isEmpty()}">
+                                <label for="tagSelect" class="form-label">Tag</label>
+                                <select id="tagSelect" name="tag" class="form-select" onchange="document.getElementById('filterForm').submit()">
+                                    <option value="">All Tags</option>
+                                    <option th:each="t : ${tags}" th:value="${t}" th:text="${t}" th:selected="${t == selectedTag}"></option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.25rem;">
+                                    <label for="searchInput" class="form-label" style="margin-bottom: 0;">Search JSON Path</label>
+                                    <button type="button" class="btn btn-secondary" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="openFilterBuilder()">Build Filter</button>
+                                </div>
+                                <input type="text" id="searchInput" name="search" th:value="${searchQuery}" class="form-input" placeholder="e.g. $.module ? (@ == &quot;AAD&quot;)">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="displayField" class="form-label">Display Field (Optional)</label>
+                                <input type="text" id="displayField" name="displayField" th:value="${displayField}" list="displayFieldSuggestions" class="form-input" placeholder="e.g. name, Customer.id">
+                                <datalist id="displayFieldSuggestions" th:if="${schemaFields != null && !schemaFields.isEmpty()}">
+                                    <option th:each="field : ${schemaFields}" th:value="${field}"></option>
+                                </datalist>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">Apply</button>
+                            <a th:href="@{/admin/json-objects(collection=${selectedCollection})}" class="btn btn-secondary w-100">Clear Search</a>
+                        </form>
+
+                        <div class="alert alert-error mb-4" th:if="${error != null}" th:text="${error}"></div>
+
+                        <div class="mt-4" th:if="${jsonObjects != null}">
+                            <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                                Results (<span th:text="${totalElements}">0</span>)
+                            </div>
+                            <ul class="kg-results-list">
+                                <li th:each="obj : ${jsonObjects}" class="kg-result-item"
+                                    th:classappend="${selectedObject != null && selectedObject == obj.id ? 'active' : ''}">
+                                    <a th:href="@{/admin/json-objects(collection=${selectedCollection}, tag=${selectedTag}, search=${searchQuery}, displayField=${displayField}, page=${currentPage}, selectedObject=${obj.id})}">
+                                        <div class="kg-result-info">
+                                            <div class="kg-result-name" th:if="${displayField != null && !displayField.isBlank() && obj.getDisplayValue(displayField) != null}" th:text="${obj.getDisplayValue(displayField)}">Value</div>
+                                            <div class="kg-result-name" style="font-family: monospace;" th:unless="${displayField != null && !displayField.isBlank() && obj.getDisplayValue(displayField) != null}" th:text="${obj.id}">UUID</div>
+                                            <div class="kg-result-kind" style="font-family: monospace;"
+                                                 th:if="${displayField != null && !displayField.isBlank() && obj.getDisplayValue(displayField) != null}"
+                                                 th:text="${obj.id}">UUID</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li th:if="${#lists.isEmpty(jsonObjects)}" class="kg-result-item" style="color: var(--text-secondary); font-size: 0.9rem;">
+                                    No objects found.
+                                </li>
+                            </ul>
+
+                            <!-- Browse pagination -->
+                            <div th:if="${totalPages > 1}" style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; font-size: 0.85rem;">
+                                <a th:if="${currentPage > 0}"
+                                   th:href="@{/admin/json-objects(collection=${selectedCollection}, tag=${selectedTag}, search=${searchQuery}, displayField=${displayField}, page=${currentPage - 1}, selectedObject=${selectedObject})}"
+                                   class="btn btn-secondary" style="padding: 0.4rem 0.75rem;">&larr; Prev</a>
+                                <span th:unless="${currentPage > 0}"></span>
+                                <span style="color: var(--text-secondary);">Page <span th:text="${currentPage + 1}">1</span> / <span th:text="${totalPages}">1</span></span>
+                                <a th:if="${currentPage + 1 < totalPages}"
+                                   th:href="@{/admin/json-objects(collection=${selectedCollection}, tag=${selectedTag}, search=${searchQuery}, displayField=${displayField}, page=${currentPage + 1}, selectedObject=${selectedObject})}"
+                                   class="btn btn-secondary" style="padding: 0.4rem 0.75rem;">Next &rarr;</a>
+                                <span th:unless="${currentPage + 1 < totalPages}"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Details Panel (Right) -->
+                <div class="kg-detail-layout">
+                    <!-- Schema Panel (collapsible at the top) -->
+                    <details class="card" style="margin-bottom: 1.5rem;" th:if="${schemaJson != null}">
+                        <summary style="cursor: pointer; font-weight: 600; font-size: 1.1rem; outline: none; user-select: none;">
+                            Collection Schema 
+                            <span th:if="${schemaSource == 'inferred'}" style="font-size: 0.75rem; background: var(--color-border); padding: 0.1rem 0.5rem; border-radius: 12px; margin-left: 0.5rem; font-weight: 500;">Inferred</span>
+                            <span th:if="${schemaSource == 'manual'}" style="font-size: 0.75rem; background: var(--color-primary-dim); color: var(--color-primary); padding: 0.1rem 0.5rem; border-radius: 12px; margin-left: 0.5rem; font-weight: 500;">Manual</span>
+                        </summary>
+                        
+                        <div style="margin-top: 1rem;">
+                            <form th:action="@{/admin/json-objects/schema/edit}" method="post">
+                                <input type="hidden" name="collection" th:value="${selectedCollection}" />
+                                <input type="hidden" name="tag" th:value="${selectedTag}" th:if="${selectedTag != null}" />
+                                <div class="form-group">
+                                    <textarea name="schemaJson" class="form-input" rows="15" style="font-family: monospace; white-space: pre; background: var(--color-bg); font-size: 0.85rem;" th:text="${schemaJson}"></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-sm">Save Schema</button>
+                            </form>
+                            <form th:action="@{/admin/json-objects/schema/rebuild}" method="post" style="margin-top: 0.5rem;"
+                                onsubmit="return confirm('Re-infer the schema from all current objects? This replaces the inferred schema and drops fields/types no longer present in the data.');">
+                                <input type="hidden" name="collection" th:value="${selectedCollection}" />
+                                <input type="hidden" name="tag" th:value="${selectedTag}" th:if="${selectedTag != null}" />
+                                <button type="submit" class="btn btn-secondary btn-sm">Rebuild from objects</button>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.5rem;">Re-infers from current data; removes stale fields/types. Skipped for manual schemas.</span>
+                            </form>
+                        </div>
+                    </details>
+
+                    <!-- If no object selected -->
+                    <div class="card" th:if="${activeObject == null}" style="text-align: center; padding: 4rem; color: var(--text-secondary);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem; color: var(--text-muted);"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M2 15h10"/><path d="M9 18l3-3-3-3"/></svg>
+                        <h3 style="font-weight: 600; margin-bottom: 0.25rem;">No Object Selected</h3>
+                        <p>Select a JSON object on the left to view its contents.</p>
+                    </div>
+
+                    <!-- Object details -->
+                    <div th:if="${activeObject != null}" class="animate-fade-in" style="display: flex; flex-direction: column; gap: 2rem;">
+                        <div class="card" style="margin-bottom: 0;">
+                            <div class="card-title">
+                                <div>
+                                    <span>JSON Object Details</span>
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 1rem; margin-bottom: 2rem;">
+                                <div style="color: var(--text-secondary); font-weight: 500;">ID:</div>
+                                <div style="font-family: monospace;" th:text="${activeObject.id}">UUID</div>
+                                
+                                <div style="color: var(--text-secondary); font-weight: 500;">Source File:</div>
+                                <div th:text="${activeObject.sourceFile}">file.json</div>
+                                
+                                <div style="color: var(--text-secondary); font-weight: 500;">Collection:</div>
+                                <div>
+                                    <span class="badge badge-info" th:text="${selectedCollection}">Collection</span>
+                                </div>
+                                
+                                <div style="color: var(--text-secondary); font-weight: 500;">Tags:</div>
+                                <div>
+                                    <span th:each="t : ${activeObject.tags}" class="badge" style="background-color: var(--border-color); color: var(--text-primary); margin-right: 0.25rem;" th:text="${t}">Tag</span>
+                                    <span th:if="${#lists.isEmpty(activeObject.tags)}" style="color: var(--text-muted); font-style: italic;">none</span>
+                                </div>
+                                
+                                <div style="color: var(--text-secondary); font-weight: 500;">Imported At:</div>
+                                <div th:text="${#temporals.format(activeObject.createdAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC'}">2026-07-01</div>
+                            </div>
+
+                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.5rem;">Raw JSON Content</div>
+                            <pre class="json-view" th:text="${formattedData}">{}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <style>
+        #filterBuilderDialog::backdrop {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        .filter-group {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+        .filter-group-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .filter-group-children {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            padding-left: 1rem;
+            border-left: 2px solid var(--border-color);
+        }
+    </style>
+    <dialog id="filterBuilderDialog" style="position: fixed; padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-surface); color: var(--text-primary); max-width: 800px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; max-height: 90vh; overflow-y: auto;">
+        <h3 style="margin-top: 0; margin-bottom: 0.5rem;">Filter Builder</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Construct a search filter. This will automatically build a JSONPath query.</p>
+        
+        <datalist id="schemaFieldsList">
+            <option th:each="field : ${schemaFields}" th:value="${field}"></option>
+        </datalist>
+
+        <div id="filterRulesContainer" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+            <!-- Root group will be injected here -->
+        </div>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('filterBuilderDialog').close()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="applyFilterBuilder()">Apply Filter</button>
+        </div>
+    </dialog>
+
+    <template id="filterGroupTemplate">
+        <div class="filter-group">
+            <div class="filter-group-header">
+                <select class="form-select group-logic" style="width: 80px; font-weight: 600;">
+                    <option value="&&">AND</option>
+                    <option value="||">OR</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addGroupRule(this)">+ Condition</button>
+                <button type="button" class="btn btn-secondary btn-sm btn-add-group" onclick="addGroupGroup(this)">+ Group</button>
+                <div style="flex-grow: 1;"></div>
+                <button type="button" class="btn btn-danger btn-sm btn-remove-group" onclick="this.closest('.filter-group').remove()">X</button>
+            </div>
+            <div class="filter-group-children">
+                <!-- Children go here -->
+            </div>
+        </div>
+    </template>
+
+    <template id="filterRuleTemplate">
+        <div class="filter-rule" style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="text" list="schemaFieldsList" class="form-input rule-field" style="flex: 2;" placeholder="Field (e.g. change, module)" oninput="updateRuleValueInput(this)">
+            <select class="form-select rule-operator" style="flex: 1.5;">
+                <option value="==">Equals (==)</option>
+                <option value="!=">Not Equals (!=)</option>
+                <option value="contains">Contains</option>
+                <option value="starts with">Starts With</option>
+                <option value=">">Greater Than (&gt;)</option>
+                <option value="<">Less Than (&lt;)</option>
+            </select>
+            <div class="rule-value-container" style="flex: 2; display: flex;">
+                <input type="text" class="form-input rule-value" style="width: 100%;" placeholder="Value...">
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.35rem 0.65rem;" onclick="this.closest('.filter-rule').remove()">X</button>
+        </div>
+    </template>
+
+    <!-- The filter DSL lives in a tested module (src/test/js/jsonpath-filter.test.js). It is
+         exposed on window rather than imported directly because the classic script below must stay
+         classic: the cloned <template> rows above carry inline on*= handlers that call its
+         functions as globals, and those break under module scope. -->
+    <script type="module" th:src="@{/js/admin/jsonpath-filter-bootstrap.js}"></script>
+
+    <script th:inline="javascript">
+        const schemaStr = /*[[${schemaJson}]]*/ '{}';
+        let schema = {};
+        try {
+            schema = schemaStr ? JSON.parse(schemaStr) : {};
+        } catch (e) {
+            console.error('Failed to parse schemaJson', e);
+        }
+
+        function openFilterBuilder() {
+            const rulesContainer = document.getElementById('filterRulesContainer');
+            rulesContainer.innerHTML = '';
+            const searchInput = document.getElementById('searchInput').value.trim();
+            
+            let parsedGroup = null;
+            if (searchInput.startsWith('$ ? (') && searchInput.endsWith(')')) {
+                const inner = searchInput.substring(5, searchInput.length - 1);
+                parsedGroup = parseJsonPath(inner);
+            }
+            
+            if (parsedGroup && parsedGroup.type === 'group') {
+                rulesContainer.appendChild(renderGroup(parsedGroup, 1, true));
+            } else {
+                // Default empty root group
+                rulesContainer.appendChild(renderGroup({ logic: '&&', children: [ { type: 'rule', field: '', operator: '==', value: '' } ] }, 1, true));
+            }
+            
+            document.getElementById('filterBuilderDialog').showModal();
+        }
+
+        function renderGroup(groupData, depth, isRoot) {
+            const template = document.getElementById('filterGroupTemplate');
+            const clone = template.content.cloneNode(true);
+            const groupNode = clone.querySelector('.filter-group');
+            
+            groupNode.dataset.depth = depth;
+            
+            if (isRoot) {
+                groupNode.querySelector('.btn-remove-group').style.display = 'none';
+            }
+            
+            if (depth >= 3) {
+                groupNode.querySelector('.btn-add-group').style.display = 'none';
+            }
+            
+            groupNode.querySelector('.group-logic').value = groupData.logic || '&&';
+            
+            const childrenContainer = groupNode.querySelector('.filter-group-children');
+            
+            if (groupData.children) {
+                groupData.children.forEach(child => {
+                    if (child.type === 'group') {
+                        childrenContainer.appendChild(renderGroup(child, depth + 1, false));
+                    } else if (child.type === 'rule') {
+                        childrenContainer.appendChild(renderRule(child));
+                    }
+                });
+            }
+            
+            return groupNode;
+        }
+
+        function renderRule(ruleData) {
+            const template = document.getElementById('filterRuleTemplate');
+            const clone = template.content.cloneNode(true);
+            const ruleNode = clone.querySelector('.filter-rule');
+            
+            const fieldInput = ruleNode.querySelector('.rule-field');
+            fieldInput.value = ruleData.field || '';
+            
+            const operatorSelect = ruleNode.querySelector('.rule-operator');
+            operatorSelect.value = ruleData.operator || '==';
+            
+            updateRuleValueInput(fieldInput, ruleData.value || '');
+            
+            return ruleNode;
+        }
+
+        function addGroupRule(btn) {
+            const childrenContainer = btn.closest('.filter-group').querySelector('.filter-group-children');
+            childrenContainer.appendChild(renderRule({ type: 'rule', field: '', operator: '==', value: '' }));
+        }
+
+        function addGroupGroup(btn) {
+            const group = btn.closest('.filter-group');
+            const depth = parseInt(group.dataset.depth || "1", 10);
+            if (depth >= 3) return;
+            
+            const childrenContainer = group.querySelector('.filter-group-children');
+            childrenContainer.appendChild(renderGroup({ type: 'group', logic: '&&', children: [{ type: 'rule', field: '', operator: '==', value: '' }] }, depth + 1, false));
+        }
+
+        function updateRuleValueInput(fieldInput, initialValue = '') {
+            const fieldName = fieldInput.value.trim();
+            const ruleRow = fieldInput.closest('.filter-rule');
+            const valueContainer = ruleRow.querySelector('.rule-value-container');
+            
+            let hasEnum = false;
+            let enumValues = [];
+            if (schema && schema.properties && schema.properties[fieldName] && schema.properties[fieldName].enum) {
+                hasEnum = true;
+                enumValues = schema.properties[fieldName].enum;
+            }
+            
+            valueContainer.innerHTML = '';
+            if (hasEnum) {
+                const select = document.createElement('select');
+                select.className = 'form-select rule-value';
+                select.style.width = '100%';
+                select.innerHTML = '<option value="">Select a value...</option>' + 
+                                   enumValues.map(val => `<option value="${val}">${val}</option>`).join('');
+                select.value = initialValue;
+                valueContainer.appendChild(select);
+            } else {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-input rule-value';
+                input.style.width = '100%';
+                input.placeholder = 'Value...';
+                input.value = initialValue;
+                
+                if (fieldName) {
+                    const datalistId = 'dl_' + fieldName.replace(/[^a-zA-Z0-9]/g, '_');
+                    input.setAttribute('list', datalistId);
+                    
+                    if (!document.getElementById(datalistId)) {
+                        const datalist = document.createElement('datalist');
+                        datalist.id = datalistId;
+                        document.body.appendChild(datalist);
+                        
+                        const collection = document.getElementById('collectionSelect').value;
+                        fetch(`/admin/json-objects/distinct-values?collection=${encodeURIComponent(collection)}&fieldName=${encodeURIComponent(fieldName)}`)
+                            .then(res => res.json())
+                            .then(values => {
+                                datalist.innerHTML = values.map(v => `<option value="${v.replace(/"/g, '&quot;')}"></option>`).join('');
+                            })
+                            .catch(err => console.error('Failed to load distinct values', err));
+                    }
+                }
+                
+                valueContainer.appendChild(input);
+            }
+        }
+
+        function applyFilterBuilder() {
+            const rootGroup = document.querySelector('#filterRulesContainer > .filter-group');
+            if (!rootGroup) return;
+            
+            const rootData = extractGroupData(rootGroup);
+            const conditionString = buildJsonPath(rootData);
+            
+            if (conditionString) {
+                document.getElementById('searchInput').value = `$ ? (${conditionString})`;
+            } else {
+                document.getElementById('searchInput').value = '';
+            }
+            
+            document.getElementById('filterBuilderDialog').close();
+            if (document.getElementById('searchInput').value) {
+                document.getElementById('filterForm').submit();
+            }
+        }
+        
+
+        // Thin delegates to the tested module (see the module script above). `schema` is this
+        // page's Thymeleaf-injected state; the module takes it as a parameter.
+        function getFieldType(fieldPath) {
+            return window.JsonPathFilter.getFieldType(schema, fieldPath);
+        }
+
+        function buildJsonPath(groupData) {
+            return window.JsonPathFilter.build(groupData, schema);
+        }
+
+        function parseJsonPath(expr) {
+            return window.JsonPathFilter.parse(expr);
+        }
+
+        function extractGroupData(groupNode) {
+            const logic = groupNode.querySelector('.group-logic').value;
+            const children = [];
+            const childrenNodes = groupNode.querySelector('.filter-group-children').children;
+            
+            for (let i = 0; i < childrenNodes.length; i++) {
+                const node = childrenNodes[i];
+                if (node.classList.contains('filter-group')) {
+                    const groupData = extractGroupData(node);
+                    if (groupData.children.length > 0) {
+                        children.push(groupData);
+                    }
+                } else if (node.classList.contains('filter-rule')) {
+                    const field = node.querySelector('.rule-field').value.trim();
+                    const operator = node.querySelector('.rule-operator').value;
+                    const value = node.querySelector('.rule-value').value.trim();
+                    if (field && value) {
+                        children.push({ type: 'rule', field, operator, value });
+                    }
+                }
+            }
+            return { type: 'group', logic, children };
+        }
+
+
+    </script>
+</body>
+</html>

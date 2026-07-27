@@ -1,0 +1,215 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # SEC-14: block the session cookie from riding along on cross-site requests (CSRF defence
+        # for the CSRF-disabled API chains) and from JavaScript. 'lax' (not 'strict') is required so
+        # the OAuth2 login redirect back from the IdP still carries the session. The Secure flag is
+        # applied automatically by the container when the request is HTTPS (prod runs behind a
+        # TLS-terminating proxy with forward-headers-strategy=framework), so it is left to that
+        # mechanism rather than hardcoded — which would break plain-HTTP local development.
+        same-site: lax
+        http-only: true
+
+spring:
+  application:
+    name: yvoke
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  threads:
+    virtual:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+  security:
+    oauth2:
+      client:
+        registration:
+          entra:
+            client-id: ${ENTRA_CLIENT_ID:placeholder-client-id}
+            client-secret: ${ENTRA_CLIENT_SECRET:placeholder-client-secret}
+            scope:
+              - openid
+              - profile
+              - email
+              - offline_access
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            provider: entra
+        provider:
+          entra:
+            authorization-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/oauth2/v2.0/authorize
+            token-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/oauth2/v2.0/token
+            jwk-set-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/discovery/v2.0/keys
+            user-info-uri: https://graph.microsoft.com/oidc/userinfo
+            user-name-attribute: sub
+      resourceserver:
+        jwt:
+          jwk-set-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/discovery/v2.0/keys
+          issuer-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      # Cap any single statement so a pathological query/lock-wait cannot hold a pooled connection
+      # indefinitely (the pool is shared by web, worker, and MCP traffic).
+      connection-init-sql: "SET statement_timeout = '60s'"
+  ai:
+    model:
+      chat: none
+      embedding: none
+    mcp:
+      server:
+        enabled: true
+        name: "Yvoke"
+        version: "1.0.0"
+        protocol: STREAMABLE
+        stdio: false
+        streamable-http:
+          mcp-endpoint: "/mcp"
+        annotation-scanner:
+          enabled: false
+        capabilities:
+          tool: true
+          prompt: true
+
+management:
+  server:
+    port: 9090
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: when-authorized
+app:
+  upload-dir: ${APP_UPLOADS_DIR:uploads}
+  security:
+    mock: ${APP_SECURITY_MOCK:false}
+    api-key: ${APP_SECURITY_API_KEY:dev-key-12345}
+    # Key for at-rest encryption of stored secrets (e.g. the Confluence API token). When unset,
+    # secrets are stored in plaintext (a warning is logged at startup). Set in all real environments.
+    secret-key: ${APP_SECRET_KEY:}
+    # Per-deployment KDF salt (hex). SEC-15: there is deliberately NO shared default — every
+    # environment that sets a secret-key must also set its own APP_SECRET_SALT. Changing it (or the
+    # key) invalidates previously encrypted secrets, which must then be re-encrypted.
+    secret-salt: ${APP_SECRET_SALT:}
+    roles:
+      admin-claim: ${APP_SECURITY_ADMIN_CLAIM:Admin}
+      user-claim: ${APP_SECURITY_USER_CLAIM:User}
+    mcp:
+      allowed-audience: ${APP_SECURITY_MCP_AUDIENCE:api://oim-kb}
+      required-scope: ${APP_SECURITY_MCP_SCOPE:api://oim-kb/mcp.read}
+      resource-url: ${APP_SECURITY_MCP_RESOURCE_URL:http://localhost:8080/mcp}
+      authorization-server-url: ${APP_SECURITY_MCP_AUTHORIZATION_SERVER_URL:https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0}
+  ai:
+    provider: ${AI_PROVIDER:cloudflare-gemini}
+    openrouter:
+      base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+      api-key: ${OPENROUTER_API_KEY:placeholder-openrouter-api-key}
+    gemini:
+      base-url: ${GEMINI_API_BASE:https://generativelanguage.googleapis.com}
+      api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:placeholder-gemini-api-key}}
+      enable-thinking: true
+      thinking-level: ${GEMINI_THINKING_LEVEL:medium}
+    cloudflare-gemini:
+      account-id: ${CLOUDFLARE_ACCOUNT_ID:placeholder-cf-account-id}
+      gateway-id: ${CLOUDFLARE_GATEWAY_ID:placeholder-cf-gateway-id}
+      gateway-token: ${CLOUDFLARE_GATEWAY_TOKEN:placeholder-cf-gateway-token}
+      api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:placeholder-gemini-api-key}}
+      enable-thinking: true
+      thinking-level: ${GEMINI_THINKING_LEVEL:medium}
+    rag:
+      max-iterations: ${APP_AI_RAG_MAX_ITERATIONS:20}
+      max-tokens: 16384
+      temperature: 0.0
+      default-prompt-name: ${RAG_DEFAULT_PROMPT_NAME:default-chat}
+      thinking-level: ${RAG_THINKING_LEVEL:medium}
+    kg:
+      model: ${KG_MODEL:gemini-3.1-flash-lite}
+      max-tokens: 4096
+      temperature: 0.0
+      concurrency: ${KG_CONCURRENCY:8}
+      max-attempts: ${KG_MAX_ATTEMPTS:2}
+      thinking-level: ${KG_THINKING_LEVEL:low}
+    summarize:
+      model: ${SUMMARIZE_MODEL:gemini-3.1-flash-lite}
+      max-tokens: 1000
+      temperature: 0.2
+      concurrency: ${SUMMARIZE_CONCURRENCY:8}
+      thinking-level: ${SUMMARIZE_THINKING_LEVEL:low}
+    embedding:
+      base-url: ${VOYAGE_API_BASE:https://api.voyageai.com/v1}
+      api-key: ${VOYAGE_API_KEY:placeholder-voyage-api-key}
+      model: ${EMBEDDING_MODEL:voyage-4-large}
+    ranking:
+      base-url: ${VOYAGE_API_BASE:https://api.voyageai.com/v1}
+      api-key: ${VOYAGE_API_KEY:placeholder-voyage-api-key}
+      model: ${RERANK_MODEL:rerank-2.5}
+  retrieval:
+    default-limit: 10
+    log-query-max-chars: 200
+    semantic-limit-multiplier: 1.5
+    rrf:
+      k: 60
+      semantic-weight: 1.0
+      fulltext-weight: 1.0
+      fulltext-limit-cap: 30
+  worker:
+    # Background ingestion job worker (M10). Concurrency default 4 is the proven-safe number.
+    enabled: true
+    concurrency: 4
+    poll-interval: 2s
+  confluence:
+    # Backoff for the Confluence body fetch: a full-space crawl issues one request per page at
+    # `app.worker.concurrency`, so HTTP 429 is expected. `Retry-After` wins when the server sends
+    # it, capped by max-backoff-ms so a hostile/large value cannot park a worker thread.
+    retry:
+      max-attempts: ${APP_CONFLUENCE_RETRY_MAX_ATTEMPTS:4}
+      initial-backoff-ms: ${APP_CONFLUENCE_RETRY_INITIAL_BACKOFF_MS:1000}
+      max-backoff-ms: ${APP_CONFLUENCE_RETRY_MAX_BACKOFF_MS:30000}
+  # SEC-03: per-principal token-bucket rate limiting for the generation/ingest endpoints. Each
+  # principal may make up to `capacity` such requests per `refill-period-seconds` before receiving 429.
+  rate-limit:
+    enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    capacity: ${APP_RATE_LIMIT_CAPACITY:20}
+    refill-period-seconds: ${APP_RATE_LIMIT_REFILL_SECONDS:60}
+  generation:
+    # PRF-15: app-wide cap on concurrently-running SSE generations. Excess requests get 429 until a
+    # slot frees. Set to 0 to disable.
+    max-concurrent: ${APP_GENERATION_MAX_CONCURRENT:64}
+  chat:
+    enabled: ${APP_CHAT_ENABLED:true}
+    allowed-models: "${ALLOWED_MODELS:gemini-3.6-flash}"
+    playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
+    cost-explorer:
+      # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
+      # cannot materialize the entire llm_call_logs table into heap.
+      max-rows: ${APP_CHAT_COST_EXPLORER_MAX_ROWS:5000}
+
+rest-client:
+  connect-timeout-ms: 10000
+  read-timeout-ms: 600000
+
+logging:
+  level:
+    root: INFO
+    "[de.palsoftware.yvoke]": INFO

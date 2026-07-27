@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Agent Runs')}"></head>
+<body>
+    <div class="admin-layout">
+        <aside th:replace="~{admin/layout :: sidebar('agent-runs')}"></aside>
+
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Agent Runs</h1>
+                    <p class="page-subtitle">Multi-agent orchestrator runs — orchestrator, specialists and reviewer. Read-only.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">Recent runs</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Profile</th>
+                                <th>Status</th>
+                                <th>Rounds</th>
+                                <th>Total tokens</th>
+                                <th>Conversation</th>
+                                <th>Trace</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="run : ${runs}">
+                                <td class="mono-text" th:text="${run.startedAt}"></td>
+                                <td><span class="badge badge-info" th:text="${run.profileName}"></span></td>
+                                <td>
+                                    <span class="badge"
+                                          th:classappend="${run.status == 'done' ? 'badge-success' : (run.status == 'error' ? 'badge-danger' : (run.status == 'cancelled' ? 'badge-warning' : 'badge-muted'))}"
+                                          th:text="${run.status}"></span>
+                                </td>
+                                <td th:text="${run.reviewRounds}"></td>
+                                <td th:text="${run.totalTokens}"></td>
+                                <td>
+                                    <a th:href="@{/chat/{id}(id=${run.conversationId})}" target="_blank"
+                                       class="mono-text" th:text="${run.conversationId}"
+                                       style="color: var(--color-accent); text-decoration: none; font-weight: 600;"></a>
+                                </td>
+                                <td>
+                                    <a th:href="@{/admin/agent-runs/{id}(id=${run.id})}" class="btn btn-secondary">View trace</a>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(runs)}">
+                                <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No agent runs yet. Select a multi-agent profile in the chat and ask a question.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

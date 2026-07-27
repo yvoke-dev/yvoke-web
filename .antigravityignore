@@ -1,0 +1,56 @@
+# ============================================================
+# .antigravityignore — yvoke-web
+# Controls which files are included in the Antigravity AI corpus.
+# Syntax follows .gitignore conventions.
+# ============================================================
+
+# ── Build output ────────────────────────────────────────────
+target/
+out/
+bin/
+
+# ── Compiled / binary artefacts ─────────────────────────────
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# ── Secrets & environment config ────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+
+# ── Maven wrapper binaries ───────────────────────────────────
+mvnw
+mvnw.cmd
+.mvn/wrapper/maven-wrapper.jar
+
+# ── IDE / editor noise ──────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.springBeans
+.sts4-cache/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── Docker / CI / Git internals ─────────────────────────────
+.git/
+.github/
+# Dockerfile
+# docker-compose*.yml
+# docker/
+.antigravity/scripts/

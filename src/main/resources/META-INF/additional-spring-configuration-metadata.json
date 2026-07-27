@@ -1,0 +1,415 @@
+{
+  "groups": [
+    {
+      "name": "app",
+      "type": "java.lang.Object",
+      "description": "Yvoke custom application configurations."
+    },
+    {
+      "name": "app.security",
+      "type": "java.lang.Object",
+      "description": "Security settings."
+    },
+    {
+      "name": "app.security.roles",
+      "type": "java.lang.Object",
+      "description": "Security roles mappings."
+    },
+    {
+      "name": "app.security.mcp",
+      "type": "java.lang.Object",
+      "description": "Model Context Protocol (MCP) security details."
+    },
+    {
+      "name": "app.ai",
+      "type": "java.lang.Object",
+      "description": "General AI services and model configuration."
+    },
+    {
+      "name": "app.ai.openrouter",
+      "type": "java.lang.Object",
+      "description": "OpenRouter AI provider settings."
+    },
+    {
+      "name": "app.ai.gemini",
+      "type": "java.lang.Object",
+      "description": "Google Gemini AI provider settings."
+    },
+    {
+      "name": "app.ai.rag",
+      "type": "java.lang.Object",
+      "description": "RAG (Retrieval-Augmented Generation) parameters."
+    },
+    {
+      "name": "app.ai.kg",
+      "type": "java.lang.Object",
+      "description": "Knowledge Graph (KG) extraction configuration."
+    },
+    {
+      "name": "app.ai.summarize",
+      "type": "java.lang.Object",
+      "description": "Summarization parameters."
+    },
+    {
+      "name": "app.ai.embedding",
+      "type": "java.lang.Object",
+      "description": "Text embedding service configuration."
+    },
+    {
+      "name": "app.ai.ranking",
+      "type": "java.lang.Object",
+      "description": "Reranking service configuration."
+    },
+    {
+      "name": "app.retrieval",
+      "type": "java.lang.Object",
+      "description": "Information retrieval settings."
+    },
+    {
+      "name": "app.retrieval.rrf",
+      "type": "java.lang.Object",
+      "description": "Reciprocal Rank Fusion (RRF) parameters."
+    },
+    {
+      "name": "app.worker",
+      "type": "de.palsoftware.yvoke.shared.jobengine.WorkerProperties",
+      "description": "Background ingestion worker settings."
+    },
+    {
+      "name": "app.chat",
+      "type": "de.palsoftware.yvoke.chat.core.ChatProperties",
+      "description": "User interface chat settings."
+    },
+    {
+      "name": "app.chat.citation",
+      "type": "java.lang.Object",
+      "description": "Citation display limits."
+    },
+    {
+      "name": "rest-client",
+      "type": "java.lang.Object",
+      "description": "Global RestClient timeout settings."
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.upload-dir",
+      "type": "java.lang.String",
+      "description": "Directory where uploaded files are stored.",
+      "defaultValue": "uploads"
+    },
+    {
+      "name": "app.security.mock",
+      "type": "java.lang.Boolean",
+      "description": "Whether to bypass OAuth2 security checks using mock credentials.",
+      "defaultValue": false
+    },
+    {
+      "name": "app.security.api-key",
+      "type": "java.lang.String",
+      "description": "Static API key used for securing raw ingest or API endpoints.",
+      "defaultValue": "dev-key-12345"
+    },
+    {
+      "name": "app.security.secret-key",
+      "type": "java.lang.String",
+      "description": "Encryption key for storing credentials/tokens at-rest. If blank, secrets remain in plaintext."
+    },
+    {
+      "name": "app.security.secret-salt",
+      "type": "java.lang.String",
+      "description": "Key derivation function salt (hex) used for at-rest secret encryption.",
+      "defaultValue": "5c0744940b5c369b"
+    },
+    {
+      "name": "app.security.roles.admin-claim",
+      "type": "java.lang.String",
+      "description": "OAuth2 token claim value identifying users with administrator rights.",
+      "defaultValue": "Admin"
+    },
+    {
+      "name": "app.security.roles.user-claim",
+      "type": "java.lang.String",
+      "description": "OAuth2 token claim value identifying basic users.",
+      "defaultValue": "User"
+    },
+    {
+      "name": "app.security.mcp.allowed-audience",
+      "type": "java.lang.String",
+      "description": "Allowed audience identifier for JWT validation in MCP requests.",
+      "defaultValue": "api://oim-kb"
+    },
+    {
+      "name": "app.security.mcp.required-scope",
+      "type": "java.lang.String",
+      "description": "Required scope in JWT for accessing the MCP service.",
+      "defaultValue": "api://oim-kb/mcp.read"
+    },
+    {
+      "name": "app.security.mcp.resource-url",
+      "type": "java.lang.String",
+      "description": "The target resource URL for MCP access authorization validation.",
+      "defaultValue": "http://localhost:8080/mcp"
+    },
+    {
+      "name": "app.security.mcp.authorization-server-url",
+      "type": "java.lang.String",
+      "description": "OAuth2 authorization server token/issuer configuration URL.",
+      "defaultValue": "https://login.microsoftonline.com/common/v2.0"
+    },
+    {
+      "name": "app.ai.provider",
+      "type": "java.lang.String",
+      "description": "Active LLM client provider backend ('gemini' or 'openrouter').",
+      "defaultValue": "gemini"
+    },
+    {
+      "name": "app.ai.openrouter.base-url",
+      "type": "java.lang.String",
+      "description": "API URL endpoint for OpenRouter service requests.",
+      "defaultValue": "https://openrouter.ai/api/v1"
+    },
+    {
+      "name": "app.ai.openrouter.api-key",
+      "type": "java.lang.String",
+      "description": "Authentication token/API Key for OpenRouter service requests.",
+      "defaultValue": "placeholder-openrouter-api-key"
+    },
+    {
+      "name": "app.ai.gemini.api-key",
+      "type": "java.lang.String",
+      "description": "Authentication token/API Key for Google Gemini service requests.",
+      "defaultValue": "placeholder-gemini-api-key"
+    },
+    {
+      "name": "app.ai.gemini.enable-thinking",
+      "type": "java.lang.Boolean",
+      "description": "Whether to request Google Gemini thinking level models.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.ai.gemini.thinking-level",
+      "type": "java.lang.String",
+      "description": "Thinking level for reasoning effort of Gemini models (low, medium, high).",
+      "defaultValue": "medium"
+    },
+    {
+      "name": "app.ai.rag.max-iterations",
+      "type": "java.lang.Integer",
+      "description": "Maximum agentic tool invocation loop iterations during retrieval.",
+      "defaultValue": 15
+    },
+    {
+      "name": "app.ai.rag.max-tokens",
+      "type": "java.lang.Integer",
+      "description": "Maximum output tokens limit for primary agentic generation.",
+      "defaultValue": 4096
+    },
+    {
+      "name": "app.ai.rag.temperature",
+      "type": "java.lang.Double",
+      "description": "Sampling temperature for RAG prompt completion.",
+      "defaultValue": 0.0
+    },
+    {
+      "name": "app.ai.rag.default-prompt-name",
+      "type": "java.lang.String",
+      "description": "Database key of default playbook or instructions to retrieve.",
+      "defaultValue": "default-chat"
+    },
+    {
+      "name": "app.ai.rag.thinking-level",
+      "type": "java.lang.String",
+      "description": "Thinking level for reasoning effort of Gemini models in RAG (low, medium, high).",
+      "defaultValue": "medium"
+    },
+    {
+      "name": "app.ai.kg.model",
+      "type": "java.lang.String",
+      "description": "The specific LLM identifier used for parsing entities and links.",
+      "defaultValue": "gemini-3.6-flash"
+    },
+    {
+      "name": "app.ai.kg.max-tokens",
+      "type": "java.lang.Integer",
+      "description": "Output token capacity for knowledge graph JSON generation.",
+      "defaultValue": 4096
+    },
+    {
+      "name": "app.ai.kg.temperature",
+      "type": "java.lang.Double",
+      "description": "Sampling temperature for knowledge graph extractor LLM.",
+      "defaultValue": 0.0
+    },
+    {
+      "name": "app.ai.kg.concurrency",
+      "type": "java.lang.Integer",
+      "description": "Number of concurrent document parsing threads active during graph creation.",
+      "defaultValue": 8
+    },
+    {
+      "name": "app.ai.kg.max-attempts",
+      "type": "java.lang.Integer",
+      "description": "Attempts before skipped when extractor returns invalid format outputs.",
+      "defaultValue": 2
+    },
+    {
+      "name": "app.ai.kg.thinking-level",
+      "type": "java.lang.String",
+      "description": "Thinking level for reasoning effort of Gemini models in KG extraction (low, medium, high).",
+      "defaultValue": "low"
+    },
+    {
+      "name": "app.ai.summarize.model",
+      "type": "java.lang.String",
+      "description": "LLM model identifying code for document summary task.",
+      "defaultValue": "gemini-3.6-flash"
+    },
+    {
+      "name": "app.ai.summarize.max-tokens",
+      "type": "java.lang.Integer",
+      "description": "Maximum output tokens limit for document summarization.",
+      "defaultValue": 1000
+    },
+    {
+      "name": "app.ai.summarize.temperature",
+      "type": "java.lang.Double",
+      "description": "Temperature setting for document summarizer.",
+      "defaultValue": 0.2
+    },
+    {
+      "name": "app.ai.summarize.concurrency",
+      "type": "java.lang.Integer",
+      "description": "Maximum concurrent virtual thread tasks for summaries.",
+      "defaultValue": 8
+    },
+    {
+      "name": "app.ai.summarize.thinking-level",
+      "type": "java.lang.String",
+      "description": "Thinking level for reasoning effort of Gemini models in summarization (low, medium, high).",
+      "defaultValue": "low"
+    },
+    {
+      "name": "app.ai.embedding.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of standard semantic text embeddings service.",
+      "defaultValue": "https://api.voyageai.com/v1"
+    },
+    {
+      "name": "app.ai.embedding.api-key",
+      "type": "java.lang.String",
+      "description": "Authentication token/API Key for semantic embedding service requests.",
+      "defaultValue": "placeholder-voyage-api-key"
+    },
+    {
+      "name": "app.ai.embedding.model",
+      "type": "java.lang.String",
+      "description": "Specific embedding model name.",
+      "defaultValue": "voyage-4-large"
+    },
+    {
+      "name": "app.ai.ranking.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of candidate document reranking service.",
+      "defaultValue": "https://api.voyageai.com/v1"
+    },
+    {
+      "name": "app.ai.ranking.api-key",
+      "type": "java.lang.String",
+      "description": "Authentication token/API Key for reranking service requests.",
+      "defaultValue": "placeholder-voyage-api-key"
+    },
+    {
+      "name": "app.ai.ranking.model",
+      "type": "java.lang.String",
+      "description": "Specific reranking model name.",
+      "defaultValue": "rerank-2.5"
+    },
+    {
+      "name": "app.retrieval.default-limit",
+      "type": "java.lang.Integer",
+      "description": "Default maximum number of document chunks to fetch as context.",
+      "defaultValue": 8
+    },
+    {
+      "name": "app.retrieval.log-query-max-chars",
+      "type": "java.lang.Integer",
+      "description": "Character limit printed to console logs during semantic requests.",
+      "defaultValue": 200
+    },
+    {
+      "name": "app.retrieval.semantic-limit-multiplier",
+      "type": "java.lang.Double",
+      "description": "Candidate count multiplier for semantic retrieval before final rerank step.",
+      "defaultValue": 1.5
+    },
+    {
+      "name": "app.retrieval.rrf.k",
+      "type": "java.lang.Integer",
+      "description": "RRF (Reciprocal Rank Fusion) constant value.",
+      "defaultValue": 60
+    },
+    {
+      "name": "app.retrieval.rrf.semantic-weight",
+      "type": "java.lang.Double",
+      "description": "Scale factor for semantic rank metrics.",
+      "defaultValue": 1.0
+    },
+    {
+      "name": "app.retrieval.rrf.fulltext-weight",
+      "type": "java.lang.Double",
+      "description": "Scale factor for BM25/full-text rank metrics.",
+      "defaultValue": 1.0
+    },
+    {
+      "name": "app.retrieval.rrf.fulltext-limit-cap",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of fulltext database results processed by fuser.",
+      "defaultValue": 50
+    },
+    {
+      "name": "app.worker.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Configures whether background ingestion processes are active on this node.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.worker.concurrency",
+      "type": "java.lang.Integer",
+      "description": "Maximum concurrent ingestion worker threads.",
+      "defaultValue": 4
+    },
+    {
+      "name": "app.worker.poll-interval",
+      "type": "java.time.Duration",
+      "description": "Duration interval for checking ingestion tasks.",
+      "defaultValue": "2s"
+    },
+    {
+      "name": "app.chat.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Global status controlling web chat UI availability.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.chat.allowed-models",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Acceptable AI models allowed to be selected by the UI.",
+      "defaultValue": [
+        "gemini-3.6-flash"
+      ]
+    },
+    {
+      "name": "rest-client.connect-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Connection timeout in milliseconds for outbound REST client requests.",
+      "defaultValue": 10000
+    },
+    {
+      "name": "rest-client.read-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Socket read timeout in milliseconds for outbound REST client requests.",
+      "defaultValue": 180000
+    }
+  ]
+}

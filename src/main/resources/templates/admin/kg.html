@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Knowledge Graph Browser')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('kg')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Knowledge Graph Browser</h1>
+                    <p class="page-subtitle">Knowledge graph scopes by collection and version. Select a scope to browse its entities, or clear it.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span>Graph Scopes</span>
+                    <span class="badge badge-info" th:text="${#lists.size(scopes)} + ' scopes'">0 scopes</span>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Collection</th>
+                                <th>Tag</th>
+                                <th style="text-align: right;">Entities</th>
+                                <th style="text-align: right;">Relations</th>
+                                <th style="width: 1%;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="scope : ${scopes}" class="kg-scope-row" style="cursor: pointer;"
+                                th:data-href="@{/admin/kg/view(collection=${scope.collection()}, tag=${scope.tag()})}">
+                                <td>
+                                    <a th:href="@{/admin/kg/view(collection=${scope.collection()}, tag=${scope.tag()})}"
+                                       th:text="${scope.collection()}"
+                                       style="color: var(--color-accent); font-weight: 600; text-decoration: none;">OIM-DB</a>
+                                </td>
+                                <td>
+                                    <span class="badge badge-muted" th:text="${scope.tag()}">9.3</span>
+                                </td>
+                                <td class="mono-text" style="text-align: right;" th:text="${scope.entityCount()}">0</td>
+                                <td class="mono-text" style="text-align: right;" th:text="${scope.relationshipCount()}">0</td>
+                                <td onclick="event.stopPropagation();">
+                                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                        <a th:href="@{/admin/kg/view(collection=${scope.collection()}, tag=${scope.tag()})}"
+                                           class="btn-icon" title="Browse entities" aria-label="Browse entities">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        </a>
+                                        <form th:action="@{/admin/kg/consolidate}" method="post" style="display: inline;"
+                                              onsubmit="return confirm('Consolidate the knowledge graph for this collection and version? This runs name merging and duplicate cleanup.');">
+                                            <input type="hidden" name="collection" th:value="${scope.collection()}">
+                                            <input type="hidden" name="tag" th:value="${scope.tag()}">
+                                            <button type="submit" class="btn-icon" style="color: var(--color-accent);" title="Consolidate KG" aria-label="Consolidate KG">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v7a3 3 0 0 0 3 3h7"/></svg>
+                                            </button>
+                                        </form>
+                                        <form th:action="@{/admin/kg/clear}" method="post" style="display: inline;"
+                                              onsubmit="return confirm('Delete ALL entities and relationships for this collection and version? This cannot be undone.');">
+                                            <input type="hidden" name="collection" th:value="${scope.collection()}">
+                                            <input type="hidden" name="tag" th:value="${scope.tag()}">
+                                            <button type="submit" class="btn-icon btn-icon-danger" title="Clear scope" aria-label="Clear scope">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(scopes)}">
+                                <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                                    No knowledge graph data found. Ingest a collection to populate the graph.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script>
+        document.querySelectorAll('.kg-scope-row').forEach(function (row) {
+            row.addEventListener('click', function () {
+                var href = row.getAttribute('data-href');
+                if (href) {
+                    window.location = href;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: yvoke-uploads-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path-custom
+  resources:
+    requests:
+      storage: 10Gi

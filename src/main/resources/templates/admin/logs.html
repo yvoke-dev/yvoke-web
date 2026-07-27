@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Retrieval Logs')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('logs')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Retrieval Logs & Telemetry</h1>
+                    <p class="page-subtitle">Inspect historical queries, fused lane candidate counts, and joined thumbs-up/down ratings.</p>
+                </div>
+            </div>
+
+            <!-- Logs Table -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Telemetry Log History</span>
+                    <span class="badge badge-info" th:text="${totalCount} + ' logs'">0 logs</span>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 150px;">Timestamp</th>
+                                <th style="width: 120px;">Context</th>
+                                <th>Query / User Message</th>
+                                <th style="width: 220px;">Returned Chunks</th>
+                                <th style="width: 150px;">Pools (Sem/FT)</th>
+                                <th style="width: 160px;">Composition</th>
+                                <th style="width: 160px;">Reranker Info</th>
+                                <th style="width: 180px;">User Feedback</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="log : ${logs}">
+                                <td class="mono-text" style="font-size: 0.85rem;" th:text="${log.createdAt() != null ? #temporals.format(log.createdAt(), 'yyyy-MM-dd HH:mm:ss') + ' UTC' : '-'}">Timestamp</td>
+                                <td>
+                                    <div style="font-weight: 600;" th:text="${log.collection()}">Collection</div>
+                                    <div class="mono-text" style="font-size: 0.75rem; color: var(--text-secondary);" th:text="'v' + ${log.tag()}">Tag</div>
+                                </td>
+                                <td>
+                                    <!-- Message content snippet -->
+                                    <span th:if="${log.messageContent() != null}" th:text="${log.getTruncatedMessageContent(logQueryMaxChars)}" th:title="${log.messageContent()}" style="font-weight: 500;">User Message</span>
+                                    <span th:if="${log.messageContent() == null}" style="color: var(--text-muted); font-style: italic;">
+                                        Test Console / Programmatic
+                                    </span>
+                                    <div th:if="${log.messageContent() != null && log.messageId() == null}" style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; margin-top: 0.15rem;">
+                                        Test Console / Programmatic
+                                    </div>
+                                    <div class="mono-text" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;" th:text="'Query ID: ' + ${#strings.substring(log.id().toString(), 0, 8)}">id</div>
+                                </td>
+                                <td>
+                                    <!-- Returned chunks (final results, in order) -->
+                                    <div th:if="${log.retrievedChunkIds() != null && !#lists.isEmpty(log.retrievedChunkIds())}" 
+                                         style="display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
+                                        <a th:each="chunkId : ${log.retrievedChunkIds()}" 
+                                           th:href="@{/admin/chunks/{id}(id=${chunkId})}"
+                                           class="badge badge-muted mono-text" 
+                                           style="font-size: 0.68rem; text-decoration: none; text-transform: lowercase;"
+                                           th:text="${#strings.substring(chunkId.toString(), 0, 8)}"
+                                           th:title="${chunkId}">
+                                            chunkId
+                                        </a>
+                                    </div>
+                                    <span th:if="${log.retrievedChunkIds() == null || #lists.isEmpty(log.retrievedChunkIds())}" style="color: var(--text-muted); font-size: 0.85rem;">-</span>
+                                </td>
+                                <td>
+                                    <!-- Parse pools JSON text (looks like {"sem": X, "ft": Y}) -->
+                                    <div class="mono-text" style="font-size: 0.85rem;" th:text="${log.pools()}">{"sem":0,"ft":0}</div>
+                                </td>
+                                <td>
+                                    <!-- Parse final JSON text (looks like {"n": N, "both": B, "sem_only": S, "ft_only": F}) -->
+                                    <div class="mono-text" style="font-size: 0.85rem;" th:text="${log.finalVal()}">{}</div>
+                                </td>
+                                <td>
+                                    <!-- Parse rerank JSON text (looks like {"promotions": P, "top1_changed": B, "avg_disp": D}) -->
+                                    <div class="mono-text" style="font-size: 0.85rem;" th:text="${log.rerank()}">{}</div>
+                                </td>
+                                <td>
+                                    <!-- Display thumbs up/down feedback -->
+                                    <div th:if="${log.feedbackRating() != null}">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                            <!-- Thumbs up -->
+                                            <span class="badge badge-success" th:if="${log.feedbackRating() == 1}">👍 Upvoted</span>
+                                            <!-- Thumbs down -->
+                                            <span class="badge badge-danger" th:if="${log.feedbackRating() == -1}">👎 Downvoted</span>
+                                            <!-- Stars / other ratings -->
+                                            <span class="badge badge-warning" th:if="${log.feedbackRating() != 1 && log.feedbackRating() != -1}" th:text="'Rating: ' + ${log.feedbackRating()}">Stars</span>
+                                        </div>
+                                        <div th:if="${log.feedbackComment() != null && !log.feedbackComment().isBlank()}" 
+                                             style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                             th:title="${log.feedbackComment()}"
+                                             th:text="'&ldquo;' + ${log.feedbackComment()} + '&rdquo;'">Comment</div>
+                                    </div>
+                                    <span th:if="${log.feedbackRating() == null}" style="color: var(--text-muted); font-size: 0.85rem;">-</span>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(logs)}">
+                                <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                                    No retrieval logs recorded in the database.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" th:if="${totalPages > 1}">
+                    <div class="pagination-info">
+                        Showing page <span th:text="${currentPage + 1}">1</span> of <span th:text="${totalPages}">1</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/logs(page=${currentPage - 1})}" class="btn btn-secondary">
+                            Previous
+                        </a>
+                        <a th:if="${currentPage + 1 < totalPages}" th:href="@{/admin/logs(page=${currentPage + 1})}" class="btn btn-secondary">
+                            Next
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: yvoke-app-config
+data:
+  APP_SECURITY_MOCK: "false"
+  AI_PROVIDER: "cloudflare-gemini"
+  CLOUDFLARE_ACCOUNT_ID: "fda1bf10c0a3dc1647d8ec6388854a53"
+  CLOUDFLARE_GATEWAY_ID: "ai-gateway-netcup"
+  OPENAI_API_BASE: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  GEMINI_THINKING_LEVEL: "medium"
+  RAG_THINKING_LEVEL: "medium"
+  APP_AI_RAG_MAX_ITERATIONS: "20"
+  KG_THINKING_LEVEL: "low"
+  SUMMARIZE_THINKING_LEVEL: "low"
+  KG_MODEL: "gemini-3.1-flash-lite"
+  SUMMARIZE_MODEL: "gemini-3.1-flash-lite"
+  ALLOWED_MODELS: "gemini-3.6-flash,gemini-3.5-flash-lite"
+  ENTRA_CLIENT_ID: "a1824d0a-79eb-4dde-8c0b-242dde321967"
+  ENTRA_TENANT_ID: "b0b1499f-1764-4eb8-855b-a5658b219405"
+  APP_SECURITY_MCP_AUDIENCE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967"
+  APP_SECURITY_MCP_SCOPE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967/desktop"
