@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import java.util.ArrayList;
+import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 
 @Timeout(60)
 class GeminiLlmClientTest {
@@ -322,6 +323,51 @@ class GeminiLlmClientTest {
         });
     }
 
+    /**
+     * A safety/recitation block is not a free call. The provider read the whole prompt, charged for
+     * it, and reported the count in {@code usageMetadata} — on the RAG paths that prompt routinely
+     * runs to hundreds of thousands of tokens, so these are the most expensive calls in the system,
+     * not the cheapest.
+     *
+     * <p>
+     * The accounting seam is {@code AccountingLlmClient}, which publishes a usage event so the call
+     * lands in {@code llm_call_logs}. On the streaming path it observes usage from the chunks it
+     * sees; on this non-streaming path the only carrier is the exception, because {@code generate}
+     * has nothing to return. Throwing a plain exception here — or passing {@code null} for usage,
+     * which reads as a harmless simplification since "the call failed" — leaves the call with no
+     * row in {@code llm_call_logs} at all. The damage is silent and cumulative: the tokens are
+     * billed by the provider and invisible in every internal view, so the cost dashboard, the
+     * per-user report and any budget alarm all under-report by exactly the calls most worth
+     * noticing. Note the usage must be read BEFORE the throw, which is the ordering this test
+     * really pins.
+     *
+     * <p>
+     * No existing test would notice: {@code testMockServerSafetyBlockThrowsDescriptiveError}
+     * asserts only that the message names the finish reason, and it is satisfied by a
+     * {@code RuntimeException} carrying no usage at all — it does not even assert the exception
+     * type, so the whole {@link LlmCallFailedException} contract could be deleted underneath it.
+     */
+    @Test
+    void aBlockedResponseCarriesTheUsageTheProviderAlreadyBilled() throws Exception {
+        withMockServer(exchange -> respondJson(exchange, 200,
+            """
+                {"candidates":[{"finishReason":"SAFETY"}],"usageMetadata":{"promptTokenCount":1234,"candidatesTokenCount":6,"totalTokenCount":1240}}"""),
+            client -> {
+                LlmCallFailedException ex = assertThrows(LlmCallFailedException.class,
+                    () -> client.generate(userRequest("Hello")));
+
+                assertNotNull(ex.usage(),
+                    "a blocked call still consumed tokens; dropping the usage loses the whole "
+                        + "llm_call_logs row");
+                assertEquals(1234, ex.usage().promptTokens(),
+                    "the prompt the provider actually read must be billed");
+                assertEquals(1240, ex.usage().totalTokens(),
+                    "the total the provider reported must survive the failure");
+                assertTrue(ex.getMessage().contains("finishReason=SAFETY"),
+                    "the reason must still be surfaced, not swallowed by the usage plumbing");
+            });
+    }
+
     @Test
     void testMockServerEmptyCandidatesWithPromptFeedbackThrows() throws Exception {
         withMockServer(exchange -> respondJson(exchange, 200, """
@@ -362,7 +408,7 @@ class GeminiLlmClientTest {
             """
                 {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search_kb","args":{"query":"test"},"id":"call_999"}}],"role":"model"}}]}"""),
             client -> {
-                List<LlmResponseChunk> chunks = new java.util.ArrayList<>();
+                List<LlmResponseChunk> chunks = new ArrayList<>();
                 client.generateStream(userRequest("Hello"), chunks::add);
 
                 assertNotNull(chunks);
@@ -402,6 +448,59 @@ class GeminiLlmClientTest {
             assertThrows(RuntimeException.class,
                 () -> client.generateStream(userRequest("Hello"), c -> {
                 }));
+        });
+    }
+
+    /**
+     * {@code generateStream} retries the <em>establishment</em> of the stream and nothing after it.
+     * The asymmetry is the point: a failure before the first chunk is emitted is invisible to the
+     * caller and safe to repeat, while a failure after it cannot be repeated, because a chunk that
+     * has already been handed to {@code onChunk} cannot be un-handed. On the live path that
+     * consumer is {@code CitationStreamingFilter} feeding an {@code SseEmitter}, so every replayed
+     * chunk has already been written to the user's browser and appended to the message being
+     * persisted. Wrapping the consumption loop in the retry — the natural-looking tidy-up, since
+     * the retry is right there and "the whole operation" reads better than "just the handshake" —
+     * makes a mid-stream 503 duplicate the answer's opening on screen and in
+     * {@code messages.content}, and re-uploads the entire prompt into the quota that just refused
+     * it.
+     *
+     * <p>
+     * The mid-stream failure is a 503 error event on purpose. {@code LlmRetry.isTransient} treats
+     * an {@code ApiException} with code 503 as retryable, so this fixture is one the mutated code
+     * <em>would</em> retry — a fixture that happens to be non-transient (a malformed chunk, say)
+     * would not distinguish the two implementations at all and the test would pass against both.
+     * Asserting the server hit count as well as the chunk count matters for the same reason: the
+     * duplicate delivery and the duplicate request are separate halves of the damage.
+     *
+     * <p>
+     * {@code testMockServerStreamEstablishmentRetry} pins the other half of the rule (a 503 before
+     * the stream opens IS retried), and the two only mean something together — either one alone is
+     * satisfied by an implementation that retries everywhere, or nowhere.
+     */
+    @Test
+    void aMidStreamFailureIsNotRetriedAndDoesNotReplayChunks() throws Exception {
+        AtomicInteger requestCount = new AtomicInteger(0);
+
+        withMockServer(exchange -> {
+            requestCount.incrementAndGet();
+            respondSse(exchange,
+                """
+                    {"candidates":[{"content":{"parts":[{"text":"first half of the answer"}],"role":"model"}}]}""",
+                """
+                    {"error":{"code":503,"status":"UNAVAILABLE","message":"backend overloaded mid-stream"}}""");
+        }, client -> {
+            List<LlmResponseChunk> chunks = new ArrayList<>();
+
+            RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> client.generateStream(userRequest("Hello"), chunks::add));
+
+            assertTrue(ex.getMessage().contains("503"),
+                "the mid-stream provider error must reach the caller, not be swallowed");
+            assertEquals(1, requestCount.get(),
+                "a failure AFTER the stream was established must not re-issue the request");
+            assertEquals(1, chunks.size(),
+                "the chunk already handed to the consumer must not be delivered a second time");
+            assertEquals("first half of the answer", chunks.get(0).content());
         });
     }
 

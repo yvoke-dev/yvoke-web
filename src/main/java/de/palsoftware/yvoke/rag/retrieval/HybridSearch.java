@@ -28,14 +28,16 @@ public class HybridSearch {
     private final JdbcClient jdbcClient;
 
     private final int defaultLimit;
+    private final int maxLimit;
     private final double semanticLimitMultiplier;
-    private final int fulltextLimitCap;
+    private final double fulltextLimitMultiplier;
 
     public HybridSearch(ChunkRepository chunkRepository, EmbeddingService embeddingService,
         RerankClient rerankClient, RrfFuser rrfFuser, RetrievalTelemetryService telemetryService,
         JdbcClient jdbcClient, @Value("${app.retrieval.default-limit}") int defaultLimit,
+        @Value("${app.retrieval.max-limit}") int maxLimit,
         @Value("${app.retrieval.semantic-limit-multiplier}") double semanticLimitMultiplier,
-        @Value("${app.retrieval.rrf.fulltext-limit-cap}") int fulltextLimitCap) {
+        @Value("${app.retrieval.fulltext-limit-multiplier}") double fulltextLimitMultiplier) {
         this.chunkRepository = chunkRepository;
         this.embeddingService = embeddingService;
         this.rerankClient = rerankClient;
@@ -43,8 +45,9 @@ public class HybridSearch {
         this.telemetryService = telemetryService;
         this.jdbcClient = jdbcClient;
         this.defaultLimit = defaultLimit;
+        this.maxLimit = maxLimit;
         this.semanticLimitMultiplier = semanticLimitMultiplier;
-        this.fulltextLimitCap = fulltextLimitCap;
+        this.fulltextLimitMultiplier = fulltextLimitMultiplier;
     }
 
     public List<HybridSearchResult> search(String query, SearchOptions opts) {
@@ -78,7 +81,13 @@ public class HybridSearch {
                 "At least one search lane (semantic or fulltext) must be enabled");
         }
 
-        int limit = (opts.limit() != null && opts.limit() > 0) ? opts.limit() : this.defaultLimit;
+        // The one place all three lane paths funnel through, so it is where the ceiling belongs.
+        // Both pools are derived from this figure and the reranker is handed every fused
+        // candidate in a single request, so an unclamped limit sizes a request large enough to
+        // be rejected — which degrades silently to unreranked RRF order rather than failing.
+        int requestedLimit =
+            (opts.limit() != null && opts.limit() > 0) ? opts.limit() : this.defaultLimit;
+        int limit = Math.min(requestedLimit, this.maxLimit);
         SearchOptions resolvedOpts = new SearchOptions(opts.collections(), limit, opts.semantic(),
             opts.fulltext(), opts.offset(), opts.rerank(), opts.tags());
 
@@ -172,7 +181,8 @@ public class HybridSearch {
         // The BM25 full-text lane is independent of the embedding, so kick it off concurrently with
         // the (network embed → DB semantic) lane and join before fusion — saving the shorter lane's
         // latency on every hybrid query.
-        int fullTextLimit = this.fulltextLimitCap + opts.offset();
+        int fullTextLimit =
+            (int) Math.ceil(fulltextLimitMultiplier * (opts.limit() + opts.offset()));
         String sanitizedQuery = sanitizeQuery(query);
         CompletableFuture<List<ChunkRow>> ftFuture = CompletableFuture
             .supplyAsync(() -> sanitizedQuery.isEmpty() ? Collections.<ChunkRow>emptyList()
@@ -191,8 +201,7 @@ public class HybridSearch {
         int ftPoolSize = ftRows.size();
 
         // Perform RRF fusion
-        List<RrfFuser.IntermediateRrfResult> sorted =
-            rrfFuser.fuse(semanticRows, ftRows, semanticLimit, fullTextLimit);
+        List<RrfFuser.IntermediateRrfResult> sorted = rrfFuser.fuse(semanticRows, ftRows);
 
         // Capture the fused order (before reranking mutates the list)
         List<UUID> fusedChunkIds = sorted.stream().map(res -> res.getRow().id()).toList();

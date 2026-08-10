@@ -13,6 +13,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 @Component
 public class JobWorker {
@@ -26,7 +27,7 @@ public class JobWorker {
     private final AtomicInteger activeCount = new AtomicInteger(0);
 
     public JobWorker(JobRepository jobRepository, JobService jobService,
-        @org.springframework.beans.factory.annotation.Qualifier(WorkerConfig.JOB_EXECUTOR_BEAN) TaskExecutor jobExecutor,
+        @Qualifier(WorkerConfig.JOB_EXECUTOR_BEAN) TaskExecutor jobExecutor,
         WorkerProperties properties) {
         this.jobRepository = jobRepository;
         this.jobService = jobService;
@@ -74,10 +75,13 @@ public class JobWorker {
                 }
             });
         } catch (RuntimeException e) {
-            // Submission was rejected (e.g. shutdown): undo the reservation and re-queue.
+            // Submission was rejected (e.g. shutdown): undo the reservation and re-queue THIS job.
+            // Not requeueOrphans() — that has no id predicate, so it would also flip every job
+            // currently executing on another thread back to 'queued', and the next poll tick would
+            // claim those rows again while their first execution is still in flight.
             activeCount.decrementAndGet();
             log.warn("Failed to submit job {} to executor; re-queueing", job.id(), e);
-            jobRepository.requeueOrphans();
+            jobRepository.requeueJob(job.id());
         }
     }
 }

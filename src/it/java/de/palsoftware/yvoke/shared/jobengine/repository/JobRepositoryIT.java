@@ -21,6 +21,13 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.jobengine.model.QueuedKindSummary;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.shared.jobengine.JobHandler;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 
 @SpringBootTest(properties = {"app.worker.enabled=false", "spring.flyway.enabled=true",
@@ -34,6 +41,13 @@ public class JobRepositoryIT {
 
     @Autowired
     private JobRepository jobRepository;
+
+    /**
+     * Every registered handler bean, so the kind vocabulary can be checked against the routing table
+     * the engine actually dispatches on.
+     */
+    @Autowired
+    private List<JobHandler> jobHandlers;
 
     // claimNext's transaction now lives on JobService (Wave 3.5); exercise it through the same
     // transactional entry point the worker uses so the SKIP-LOCKED single-claim invariant holds.
@@ -110,8 +124,8 @@ public class JobRepositoryIT {
         }
 
         int workers = 4;
-        var pool = java.util.concurrent.Executors.newFixedThreadPool(workers);
-        List<java.util.concurrent.Future<List<UUID>>> futures = new ArrayList<>();
+        var pool = Executors.newFixedThreadPool(workers);
+        List<Future<List<UUID>>> futures = new ArrayList<>();
         for (int i = 0; i < workers; i++) {
             futures.add(pool.submit(() -> {
                 List<UUID> claimed = new ArrayList<>();
@@ -226,6 +240,55 @@ public class JobRepositoryIT {
         assertThat(second.created()).isFalse();
         assertThat(second.jobId()).isEqualTo(first.jobId());
         assertThat(countJobs()).isEqualTo(1);
+    }
+
+    /**
+     * Adoption is {@code DO NOTHING}, and that word is the whole contract: an adopted job runs with
+     * the settings it was FIRST enqueued with, never with this request's.
+     * {@code enqueueOfWorkAlreadyQueuedAdoptsTheActiveJob} posts identical settings twice and
+     * asserts only the id and the row count, so nothing observes which settings survive — and both
+     * directions of a regression are invisible in production.
+     *
+     * <p>As it stands, a client that spots a wrong setting, corrects it and re-POSTs the same work
+     * gets HTTP 200 with a job id back and believes the correction took effect, while the job runs
+     * on the originals — e.g. a re-ingest whose {@code jsonUniqueField} was fixed still INSERTs
+     * instead of upserting and duplicates the whole corpus, reporting an entirely normal count.
+     * Turning the clause into {@code DO UPDATE SET settings = EXCLUDED.settings} is the opposite
+     * failure and worse: any caller could rewrite the settings of a job that is already RUNNING
+     * (the partial index covers {@code queued} AND {@code running}), and because {@code RETURNING
+     * id} then yields the EXISTING row, the enqueue would also report {@code created=true} for a
+     * job it did not create — so a caller counting new work counts one job twice. Both halves are
+     * asserted here: the stored settings jsonb, queued and running, plus the {@code created} flag.
+     */
+    @Test
+    public void anAdoptedJobKeepsTheSettingsItWasFirstEnqueuedWith() {
+        Map<String, Object> asFirstEnqueued =
+            Map.of("jsonUniqueField", "customer.id", "attempt", "first");
+        EnqueueRequest original = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
+            COLLECTION, asFirstEnqueued);
+        EnqueueRequest corrected = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
+            COLLECTION, Map.of("jsonUniqueField", "WRONG", "attempt", "second"));
+
+        EnqueueResult first = jobRepository.enqueue(original);
+        EnqueueResult adopted = jobRepository.enqueue(corrected);
+
+        assertThat(first.created()).isTrue();
+        assertThat(adopted.created()).as("the second POST created nothing").isFalse();
+        assertThat(adopted.jobId()).isEqualTo(first.jobId());
+        assertThat(countJobs()).isEqualTo(1);
+        assertThat(jobRepository.findById(first.jobId()).orElseThrow().settings())
+            .as("the queued job keeps the settings it was first enqueued with")
+            .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
+
+        // The same guard once the work is mid-flight: those settings are already in use.
+        jobService.claimNext().orElseThrow();
+        EnqueueResult whileRunning = jobRepository.enqueue(corrected);
+
+        assertThat(whileRunning.created()).isFalse();
+        assertThat(whileRunning.jobId()).isEqualTo(first.jobId());
+        assertThat(jobRepository.findById(first.jobId()).orElseThrow().settings())
+            .as("no caller may rewrite the settings of a job that is already executing")
+            .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
     }
 
     /** The slot is held while the job RUNS too, not only while it waits. */
@@ -483,6 +546,40 @@ public class JobRepositoryIT {
         assertThat(jobRepository.findStatusById(UUID.randomUUID())).isEmpty();
     }
 
+    /**
+     * The engine routes by string. {@code JobService} builds a {@code Map<String, JobHandler>} from
+     * {@code JobHandler::kind} and {@code execute} looks the job's base kind up in it, so a kind
+     * with no handler does not fail fast anywhere: the enqueue succeeds, the row is written, the
+     * API answers 202, the worker claims the job and only THEN calls {@code fail(...)} with "no
+     * handler for kind=x". What the user sees is an upload that reported success turning into a
+     * dead job minutes later, and what an operator sees is a failure attributed to the worker
+     * rather than to the rename that caused it.
+     *
+     * <p>
+     * Nothing else ties the two sides of this contract together — one is a Java enum in the ingest
+     * domain, the other a set of {@code @Component}s discovered by classpath scanning, with no
+     * compile-time link — so renaming a handler's {@code kind()}, or adding an
+     * {@link IngestJobKind} value without its handler, compiles and starts cleanly. Duplicates are
+     * asserted too: two handlers claiming one kind is a silent overwrite of a routing entry.
+     * {@code ItTestJobHandler} is this suite's own fixture handler and deliberately not an
+     * {@code IngestJobKind}; it is named explicitly rather than filtered by a pattern so a future
+     * production handler cannot slip in unnoticed under the same exemption.
+     */
+    @Test
+    public void everyIngestJobKindHasExactlyOneRegisteredHandler() {
+        List<String> registeredKinds = jobHandlers.stream().map(JobHandler::kind).toList();
+        Set<String> declaredKinds = Arrays.stream(IngestJobKind.values())
+            .map(IngestJobKind::getValue).collect(Collectors.toSet());
+
+        assertThat(registeredKinds).as("two handlers on one kind silently overwrite each other")
+            .doesNotHaveDuplicates();
+        assertThat(registeredKinds).as("every declared job kind must be routable to a handler")
+            .containsAll(declaredKinds);
+        assertThat(registeredKinds).filteredOn(kind -> !declaredKinds.contains(kind))
+            .as("the only handler outside the IngestJobKind vocabulary is this suite's fixture")
+            .containsExactly(ItTestJobHandler.KIND);
+    }
+
     private JobStatus statusOf(UUID id) {
         return jobRepository.findById(id).orElseThrow().status();
     }
@@ -491,6 +588,42 @@ public class JobRepositoryIT {
         Integer n = jdbcTemplate.queryForObject("SELECT count(*) FROM ingestion_jobs",
             Integer.class);
         return n == null ? 0 : n;
+    }
+
+    /**
+     * The startup recovery sweep is a global {@code UPDATE ingestion_jobs SET status='queued'}
+     * whose only scope is {@code WHERE status = 'running'} — it runs unattended on every boot with
+     * no user, job or instance filter. Widening or dropping that predicate would re-queue finished
+     * work: a {@code completed} job would run a second time (re-ingesting a corpus), and a
+     * {@code cancelled} one would resurrect work an admin deliberately stopped. Nothing else
+     * constrains it — {@code messages.status} has no CHECK constraint and neither does this column.
+     */
+    @Test
+    public void requeueOrphansMovesRunningJobsOnlyAndLeavesEveryOtherStatusUntouched() {
+        UUID running = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
+            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
+        UUID completed = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
+            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
+        UUID cancelled = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
+            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
+        UUID queued = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
+            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
+
+        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'running' WHERE id = ?", running);
+        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'completed' WHERE id = ?",
+            completed);
+        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'cancelled' WHERE id = ?",
+            cancelled);
+
+        int moved = jobRepository.requeueOrphans();
+
+        assertThat(moved).isEqualTo(1);
+        assertThat(statusOf(running)).isEqualTo(JobStatus.QUEUED);
+        assertThat(statusOf(completed)).as("a finished job must never be re-run")
+            .isEqualTo(JobStatus.COMPLETED);
+        assertThat(statusOf(cancelled)).as("an admin's cancellation must survive a restart")
+            .isEqualTo(JobStatus.CANCELLED);
+        assertThat(statusOf(queued)).isEqualTo(JobStatus.QUEUED);
     }
 
     @Test

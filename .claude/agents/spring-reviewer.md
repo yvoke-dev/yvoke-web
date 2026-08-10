@@ -18,7 +18,7 @@ Perform focused reviews on backend changes and database migration scripts. Retur
 ## Review Guidelines
 
 ### 1. Framework-Specific Security & Auth
-- **Controllers & endpoints**: Ensure `@PreAuthorize` or standard security filters gate all paths. Check for input-validation gaps and improper exposure of domain entities (prefer DTOs for request/response bodies).
+- **Controllers & endpoints**: Ensure every path is gated in the **`SecurityConfig` filter chain** or by an explicit guard called from the handler, denying by default. **Flag any `@PreAuthorize`/`@PostAuthorize`/`@Secured`/`@RolesAllowed` as a High finding**: with no `@EnableMethodSecurity` registered they are silently inert, so the endpoint runs for everyone while reading as gated — and `ArchitectureTest` fails the build on them. Check for input-validation gaps and improper exposure of domain entities (prefer DTOs for request/response bodies).
 - **Data access & SQL**: Check native/custom SQL in repositories for injection risk — flag any request/corpus/LLM-derived value concatenated into SQL rather than bound as a `JdbcClient` param (including dynamic `ORDER BY`/`LIMIT`). Ensure no DB credentials or API keys are exposed in code or logs.
 - **Tainted input**: This is an AI/RAG app — request params, ingested corpus (Confluence/manuals), and LLM output are untrusted. Flag any path that trusts them for authorization decisions, SQL, or unescaped rendering.
 

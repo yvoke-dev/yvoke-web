@@ -20,6 +20,8 @@ import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import java.sql.Array;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Service
 public class TocService {
@@ -28,10 +30,10 @@ public class TocService {
 
     private final ChunkRepository chunkRepository;
     private final DocumentRepository documentRepository;
-    private final org.springframework.jdbc.core.simple.JdbcClient jdbcClient;
+    private final JdbcClient jdbcClient;
 
     public TocService(ChunkRepository chunkRepository, DocumentRepository documentRepository,
-        org.springframework.jdbc.core.simple.JdbcClient jdbcClient) {
+        JdbcClient jdbcClient) {
         this.chunkRepository = chunkRepository;
         this.documentRepository = documentRepository;
         this.jdbcClient = jdbcClient;
@@ -119,7 +121,7 @@ public class TocService {
             jdbcClient.sql(
                 "SELECT heading_path, summary FROM section_summaries WHERE document_id = :docId")
                 .param("docId", docId).query((rs, rowNum) -> {
-                    java.sql.Array arr = rs.getArray("heading_path");
+                    Array arr = rs.getArray("heading_path");
                     if (arr != null) {
                         String[] pathArray = (String[]) arr.getArray();
                         List<String> path = Arrays.asList(pathArray);

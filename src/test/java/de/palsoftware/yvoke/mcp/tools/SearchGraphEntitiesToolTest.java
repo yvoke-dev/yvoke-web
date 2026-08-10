@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
 
 public class SearchGraphEntitiesToolTest {
 
@@ -32,9 +33,70 @@ public class SearchGraphEntitiesToolTest {
         when(collectionService.listCollections()).thenReturn(List.of(dbCol));
     }
 
+    /**
+     * Two rows that differ ONLY by tag are ONE object in two product versions, and the tool has to
+     * say so — the kind-collision note cannot, because for this shape the kind set has size 1 and
+     * that check is silent by construction.
+     *
+     * <p>
+     * This is the read-side face of the tag-identity work: identity is (collection, kind, name,
+     * tag), the per-version document link lives in {@code entities.metadata->>'document_id'}, and
+     * so the two rows carry DIFFERENT document_ids for the same table. Unflagged, a model reads
+     * them as two distinct entities, picks whichever sorted first, and cites 9.3's document while
+     * answering a question about 10.0 — an answer that is fluent, sourced, and wrong, with nothing
+     * in the output to reveal it. Grep confirms the note's literal appears nowhere under src/test
+     * or src/it: {@code testDuplicateNamesAcrossKindsEmitNoteAboveTable} builds a KIND collision
+     * (all rows tagged "9.3"), so deleting the whole version branch leaves every existing test
+     * green.
+     *
+     * <p>
+     * The collection here declares no tags, which is what makes the shape reachable: the tool
+     * forces a single tag on a tag-scoped collection, whereas a collection whose {@code tags} array
+     * is empty while its entity rows carry tags — the drift the corpus import scripts produce by
+     * writing the TEXT[] columns directly — is exempted from that check and returns both versions
+     * in one result set.
+     */
+    @Test
+    public void testSameNameAndKindUnderTwoTagsIsFlaggedAsOneObjectInTwoVersions() {
+        Collection untagged = new Collection(UUID.randomUUID(), "OIM - Custom",
+            "Install kit — versions carried on the rows", List.of(), null);
+        when(collectionService.listCollections()).thenReturn(List.of(untagged));
+
+        KgEntity personV93 = new KgEntity(UUID.randomUUID(), "OIM - Custom", "Person", "table",
+            "9.3", "Person table", Map.of("document_id", "doc-9-3"), 1.0);
+        KgEntity personV10 = new KgEntity(UUID.randomUUID(), "OIM - Custom", "Person", "table",
+            "10.0", "Person table", Map.of("document_id", "doc-10-0"), 1.0);
+        KgEntity unique = new KgEntity(UUID.randomUUID(), "OIM - Custom", "ADSAccount", "table",
+            "9.3", "AD accounts", Map.of("document_id", "doc-ads"), 0.4);
+        when(kgRepository.fuzzySearchEntities(eq("Person"), eq(20), eq(null), eq("OIM - Custom"),
+            eq(null))).thenReturn(List.of(personV93, personV10, unique));
+
+        String output =
+            searchGraphEntitiesTool.searchGraphEntities("Person", "OIM - Custom", null, null, 20);
+
+        assertTrue(output.contains(
+            "> Note: these rows are the SAME object in several product versions, each with its own document:"),
+            "expected a version note, got:\n" + output);
+        assertTrue(output.contains("'Person (table)' → tags 10.0, 9.3"),
+            "expected the colliding rows named with BOTH their tags, got:\n" + output);
+        assertTrue(output.contains("Pass the 'tag' of the version you mean"),
+            "expected the remedy the model is supposed to follow, got:\n" + output);
+        // One kind must not be reported as several: that note prescribes a different remedy.
+        assertFalse(output.contains("these names exist under several kinds"),
+            "a single-kind version collision was reported as a kind collision:\n" + output);
+        // A name occurring once is not flagged at all.
+        assertFalse(output.contains("'ADSAccount (table)' →"),
+            "a unique row was flagged:\n" + output);
+        // Both per-version documents must still reach the model, and the note must precede them.
+        assertTrue(output.contains("doc-9-3") && output.contains("doc-10-0"),
+            "expected both versions' document_ids in the table, got:\n" + output);
+        assertTrue(output.indexOf("> Note: these rows are the SAME object") < output
+            .indexOf("| entity_name |"), "the note must sit ABOVE the table:\n" + output);
+    }
+
     /** n entities of one kind, named e0..e(n-1) — enough to fill a page. */
     private static List<KgEntity> entities(int n, String kind) {
-        List<KgEntity> out = new java.util.ArrayList<>();
+        List<KgEntity> out = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             out.add(new KgEntity(UUID.randomUUID(), "OIM - DB", "e" + i, kind, "9.3", "desc " + i,
                 Collections.emptyMap(), 0.5));

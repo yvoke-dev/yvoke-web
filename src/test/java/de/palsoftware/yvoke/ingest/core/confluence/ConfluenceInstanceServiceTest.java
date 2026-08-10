@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
@@ -21,12 +22,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
+import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
+import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
+import java.time.OffsetDateTime;
+import java.util.stream.IntStream;
 
 class ConfluenceInstanceServiceTest {
 
     private static final UUID INSTANCE_ID = UUID.randomUUID();
 
     private ConfluenceInstanceRepository repository;
+    private JobProgressBroker progressBroker;
     private SecretCipher secretCipher;
     private JobRepository jobRepository;
     private CollectionRepository collectionRepository;
@@ -47,8 +54,9 @@ class ConfluenceInstanceServiceTest {
         when(collectionRepository.findByName("OIM - Docs")).thenReturn(Optional
             .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", List.of("10.0"), null)));
 
+        progressBroker = mock(JobProgressBroker.class);
         service = new ConfluenceInstanceService(repository, secretCipher, jobRepository,
-            collectionRepository, mock(JobProgressBroker.class));
+            collectionRepository, progressBroker);
     }
 
     private static ConfluenceInstance stored(String apiTokenEnc, String tokenKeyId) {
@@ -62,6 +70,13 @@ class ConfluenceInstanceServiceTest {
         return new ConfluenceInstance(id, "iCC Wiki", "icc-wiki", "https://acme.atlassian.net/wiki",
             "svc@example.com", null, null, "DOCS", "12345", "public", "draft", "OIM - Docs", "10.0",
             false, true, null, null);
+    }
+
+    /** A queued page job as it reads AFTER the bulk cancel committed. */
+    private static IngestionJob cancelledJob(UUID id) {
+        return new IngestionJob(id, "confluence-page-import:icc-wiki", "12345", "10.0",
+            "OIM - Docs", JobStatus.CANCELLED, null, 0, 1, null, null, OffsetDateTime.now(), null,
+            null);
     }
 
     private ConfluenceInstance captureUpsert() {
@@ -223,8 +238,8 @@ class ConfluenceInstanceServiceTest {
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
         when(jobRepository.cancelQueued("confluence-import:icc-wiki"))
             .thenReturn(List.of(UUID.randomUUID()));
-        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki")).thenReturn(
-            java.util.stream.IntStream.range(0, 41).mapToObj(i -> UUID.randomUUID()).toList());
+        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+            .thenReturn(IntStream.range(0, 41).mapToObj(i -> UUID.randomUUID()).toList());
 
         ConfluenceInstanceService.Deletion deletion = service.delete(INSTANCE_ID);
 
@@ -250,14 +265,68 @@ class ConfluenceInstanceServiceTest {
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
         // Nothing matches the CURRENT slug — those jobs were queued as ":old-slug".
         when(jobRepository.cancelQueued(anyString())).thenReturn(List.of());
-        when(jobRepository.cancelQueuedBySetting("instanceId", INSTANCE_ID.toString())).thenReturn(
-            java.util.stream.IntStream.range(0, 37).mapToObj(i -> UUID.randomUUID()).toList());
+        when(jobRepository.cancelQueuedBySetting("instanceId", INSTANCE_ID.toString()))
+            .thenReturn(IntStream.range(0, 37).mapToObj(i -> UUID.randomUUID()).toList());
 
         ConfluenceInstanceService.Deletion deletion = service.delete(INSTANCE_ID);
 
         assertThat(deletion.cancelledQueuedJobs()).isEqualTo(37);
         verify(jobRepository).cancelQueuedBySetting("instanceId", INSTANCE_ID.toString());
         verify(repository).deleteById(INSTANCE_ID);
+    }
+
+    /**
+     * Deleting an instance cancels its queued jobs with bulk UPDATEs, so every one of those rows
+     * changes state without the job engine seeing it — and each must still produce a terminal
+     * progress frame.
+     *
+     * <p>
+     * Same failure as the bulk admin cancel: a job-detail page open on one of those jobs is
+     * subscribed to {@link de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker} waiting
+     * for a terminal frame that can now never be produced, because no worker will ever run a
+     * cancelled job. The page streams "Queued" with a live Stop button forever, and the broker has
+     * no replay buffer, so the frame must be published here or not at all.
+     *
+     * <p>
+     * This path is structurally more fragile than the admin one and therefore needs its own
+     * witness: it CANNOT call {@code JobService.publishSnapshot}. {@code JobService} collects every
+     * {@code JobHandler} bean and {@code ConfluenceIngestService} is one, so injecting it here
+     * would close a bean cycle — the two lines are inlined against {@code JobRepository} +
+     * {@code JobProgressBroker} instead. A duplicated implementation is exactly the kind that gets
+     * dropped by a later edit, and the two existing delete tests would not notice: they assert only
+     * {@code Deletion.cancelledQueuedJobs}, which counts the ids rather than using them.
+     *
+     * <p>
+     * The status on the frame matters as much as the frame itself: the page closes the stream on
+     * {@code isTerminalStatus(data.status)}, so a frame that still said {@code queued} would leave
+     * the emitter open and the Stop button live — a published-but-useless notification.
+     */
+    @Test
+    void deletingAnInstancePublishesASnapshotForEachJobItCancelled() {
+        UUID crawlJob = UUID.randomUUID();
+        UUID pageJob = UUID.randomUUID();
+        when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
+        when(jobRepository.cancelQueued("confluence-import:icc-wiki"))
+            .thenReturn(List.of(crawlJob));
+        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+            .thenReturn(List.of(pageJob));
+        // The cancel already committed, so the row the snapshot re-reads is terminal.
+        when(jobRepository.findById(crawlJob)).thenReturn(Optional.of(cancelledJob(crawlJob)));
+        when(jobRepository.findById(pageJob)).thenReturn(Optional.of(cancelledJob(pageJob)));
+
+        service.delete(INSTANCE_ID);
+
+        ArgumentCaptor<ProgressEvent> published = ArgumentCaptor.forClass(ProgressEvent.class);
+        verify(progressBroker, times(2)).publish(published.capture());
+        assertThat(published.getAllValues()).extracting(ProgressEvent::jobId)
+            .as("one frame per cancelled job, or that job's open page never learns")
+            .containsExactly(crawlJob, pageJob);
+        assertThat(published.getAllValues()).allSatisfy(event -> {
+            assertThat(event.status()).isEqualTo(JobStatus.CANCELLED.dbValue());
+            assertThat(event.isTerminal())
+                .as("a non-terminal frame leaves the SSE stream and the Stop button alive")
+                .isTrue();
+        });
     }
 
     @Test

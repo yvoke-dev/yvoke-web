@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import de.palsoftware.yvoke.document.core.HierarchyUtils;
 
 public class McpToolUtils {
 
@@ -99,9 +100,7 @@ public class McpToolUtils {
         for (HybridSearchResult c : chunks) {
             double score = c.score();
             String cid = (c.id() != null) ? c.id().toString() : "";
-            String text = (c.text() != null)
-                ? de.palsoftware.yvoke.document.core.HierarchyUtils.stripBreadcrumb(c.text()).trim()
-                : "";
+            String text = (c.text() != null) ? HierarchyUtils.stripBreadcrumb(c.text()).trim() : "";
 
             String title = c.documentTitle();
             if (title == null) {
@@ -129,23 +128,4 @@ public class McpToolUtils {
         return String.join("\n", lines).strip();
     }
 
-    public static String formatEntities(List<KgEntity> entities) {
-        if (entities == null || entities.isEmpty()) {
-            return "(no matching entities)";
-        }
-        List<String> lines = new ArrayList<>();
-        for (KgEntity e : entities) {
-            String kind = e.kind() != null ? e.kind() : "?";
-            String name = e.name() != null ? e.name() : "?";
-            String desc = e.description() != null ? e.description().trim() : "";
-            Double sim = e.similarity();
-            String simStr = sim != null ? String.format(Locale.US, "  (sim=%.2f)", sim) : "";
-            lines.add("### " + kind + ": " + name + simStr);
-            if (!desc.isEmpty()) {
-                lines.add(desc);
-            }
-            lines.add("");
-        }
-        return String.join("\n", lines).strip();
-    }
 }

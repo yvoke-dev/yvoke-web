@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
@@ -33,6 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -78,7 +81,7 @@ public class ChatControllerIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
             .authorities(new SimpleGrantedAuthority("ROLE_USER"));
@@ -166,6 +169,59 @@ public class ChatControllerIT {
         // Cleanup User B's conversation
         setSecurityContext(userBOid, "user-b-test@local", "User B");
         chatConversationService.deleteConversation(otherPublicId);
+    }
+
+    /**
+     * {@code MvcExceptionHandler} turns a failed request into a 302 + flash message, and whether it
+     * does so is decided by the SHAPE of the request, not by the endpoint. That decision has to keep
+     * working for {@code ChatController}, because {@code ChatController} is a plain {@code @Controller}
+     * (so the JSON {@code ApiExceptionHandler}, which is selected by {@code @RestController}, does not
+     * cover it) and several of its endpoints are {@code @ResponseBody void} handlers called from bare
+     * {@code fetch()} — {@code thread.js} posts {@code /chat/{id}/streaming} and
+     * {@code /chat/{id}/show-thinking} that way, with the default {@code Accept: *}{@code /*}.
+     *
+     * <p>
+     * Widen {@code isNavigationalFormPost} — or just drop its call from {@code handleUnexpected},
+     * which reads as "we always want the friendly error page" — and these fetches stop getting a
+     * status at all: they get a 302 into an HTML page, which {@code fetch} follows silently and
+     * reports as {@code response.ok === true}. The browser then believes it saved a setting it did
+     * not save, and the flash message it was redirected to is attached to a page nobody is looking
+     * at, so the failure is invisible on both sides. A 400 is the only answer that lets the client
+     * know the value was rejected.
+     *
+     * <p>
+     * The second stanza is what makes the first discriminating: inverting the predicate so it is
+     * always false would leave the 400 intact while quietly deleting the flash-redirect behaviour
+     * every admin form depends on. {@code MvcExceptionHandlerTest} covers the predicate against a
+     * synthetic probe controller, and asserts only that the exception PROPAGATES
+     * ({@code fetchPostWithoutHtmlAcceptIsNotHijackedIntoARedirect} does
+     * {@code hasRootCauseInstanceOf}); it never asserts the status the framework then produces, and
+     * it never runs against a real chat route, so the end-to-end "malformed flag reaches the browser
+     * as 400" contract is untested without this.
+     */
+    @Test
+    public void aNonBooleanStreamingFlagIsAFourHundredAndIsNeverSwallowedIntoAFlashRedirect()
+        throws Exception {
+        // No conversation is needed: @RequestParam binding fails before the handler body runs, so
+        // nothing touches the database and no ownership check is reached.
+        UUID convId = UUID.randomUUID();
+        var login = testUserLogin("user-a-controller-test-oid", "user-a-test@local", "User A");
+
+        // Spring's StringToBooleanConverter accepts true/on/yes/1 and false/off/no/0; "maybe" is
+        // outside that set, so binding raises MethodArgumentTypeMismatchException.
+        mockMvc
+            .perform(post("/chat/" + convId + "/streaming").with(login).with(csrf())
+                .header("Accept", "*/*").param("enabled", "maybe"))
+            .andExpect(status().isBadRequest()).andExpect(flash().attributeCount(0));
+
+        // Same URL, classic browser form shape: this one IS meant to be swallowed into a
+        // redirect-back with a flash error.
+        mockMvc
+            .perform(post("/chat/" + convId + "/streaming").with(login).with(csrf())
+                .header("Accept", "text/html,application/xhtml+xml")
+                .header("Referer", "http://localhost/chat/" + convId).param("enabled", "maybe"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/chat/" + convId))
+            .andExpect(flash().attributeExists("error"));
     }
 
     @Test

@@ -13,6 +13,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.UUID;
+import jakarta.servlet.http.Part;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -20,6 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.assertj.core.api.Assertions;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -76,7 +81,7 @@ public class IngestApiControllerIT {
                 .andExpect(jsonPath("$.id", notNullValue()));
 
         Collection targetCol = collectionService.getCollection("target-col").orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(targetCol.tags()).contains("v2.0");
+        Assertions.assertThat(targetCol.tags()).contains("v2.0");
     }
 
     /**
@@ -112,6 +117,82 @@ public class IngestApiControllerIT {
                 .andExpect(content().json(firstBody));
     }
 
+    /**
+     * An upload over {@code spring.servlet.multipart.max-file-size} must come back <strong>413
+     * CONTENT_TOO_LARGE</strong>, not a 500.
+     *
+     * <p>
+     * The whole path is framework code, which is exactly why it is worth pinning: nothing in
+     * {@code src/} mentions {@code MaxUploadSizeExceededException}, {@code MultipartException} or
+     * {@code resolve-lazily} (repo-wide grep: zero hits), so the correct status here is an emergent
+     * property of four independent settings and one Spring version. The container refuses the body
+     * and reports it out of {@code getParts()}; because {@code resolve-lazily} is unset, that
+     * happens in {@code DispatcherServlet.checkMultipart} BEFORE handler resolution, so
+     * {@code StandardMultipartHttpServletRequest.handleParseFailure} converts it to
+     * {@code MaxUploadSizeExceededException} — which implements {@code ErrorResponse} with
+     * {@code getStatusCode() == 413} — and it surfaces with a <em>null</em> handler. Both app
+     * advices are selector-scoped ({@code @ControllerAdvice(annotations = Controller.class)} and
+     * {@code @RestControllerAdvice(annotations = RestController.class)}), and
+     * {@code HandlerTypePredicate} returns false for a null handler type, so NEITHER can claim it;
+     * {@code DefaultHandlerExceptionResolver}'s leading {@code instanceof ErrorResponse} branch
+     * calls {@code response.sendError(413, detail)} instead.
+     *
+     * <p>
+     * Every link in that chain is one edit from breaking, and none of them looks like it touches
+     * uploads. Setting {@code spring.servlet.multipart.resolve-lazily=true} defers parsing into the
+     * handler, at which point the handler is no longer null, {@code ApiExceptionHandler} DOES apply,
+     * and its generic {@code Exception} branch turns a routine oversized file into a 500 with a
+     * server-error log entry — an operator uploading a 300 MB corpus is told the service is broken
+     * rather than that their file is too big, and the platform's own retry logic treats it as
+     * retryable. Adding an {@code @ExceptionHandler} for {@code MultipartException} to either advice
+     * has the mirror effect. Nothing else in the suite issues a multipart request that fails
+     * parsing, so today all of that is unobserved.
+     *
+     * <p>
+     * The refusal is injected rather than uploaded: MockMvc never runs a real container, so the only
+     * way to reach this path is to reproduce the shape the container produces — a
+     * {@code getParts()} that throws with Tomcat's "…exceeds…size…" wording, which is precisely what
+     * {@code handleParseFailure} matches on. That keeps the test at milliseconds instead of pushing
+     * 200 MB through it, and it exercises the REAL resolver chain of the REAL application context,
+     * both advices included.
+     */
+    @Test
+    public void anOverSizedMultipartUploadIsA413NotAFiveHundred() throws Exception {
+        String body = mockMvc
+                .perform(post("/api/ingest/v1/upload")
+                        .contentType("multipart/form-data")
+                        // Tomcat refuses the body itself and surfaces the refusal out of getParts();
+                        // handleParseFailure matches on that wording, so the wording IS the fixture.
+                        // java.util.Collection is spelled out because this file already imports a
+                        // domain type named Collection.
+                        .with(request -> {
+                            MockHttpServletRequest oversized =
+                                    new MockHttpServletRequest(
+                                            request.getServletContext(), request.getMethod(),
+                                            request.getRequestURI()) {
+                                        @Override
+                                        public java.util.Collection<Part> getParts() {
+                                            throw new IllegalStateException(
+                                                    "org.apache.tomcat.util.http.fileupload.impl."
+                                                            + "SizeLimitExceededException: the request was "
+                                                            + "rejected because its size (629145600) "
+                                                            + "exceeds the configured maximum (209715200)");
+                                        }
+                                    };
+                            oversized.setContentType("multipart/form-data");
+                            return oversized;
+                        })
+                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+                .andExpect(status().isContentTooLarge())
+                .andReturn().getResponse().getContentAsString();
+
+        // sendError() writes no body. An advice-rendered payload here would mean the exception
+        // reached a handler-scoped advice, i.e. that parsing moved into the handler.
+        Assertions.assertThat(body)
+                .as("413 must come from the framework's sendError path, not from an advice")
+                .isEmpty();
+    }
+
     @Test
     public void testProcessDocumentKgWithSourceInfo() throws Exception {
         UUID sourceColId = UUID.randomUUID();
@@ -134,6 +215,6 @@ public class IngestApiControllerIT {
                 .andExpect(jsonPath("$.id", notNullValue()));
 
         Collection targetCol = collectionService.getCollection("target-col").orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(targetCol.tags()).contains("v2.0");
+        Assertions.assertThat(targetCol.tags()).contains("v2.0");
     }
 }

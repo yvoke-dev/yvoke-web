@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.ingest.worker;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.ingest.core.UploadPathGuard;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.shared.jobengine.JobHandler;
@@ -31,12 +32,14 @@ public class JsonImportJobHandler implements JobHandler {
     private final JsonObjectService jsonObjectService;
     private final ObjectMapper objectMapper;
     private final JobRepository jobRepository;
+    private final UploadPathGuard uploadPathGuard;
 
     public JsonImportJobHandler(JsonObjectService jsonObjectService, ObjectMapper objectMapper,
-        JobRepository jobRepository) {
+        JobRepository jobRepository, UploadPathGuard uploadPathGuard) {
         this.jsonObjectService = jsonObjectService;
         this.objectMapper = objectMapper;
         this.jobRepository = jobRepository;
+        this.uploadPathGuard = uploadPathGuard;
     }
 
     @Override
@@ -66,7 +69,10 @@ public class JsonImportJobHandler implements JobHandler {
             throw new IllegalArgumentException("Source reference (file path) is required");
         }
 
-        File file = Path.of(sourceRef).toFile();
+        // A sourceRef is attacker-influenced (POST /api/jobs/v1 lets any ROLE_INGEST caller name a
+        // path), so it MUST be confined to app.upload-dir like every other file-backed handler —
+        // reading it directly was an arbitrary-file-read into a searchable collection.
+        File file = uploadPathGuard.resolve(sourceRef).toFile();
         if (!file.exists() || !file.isFile()) {
             throw new IllegalArgumentException("File not found: " + sourceRef);
         }

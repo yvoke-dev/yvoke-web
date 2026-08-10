@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,11 +40,25 @@ public class ChatSseController {
     }
 
     /**
-     * Signals that the SSE client went away mid-stream; used to unwind the streaming task quietly.
+     * Signals that writing a token to the SSE response failed; used to unwind the streaming task.
+     *
+     * <p>
+     * Named for the write, not for a diagnosis. A client that went away is only one of the causes:
+     * Spring wraps every non-{@link IOException} thrown by the emitter's write path into
+     * {@link IllegalStateException}, and an emitter that has already completed refuses writes the
+     * same way — so a transport fault with a perfectly live client lands here too. Calling all of
+     * them "client gone" sends the next reader looking for a disconnect that never happened.
+     *
+     * <p>
+     * The message carries the token position because that is what separates a failure at the
+     * response-commit (token #0 — the write that also emits the headers and triggers the security
+     * header writers) from one mid-answer, and because {@code ChatMessageService.stream}'s generic
+     * catch swallows this exception into a logged chain: the message is the only place the
+     * diagnosis survives to the log.
      */
-    private static final class ClientGoneException extends RuntimeException {
-        ClientGoneException(Throwable cause) {
-            super(cause);
+    private static final class SseWriteFailedException extends RuntimeException {
+        SseWriteFailedException(int sentTokens, Throwable cause) {
+            super("SSE write failed at token #" + sentTokens + ": " + cause, cause);
         }
     }
 
@@ -82,6 +97,10 @@ public class ChatSseController {
         }
 
         AtomicReference<Future<?>> taskRef = new AtomicReference<>();
+        // Tokens written so far. Only ever read to describe a failure — the citation filter emits
+        // one SSE event per character, so "which token" is the difference between "the very first
+        // write, the one that commits the response" and "somewhere in the answer".
+        AtomicInteger sentTokens = new AtomicInteger();
 
         emitter.onCompletion(() -> cancel(taskRef));
         emitter.onTimeout(() -> {
@@ -102,9 +121,11 @@ public class ChatSseController {
                     try {
                         emitter.send(token);
                     } catch (IOException | IllegalStateException e) {
-                        // Emitter completed/closed or client disconnected: unwind the stream.
-                        throw new ClientGoneException(e);
+                        // Emitter completed/closed, client disconnected, or the write path itself
+                        // threw: unwind the stream carrying enough to tell those apart afterwards.
+                        throw new SseWriteFailedException(sentTokens.get(), e);
                     }
+                    sentTokens.incrementAndGet();
                 });
                 log.info("SSE stream completed successfully for conversation: {}", id);
                 emitter.complete();
@@ -112,9 +133,11 @@ public class ChatSseController {
                 log.info("SSE stream cancelled by user for conversation: {}", id);
                 // Already stopped, just complete
                 emitter.complete();
-            } catch (ClientGoneException e) {
-                log.debug("SSE client disconnected mid-stream for conversation {}: {}", id,
-                    e.getMessage());
+            } catch (SseWriteFailedException e) {
+                // Reached only when the in-band error write failed too, so the client really is
+                // gone. Logged with the cause chain so the level, not the wording, is what keeps
+                // an ordinary mid-answer disconnect quiet.
+                log.debug("SSE stream unwound for conversation {}: {}", id, e.getMessage(), e);
             } catch (Exception e) {
                 // The SSE response is already committed, so report the failure in-band and complete
                 // normally — completeWithError() here would make MVC try to write a JSON error over

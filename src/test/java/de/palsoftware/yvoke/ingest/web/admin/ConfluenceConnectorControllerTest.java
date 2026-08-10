@@ -475,6 +475,53 @@ class ConfluenceConnectorControllerTest {
             anyString(), anyString(), anyString(), any(), any());
     }
 
+    /**
+     * The connection test is a credential-egress event: it sends a Confluence API token to a host
+     * named in the request, and the audit row is the only record of which token went where.
+     * {@code testingWritesAnAuditRowNamingTheTargetHost} passes {@code any()} for the detail map,
+     * so the one field that says WHICH credential was egressed — the stored, encrypted one
+     * belonging to the instance, or one the operator typed into the form — is asserted nowhere.
+     *
+     * <p>
+     * Losing it is invisible: the row still exists, still names the action and the target host, and
+     * still reads as a complete audit trail. But "the stored iCC Wiki token was sent to
+     * acme.atlassian.net" and "someone typed a token and probed acme.atlassian.net" are different
+     * incidents with different responses — only the first means a stored secret has to be rotated.
+     * Both branches are driven here from the same request shape so the value cannot be satisfied by
+     * hardcoding either literal, and the second assertion holds the row to the other half of the
+     * contract: the audit detail records the SOURCE of the credential, never the credential.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theConnectionTestAuditRecordsWhetherTheEgressedTokenWasStoredOrTyped() {
+        ConfluenceInstance instance = stored("enc:stored-token", "keyA");
+        when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
+        when(confluenceClientService.resolveApiToken(instance)).thenReturn("decrypted-token");
+        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
+            anyString(), anyString(), any(), any())).thenReturn(
+                ConfluenceClientService.ConnectionTestResult.success("Ops", "Root", 1, 2, ""));
+
+        // Token box left blank: the STORED credential is decrypted and sent to the host.
+        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
+            "svc@example.com", "  ", "DOCS", "12345", "", "");
+        // A token typed into the form: that one is sent instead.
+        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
+            "svc@example.com", "typed-token", "DOCS", "12345", "", "");
+
+        ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
+        verify(auditLogRepository, times(2)).log(any(), eq("TEST_CONFLUENCE_CONNECTION"),
+            eq("https://acme.atlassian.net/wiki"), detail.capture());
+
+        assertThat(detail.getAllValues()).extracting(d -> d.get("tokenSource"))
+            .as("which credential left the building - the stored one first, the typed one second")
+            .containsExactly("stored", "submitted");
+        assertThat(detail.getAllValues()).allSatisfy(d -> assertThat(d.values())
+            .as("the audit records the SOURCE of the credential, never the credential")
+            .noneMatch(v -> String.valueOf(v).contains("decrypted-token")
+                || String.valueOf(v).contains("typed-token")
+                || String.valueOf(v).contains("enc:")));
+    }
+
     @Test
     void testingAnUnsavedInstanceWithoutATokenExplainsWhatIsMissing() {
         String html = controller.testConfluenceConnection(null, "https://acme.atlassian.net",

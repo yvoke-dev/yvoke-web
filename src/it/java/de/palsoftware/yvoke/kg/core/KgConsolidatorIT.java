@@ -54,6 +54,50 @@ public class KgConsolidatorIT {
     }
 
     /**
+     * Graph identity is tag-scoped: one collection holds two product versions separated ONLY by
+     * tag, and two same-name/same-kind rows under DIFFERENT tags are two legitimate entities, not a
+     * duplicate. Consolidation therefore MUST keep {@code kg_canonical_tags(e.tags)} in its GROUP
+     * BY and in the edge-collapse PARTITION BY. Dropping either re-merges the tag split and then
+     * hard-DELETEs one row, cascading its edges away — the destructive shape that motivated the
+     * tag-scoped unique index in the first place. This runs consolidation with a null tag (the
+     * "consolidate everything" path), which is where a tag-blind GROUP BY would do the most damage.
+     */
+    @Test
+    public void consolidationNeverMergesTwoTagScopesEvenWhenTheTagFilterIsOff() {
+        UUID colId = jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?",
+            UUID.class, COLLECTION);
+        UUID v93 = UUID.randomUUID();
+        UUID v10 = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'Person', 'table', 'the 9.3 Person table', ?)",
+            v93, colId, new String[] {"9.3"});
+        jdbcTemplate.update(
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'Person', 'table', 'the 10.0 Person table', ?)",
+            v10, colId, new String[] {"10.0"});
+        jdbcTemplate.update(
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'Person', 'has_column', 'Ident', ?, NULL, 'edge in 9.3', ?)",
+            UUID.randomUUID(), colId, v93, new String[] {"9.3"});
+        jdbcTemplate.update(
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'Person', 'has_column', 'Ident', ?, NULL, 'edge in 10.0', ?)",
+            UUID.randomUUID(), colId, v10, new String[] {"10.0"});
+
+        kgConsolidator.consolidate(COLLECTION, null);
+
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM entities WHERE collection_id = ? AND name = 'Person'",
+            Integer.class, colId)).as("both product versions of the entity must survive")
+                .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM entities WHERE id IN (?, ?)", Integer.class, v93, v10))
+                .as("neither original row may be deleted as an alias of the other").isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM relationships WHERE collection_id = ? AND predicate = 'has_column'",
+            Integer.class, colId))
+                .as("the same triple under two tags is two edges, not a duplicate to collapse")
+                .isEqualTo(2);
+    }
+
+    /**
      * Post kind-aware identity (V2), the entities table enforces uniqueness on
      * {@code (collection_id, coalesce(kind,''), lower(name))}, so same-kind case-variant duplicates
      * no longer arise; only trim/whitespace variants (which differ under lower(name) but collapse

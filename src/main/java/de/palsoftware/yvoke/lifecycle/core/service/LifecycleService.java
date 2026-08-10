@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 
 /**
  * Cross-domain content-deletion coordinator. It owns the ORDER and atomicity of cascading deletes
@@ -32,14 +33,13 @@ public class LifecycleService {
     private final DocumentRepository documentRepository;
     private final KgWriteRepository kgRepository;
     private final CollectionRepository collectionRepository;
-    private final de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService jsonObjectService;
+    private final JsonObjectService jsonObjectService;
     private final TagRepository tagRepository;
     private final AuditLogRepository auditLogRepository;
     private final UserService userService;
 
     public LifecycleService(DocumentRepository documentRepository, KgWriteRepository kgRepository,
-        CollectionRepository collectionRepository,
-        de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService jsonObjectService,
+        CollectionRepository collectionRepository, JsonObjectService jsonObjectService,
         TagRepository tagRepository, AuditLogRepository auditLogRepository,
         UserService userService) {
         this.documentRepository = documentRepository;

@@ -26,6 +26,8 @@ import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
 public class GeminiLlmClient implements LlmClient, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(GeminiLlmClient.class);
@@ -98,10 +100,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         }
         this.client = builder.build();
 
-        this.objectMapper = objectMapper.copy()
-            .registerModule(new com.fasterxml.jackson.datatype.jdk8.Jdk8Module()).configure(
-                com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
-                false);
+        this.objectMapper = objectMapper.copy().registerModule(new Jdk8Module())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     /**

@@ -27,6 +27,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.hamcrest.Matchers;
 
 /**
  * The playbook and system-prompt write endpoints, which had no coverage at any tier: only
@@ -111,6 +112,53 @@ public class RagAdminWriteIT {
     }
 
     /**
+     * A user-facing playbook with no tools cannot search, and the list MUST say so.
+     *
+     * <p>
+     * Selecting nothing stores an empty array (see the test below), and an empty allow-list grants
+     * nothing — so the playbook answers from the model alone, with no sources, which is the one
+     * failure mode this product exists to avoid. It is invisible at answer time: the reply looks
+     * normal, just ungrounded. The list previously rendered "Allowed Tools: All" for exactly this
+     * row, which was wrong in every case and contradicted the form's own help text two panels away.
+     */
+    @Test
+    public void aSpecialistPlaybookWithNoToolsIsFlaggedInTheList() throws Exception {
+        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+            .param("title", "IT Write Playbook").param("templateText", "Answer carefully.")
+            .param("targetAgent", "specialist")).andExpect(status().is3xxRedirection());
+
+        String html = mockMvc.perform(get("/admin/playbooks").with(admin())).andReturn()
+            .getResponse().getContentAsString();
+
+        assertThat(html).contains("No tools — answers without searching");
+        assertThat(html).as("the old label claimed the opposite of what an empty list means")
+            .doesNotContain("Allowed Tools: <span style=\"font-weight: 400; "
+                + "color: var(--text-secondary);\">All</span>");
+    }
+
+    /**
+     * The mirror-image mistake: tools chosen on a reviewer or orchestrator playbook are DISCARDED.
+     * Those roles are handed a fixed list at the call site ({@code OrchestrationService} passes
+     * {@code List.of("verify_citations", "get_section")} to the reviewer and
+     * {@code List.of("ask_clarifying_question")} to the orchestrator), so the column is never read
+     * for them. Without this the field looks functional and an admin can configure it carefully for
+     * no effect.
+     */
+    @Test
+    public void toolsChosenOnAReviewerPlaybookAreFlaggedAsIgnored() throws Exception {
+        mockMvc
+            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+                .param("title", "IT Write Playbook").param("templateText", "Review carefully.")
+                .param("tools", "search_corpus").param("targetAgent", "reviewer"))
+            .andExpect(status().is3xxRedirection());
+
+        String html = mockMvc.perform(get("/admin/playbooks").with(admin())).andReturn()
+            .getResponse().getContentAsString();
+
+        assertThat(html).contains("Not used for this role — these tools are ignored");
+    }
+
+    /**
      * The checkbox is absent from the request when unticked and {@code tools} is absent when nothing
      * is selected — the two most likely binding regressions, since both silently produce a working
      * playbook with the wrong capabilities.
@@ -140,7 +188,7 @@ public class RagAdminWriteIT {
             .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + PLAYBOOK + ".md\""))
             .andExpect(content().contentTypeCompatibleWith("text/markdown"))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer carefully.")));
+            .andExpect(content().string(Matchers.containsString("Answer carefully.")));
     }
 
     @Test
@@ -265,7 +313,7 @@ public class RagAdminWriteIT {
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
 
         mockMvc.perform(get("/admin/prompts").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString(PROMPT)));
+            .andExpect(content().string(Matchers.containsString(PROMPT)));
     }
 
     @Test

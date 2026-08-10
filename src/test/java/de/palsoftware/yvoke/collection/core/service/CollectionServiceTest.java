@@ -73,6 +73,35 @@ public class CollectionServiceTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    /**
+     * "Both" and "All" are not ordinary names: the corpus selectors render them as the
+     * search-everything pseudo-options, so a real collection carrying either name is
+     * indistinguishable from the option meaning "no filter" — the picker then either searches the
+     * whole corpus when the user asked for one collection, or searches one collection when the user
+     * asked for everything, and neither outcome errors. Casing is exactly how such a name gets in:
+     * collection names are typed into an admin form, so {@code both}, {@code ALL} and a copy-pasted
+     * {@code " all "} are the shapes that actually arrive, not the two title-cased spellings a
+     * developer writes in a test.
+     *
+     * <p>
+     * {@code testCreateCollectionInvalidNames} above passes only the canonical casing, so turning
+     * {@code equalsIgnoreCase} into {@code equals} — an edit that reads like tightening a
+     * comparison — leaves it green while every other spelling is accepted and persisted. The
+     * repository assertion is the other half of the rule: a rejected name must never reach
+     * {@code create}, because the row it would mint has to be deleted by hand afterwards, and the
+     * name it holds is the one the collection dropdown cannot represent.
+     */
+    @Test
+    public void theReservedCollectionNamesAreRejectedInAnyCasing() {
+        for (String reserved : List.of("both", "ALL", " all ", "BoTh")) {
+            assertThatThrownBy(() -> collectionService.createCollection(reserved, "desc"))
+                .as("'%s' is a reserved collection name whatever the casing", reserved)
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reserved");
+        }
+
+        verify(collectionRepository, never()).create(any(), any());
+    }
+
     @Test
     public void testCreateCollectionDuplicate() {
         Collection existing = new Collection(UUID.randomUUID(), "Test", "Desc",

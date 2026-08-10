@@ -20,11 +20,15 @@ public class RrfFuser {
         this.fulltextWeight = fulltextWeight;
     }
 
-    public List<IntermediateRrfResult> fuse(List<ChunkRow> semanticRows, List<ChunkRow> ftRows,
-        int semanticLimit, int ftLimitCap) {
-
-        int semanticFallbackRank = semanticLimit;
-        int ftFallbackRank = ftLimitCap;
+    /**
+     * Canonical RRF: each lane contributes {@code 1/(k + rank)} for the chunks it actually ranked,
+     * and nothing at all for the chunks it did not. Deliberately takes no pool sizes — an earlier
+     * version charged an absent lane that lane's requested pool size as a fallback rank, which made
+     * the penalty scale with the other lane's pool instead of with relevance, and flipped direction
+     * with the requested page size. Dropping the parameters makes that class of bug unrepresentable
+     * rather than merely fixed.
+     */
+    public List<IntermediateRrfResult> fuse(List<ChunkRow> semanticRows, List<ChunkRow> ftRows) {
 
         Map<UUID, IntermediateRrfResult> combined = new HashMap<>();
 
@@ -33,7 +37,6 @@ public class RrfFuser {
             IntermediateRrfResult res = new IntermediateRrfResult();
             res.setRow(row);
             res.setSemanticRank(i + 1);
-            res.setFullTextRank(ftFallbackRank);
             res.setInSem(true);
             res.setInFt(false);
             combined.put(row.id(), res);
@@ -48,7 +51,6 @@ public class RrfFuser {
             } else {
                 res = new IntermediateRrfResult();
                 res.setRow(row);
-                res.setSemanticRank(semanticFallbackRank);
                 res.setFullTextRank(j + 1);
                 res.setInSem(false);
                 res.setInFt(true);
@@ -58,15 +60,20 @@ public class RrfFuser {
 
         // Apply RRF scoring logic
         for (IntermediateRrfResult res : combined.values()) {
-            double semScore = 1.0 / (rrfK + res.getSemanticRank());
-            double ftScore = 1.0 / (rrfK + res.getFullTextRank());
+            double semScore = res.isInSem() ? 1.0 / (rrfK + res.getSemanticRank()) : 0.0;
+            double ftScore = res.isInFt() ? 1.0 / (rrfK + res.getFullTextRank()) : 0.0;
             res.setRrfScore((semScore * semanticWeight + ftScore * fulltextWeight)
                 / (semanticWeight + fulltextWeight));
         }
 
-        // Sort descending by RRF score
+        // Sort descending by RRF score, then by id. The tie-break is load-bearing now: with equal
+        // weights a semantic-only row at rank r and a full-text-only row at rank r score
+        // identically by construction, where before ties were only accidental. Id is arbitrary with
+        // respect to relevance — an exact tie IS a genuine tie — but it is total and reproducible,
+        // unlike the previous fall-through to HashMap iteration order.
         List<IntermediateRrfResult> sorted = new ArrayList<>(combined.values());
-        sorted.sort((a, b) -> Double.compare(b.getRrfScore(), a.getRrfScore()));
+        sorted.sort(Comparator.comparingDouble(IntermediateRrfResult::getRrfScore).reversed()
+            .thenComparing(res -> res.getRow().id()));
 
         // Assign pre-rerank RRF rank (1-indexed)
         for (int i = 0; i < sorted.size(); i++) {

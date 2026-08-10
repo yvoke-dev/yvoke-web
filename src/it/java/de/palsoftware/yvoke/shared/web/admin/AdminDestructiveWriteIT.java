@@ -22,6 +22,8 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
+import org.hamcrest.Matchers;
 
 /**
  * The destructive admin writes: clearing a knowledge-graph scope and stopping a running job. Neither
@@ -50,8 +52,8 @@ public class AdminDestructiveWriteIT {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private de.palsoftware.yvoke.shared.jobengine.repository.JobRepository jobRepository;
+    @Autowired
+    private JobRepository jobRepository;
 
     private MockMvc mockMvc;
 
@@ -259,11 +261,11 @@ public class AdminDestructiveWriteIT {
         // string literals in the page's inline script, which drives the same swap over SSE.
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
             .andExpect(content()
-                .string(org.hamcrest.Matchers.containsString(">Cancellation details</h3>")))
+                .string(Matchers.containsString(">Cancellation details</h3>")))
             .andExpect(content()
-                .string(org.hamcrest.Matchers.containsString("card job-outcome-cancelled")))
-            .andExpect(content().string(org.hamcrest.Matchers
-                .not(org.hamcrest.Matchers.containsString(">Failure details</h3>"))));
+                .string(Matchers.containsString("card job-outcome-cancelled")))
+            .andExpect(content().string(Matchers
+                .not(Matchers.containsString(">Failure details</h3>"))));
     }
 
     @Test
@@ -273,9 +275,9 @@ public class AdminDestructiveWriteIT {
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
             .andExpect(
-                content().string(org.hamcrest.Matchers.containsString(">Failure details</h3>")))
+                content().string(Matchers.containsString(">Failure details</h3>")))
             .andExpect(
-                content().string(org.hamcrest.Matchers.containsString("card job-outcome-failed")));
+                content().string(Matchers.containsString("card job-outcome-failed")));
     }
 
     /**
@@ -290,9 +292,49 @@ public class AdminDestructiveWriteIT {
             "queued 3 page(s), 41 already queued, 0 could not be queued");
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString(">Run summary</h3>")))
+            .andExpect(content().string(Matchers.containsString(">Run summary</h3>")))
             .andExpect(content()
-                .string(org.hamcrest.Matchers.containsString("41 already queued")));
+                .string(Matchers.containsString("41 already queued")));
+    }
+
+    /**
+     * S7 Data: {@code error} and {@code summary} are different columns with different meanings, and
+     * a NON-EMPTY {@code error} is what marks a job failed. A summary must therefore never be
+     * written to it — not even additionally.
+     *
+     * <p>
+     * A dual write is the plausible regression ("put it in error too, so it shows up on the detail
+     * page without a new card") and it passes every test that exists. The sibling
+     * {@code aJobSummarySurvivesTheRunAndIsRenderedOnTheDetailPage} would catch the summary being
+     * routed INSTEAD of {@code error} — the Run summary card would vanish — but nothing asserts
+     * {@code error} stays untouched, so a write to both keeps that test green while the completed
+     * job starts rendering the red "Failure details" / {@code job-outcome-failed} card. A
+     * successful Confluence crawl then looks exactly like a failed one, which destroys the single
+     * signal an operator scans the jobs list for; after a bulk re-crawl every green row goes red at
+     * once and the genuine failures become unfindable.
+     *
+     * <p>
+     * Both halves are asserted because they fail differently: the column check is the contract, and
+     * the render check is what an operator actually sees. The outcome card is always present in the
+     * DOM and hidden by an inline style when {@code error} is null, so the visible/hidden state —
+     * not the heading text — is the thing to assert.
+     */
+    @Test
+    public void aRunSummaryNeverLandsInTheErrorColumnThatMarksAJobFailed() throws Exception {
+        UUID jobId = seedJob("completed");
+
+        jobRepository.updateSummary(jobId,
+            "queued 3 page(s), 41 already queued, 0 could not be queued");
+
+        assertThat(jdbcTemplate.queryForObject("SELECT error FROM ingestion_jobs WHERE id = ?",
+            String.class, jobId))
+            .as("a run summary is not a failure: writing it to `error` marks the job failed")
+            .isNull();
+
+        mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
+            .andExpect(content().string(Matchers.containsString(">Run summary</h3>")))
+            .andExpect(content().string(Matchers
+                .containsString("display: none; margin-bottom: 0;")));
     }
 
     /** No summary, no card — an empty heading would just be noise on most jobs. */
@@ -302,6 +344,6 @@ public class AdminDestructiveWriteIT {
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
             .andExpect(content().string(
-                org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(">Run summary</h3>"))));
+                Matchers.not(Matchers.containsString(">Run summary</h3>"))));
     }
 }

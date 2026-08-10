@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.junit.jupiter.api.Assertions;
 
 public class MessageRepositoryTest {
 
@@ -73,7 +74,7 @@ public class MessageRepositoryTest {
         Message message = new Message(id, conversationId, "invalid-role", "Hello world",
             Collections.emptyList(), Collections.emptyList(), null);
 
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             messageRepository.save(message);
         });
     }

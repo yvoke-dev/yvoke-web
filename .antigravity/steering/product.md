@@ -1,5 +1,12 @@
 # Product Overview
 
+> This file is the **short** product orientation: personas, domain glossary, and guardrails. For what the
+> product does, the limits people hit and what it deliberately does not do, read the relevant chapter of
+> [`spec.md`](../../spec.md) at the repo root — do that before any substantial change, since intent and
+> deliberate non-features are not visible in the code. The MUST/MUST NOT rules an agent can regress
+> against are not written down in prose — they are enforced by the **test suite**; if no test fails when
+> a rule is broken, that rule is not enforced.
+
 Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—both the product manuals and the live database schema/code—queryable by humans, AI agents, and external systems. It provides grounded, cited answers using hybrid retrieval over a single Postgres instance.
 
 ## Core Functionality
@@ -8,7 +15,7 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **RAG & Chat UI**: Streaming assistant responses via Server-Sent Events (SSE) with inline citation verification, adjustable settings, and rating/feedback.
 - **Admin UI**: Document inspection, database object summary cache, data validators, audit trail, and async upload pipeline.
 - **External REST API**: Exposes core retrieval and Q&A capabilities to external applications, desktop apps, and automation scripts.
-- **MCP Server**: Read-only Model Context Protocol (MCP) server exposing 13+ tools to allow Claude Code/Desktop/Cursor programmatic access to the corpus, Knowledge Graph, and structured JSON data.
+- **MCP Server**: Read-only Model Context Protocol (MCP) server exposing 10 tools to allow Claude Code/Desktop/Cursor programmatic access to the corpus, Knowledge Graph, and structured JSON data. What each tool offers a user is described in [`spec.md` ch. 7](../../spec.md#7-using-the-assistant-from-other-tools); the authoritative per-tool contract is the tool's own tests under `src/test/java/de/palsoftware/yvoke/mcp/` and `src/it/java/de/palsoftware/yvoke/mcp/`.
 - **Ingestion Pipeline**: Multi-pipeline ingestion worker for manuals (Markdown), Confluence pages, database extracts (zipped directories), and structured data (JSON/JSONL).
 
 ## Domain Context

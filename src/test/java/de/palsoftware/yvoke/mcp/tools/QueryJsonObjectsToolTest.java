@@ -52,6 +52,89 @@ public class QueryJsonObjectsToolTest {
         assertTrue(response.contains("JSON-Col-1"));
     }
 
+    /**
+     * A projected field path that resolves to nothing must render as an EMPTY CELL, and the call as
+     * a whole must still succeed. {@code fields} is model-authored: the agent reads a field list
+     * out of {@code get_json_schema} and re-types it, so a wrong path is a routine event — and the
+     * declaration it copies from is frequently stale against the data (a frozen {@code imported}
+     * schema row declared 4 of the 10 {@code via} values that actually existed). Turning a miss
+     * into an error marker, or into a throw, means one mistyped column destroys a 500-row answer
+     * that was otherwise entirely correct: the model receives
+     * {@code "ERROR: the 'query_json_objects' tool
+     * failed…"} with nothing to indicate that only one of its columns was wrong, and its repair
+     * move is to abandon the query rather than to drop that column.
+     *
+     * <p>
+     * The blank column is a deliberate trade, not an accident — the cost of it is that a typo is
+     * silent — and that is exactly why it needs pinning: no other test in this file projects a path
+     * that misses, so a "return something diagnostic instead of an empty string" refactor of
+     * {@code getNestedValue} would pass the entire suite while changing what every caller sees.
+     */
+    @Test
+    public void aMistypedProjectionFieldRendersAnEmptyCellRatherThanFailingTheCall() {
+        JsonObject obj = new JsonObject(UUID.randomUUID(), UUID.randomUUID(), "JSON-Col-1",
+            Map.<String, Object>of("customer", Map.of("name", "ACME")), "customers.json",
+            OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+            .thenReturn(List.of(obj));
+
+        String output = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1",
+            "customer.name,customer.missing", null, null, null, null);
+
+        assertTrue(output.startsWith("Found 1 JSON objects"),
+            "one unresolvable path must not fail the whole call:\n" + output);
+        assertFalse(output.contains("Error"),
+            "a path that resolves to nothing must not become an error marker:\n" + output);
+        assertTrue(output.contains("| customer.name | customer.missing |"),
+            "the mistyped path must still get its own column:\n" + output);
+        assertTrue(output.contains("| ACME |  |"),
+            "expected the resolved value followed by an empty cell:\n" + output);
+    }
+
+    /**
+     * §12.12: a {@code *} inside a projection segment exists because JSON corpora do not have
+     * uniform key casing — an exported record set routinely carries {@code addrHome} beside
+     * {@code AddrWork}, and the agent has no way to know which spelling a given row used. That is
+     * the whole reason the match is case-insensitive: a wildcard that only matched the casing the
+     * agent happened to type would return HALF the keys and render a cell that looks complete,
+     * because a projection cell shows what it found and has no way to say what it missed. The agent
+     * then reports a partial dataset as the dataset, which on this corpus reads as "the data does
+     * not exist" — the same silent-empty failure shape as the collection/kind case-matching bugs.
+     * Re-serialising the matches as JSON (rather than emitting one value) is the other half: the
+     * cell has to name WHICH keys matched, or a two-key hit is indistinguishable from a one-key
+     * hit.
+     *
+     * <p>
+     * Dropping the {@code (?i)} is invisible to every other test here: they all project plain
+     * single-segment paths ({@code role}, {@code index}), so the wildcard branch of
+     * {@code extractPath} is never entered at all and the whole file stays green.
+     */
+    @Test
+    public void aWildcardProjectionSegmentMatchesKeysCaseInsensitivelyAndSerialisesTheMatches() {
+        // The umlaut is written as a unicode escape in BOTH the fixture and the expectation rather
+        // than pasted, so the two cannot be desynchronised by an encoding-unaware edit.
+        Map<String, Object> data =
+            Map.of("addrHome", Map.of("city", "Bonn"), "AddrWork", Map.of("city", "Köln"));
+        JsonObject obj = new JsonObject(UUID.randomUUID(), UUID.randomUUID(), "JSON-Col-1", data,
+            "people.json", OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+            .thenReturn(List.of(obj));
+
+        String output = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1",
+            "addr*.city", null, null, null, null);
+
+        assertTrue(output.contains("Found 1 JSON objects"),
+            "expected the single row to be rendered, got:\n" + output);
+        assertTrue(output.contains("| addr*.city |"),
+            "the requested path is the column header:\n" + output);
+        assertTrue(output.contains("addrHome") && output.contains("Bonn"),
+            "the exactly-cased key must match:\n" + output);
+        assertTrue(output.contains("AddrWork"),
+            "a differently-cased key must match too, and the cell must name it:\n" + output);
+        assertTrue(output.contains("Köln"),
+            "the differently-cased key's value must reach the caller:\n" + output);
+    }
+
     @Test
     public void testQueryJsonObjectsCollectionDoesNotExist() {
         String response = queryJsonObjectsTool.queryJsonObjects("Nonexistent-Col", null, null,
@@ -72,6 +155,89 @@ public class QueryJsonObjectsToolTest {
         String response = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1,JSON-Col-2", null, "v1",
             "role", null, null, null, null);
         assertTrue(response.contains("Error: Collection 'JSON-Col-1,JSON-Col-2' does not exist."));
+    }
+
+    /**
+     * Three properties of the ROW-LISTING path that no test in this file pins, all of them things
+     * an agent acts on directly.
+     *
+     * <p>
+     * (1) {@code groupBy} belongs to the {@code countOnly} path alone — its whole validation (the
+     * top-level-key charset check, the jsonpath-filter check) lives inside the {@code isCountOnly}
+     * branch. Every one of the five groupBy tests here passes {@code countOnly=true}, so if the
+     * listing path ever started honouring it, an unvalidated key would reach {@code data->>'…'} on
+     * a path where none of those guards run, and a caller who asked for ROWS would silently get a
+     * grouped table instead.
+     *
+     * <p>
+     * (2) The next-page hint must appear only when the page came back exactly full. The two paging
+     * tests here return exactly {@code limit} rows, so the short-page branch is never taken: emit
+     * the hint unconditionally and an agent pages forever past the end of the data, burning one
+     * tool call per empty page and eventually giving up on a query that had already succeeded.
+     *
+     * <p>
+     * (3) An empty page is an ordinary result, not a failure. The literal "No JSON objects found"
+     * appears in no test source in this repository, yet the distinction is decisive for the caller:
+     * a string starting with "Error:" is read as a broken call, and the model's repair move is to
+     * abandon the query rather than widen the filter.
+     */
+    @Test
+    public void aListingIgnoresGroupByAndOnlyHintsAtANextPageWhenThePageIsExactlyFull() {
+        UUID colId = UUID.randomUUID();
+
+        // (1)+(2): a short page, requested with a groupBy that the countOnly path would REJECT
+        // outright ("Customer.name" is nested). On the listing path groupBy must simply be ignored.
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+            .thenReturn(List.of(new JsonObject(UUID.randomUUID(), colId, "JSON-Col-1",
+                Map.of("role", "admin"), "users.json", OffsetDateTime.now())));
+
+        String shortPage = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", "role",
+            5, 0, null, "Customer.name");
+
+        assertTrue(shortPage.startsWith("Found 1 JSON objects"),
+            "a listing must stay a listing when groupBy is passed, got:\n" + shortPage);
+        assertFalse(shortPage.contains("grouped by"),
+            "groupBy must be ignored outside countOnly, got:\n" + shortPage);
+        verify(jsonObjectService, never()).countGroupedObjects(any(), any(), anyString(), any());
+        assertFalse(shortPage.contains("To fetch the next page"),
+            "1 row of a 5-row page is the end of the data; advising another page sends the agent "
+                + "paging forever:\n" + shortPage);
+        assertTrue(shortPage.contains("(reached the end of results)"),
+            "a short page must say so explicitly:\n" + shortPage);
+
+        // (3): the exactly-full page is the ONLY case that may advise a next offset, and it must
+        // advise off+lim rather than lim.
+        List<JsonObject> full = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            full.add(new JsonObject(UUID.randomUUID(), colId, "JSON-Col-1", Map.of("role", "admin"),
+                "users.json", OffsetDateTime.now()));
+        }
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+            .thenReturn(full);
+
+        String fullPage = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", "role", 5,
+            10, null, null);
+
+        assertTrue(fullPage.contains("To fetch the next page, use offset=15"),
+            "an exactly-full page must advise offset+limit:\n" + fullPage);
+        assertFalse(fullPage.contains("reached the end of results"),
+            "a full page is not the end of the data:\n" + fullPage);
+
+        // (4): an empty page is an ordinary empty result, never an "Error:".
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+            .thenReturn(List.of());
+
+        String empty = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", "role", 5,
+            50, null, null);
+
+        assertFalse(empty.startsWith("Error:"),
+            "an empty result must not read as a failed call:\n" + empty);
+        assertTrue(
+            empty.contains(
+                "No JSON objects found matching the criteria in collection " + "JSON-Col-1"),
+            "expected the plain empty-result wording, got:\n" + empty);
+        assertFalse(empty.contains("To fetch the next page"),
+            "there is nothing after an empty page:\n" + empty);
     }
 
     @Test
@@ -150,10 +316,32 @@ public class QueryJsonObjectsToolTest {
         verify(jsonObjectService, never()).countGroupedObjects(any(), any(), anyString(), any());
     }
 
+    /**
+     * A grouped count must never present itself as filtered when the filter was not applied.
+     * {@code JsonObjectService.countGroupedObjects} keeps the filter only when it starts with
+     * {@code $} and otherwise passes {@code path = null}, so a free-text filter silently counted
+     * the WHOLE collection while the header still quoted the filter — the caller reads a
+     * collection-wide breakdown as a filtered one, with nothing indicating the difference. (The
+     * ungrouped path has no such hole: it falls back to {@code countSearch}.)
+     */
+    @Test
+    public void aNonJsonpathFilterIsNotSilentlyDroppedFromAGroupedCount() {
+        when(jsonObjectService.countGroupedObjects(any(), any(), eq("role"), any()))
+            .thenReturn(Map.of("admin", 2L, "user", 5L));
+
+        String output = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", "ADS", "v1", null, null,
+            null, true, "role");
+
+        assertTrue(output.startsWith("Error:"),
+            "a non-jsonpath filter must be rejected rather than dropped, got:\n" + output);
+        assertTrue(output.contains("ADS"), "the error must quote the offending filter:\n" + output);
+        verify(jsonObjectService, never()).countGroupedObjects(any(), any(), anyString(), any());
+    }
+
     @Test
     public void testPlainTopLevelGroupByStillWorks() {
         when(jsonObjectService.countGroupedObjects(any(), any(), eq("role"), any()))
-            .thenReturn(java.util.Map.of("admin", 2L, "user", 5L));
+            .thenReturn(Map.of("admin", 2L, "user", 5L));
 
         String output = queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", null, null,
             null, true, "role");
@@ -204,8 +392,8 @@ public class QueryJsonObjectsToolTest {
 
 
     /** n groups, descending by count, as the repository orders them. */
-    private static java.util.Map<String, Long> groups(int n) {
-        java.util.Map<String, Long> m = new java.util.LinkedHashMap<>();
+    private static Map<String, Long> groups(int n) {
+        Map<String, Long> m = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             m.put("g" + i, (long) (n - i));
         }

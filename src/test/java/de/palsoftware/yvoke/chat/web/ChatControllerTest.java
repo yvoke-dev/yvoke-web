@@ -179,6 +179,55 @@ class ChatControllerTest {
         assertEquals(Map.of(firstAnswerId, onFirstAnswer), model.getAttribute("feedbacks"));
     }
 
+    /**
+     * The two halves of the orchestrator-profile feature disagree by construction, and this pins
+     * which side the dropdown is on. {@code threadView} populates it from
+     * {@code orchestratorProfileService.listProfileNames()} — a plain {@code SELECT} over
+     * {@code orchestrator_profiles} — while {@code updateOrchestratorProfile} accepts EITHER source
+     * (DB row OR {@code OrchestratorProperties.profile(name)}), and {@code resolve} falls back to
+     * the properties when no row exists. A yaml-defined profile is therefore fully runnable and
+     * completely invisible: selectable only by hand-POSTing its name.
+     *
+     * <p>
+     * That asymmetry is safe while no yaml profile ships, and stops being safe the moment one does.
+     * The regression this guards is the reverse of the obvious bug report ("my configured profile
+     * isn't in the list"): merging {@code orchestratorProperties.profileNames()} in here to "fix"
+     * it would put a name in front of every user of every conversation, whether or not the
+     * deployment intends it, and multi-agent runs are the expensive path — one orchestration is an
+     * orchestrator turn plus N specialist runs plus review rounds. A profile becomes offerable
+     * because someone edited a yaml default, with no admin action and nothing on screen to say
+     * where it came from.
+     *
+     * <p>
+     * {@code updateOrchestratorProfile_validPropertyProfile_updatesSettingsSuccessfully} pins the
+     * POST accepting a properties-only profile, which is exactly why the dropdown's source needs
+     * its own assertion: that test stays green whichever source the view uses.
+     * {@code ChatThreadRenderingIT} renders the thread but never asserts on the profile list.
+     */
+    @Test
+    void theThreadDropdownListsDatabaseProfilesOnlyEvenWhenPropertyProfilesExist() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        when(orchestratorProfileService.listProfileNames()).thenReturn(List.of("OIM"));
+        // A runnable yaml profile exists in parallel — updateOrchestratorProfile would accept it.
+        OrchestratorProperties.Profile yamlOnly = mock(OrchestratorProperties.Profile.class);
+        when(orchestratorProperties.profiles()).thenReturn(List.of(yamlOnly));
+
+        Model model = new ConcurrentModel();
+        assertEquals("chat/thread", controller.threadView(conversationId, model));
+
+        assertEquals(List.of("OIM"), model.getAttribute("orchestratorProfiles"));
+        // Not "the yaml one happened to be filtered out": the properties are never consulted here.
+        verify(orchestratorProperties, never()).profiles();
+        verify(orchestratorProperties, never()).profileNames();
+    }
+
     private static Message assistantMessage(UUID id, UUID conversationId) {
         return new Message(id, conversationId, "assistant", "An answer.", List.of(), List.of(),
             Instant.now());

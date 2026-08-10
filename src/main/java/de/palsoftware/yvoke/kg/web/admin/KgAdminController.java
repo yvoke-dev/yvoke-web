@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.kg.web.admin;
 
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.kg.core.model.KgAdminViews.KgEntityView;
 import de.palsoftware.yvoke.kg.core.model.KgAdminViews.KgNeighborhoodView;
 import de.palsoftware.yvoke.kg.core.service.KgAdminViewService;
@@ -35,17 +36,19 @@ public class KgAdminController {
     private final KgConsolidator kgConsolidator;
     private final AuditLogRepository auditLogRepository;
     private final UserService userService;
+    private final CollectionService collectionService;
 
     public KgAdminController(KgAdminViewService kgAdminViewService,
         KgGraphReadRepository kgReadRepository, KgWriteRepository kgWriteRepository,
         KgConsolidator kgConsolidator, AuditLogRepository auditLogRepository,
-        UserService userService) {
+        UserService userService, CollectionService collectionService) {
         this.kgAdminViewService = kgAdminViewService;
         this.kgReadRepository = kgReadRepository;
         this.kgWriteRepository = kgWriteRepository;
         this.kgConsolidator = kgConsolidator;
         this.auditLogRepository = auditLogRepository;
         this.userService = userService;
+        this.collectionService = collectionService;
     }
 
     private String getCurrentAdminOid() {
@@ -165,6 +168,16 @@ public class KgAdminController {
         return "redirect:/admin/kg";
     }
 
+    /**
+     * The collection is resolved to its STORED spelling before consolidating.
+     * {@code KgConsolidator} matches {@code WHERE c.name = :collection} — case-sensitive, untrimmed
+     * — at four SQL sites, so forwarding the raw request parameter matched zero rows and still
+     * flashed "Consolidation done … Groups: 0", a success message for work that never ran (the
+     * other caller, {@code DocumentIngestService}, is safe because the enqueue validator has
+     * already canonicalised the name). An unknown collection is now an error rather than a silent
+     * no-op: "Groups: 0" is a legitimate result for a graph with nothing to merge, so the operator
+     * could not otherwise tell the two apart.
+     */
     @PostMapping("/kg/consolidate")
     public String consolidateKg(@RequestParam String collection, @RequestParam String tag,
         RedirectAttributes redirectAttributes) {
@@ -176,14 +189,22 @@ public class KgAdminController {
             return "redirect:/admin/kg";
         }
 
-        auditLogRepository.log(getCurrentAdminOid(), "CONSOLIDATE_KG", collection + " " + tagParam,
-            Map.of("collection", collection, "tag", tagParam));
+        Optional<String> resolved = collectionService.getCollection(collection).map(c -> c.name());
+        if (resolved.isEmpty()) {
+            redirectAttributes.addFlashAttribute("error",
+                "Unknown collection: '" + collection + "'. Nothing was consolidated.");
+            return "redirect:/admin/kg";
+        }
+        String collectionName = resolved.get();
 
-        var stats = kgConsolidator.consolidate(collection, tagParam);
+        auditLogRepository.log(getCurrentAdminOid(), "CONSOLIDATE_KG",
+            collectionName + " " + tagParam, Map.of("collection", collectionName, "tag", tagParam));
+
+        var stats = kgConsolidator.consolidate(collectionName, tagParam);
 
         redirectAttributes.addFlashAttribute("success", String.format(
             "Consolidation done for %s / %s! Groups: %d, Entities Deleted: %d, Relationships Repointed: %d, Collapsed: %d",
-            collection, tagParam, stats.groupsProcessed(), stats.rowsDeleted(),
+            collectionName, tagParam, stats.groupsProcessed(), stats.rowsDeleted(),
             stats.relationshipsRepointCount(), stats.relationshipsCollapsedCount()));
         return "redirect:/admin/kg";
     }

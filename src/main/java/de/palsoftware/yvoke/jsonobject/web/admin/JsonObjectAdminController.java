@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.jdbc.BadSqlGrammarException;
 
 
 @Controller
@@ -79,10 +80,10 @@ public class JsonObjectAdminController {
                             jsonObjectService.searchObjects(colId, search, tagsFilter, page, size);
                         totalElements =
                             jsonObjectService.countSearchObjects(colId, search, tagsFilter);
-                    } catch (org.springframework.jdbc.BadSqlGrammarException e) {
+                    } catch (BadSqlGrammarException e) {
                         model.addAttribute("error",
                             "Invalid JSON Path syntax. Note: string literals must be in double quotes (e.g. \"AAD\").");
-                        objects = java.util.List.of();
+                        objects = List.of();
                         totalElements = 0;
                     }
                 } else {

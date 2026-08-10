@@ -19,12 +19,76 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.mockito.ArgumentCaptor;
+import java.time.Instant;
+import java.util.UUID;
 
 public class UserServiceTest {
 
     private UserRepository userRepository;
     private UserService userService;
     private SecurityContext originalContext;
+
+    /**
+     * A bearer token with NO {@code oid} claim must still resolve to a user — via {@code sub} — and
+     * its email must fall back to the {@code email} claim when {@code preferred_username} is
+     * absent.
+     *
+     * <p>
+     * On an Entra ACCESS token both {@code oid} and {@code preferred_username} are OPTIONAL claims:
+     * a personal Microsoft account, and any app registration that has not opted into the
+     * optional-claims set, sends neither. {@code testGetCurrentUserWithJwt} stubs both, so it
+     * drives the happy path only and every fallback branch here is unexecuted by the whole suite —
+     * the mock {@code JwtDecoder} used by {@code app.security.mock=true} synthesises both claims
+     * too, so this is not reachable locally either.
+     *
+     * <p>
+     * If {@code sub} stopped backfilling the oid, {@code getCurrentUser} would return
+     * {@code Optional.empty()} for those tokens: no {@code users} row is provisioned,
+     * {@code UserArgumentResolver} has nothing to resolve, and every {@code /api/chat/v1} and MCP
+     * request from that client 401s while the token itself is perfectly valid. The email half is
+     * quieter and permanent — the row is created with a NULL email, so the cost dashboard's user
+     * picker and top-users report show a blank entry for exactly the heavy MCP users an operator
+     * most wants to identify.
+     */
+    @Test
+    public void testGetCurrentUserFallsBackToSubAndEmailWhenEntraOmitsTheOptionalClaims() {
+        Jwt jwt = mock(Jwt.class);
+        when(jwt.getClaimAsString("oid")).thenReturn(null);
+        when(jwt.getSubject()).thenReturn("desktop-sub-1234");
+        when(jwt.getClaimAsString("preferred_username")).thenReturn(null);
+        when(jwt.getClaimAsString("email")).thenReturn("desktop@contoso.com");
+        when(jwt.getClaimAsString("name")).thenReturn(null);
+
+        Authentication auth = mock(Authentication.class);
+        when(auth.isAuthenticated()).thenReturn(true);
+        when(auth.getPrincipal()).thenReturn(jwt);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        // Stubbed for the SUB only: an unstubbed lookup yields Optional.empty(), so a resolved user
+        // is what proves the fallback ran rather than any argument this test supplied.
+        User provisioned = new User(UUID.randomUUID(), "desktop-sub-1234", "desktop@contoso.com",
+            null, Instant.now());
+        when(userRepository.findByEntraOid("desktop-sub-1234"))
+            .thenReturn(Optional.of(provisioned));
+
+        Optional<User> user = userService.getCurrentUser();
+
+        assertThat(user).as("a token carrying no oid claim must still resolve to a user")
+            .isPresent();
+
+        ArgumentCaptor<String> oid = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> email = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> displayName = ArgumentCaptor.forClass(String.class);
+        verify(userRepository).upsert(oid.capture(), email.capture(), displayName.capture());
+
+        assertThat(oid.getValue()).as("sub becomes the entra_oid when oid is absent")
+            .isEqualTo("desktop-sub-1234");
+        assertThat(email.getValue()).as("the email claim backfills a missing preferred_username")
+            .isEqualTo("desktop@contoso.com");
+        assertThat(displayName.getValue())
+            .as("an absent name claim stays absent, it is not invented").isNull();
+    }
 
     @BeforeEach
     public void setUp() {
@@ -143,8 +207,8 @@ public class UserServiceTest {
         when(auth.getPrincipal()).thenReturn(jwt);
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        User mockUser = new User(java.util.UUID.randomUUID(), "mock-jwt-oid",
-            "jwt-user@palsoftware.local", "Jwt User", java.time.Instant.now());
+        User mockUser = new User(UUID.randomUUID(), "mock-jwt-oid", "jwt-user@palsoftware.local",
+            "Jwt User", Instant.now());
         when(userRepository.findByEntraOid("mock-jwt-oid")).thenReturn(Optional.of(mockUser));
 
         Optional<User> user = userService.getCurrentUser();

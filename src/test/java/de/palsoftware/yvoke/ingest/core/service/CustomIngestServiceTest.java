@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
+import java.lang.reflect.Method;
 
 class CustomIngestServiceTest {
 
@@ -299,5 +300,53 @@ class CustomIngestServiceTest {
         assertThat(ci.headingPath()).containsExactly("Alpha", "Beta");
         assertThat(ci.heading()).isEqualTo("Title");
         assertThat(ci.depth()).isEqualTo(1);
+    }
+
+    private static String joinWrappedTableRows(String text) throws Exception {
+        Method m =
+            CustomIngestService.class.getDeclaredMethod("joinWrappedTableRows", String.class);
+        m.setAccessible(true);
+        return (String) m.invoke(null, text);
+    }
+
+    /**
+     * A wrapped markdown table row is re-joined, but a line starting with {@code |} INSIDE a fenced
+     * code block is not a table row — in T-SQL it is a bitwise-OR continuation, and joining it
+     * destroys the source. Exactly five documents per kit version were mangled this way
+     * ({@code AAD_TIAADRoleEligibility} collapsed 32 lines into 1), and because all five are
+     * summarized, the mangled text is what the summarizer LLM read — so the damage reached the
+     * corpus as prose, not just as a formatting glitch.
+     */
+    @Test
+    void aPipeContinuationInsideAFencedCodeBlockIsNotJoinedIntoTheLineAbove() throws Exception {
+        String sql = """
+            Intro text.
+
+            ```sql
+            SELECT CASE WHEN (x
+            | y
+            | z) > 0 THEN 1 END
+            ```
+
+            | Column | Type |
+            | --- | --- |
+            """;
+
+        String out = joinWrappedTableRows(sql);
+
+        assertThat(out).as("the fenced block must survive byte-for-byte").contains("(x\n| y\n| z)");
+        assertThat(out.lines().filter(l -> l.startsWith("| y")).count())
+            .as("the continuation line must remain its own line").isEqualTo(1);
+    }
+
+    /** The complement: outside a fence a genuinely wrapped row IS re-joined. */
+    @Test
+    void aTableRowWrappedAcrossLinesOutsideAFenceIsRejoined() throws Exception {
+        String wrapped = "| Name | Description\n that continued |\n";
+
+        String out = joinWrappedTableRows(wrapped);
+
+        assertThat(out).contains("| Name | Description that continued |");
+        assertThat(out.lines().count()).isEqualTo(1);
     }
 }

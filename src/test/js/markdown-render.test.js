@@ -177,6 +177,104 @@ describe('tool-call handling', () => {
         const html = '<pre><code>🔧 Calling tool: not really</code></pre><p>answer</p>';
         assert.equal(wrapToolCalls(html), html);
     });
+
+    test('a marker inside an inline code span starts no run', () => {
+        // Inline code is masked rather than skipped, so it cannot END a run (see below) — but it
+        // must still not START one, which is the protection skipping used to give for free.
+        const html = '<p>Type <code>🔧 Calling tool:</code> to see it, then read on.</p>';
+        assert.equal(wrapToolCalls(html), html);
+    });
+});
+
+/*
+ * The desktop agent's sub-agent calls quote a sandbox path in backticks — `C:\…\tool-results\
+ * mcp-yvoke-get_section-<ts>.txt` — so the arguments of a tool call routinely contain inline code.
+ *
+ * wrapToolCalls used to run through mapOutsideCode, which excises <pre> AND inline <code> and maps
+ * only what lies between. That cut one tool call into three: the half carrying the 🔧 marker was
+ * wrapped and hidden, the <code> was skipped by design, and the text after it had no marker left to
+ * match — so everything from the first backtick to the end of the paragraph stayed on screen, with
+ * the "🔧 Calling tool:" prefix that would have explained it hidden by hide-thinking-process. Live,
+ * one answer showed four orphaned paths and their argument prose mid-answer.
+ *
+ * These render through the real parser: the bug lives in how marked's OUTPUT is segmented, so
+ * hand-written HTML would not have caught the shape that actually occurs.
+ */
+describe('tool calls whose arguments contain inline code', () => {
+    const PATH = 'C:\\Users\\jr\\.claude\\projects\\sandbox\\tool-results\\'
+        + 'mcp-yvoke-get_section-1785915065041.txt';
+    const CALL = '🔧 *Calling tool:* Agent({"description":"Grep web portal config",'
+        + '"prompt":"Search the file at `' + PATH + '` for content related to:'
+        + '\\n\\n1. Any mention of hierarchy"})';
+
+    /** The production chain for a finished message (thread.js:696-704). */
+    const renderAndWrap = (text) => wrapToolCalls(render(text).html);
+
+    /** What is left on screen once the hidden .tool-call spans are removed. */
+    const visibleText = (html) => html
+        .replace(/<span class="tool-call">[\s\S]*?<\/span>/g, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const spans = (html) =>
+        [...html.matchAll(/<span class="tool-call">([\s\S]*?)<\/span>/g)].map((m) => m[1]);
+
+    test('nothing of the call survives on screen', () => {
+        const html = renderAndWrap(CALL + '\n\nReal answer paragraph.\n');
+        assert.equal(visibleText(html), 'Real answer paragraph.');
+    });
+
+    test('the path itself is not left behind', () => {
+        // The single most visible symptom: a Windows sandbox path sitting in the middle of an
+        // answer about One Identity Manager.
+        const html = renderAndWrap(CALL + '\n\nReal answer paragraph.\n');
+        assert.ok(!visibleText(html).includes('tool-results'), visibleText(html));
+    });
+
+    test('the argument prose after the path is not left behind', () => {
+        const html = renderAndWrap(CALL + '\n\nReal answer paragraph.\n');
+        assert.ok(!visibleText(html).includes('for content related to'), visibleText(html));
+        assert.ok(!visibleText(html).includes('Any mention of hierarchy'), visibleText(html));
+    });
+
+    test('the code span ends up inside the hidden wrapper, not beside it', () => {
+        const html = renderAndWrap(CALL + '\n\nReal answer paragraph.\n');
+        const wrapped = spans(html);
+        assert.equal(wrapped.length, 1, html);
+        assert.ok(wrapped[0].includes('<code>'), 'code span left outside the wrapper: ' + html);
+        assert.ok(wrapped[0].includes('tool-results'), html);
+    });
+
+    test('consecutive calls each hide whole', () => {
+        const html = renderAndWrap(CALL + '\n\n' + CALL + '\n\nReal answer paragraph.\n');
+        assert.equal(visibleText(html), 'Real answer paragraph.');
+        assert.equal(spans(html).length, 2, html);
+    });
+
+    test('a fenced block after a tool call is still answer content', () => {
+        // Why inline <code> could not simply be added to the run's boundary set, and why <pre>
+        // must keep terminating a run: a fence following a tool call belongs to the answer, and
+        // swallowing it into a display:none span makes the answer vanish with no error anywhere.
+        const md = '🔧 *Calling tool:* search({"q":"x"})\n\n```java\nString s = args[1];\n```\n\nDone.\n';
+        const visible = visibleText(renderAndWrap(md));
+        assert.ok(visible.includes('String s = args[1];'), visible);
+        assert.ok(visible.includes('Done.'), visible);
+    });
+
+    test('a mermaid diagram after a tool call is still rendered', () => {
+        const md = '🔧 *Calling tool:* search({"q":"x"})\n\n```mermaid\ngraph TD\n  A-->B\n```\n';
+        const html = renderAndWrap(md);
+        assert.ok(html.includes('<pre class="mermaid">'), html);
+        assert.ok(!spans(html).some((s) => s.includes('mermaid')), 'diagram was hidden: ' + html);
+    });
+
+    test('inline code in ordinary prose is untouched', () => {
+        const html = renderAndWrap('The `Department` view is not a table.\n');
+        assert.ok(html.includes('<code>Department</code>'), html);
+        assert.ok(!html.includes('%%TOOLCODE'), 'a mask placeholder leaked: ' + html);
+    });
 });
 
 describe('pipeline contract', () => {
@@ -213,5 +311,85 @@ describe('pipeline contract', () => {
     test('headings run together with prose are separated', () => {
         const { html } = render('text ## Heading', false);
         assert.match(html, /<h2[^>]*>Heading<\/h2>/);
+    });
+});
+
+/*
+ * These go through the REAL parser on purpose. The spacing normalizer is a string→string function
+ * pinned unit-side in citation-render.test.js, but what it costs when it is wrong is a whole GFM
+ * table — and only marked can show that. A live answer rendered its checklist as `<p>|</p>`, an
+ * <h1> holding the header row, and every remaining row run together in one paragraph.
+ */
+describe('GFM tables survive the pipeline', () => {
+    const TABLE = '| # | What to check | Where |\n'
+        + '|---|---|---|\n'
+        + '| 1 | **Approval policy** is assigned | Manager |\n'
+        + '| 2 | The process is **active** | Designer |\n';
+
+    /** Header cells marked emitted, or [] when the table did not parse. */
+    function headers(html) {
+        // `<th(?:\s…)?>` and not `<th[^>]*>`: the latter also matches `<thead>`.
+        return [...html.matchAll(/<th(?:\s[^>]*)?>([\s\S]*?)<\/th>/g)].map((m) => m[1]);
+    }
+
+    test('a "#" header cell still renders a table', () => {
+        const { html } = render('## What to Verify\n\n' + TABLE, false);
+        assert.deepEqual(headers(html), ['#', 'What to check', 'Where']);
+        assert.ok(!/<h1[^>]*>/.test(html), 'the header row became a heading: ' + html);
+        assert.ok(!html.includes('|---|'), 'delimiter row leaked as text: ' + html);
+    });
+
+    test('every row of a "#" table becomes a row, not a paragraph', () => {
+        const { html } = render(TABLE, false);
+        assert.equal((html.match(/<tr>/g) || []).length, 3, html);
+        assert.ok(html.includes('<strong>Approval policy</strong>'), 'cell markdown lost: ' + html);
+    });
+
+    // A split BODY row still leaves a valid `| a |` row behind, so counting <tr> passes while the
+    // cell's text has been thrown out of the table entirely. Assert the cell instead.
+    test('a numbered bold item in a cell stays in its cell', () => {
+        const md = '| step | what |\n|---|---|\n| a | 1. **do it** |\n';
+        const { html } = render(md, false);
+        assert.match(html, /<td>1\. <strong>do it<\/strong><\/td>/, html);
+    });
+
+    test('a reference-list marker in a cell stays in its cell', () => {
+        const md = '| source | note |\n|---|---|\n| a | - [1] see there |\n';
+        const { html } = render(md, false);
+        assert.match(html, /<td>- \[1\] see there<\/td>/, html);
+    });
+
+    test('a lone hash in a cell does not break the table', () => {
+        const md = '| fix | note |\n|---|---|\n| a | use # to comment the line |\n';
+        const { html } = render(md, false);
+        assert.equal((html.match(/<tr>/g) || []).length, 2, html);
+        assert.ok(!/<h1[^>]*>/.test(html), html);
+    });
+
+    test('a half-arrived header row is safe mid-stream', () => {
+        // renderMarkdown runs on every SSE chunk, and a partial row has no closing pipe — so
+        // MD_TABLE_ROW cannot match it and the character-class guard is the only thing covering
+        // this case. Without it the user watches the row shatter as it arrives.
+        const { html } = render('| # | What to ch', true);
+        assert.ok(html.includes('| # | What to ch'), html);
+        assert.ok(!/<h1[^>]*>/.test(html), html);
+    });
+
+    test('a table inside a fence is still code', () => {
+        const { html } = render('```\n' + TABLE + '```', false);
+        assert.ok(html.includes('<pre><code'), html);
+        assert.ok(!html.includes('<table>'), html);
+    });
+
+    test('a heading directly after a table is still a heading', () => {
+        const { html } = render(TABLE + '\n## After\n', false);
+        assert.ok(html.includes('<table>'), html);
+        assert.match(html, /<h2[^>]*>After<\/h2>/);
+    });
+
+    test('a language name ending in # keeps its hash', () => {
+        const { html } = render('The script is written in C# code.', false);
+        assert.ok(html.includes('C# code'), html);
+        assert.ok(!/<h1[^>]*>/.test(html), 'C# became a heading: ' + html);
     });
 });

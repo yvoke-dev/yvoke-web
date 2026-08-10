@@ -33,6 +33,8 @@ import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=true",
@@ -90,8 +92,8 @@ public class SchemaIngestServiceIT {
                 String userMsg = inv.getArgument(3);
                 String name = "unknown";
                 if (userMsg != null) {
-                    java.util.regex.Matcher matcher =
-                        java.util.regex.Pattern.compile("Object name: `([^`]+)`").matcher(userMsg);
+                    Matcher matcher =
+                        Pattern.compile("Object name: `([^`]+)`").matcher(userMsg);
                     if (matcher.find()) {
                         name = matcher.group(1);
                     }

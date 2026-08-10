@@ -310,4 +310,49 @@ public class CostQueryRepositoryIT {
             num(byModel(repo.conversationModelTokenRows(convId, null, null), MODEL).get("p_tokens")))
         .isEqualTo(1400L);
   }
+
+  /**
+   * Deleting a conversation must destroy its content but PRESERVE its cost ledger.
+   *
+   * <p>
+   * The blast radius is defined entirely by foreign keys, which is exactly why nothing else would
+   * catch a change to them: {@code llm_call_logs.conversation_id} and {@code .agent_run_id} are ON
+   * DELETE SET NULL, while {@code agent_runs.conversation_id} and {@code messages.conversation_id}
+   * are ON DELETE CASCADE. So a user deleting a conversation removes the questions, answers and
+   * multi-agent trace, and the spend stays in the totals — still attributed to the person who spent
+   * it, no longer traceable to the thread.
+   *
+   * <p>
+   * Flipping the llm_call_logs FK to CASCADE is a one-word migration change that looks like tidying
+   * up an orphan. It would silently erase spend history every time a user deletes a conversation,
+   * and the cost dashboard would simply show a smaller number with nothing to indicate why.
+   */
+  @Test
+  void deletingAConversationKeepsItsCostLedgerAndDropsOnlyTheMasTrace() {
+    conversationRepository.delete(convId);
+
+    Integer survivingCalls =
+        jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM llm_call_logs WHERE id IN (?, ?, ?)",
+            Integer.class, call1, call2, call3);
+    assertThat(survivingCalls).as("spend history must outlive the conversation").isEqualTo(3);
+
+    Integer stillLinked =
+        jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM llm_call_logs WHERE id IN (?, ?, ?) "
+                + "AND (conversation_id IS NOT NULL OR agent_run_id IS NOT NULL)",
+            Integer.class, call1, call2, call3);
+    assertThat(stillLinked).as("both conversation links must be nulled, not left dangling").isZero();
+
+    Integer userStillAttributed =
+        jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM llm_call_logs WHERE id IN (?, ?, ?) AND user_id = ?",
+            Integer.class, call1, call2, call3, userId);
+    assertThat(userStillAttributed).as("spend stays attributed to who spent it").isEqualTo(3);
+
+    Integer runs =
+        jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM agent_runs WHERE id = ?", Integer.class, runId);
+    assertThat(runs).as("the multi-agent trace is content and must cascade away").isZero();
+  }
 }

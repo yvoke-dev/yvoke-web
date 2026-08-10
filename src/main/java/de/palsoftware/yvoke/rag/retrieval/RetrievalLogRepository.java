@@ -1,10 +1,12 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class RetrievalLogRepository {
@@ -47,17 +49,35 @@ public class RetrievalLogRepository {
         jdbcClient.sql(sql).param("messageId", messageId).param("id", id).update();
     }
 
-    public List<Map<String, Object>> findLatestTelemetry(String collection) {
+    /**
+     * The telemetry for ONE search, by its {@code searchId}.
+     *
+     * <p>
+     * Replaces an earlier {@code findLatestTelemetry(collection)} that took the most recent row for
+     * the collection. Telemetry is persisted asynchronously, so on the search that just ran that
+     * row frequently does not exist yet and the console rendered the <em>previous</em> search's
+     * numbers beside the current results — invisibly, since every field still looked plausible.
+     * Callers must flush telemetry before reading (see {@code RetrievalTelemetryService#flush()}).
+     */
+    @Transactional(readOnly = true)
+    public Optional<RetrievalTelemetryRow> findTelemetryById(UUID searchId) {
         String sql =
             """
-                SELECT l.pools::text AS pools_text, l.final::text AS final_text, l.rerank::text AS rerank_text
-                FROM retrieval_logs l
-                JOIN collections c ON l.collection_id = c.id
-                WHERE LOWER(c.name) = LOWER(:collection)
-                ORDER BY l.created_at DESC
-                LIMIT 1
+                SELECT pools::text AS pools_text, final::text AS final_text, rerank::text AS rerank_text,
+                       COALESCE((pools->>'sem')::int, 0) AS sem_pool,
+                       COALESCE((pools->>'ft')::int, 0)  AS ft_pool,
+                       initial_chunk_ids, fused_chunk_ids, retrieved_chunk_ids
+                FROM retrieval_logs
+                WHERE id = :id
                 """;
-        return jdbcClient.sql(sql).param("collection", collection).query().listOfRows();
+
+        return jdbcClient.sql(sql).param("id", searchId)
+            .query((rs, rowNum) -> new RetrievalTelemetryRow(rs.getString("pools_text"),
+                rs.getString("final_text"), rs.getString("rerank_text"), rs.getInt("sem_pool"),
+                rs.getInt("ft_pool"), JdbcMappers.arrayToUuidList(rs, "initial_chunk_ids"),
+                JdbcMappers.arrayToUuidList(rs, "fused_chunk_ids"),
+                JdbcMappers.arrayToUuidList(rs, "retrieved_chunk_ids")))
+            .optional();
     }
 
     public void saveTelemetry(UUID searchId, String query, UUID collectionId, String tag,

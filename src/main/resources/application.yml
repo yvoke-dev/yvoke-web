@@ -166,13 +166,22 @@ app:
       model: ${RERANK_MODEL:rerank-2.5}
   retrieval:
     default-limit: 10
+    # Ceiling on rows returned by any search. Both candidate pools are derived from the
+    # requested limit, and the reranker receives every fused candidate in one request, so this
+    # is what bounds that request. Measured traffic: 269 of 330 logged searches ran at 10, the
+    # largest ever was 50.
+    max-limit: 20
     log-query-max-chars: 200
+    # Over-fetch multipliers, applied to (limit + offset) per lane. A fixed BM25 cap stopped
+    # being an over-fetch at large pages — at a page of 30 the old cap of 30 made the pool equal
+    # to the page, leaving the reranker nothing to select from. 3.0 reproduces the previous
+    # pool of 30 at the default limit of 10 and only adds headroom above it.
     semantic-limit-multiplier: 1.5
+    fulltext-limit-multiplier: 3.0
     rrf:
       k: 60
       semantic-weight: 1.0
       fulltext-weight: 1.0
-      fulltext-limit-cap: 30
   worker:
     # Background ingestion job worker (M10). Concurrency default 4 is the proven-safe number.
     enabled: true

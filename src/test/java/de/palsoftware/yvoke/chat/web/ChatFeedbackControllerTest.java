@@ -30,8 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
  * The feedback fragment claims "Feedback saved ✅" whenever the {@code feedback} model attribute
  * carries a non-empty comment, so the controller must only ever hand it a record that came back
  * from the database — never one rebuilt from the request. These tests pin that, plus the fact that
- * the rating-only branch (the request the UI's thumbs buttons actually send) is authorized even
- * though it deliberately persists nothing.
+ * the rating-only branch (the request the UI's thumbs buttons actually send) is authorized AND
+ * persisted: a bare thumb creates a row with a null comment, and an empty result from the service
+ * is a failed write that must surface rather than render as a saved vote.
  */
 @ExtendWith(MockitoExtension.class)
 class ChatFeedbackControllerTest {
@@ -74,25 +75,50 @@ class ChatFeedbackControllerTest {
     @Test
     void authorizesTheMessageBeforeEchoingBackARatingWithNoComment() {
         UUID messageId = UUID.randomUUID();
+        Feedback stored =
+            new Feedback(UUID.randomUUID(), messageId, 1, null, Instant.now(), Instant.now());
         when(chatFeedbackService.submitRatingPreservingComment(messageId, 1))
-            .thenReturn(Optional.empty());
+            .thenReturn(Optional.of(stored));
         Model model = new ConcurrentModel();
 
         String view = controller.submitFeedback(messageId, 1, null, model);
 
-        // Nothing is persisted for a first bare rating (by design), but the service call is what
-        // authorizes the caller — otherwise the endpoint reflects state for any id it is handed.
+        // A bare first rating IS persisted, and that same service call is what authorizes the
+        // caller — otherwise the endpoint reflects state for any id it is handed.
         verify(chatFeedbackService).submitRatingPreservingComment(messageId, 1);
         verify(chatFeedbackService, never()).submitFeedback(any(), anyInt(), any());
         assertThat(view).isEqualTo(FRAGMENT);
-        assertThat(((Feedback) model.getAttribute("feedback")).rating()).isEqualTo(1);
+        assertThat(model.getAttribute("feedback")).isSameAs(stored);
+    }
+
+    /**
+     * The complement of the persisted-rating path: if the write did not land, that must surface.
+     *
+     * <p>
+     * This branch used to synthesise a row — {@code orElseGet(() -> new Feedback(null, messageId,
+     * rating, ...))} — which was correct while a bare rating was deliberately not persisted. Now
+     * that every rating writes, an empty result means the write failed, and synthesising a row
+     * would render the widget exactly as though it had succeeded: the user sees their vote, the
+     * database has nothing. Without this test the throw is unreachable (every other rating test
+     * stubs a present Optional), so reverting it would leave the suite green.
+     */
+    @Test
+    void aRatingThatDidNotPersistIsAnErrorRatherThanASynthesisedRow() {
+        UUID messageId = UUID.randomUUID();
+        when(chatFeedbackService.submitRatingPreservingComment(messageId, 1))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+            () -> controller.submitFeedback(messageId, 1, null, new ConcurrentModel()))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining(messageId.toString());
     }
 
     @Test
     void treatsAWhitespaceOnlyCommentAsNoComment() {
         UUID messageId = UUID.randomUUID();
         when(chatFeedbackService.submitRatingPreservingComment(messageId, -1))
-            .thenReturn(Optional.empty());
+            .thenReturn(Optional.of(new Feedback(UUID.randomUUID(), messageId, -1, null,
+                Instant.now(), Instant.now())));
 
         controller.submitFeedback(messageId, -1, "   ", new ConcurrentModel());
 

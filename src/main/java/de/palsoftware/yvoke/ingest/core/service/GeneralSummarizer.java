@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class GeneralSummarizer {
@@ -34,7 +35,7 @@ public class GeneralSummarizer {
         this(llmClient, jdbcClient, model, temperature, maxTokens, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public GeneralSummarizer(LlmClient llmClient, JdbcClient jdbcClient,
         @Value("${app.ai.summarize.model}") String model,
         @Value("${app.ai.summarize.temperature}") double temperature,
@@ -55,7 +56,7 @@ public class GeneralSummarizer {
         }
 
         String sha = computeSha256(content);
-        Optional<String> cached = getCachedSummary(sha);
+        Optional<String> cached = getCachedSummary(sha, cacheKind);
         if (cached.isPresent()) {
             log.info("Summary cache hit for kind '{}' and SHA '{}'", cacheKind, sha);
             return cached.get();
@@ -133,9 +134,18 @@ public class GeneralSummarizer {
         return response;
     }
 
-    private Optional<String> getCachedSummary(String sha) {
-        return jdbcClient.sql("SELECT summary FROM summary_cache WHERE source_sha = :sha")
-            .param("sha", sha).query(String.class).optional();
+    /**
+     * Scoped to the caller's kind on purpose: {@code summary_cache} is shared with
+     * {@code DocumentKgExtractor}, which stores an extracted-graph JSON blob under
+     * {@code kind='kg'}. Keying on {@code source_sha} alone returned that blob as a prose summary
+     * for identical content. The table's PK is {@code source_sha} alone, so a foreign-kind row
+     * simply produces a miss and the summary is recomputed — a cache miss is the correct trade for
+     * not emitting another producer's payload as a summary.
+     */
+    private Optional<String> getCachedSummary(String sha, String cacheKind) {
+        return jdbcClient
+            .sql("SELECT summary FROM summary_cache WHERE source_sha = :sha AND kind = :kind")
+            .param("sha", sha).param("kind", cacheKind).query(String.class).optional();
     }
 
     private void putCachedSummary(String sha, String cacheKind, String summary) {

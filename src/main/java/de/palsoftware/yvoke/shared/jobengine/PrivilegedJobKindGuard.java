@@ -13,8 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>
  * The API security chain grants {@code /api/ingest/**} and {@code /api/jobs/**} the same
- * {@code ROLE_INGEST/USER/ADMIN}, and the {@code confluence-*} handlers take an arbitrary page id
- * or crawl an entire space using the connector's service account. Without this guard any plain user
+ * {@code ROLE_INGEST/ADMIN}, and the {@code confluence-*} handlers take an arbitrary page id or
+ * crawl an entire space using the connector's service account. Without this guard any plain user
  * (or X-API-Key principal) could trigger a full crawl into a collection they name, spending
  * embeddings and occupying every worker thread, repeatably.
  *

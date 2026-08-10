@@ -1,11 +1,13 @@
 package de.palsoftware.yvoke.ingest.core.service;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,16 +30,25 @@ import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
+import de.palsoftware.yvoke.document.core.model.ChunkInsert;
+import de.palsoftware.yvoke.ingest.core.model.MarkdownTree;
+import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 
 /**
  * Graph-persistence rules of the LLM-extracted (manual/document) ingest path. Kinds are mandatory
@@ -56,6 +67,9 @@ public class DocumentIngestServiceTest {
     private ChunkRepository chunkRepository;
     private DocumentRepository documentRepository;
     private DocumentIngestService service;
+    private UploadPathGuard uploadPathGuard;
+    private EmbeddingService embeddingService;
+    private KgConsolidator kgConsolidator;
 
     private final UUID documentId = UUID.randomUUID();
 
@@ -66,11 +80,13 @@ public class DocumentIngestServiceTest {
         chunkRepository = mock(ChunkRepository.class);
         documentRepository = mock(DocumentRepository.class);
 
-        service = new DocumentIngestService(mock(EmbeddingService.class), documentRepository,
-            chunkRepository, kgRepository, kgExtractor, mock(KgConsolidator.class),
-            mock(JdbcClient.class), mock(PlatformTransactionManager.class),
-            mock(SectionSummarizer.class), mock(SystemPromptService.class),
-            mock(UploadPathGuard.class));
+        uploadPathGuard = mock(UploadPathGuard.class);
+        embeddingService = mock(EmbeddingService.class);
+        kgConsolidator = mock(KgConsolidator.class);
+        service = new DocumentIngestService(embeddingService, documentRepository, chunkRepository,
+            kgRepository, kgExtractor, kgConsolidator, mock(JdbcClient.class),
+            mock(PlatformTransactionManager.class), mock(SectionSummarizer.class),
+            mock(SystemPromptService.class), uploadPathGuard);
 
         when(chunkRepository.findChunksByDocumentId(eq(documentId), isNull()))
             .thenReturn(List.of(new ChunkRow(UUID.randomUUID(), documentId, "chunk text", List.of(),
@@ -92,6 +108,120 @@ public class DocumentIngestServiceTest {
     private IngestionJob kgJob() {
         return new IngestionJob(null, "kg", documentId.toString(), TAGS, COLLECTION,
             JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+    }
+
+    /** The same KG job as {@link #kgJob()}, with an explicit tag set. */
+    private IngestionJob kgJobWithTags(List<String> tags) {
+        return new IngestionJob(null, "kg", documentId.toString(), tags, COLLECTION,
+            JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+    }
+
+    /**
+     * Graph identity is {@code (collection, kind, name)}, so a bare name is ambiguous — on the OIM
+     * install-kit corpus roughly 945 entity names exist under two to five kinds ({@code Person} is
+     * a {@code table}, an {@code entity_model}, {@code ui_forms}, {@code object_methods} AND a
+     * {@code notification}). LLM-extracted relationships carry no endpoint kind at all, so
+     * {@code resolveEndpointId} has to refuse a name that several kinds answer to, exactly like the
+     * custom (jsonl) path does.
+     *
+     * <p>
+     * The existing coverage only ever feeds it an UNDECLARED endpoint
+     * ({@code relationshipEndpointThatIsNotADeclaredEntity...}), which fails on the null-map
+     * branch; no fixture anywhere declares two entities sharing a name under different kinds, so
+     * the {@code candidates.size() == 1} half of the guard has no witness. Relaxing it to "take the
+     * first candidate" — which reads like an obvious simplification, since the map is non-empty and
+     * a UUID comes back — attaches every homonym edge to an ARBITRARY wrong node. Nothing fails:
+     * the job reports a normal edge count, the graph is fully populated, and
+     * {@code get_graph_neighbors} confidently returns a {@code notification}'s neighbours for a
+     * question about a {@code table}. Because ids are minted per identity key and never revisited,
+     * the mis-attachment is permanent until the collection is re-ingested.
+     *
+     * <p>
+     * The loss must also stay VISIBLE: the LLM path deliberately does not throw (one model-invented
+     * name must not kill a whole kg-extract job), so {@code skippedEdges} is the only channel
+     * through which an operator can see that an edge was dropped. Asserting the count as well as
+     * the emptiness stops a "fix" that silently swallows the ambiguity.
+     */
+    @Test
+    public void anEdgeEndpointNamingTwoKindsIsAmbiguousAndIsDroppedRatherThanAttachedToOne() {
+        JobCounts counts = runKg(new KgExtractionResult(
+            List.of(new ExtractedEntity("Person", "table", "the Person table"),
+                new ExtractedEntity("Person", "notification", "the Person notification"),
+                new ExtractedEntity("Org", "table", "the Org table")),
+            List.of(new ExtractedRelationship("Person", "fk_to", "Org", "which Person?")), 0));
+
+        // Both homonyms are legitimate nodes: identity is (kind, name), so nothing is merged.
+        assertThat(capturedEntitySpecs()).extracting(EntityUpsert::name)
+            .containsExactlyInAnyOrder("Person", "Person", "Org");
+        assertThat(counts.entities()).isEqualTo(3);
+
+        // The edge names a subject that two kinds answer to, so it cannot be identified. Picking
+        // either candidate would be a coin flip written permanently into the graph.
+        assertThat(capturedRelationshipSpecs())
+            .as("an edge whose endpoint is ambiguous across kinds must be dropped, never attached"
+                + " to an arbitrary homonym")
+            .isEmpty();
+        assertThat(counts.edges()).isZero();
+        assertThat(counts.skippedEdges())
+            .as("the LLM path does not throw, so the job counts are the only place the loss is"
+                + " visible to an operator")
+            .isEqualTo(1);
+    }
+
+    /**
+     * Two per-chunk bookkeeping rules of the kg-extract job, neither of which has a witness.
+     *
+     * <p>
+     * <b>An out-of-range chunk-status index is warned and skipped.</b> The extractor's statuses are
+     * indexes into the chunk list the service loaded, and the two are produced by different code at
+     * different times — a chunk deleted or re-chunked between the load and the write, or any future
+     * extractor that renumbers, hands back an index the list no longer has. Without the guard
+     * {@code orderedChunks.get(i)} throws {@link IndexOutOfBoundsException} and fails a job whose
+     * ENTIRE extraction has already succeeded: {@code persistGraph} ran first, so the graph is
+     * committed and the LLM spend is already incurred, and the operator is shown a failed job with
+     * an IndexOutOfBounds stack trace and no way to tell that the corpus is in fact fine.
+     *
+     * <p>
+     * <b>The document must be marked kg-processed.</b> {@code markKgProcessed} writes
+     * {@code kg_processed_at}/{@code kg_entities}/{@code kg_edges} into {@code documents.metadata}
+     * — the only record anywhere that a document was graphed, and what decides whether a re-extract
+     * is needed. Deleting that one line changes nothing observable in the job: the counts still
+     * come back, the entities and edges are still in the graph. The document merely looks forever
+     * un-extracted, so it is re-extracted at full LLM cost every time anyone sweeps the collection.
+     *
+     * <p>
+     * Every other test in this class goes through {@code runKg}, whose extraction carries NO chunk
+     * statuses at all, so the guard is unreached — and none of them verifies
+     * {@code markKgProcessed}.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    public void anOutOfRangeChunkStatusIsSkippedAndTheDocumentIsStillMarkedKgProcessed() {
+        UUID chunk0 = UUID.randomUUID();
+        UUID chunk1 = UUID.randomUUID();
+        when(chunkRepository.findChunksByDocumentId(eq(documentId), isNull())).thenReturn(List.of(
+            new ChunkRow(chunk0, documentId, "first chunk", List.of(), null, null, 0, null, null,
+                null, COLLECTION, null, 0.0),
+            new ChunkRow(chunk1, documentId, "second chunk", List.of(), null, null, 1, null, null,
+                null, COLLECTION, null, 0.0)));
+        when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+            List.of(new ExtractedEntity("Person", "table", "the table")), List.of(), 0,
+            List.of(new KgExtractionResult.ChunkStatus(0, true, "kg-model"),
+                new KgExtractionResult.ChunkStatus(7, true, "kg-model"),
+                new KgExtractionResult.ChunkStatus(-1, true, "kg-model"),
+                new KgExtractionResult.ChunkStatus(1, false, "kg-model"))));
+
+        JobCounts counts = service.processDocumentKg(kgJob(), mock(JobContext.class));
+
+        ArgumentCaptor<List<ChunkKgStatus>> written = ArgumentCaptor.forClass(List.class);
+        verify(documentRepository).markChunkKgStatuses(written.capture());
+        assertThat(written.getValue())
+            .as("a status index outside the chunk range must be dropped, never dereferenced")
+            .extracting(ChunkKgStatus::chunkId).containsExactly(chunk0, chunk1);
+        assertThat(written.getValue()).extracting(ChunkKgStatus::ok).containsExactly(true, false);
+
+        verify(documentRepository).markKgProcessed(eq(documentId), anyString(), eq(1), eq(0));
+        assertThat(counts.entities()).isEqualTo(1);
     }
 
     private JobCounts runKg(KgExtractionResult extraction) {
@@ -184,5 +314,301 @@ public class DocumentIngestServiceTest {
 
         assertThat(counts.skippedEntities()).isZero();
         assertThat(counts.skippedEdges()).isZero();
+    }
+
+    /**
+     * Consolidation runs ONCE PER TAG on the job, and only falls back to a tag-blind
+     * {@code consolidate(collection, null)} when the job carries no tag at all.
+     *
+     * <p>
+     * Graph identity is {@code (collection, kind, lower(name), tag set)} — the tag is part of it —
+     * because one collection deliberately holds two product versions separated only by tag.
+     * {@code KgConsolidator}'s duplicate-detection query is scoped by
+     * {@code :tag = ANY(e.tags) OR CAST(:tag AS text) IS NULL}, so the tag argument is a row
+     * FILTER: passing one tag for a two-tag job simply leaves the other version's rows
+     * unconsolidated, and its case-variant duplicates ({@code ADSAccount} vs {@code AdsAccount})
+     * survive as separate nodes with their edges split between them. Nothing reports it — the job
+     * completes, {@code markKgProcessed} records the counts, and the second version's graph is
+     * quietly worse than the first's in a way only a graph query notices.
+     *
+     * <p>
+     * The null branch is the dangerous direction and is asserted negatively for that reason:
+     * {@code null} switches the row filter OFF entirely, so it consolidates across EVERY tag scope
+     * in the collection at once. That is safe only when there is no tag scoping to violate (the
+     * untagged job), and catastrophic otherwise — the grouping keeps
+     * {@code kg_canonical_tags(e.tags)} in its GROUP BY, but a caller that passes null for a tagged
+     * job is asking to merge scopes and hard-DELETE one row per group, cascading its edges away
+     * through {@code fk_relationships_subject/object}. "Just consolidate once with the first tag"
+     * and "just consolidate once with null" are both natural-looking simplifications of the loop.
+     *
+     * <p>
+     * Every other test in this class asserts on entity/relationship persistence and passes the
+     * single-tag {@code TAGS}, for which one call and a loop are indistinguishable.
+     */
+    @Test
+    public void aTwoTagKgExtractConsolidatesEachTagScopeSeparately() {
+        when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+            List.of(new ExtractedEntity("Person", "table", "the table")), List.of(), 0));
+
+        service.processDocumentKg(kgJobWithTags(List.of("9.3", "10.0")), mock(JobContext.class));
+
+        verify(kgConsolidator).consolidate(COLLECTION, "9.3");
+        verify(kgConsolidator).consolidate(COLLECTION, "10.0");
+        verify(kgConsolidator, never()).consolidate(anyString(), isNull());
+
+        // The untagged job is the ONLY case that may switch the row filter off.
+        service.processDocumentKg(kgJobWithTags(List.of()), mock(JobContext.class));
+
+        verify(kgConsolidator).consolidate(COLLECTION, null);
+    }
+
+    /**
+     * A hierarchical section that exceeds {@link MarkdownTree#CHUNK_BODY_MAX_CHARS} must be stored
+     * WHOLE, as one chunk, keeping the author's own heading as its title.
+     *
+     * <p>
+     * The two ingest paths chunk differently on purpose and nothing in the code says so out loud.
+     * The standard path calls {@code MarkdownTree.buildOrderedSections} — filter →
+     * drop-empty-placeholders → {@code splitOversizedSection}; the hierarchical path calls only the
+     * first two, because whole sections ARE its product: {@code get_toc} lists them and
+     * {@code get_section} hands one back to an agent as the authoritative text of that heading.
+     * Unifying the two into the one helper is the obvious tidy-up — the hierarchical path reads
+     * exactly like the standard path with a step missing — and it silently fragments every chapter
+     * over 3,500 characters into {@code "… (part 1/7)"} chunks. Nothing errors, the reported chunk
+     * count merely goes up, and every later answer is built from a fragment of the section that was
+     * asked for.
+     *
+     * <p>
+     * Nothing currently observes this. {@code HierarchicalDocumentJobHandlerIT}'s fixture has three
+     * tiny sections, so split and no-split are indistinguishable there, and every unit test in this
+     * class either drives the standard path or asserts that ingest throws.
+     *
+     * <p>
+     * The fixture also carries the frontmatter shape that broke the custom path — a
+     * {@code display_name} opening with the reserved YAML indicator {@code %} — because
+     * {@code MarkdownTree} must SWALLOW that to an empty map, deliberately unlike
+     * {@code CustomIngestService}, which throws. Making the shared parser strict would fail every
+     * standard/hierarchical/Confluence ingest of such a document (they are common in the OIM
+     * corpus); here it has to parse to nothing and leave the body intact.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    public void aHierarchicalSectionOverTheChunkCapIsStoredWholeInsteadOfSplitIntoParts()
+        throws Exception {
+        String oversized =
+            "Body sentence for the configuration chapter that must exceed the cap. ".repeat(200);
+        Path tmp = Files.createTempDirectory("hierarchical-unit");
+        Path md = tmp.resolve("manual.md");
+        Files.writeString(md, """
+            ---
+            kind: hierarchical
+            display_name: %Globals.QIM_ProductNameShort% administration guide
+            ---
+            # Administration Guide
+
+            ## Configuring the Connector
+
+            """ + oversized + "\n");
+        when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
+
+        IngestionJob job = new IngestionJob(null, "hierarchical", md.toString(), TAGS, COLLECTION,
+            JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+        JobCounts counts = service.ingestHierarchical(job, mock(JobContext.class));
+
+        ArgumentCaptor<List<ChunkInsert>> stored = ArgumentCaptor.forClass(List.class);
+        verify(documentRepository).insertChunks(any(), anyString(), anyList(), anyString(),
+            anyString(), stored.capture());
+        List<ChunkInsert> inserts = stored.getValue();
+
+        assertThat(inserts).as("an oversized hierarchical section must not be fragmented")
+            .hasSize(1);
+        assertThat(counts.chunks()).isEqualTo(1);
+        assertThat(inserts.get(0).text().length())
+            .as("this path deliberately allows a chunk past the standard-path cap")
+            .isGreaterThan(MarkdownTree.CHUNK_BODY_MAX_CHARS);
+        assertThat(inserts.get(0).heading()).isEqualTo("Configuring the Connector");
+        assertThat(inserts.get(0).text()).doesNotContain("(part 1/");
+    }
+
+    /**
+     * Zip mode swallows EVERY per-file exception, so a zip in which nothing succeeds completes
+     * green: no throw, no error on the job, and a normal-looking {@code JobCounts} of zero.
+     *
+     * <p>
+     * This is deliberate — one unparseable file out of two thousand must not discard the whole kit
+     * — but it is also the one place in this section where loss is neither counted nor surfaced,
+     * and that half has never been executed by any test: no fixture anywhere puts a failing file
+     * inside a standard or hierarchical zip. The consequence is the failure mode the rest of §8
+     * exists to prevent: an operator uploads a kit, the job reports success, and the corpus is
+     * empty. The only trace is a {@code log.error} per file in the container log, which nobody
+     * reads when the job says it worked, and {@code docs=0} — a number you have to already suspect
+     * to go and check.
+     *
+     * <p>
+     * Pinning it makes the silence explicit rather than accidental: the counts are the ONLY
+     * channel, so if a future change starts failing the job (or starts counting the losses) that is
+     * a deliberate contract change and this test is where it gets discussed. The negative
+     * assertions matter as much as the counts — nothing may be persisted and no embedding may be
+     * paid for on a file that produced no sections.
+     */
+    @Test
+    public void aZipInWhichEveryFileFailsCompletesGreenWithZeroDocuments() throws Exception {
+        Path tmp = Files.createTempDirectory("zip-allfail-unit");
+        Path zip = tmp.resolve("kit.zip");
+        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zip))) {
+            for (String name : new String[] {"docs/a.md", "docs/b.md"}) {
+                zos.putNextEntry(new ZipEntry(name));
+                // No ATX heading anywhere => "No chunks produced from document", per file.
+                zos.write("prose with no heading at all\n".getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        }
+        when(uploadPathGuard.resolve(zip.toString())).thenReturn(zip);
+
+        JobCounts counts = service.ingest(standardJob(zip.toString()), mock(JobContext.class));
+
+        assertThat(counts.docs())
+            .as("an all-failing zip reports success with zero documents — the counts are the only"
+                + " signal an operator ever gets")
+            .isZero();
+        assertThat(counts.chunks()).isZero();
+        verify(documentRepository, never()).insertChunks(any(), anyString(), anyList(), anyString(),
+            anyString(), anyList());
+        verify(embeddingService, never()).embedBatch(anyList());
+    }
+
+    /** A standard (non-KG) ingest job pointing at {@code sourceRef}. */
+    private IngestionJob standardJob(String sourceRef) {
+        return new IngestionJob(null, "standard", sourceRef, TAGS, COLLECTION, JobStatus.RUNNING,
+            null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+    }
+
+    /**
+     * The standard pipeline's own zip extraction must reject a zip-slip entry.
+     *
+     * <p>
+     * {@code CustomIngestService} has this pinned; this path did not, and the two unzip
+     * implementations are separate code. An archive is attacker-influenced — any caller of the
+     * ingest API supplies one — so an entry that resolves outside the extraction directory would
+     * let an upload write anywhere the process can reach.
+     *
+     * <p>
+     * The vector is an ABSOLUTE entry name, not {@code ../}. A relative escape never reaches the
+     * zip-slip check: the dot-path filter one line above rejects any name containing {@code /.} or
+     * starting with {@code .} first. A test using {@code ../escaped.md} therefore passes whether or
+     * not the zip-slip guard exists, which is worse than no test.
+     */
+    @Test
+    public void aZipEntryEscapingTheExtractionDirectoryFailsTheStandardIngest() throws Exception {
+        Path tmp = Files.createTempDirectory("zipslip-unit");
+        Path zip = tmp.resolve("evil.zip");
+        Path escapeTarget = tmp.resolve("pwned.md");
+        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zip))) {
+            zos.putNextEntry(new ZipEntry("docs/ok.md"));
+            zos.write("# Fine\n\ncontent\n".getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+            zos.putNextEntry(new ZipEntry(escapeTarget.toAbsolutePath().toString()));
+            zos.write("owned".getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+        when(uploadPathGuard.resolve(zip.toString())).thenReturn(zip);
+
+        IngestionJob job = standardJob(zip.toString());
+        assertThatThrownBy(() -> service.ingest(job, mock(JobContext.class)))
+            .hasStackTraceContaining("zip-slip");
+        assertThat(Files.exists(escapeTarget))
+            .as("nothing may be written outside the extraction directory").isFalse();
+    }
+
+    /**
+     * The text stored on a chunk and the text handed to the embedder MUST be the same string.
+     *
+     * <p>
+     * {@code Section.toChunkText()} prepends the heading path ({@code "> Section path: A > B"}) and
+     * the ATX heading to the section body, and that enriched form is what {@code persistDocument}
+     * writes into {@code chunks.text} — which is also exactly what the BM25 lane tokenizes. If the
+     * embedding is computed from anything else (the bare body, a summary, a trimmed variant) the
+     * two retrieval lanes score different content for the same row: the vector describes one
+     * string, the keyword index another, and RRF then fuses two rankings that no longer refer to
+     * the same text. Nothing fails and nothing warns. Counts stay normal and the only production
+     * guard — {@code embeddings.size() != sections.size()} — passes happily, because a per-section
+     * transform preserves the count. The corpus simply retrieves subtly wrong passages forever.
+     *
+     * <p>
+     * The alignment is expressed twice with nothing tying the two together: once as
+     * {@code chunkTexts} for the embed call, once as {@code s.toChunkText()} inside
+     * {@code persistDocument}. An edit to either side is invisible to every existing test in this
+     * class — they assert on graph persistence, or assert that {@code ingest} THROWS, and none of
+     * them reaches the standard chunk-and-persist path. The fixture below deliberately nests a
+     * section so the heading-path prefix (the first thing a body-only regression drops) appears in
+     * at least one chunk.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    public void everyStandardChunkIsEmbeddedWithExactlyTheTextThatIsStored() throws Exception {
+        Path tmp = Files.createTempDirectory("chunktext-unit");
+        Path md = tmp.resolve("aligned.md");
+        Files.writeString(md, """
+            # Manual Title
+
+            ## Alpha
+
+            alpha body text
+
+            ## Beta
+
+            beta body text
+
+            ### Beta child
+
+            beta child body
+            """);
+        when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
+        when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
+            List<String> texts = inv.getArgument(0);
+            return texts.stream().map(t -> new float[] {1.0f}).toList();
+        });
+
+        service.ingest(standardJob(md.toString()), mock(JobContext.class));
+
+        ArgumentCaptor<List<String>> embedded = ArgumentCaptor.forClass(List.class);
+        verify(embeddingService).embedBatch(embedded.capture());
+        ArgumentCaptor<List<ChunkInsert>> stored = ArgumentCaptor.forClass(List.class);
+        verify(documentRepository).insertChunks(any(), anyString(), anyList(), anyString(),
+            anyString(), stored.capture());
+
+        List<String> storedTexts = stored.getValue().stream().map(ChunkInsert::text).toList();
+        assertThat(storedTexts).hasSize(3);
+        assertThat(embedded.getValue())
+            .as("the embedded text must be the stored text, element for element and in order")
+            .containsExactlyElementsOf(storedTexts);
+        // The nested section's stored text carries the heading-path prefix; embedding the bare
+        // body would silently drop it while every count stayed identical.
+        assertThat(storedTexts.get(2)).contains("> Section path: Beta");
+    }
+
+    /**
+     * A document that produces no sections MUST fail the job rather than complete with zero chunks.
+     *
+     * <p>
+     * Markdown with no ATX heading yields an empty section list, and an empty section list means
+     * the document is unsearchable. Completing would report a normal-looking job — one document,
+     * zero chunks — and leave content in the corpus that no query can ever return, with the
+     * operator's only signal being a count they would have to know to check. Failing names the
+     * file.
+     */
+    @Test
+    public void aDocumentWithNoHeadingsFailsInsteadOfCompletingWithZeroChunks() throws Exception {
+        Path tmp = Files.createTempDirectory("nochunks-unit");
+        Path md = tmp.resolve("headless.md");
+        Files.writeString(md, "just prose, no ATX heading anywhere\n");
+        when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
+
+        IngestionJob job = standardJob(md.toString());
+        assertThatThrownBy(() -> service.ingest(job, mock(JobContext.class)))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("No chunks produced")
+            .hasMessageContaining("headless.md");
+        verify(documentRepository, never()).insertChunks(any(), anyString(), anyList(), anyString(),
+            anyString(), anyList());
     }
 }

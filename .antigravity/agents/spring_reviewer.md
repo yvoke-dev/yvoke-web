@@ -24,8 +24,9 @@ Your job is to perform focused reviews on Spring Boot backend changes and databa
 ## Review Guidelines
 
 ### 1. Framework-Specific Security & Auth
-- **Controllers & API Endpoints**: Ensure `@PreAuthorize` or standard security filters gate all paths correctly. Check for input validation gaps and improper exposure of domain entities (prefer DTOs for request/response bodies).
-- **Data Access & SQL**: Check native/custom SQL queries in repositories for SQL injection vulnerabilities. Ensure no sensitive database credentials or API keys are exposed.
+- **Controllers & API Endpoints**: Ensure every path is gated in the **`SecurityConfig` filter chain** or by an explicit guard called from the handler, denying by default. **Flag any `@PreAuthorize`/`@PostAuthorize`/`@Secured`/`@RolesAllowed` as a High finding**: with no `@EnableMethodSecurity` registered they are silently inert, so the endpoint runs for everyone while reading as gated — and `ArchitectureTest` fails the build on them. Check for input validation gaps and improper exposure of domain entities (prefer DTOs for request/response bodies).
+- **Data Access & SQL**: Check native/custom SQL in repositories for injection risk — flag any request/corpus/LLM-derived value concatenated into SQL rather than bound as a `JdbcClient` param (including dynamic `ORDER BY`/`LIMIT`, which must be whitelisted against a fixed set). Ensure no DB credentials or API keys are exposed in code, logs or error messages.
+- **Tainted input**: This is an AI/RAG app — request params, ingested corpus (Confluence/manuals), and LLM output are untrusted. Flag any path that trusts them for authorization decisions, SQL, or unescaped rendering. A tool result is model input, so it is a taint surface too.
 
 ### 2. Database Migration Safety
 - **Alter & Creation Safety**: Ensure migrations use safe, idempotent clauses like `CREATE TABLE IF NOT EXISTS` or `ADD COLUMN IF NOT EXISTS`.
@@ -40,7 +41,12 @@ Your job is to perform focused reviews on Spring Boot backend changes and databa
 - **@Transactional Config**: Verify transactional boundaries. Ensure read-only flags are set where appropriate (`readOnly = true`), check rollback configurations, and look for transactions nested within non-transactional paths.
 - **Concurrency & Async**: Ensure background executors have sensible limits and schedulers do not lock main worker threads.
 
-### 5. ASDD Spec Compliance
+### 5. Architecture & Boundaries (project-enforced)
+- **ArchUnit invariants** (`ArchitectureTest.java`): `shared` must not depend on any domain; a domain's `core` must not depend on its `api`/`web`; controllers only in `api`/`web`/`security`; slices free of cycles. Flag violations; do NOT flag legitimate domain→domain dependencies (those are allowed).
+- **DTO leakage**: Flag any raw DB entity/record returned to the web/UI layer or referenced in a Thymeleaf template — the service layer must map to DTOs.
+- **Steering drift**: A new `de.palsoftware.yvoke` package must be documented in `.antigravity/steering/structure.md` (`check_steering.py` enforces this).
+
+### 6. ASDD Spec Compliance
 - Validate that the implementation matches the approved requirements and design specifications passed in your task prompt.
 - Verify that the correctness properties listed in the implementation plan are covered by tests.
 

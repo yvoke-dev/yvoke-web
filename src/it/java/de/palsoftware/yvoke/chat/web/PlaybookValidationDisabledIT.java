@@ -96,6 +96,47 @@ public class PlaybookValidationDisabledIT {
             .authorities(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
+    /**
+     * S5.13: {@code app.chat.playbook-validation-enabled=false} is a kill switch, and a kill switch
+     * has to short-circuit before it does ANY work — not merely before the LLM call. The validator
+     * is a preflight fired from the composer before the message is even sent, so when it is turned
+     * off the endpoint must degrade to a constant {@code {true, "", null}} that cannot fail for any
+     * reason at all.
+     *
+     * <p>
+     * {@code verifyOwnership} throws {@code ResponseStatusException(404)} for an id it cannot find,
+     * and it is called OUTSIDE the controller's try/catch, so it is not caught by the
+     * "return the optimistic fallback" handler at the bottom of the method: sinking the flag check
+     * below it turns the disabled path into one that issues a DB read and can answer 404 or 403.
+     * The composer then shows a preflight error for a feature the operator switched off. Moving the
+     * check is a natural-looking tidy-up — the ownership call reads like a precondition that ought
+     * to come first — and the sibling test cannot see it, because it validates against a REAL,
+     * OWNED conversation, which passes ownership verification whichever order the two run in. Only
+     * an id that verification would reject can tell the two arrangements apart.
+     */
+    @Test
+    public void whenValidationIsDisabledABogusConversationIdStillReturnsTwoHundred()
+        throws Exception {
+        String userBOid = "user-b-validate-disabled-oid";
+        userRepository.upsert(userBOid, "user-b-disabled@local", "User B");
+        setSecurityContext(userBOid, "user-b-disabled@local", "User B");
+
+        var login = testUserLogin(userBOid, "user-b-disabled@local", "User B");
+
+        // A conversation id that exists nowhere: reaching the ownership lookup at all is a 404.
+        mockMvc.perform(post("/chat/" + UUID.randomUUID() + "/validate-playbook")
+                .with(login)
+                .with(csrf())
+                .param("content", "How do I query database?")
+                .param("promptName", "correct-playbook"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(jsonPath("$.reason").value(""))
+            .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
+
+        verifyNoInteractions(llmClient);
+    }
+
     @Test
     public void testValidatePlaybookWhenDisabled() throws Exception {
         String userAOid = "user-a-validate-disabled-oid";

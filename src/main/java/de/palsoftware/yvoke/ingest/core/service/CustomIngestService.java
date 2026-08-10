@@ -57,6 +57,7 @@ import de.palsoftware.yvoke.ingest.core.model.MarkdownTree;
 import de.palsoftware.yvoke.ingest.core.model.ParsedMarkdown;
 import de.palsoftware.yvoke.ingest.core.model.Section;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class CustomIngestService {
@@ -801,8 +802,7 @@ public class CustomIngestService {
 
     private static ParsedFile readMd(Path path) {
         try {
-            String text =
-                new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+            String text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
             text = text.replace("\r\n", "\n").replace('\r', '\n');
             text = joinWrappedTableRows(text);
             Matcher m = FRONTMATTER_PATTERN.matcher(text);

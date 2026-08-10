@@ -65,7 +65,7 @@ public class AppConfigRepositoryIT {
     String key = PREFIX + "mode";
 
     repository.set(key, "v1");
-    java.time.Instant firstTs =
+    Instant firstTs =
         jdbcTemplate.queryForObject(
             "SELECT updated_at FROM app_config WHERE key = ?", Instant.class, key);
 
@@ -76,7 +76,7 @@ public class AppConfigRepositoryIT {
         jdbcTemplate.queryForObject(
             "SELECT count(*) FROM app_config WHERE key = ?", Long.class, key);
     assertThat(rows).isEqualTo(1L); // upsert, not a second insert
-    java.time.Instant secondTs =
+    Instant secondTs =
         jdbcTemplate.queryForObject(
             "SELECT updated_at FROM app_config WHERE key = ?", Instant.class, key);
     assertThat(secondTs).isAfter(firstTs); // distinct transactions => strictly later timestamp

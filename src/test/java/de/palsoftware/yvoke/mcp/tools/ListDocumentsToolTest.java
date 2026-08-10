@@ -37,6 +37,27 @@ public class ListDocumentsToolTest {
     }
 
     @Test
+    public void testValidatedKindIsForwardedInItsStoredCasing() {
+        // kind is validated case-insensitively (equalsIgnoreCase) but DocumentRepository filters
+        // with `AND d.kind = :kind` — case-SENSITIVE. Forwarding the caller's spelling therefore
+        // passes validation and then matches zero rows, so the tool reports the kind is valid for
+        // this collection and returns "no documents" for it. (The collection name is safe here:
+        // listDocuments matches it with LOWER(c.name) = LOWER(:collection).)
+        when(documentRepository.findDistinctKindsInCollection("OIM - DB"))
+            .thenReturn(List.of("table"));
+        when(documentRepository.listDocuments(any(), anyInt(), anyInt(), any(), any(), any(), any(),
+            any())).thenReturn(Collections.emptyList());
+        when(documentRepository.countDocuments(any(), any(), any(), any(), any(), any()))
+            .thenReturn(0L);
+
+        listDocumentsTool.listDocuments("OIM - DB", "TABLE", "9.3", null, null, null);
+
+        verify(documentRepository).listDocuments(any(), anyInt(), anyInt(), eq("table"), any(),
+            any(), any(), any());
+        verify(documentRepository).countDocuments(any(), eq("table"), any(), any(), any(), any());
+    }
+
+    @Test
     public void testListDocumentsSuccess() {
         UUID docId = UUID.randomUUID();
         DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM - Manuals",
@@ -111,20 +132,24 @@ public class ListDocumentsToolTest {
 
     @Test
     public void testListDocumentsValidKindCaseInsensitive() {
+        // A differently-cased kind is ACCEPTED, and is then forwarded in its stored casing —
+        // the repository filter is `AND d.kind = :kind` (case-sensitive), so the stubs below
+        // deliberately expect "table", not the caller's "TABLE".
         when(documentRepository.findDistinctKindsInCollection("OIM - Code"))
             .thenReturn(List.of("table", "view", "procedure"));
         UUID docId = UUID.randomUUID();
         DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM - Code", "table",
             "ADSAccount Table", null, "completed", 5L, true, Instant.now());
-        when(documentRepository.listDocuments(eq("OIM - Code"), eq(100), eq(0), eq("TABLE"), any(),
+        when(documentRepository.listDocuments(eq("OIM - Code"), eq(100), eq(0), eq("table"), any(),
             any(), any(), any())).thenReturn(List.of(doc));
-        when(documentRepository.countDocuments(eq("OIM - Code"), eq("TABLE"), any(), any(), any(),
+        when(documentRepository.countDocuments(eq("OIM - Code"), eq("table"), any(), any(), any(),
             any())).thenReturn(1L);
 
         String output =
             listDocumentsTool.listDocuments("OIM - Code", "TABLE", "9.3", null, null, null);
         assertTrue(output.contains("**OIM - Code**"));
-        assertTrue(output.contains("TABLE"));
+        assertTrue(output.contains("ADSAccount Table"),
+            "the document must be listed, i.e. the case-insensitive kind actually matched rows");
     }
 
     @Test

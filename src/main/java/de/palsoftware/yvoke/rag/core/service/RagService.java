@@ -364,8 +364,14 @@ public class RagService {
         List<LlmTool> llmTools = new ArrayList<>();
         for (ToolCallback callback : runRegistry.values()) {
             String toolName = callback.getToolDefinition().name();
-            if (!alwaysInclude.contains(toolName) && allowedTools != null
-                && !allowedTools.contains(toolName)) {
+            // Deny by default: null is treated exactly like an empty list. Skipping the filter when
+            // allowedTools is null would be fail-OPEN — the one input a caller can produce by
+            // accident (a field left unset) would grant the entire catalogue, which is backwards
+            // for
+            // an allow-list. Nothing relies on the old behaviour: every producer passes a real
+            // list.
+            if (!alwaysInclude.contains(toolName)
+                && (allowedTools == null || !allowedTools.contains(toolName))) {
                 continue;
             }
             try {

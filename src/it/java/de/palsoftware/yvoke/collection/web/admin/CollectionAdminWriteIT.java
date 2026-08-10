@@ -21,6 +21,8 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.hamcrest.Matchers;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 /**
  * Collection creation and tag lifecycle, plus the tag/version dropdown fragment — none of which was
@@ -125,8 +127,8 @@ public class CollectionAdminWriteIT {
             .perform(get("/admin/collections/tag-options").param("collection", COLLECTION)
                 .with(admin()))
             .andExpect(status().isOk())
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
-                .string(org.hamcrest.Matchers.containsString("10.0")));
+            .andExpect(MockMvcResultMatchers.content()
+                .string(Matchers.containsString("10.0")));
     }
 
     /**

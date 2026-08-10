@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
@@ -156,6 +157,50 @@ class ChatAsyncControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("cancelled", response.getBody().get("status"));
         assertEquals(cancelledMessage, response.getBody().get("message"));
+    }
+
+    /**
+     * {@code messages.status} is unconstrained TEXT with no CHECK constraint, so any value can end
+     * up on a row — a status added by a future in-flight state, a value written by a path nobody
+     * remembered updating, a typo. This endpoint is the browser's only account of how a generation
+     * ended, and the client contract is that it NEVER invents status text for a message the server
+     * has already authored: {@code pollTerminalDecision} branches on exactly
+     * generating/error/cancelled/done. Echo an unrecognised value back and it matches no branch at
+     * all — the poll re-arms via setTimeout forever with the loader interval never cleared, which
+     * is the same family of failure that once presented an HTTP 429 to the user as "[Generation
+     * stopped by user]".
+     *
+     * <p>
+     * The fixed "done" default is what keeps the response vocabulary closed. Replacing it with
+     * {@code message.status()} looks like a strict improvement ("report what the row actually
+     * says") and passes every other test in this file, because they cover only the four values the
+     * controller already names explicitly — generating, error, cancelled and a row literally stored
+     * as "done", which is indistinguishable from the default.
+     */
+    @Test
+    void anUnrecognisedTerminalStatusIsReportedAsDoneRatherThanEchoedBack() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        Message queuedMessage = mock(Message.class);
+        when(queuedMessage.status()).thenReturn("queued");
+        when(queuedMessage.conversationId()).thenReturn(conversationId);
+        when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(queuedMessage));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService);
+
+        ResponseEntity<Map<String, Object>> response =
+            controller.getMessageStatus(conversationId, messageId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("done", response.getBody().get("status"));
+        assertEquals(queuedMessage, response.getBody().get("message"));
+        assertFalse(response.getBody().toString().contains("queued"),
+            "an unrecognised status must not be echoed back to a client that has no branch for it: "
+                + response.getBody());
     }
 
     @Test

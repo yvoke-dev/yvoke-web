@@ -190,6 +190,56 @@ public class HierarchicalRetrievalIT {
         assertThat(section11.text()).contains("Section 1.1 Text Part 2");
     }
 
+    /**
+     * A citation click in chat and an MCP {@code get_section(chunk_id)} call both land in
+     * {@link SectionService#getSectionByChunkId(String)}, which must return the ONE section the
+     * cited chunk belongs to. The method passes a hard-coded "not the full document" flag into the
+     * shared assembly routine; if that flag ever flips, both callers silently return the ENTIRE
+     * manual. The citation dialog — whose whole job is to show the single passage behind a single
+     * claim — would render the complete document, and every MCP get_section(chunk_id) would burn
+     * thousands of tokens on a whole manual with the cited passage buried in it. Nothing throws and
+     * nothing logs: the response looks perfectly successful either way, which is why no caller can
+     * detect the regression. The input is deliberately an 8-character PREFIX, because that is the
+     * production input shape — citation-render.js linkifies truncated chunk ids and
+     * CitationVerifier classifies exactly that form as UNVERIFIED rather than fabricated. The
+     * doesNotContain assertions are the load-bearing half: asserting only that both Section 1.1
+     * parts are present would still pass on the full document, which contains them too. Nothing
+     * else covers this — GetSectionToolTest and CitationControllerTest both stub SectionService
+     * with a canned response, so the real resolution never runs, and this class's other section
+     * assertions all go through the name-based overload, which derives the flag from its
+     * heading_path argument instead.
+     */
+    @Test
+    public void aCitedChunkIdResolvesToItsOwnSectionNotTheWholeDocument() {
+        String prefix = chunkId2.toString().substring(0, 8);
+
+        SectionResponse section = sectionService.getSectionByChunkId(prefix);
+
+        // The path is reconstructed from the chunk's own heading_path + heading, with the
+        // "(part 1/2)" suffix stripped, so the two parts collapse onto one section.
+        assertThat(section.headingPath()).containsExactly("Chapter 1", "Section 1.1");
+        assertThat(section.documentTitle()).isEqualTo("Manual A Title");
+        assertThat(section.tag()).isEqualTo("9.3");
+        assertThat(section.scope()).isEqualTo("with sub-sections");
+        assertThat(section.chunkCount()).isEqualTo(2);
+
+        // The header names the section, not the document.
+        assertThat(section.text()).startsWith("# Section: Chapter 1 > Section 1.1\n");
+
+        // Both parts of Section 1.1, in sort_order (20 before 21).
+        assertThat(section.text()).contains("Section 1.1 Text Part 1");
+        assertThat(section.text()).contains("Section 1.1 Text Part 2");
+        assertThat(section.text().indexOf("Section 1.1 Text Part 1"))
+            .isLessThan(section.text().indexOf("Section 1.1 Text Part 2"));
+
+        // …and nothing else: not the parent chapter's own prose, not the sibling section, not the
+        // later chapter, and not the same chapter in the other version's document.
+        assertThat(section.text()).doesNotContain("Chapter 1 Intro text");
+        assertThat(section.text()).doesNotContain("Section 1.2 Text");
+        assertThat(section.text()).doesNotContain("Chapter 2 Text");
+        assertThat(section.text()).doesNotContain("Chapter 1 v10 Text");
+    }
+
     @Test
     public void testTocServiceReconstruction() {
         // Full TOC

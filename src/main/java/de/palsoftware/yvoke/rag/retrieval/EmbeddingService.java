@@ -16,6 +16,7 @@ import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 @Service
 public class EmbeddingService implements EmbeddingModel {
@@ -31,7 +32,7 @@ public class EmbeddingService implements EmbeddingModel {
 
     @Autowired
     public EmbeddingService(
-        @org.springframework.beans.factory.annotation.Qualifier("embeddingRestClientBuilder") RestClient.Builder restClientBuilder,
+        @Qualifier("embeddingRestClientBuilder") RestClient.Builder restClientBuilder,
         @Value("${app.ai.embedding.api-key}") String apiKey,
         @Value("${app.ai.embedding.model}") String model,
         @Value("${app.ai.embedding.base-url}") String baseUrl,
@@ -138,9 +139,9 @@ public class EmbeddingService implements EmbeddingModel {
         List<String> texts = request.getInstructions();
         List<float[]> embeddings = embedBatch(texts);
 
-        List<org.springframework.ai.embedding.Embedding> list = new ArrayList<>();
+        List<Embedding> list = new ArrayList<>();
         for (int i = 0; i < embeddings.size(); i++) {
-            list.add(new org.springframework.ai.embedding.Embedding(embeddings.get(i), i));
+            list.add(new Embedding(embeddings.get(i), i));
         }
         return new EmbeddingResponse(list);
     }

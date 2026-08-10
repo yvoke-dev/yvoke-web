@@ -19,6 +19,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.hamcrest.Matchers;
 
 /**
  * Full Thymeleaf render coverage for the KG admin pages after the DTO-at-boundary refactor
@@ -73,20 +74,20 @@ public class KgAdminRenderingIT {
     @Test
     public void overviewRendersScopeDtos() throws Exception {
         mockMvc.perform(get("/admin/kg").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString(COLLECTION)));
+            .andExpect(content().string(Matchers.containsString(COLLECTION)));
     }
 
     @Test
     public void browseRendersEntityDtosWithDisplayTag() throws Exception {
         mockMvc.perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
                 .with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("OAuth Module")));
+            .andExpect(content().string(Matchers.containsString("OAuth Module")));
     }
 
     @Test
     public void activeEntityPanelRendersRelationshipAndEntityDtos() throws Exception {
         mockMvc.perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
                 .param("selectedEntity", "OAuth Module").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("Handles OAuth flows.")));
+            .andExpect(content().string(Matchers.containsString("Handles OAuth flows.")));
     }
 }

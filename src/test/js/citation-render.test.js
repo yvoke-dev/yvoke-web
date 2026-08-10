@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import {
     formatCitations,
     mapOutsideCode,
+    mapOutsidePre,
     normalizeSpacing,
     protectTokens,
     restoreTokens,
@@ -171,6 +172,32 @@ describe('placeholder protect/restore round trip', () => {
     });
 });
 
+describe('mapOutsidePre', () => {
+    // The two code regions need opposite treatment when hiding tool-call chatter, so they are
+    // reachable through separate helpers. mapOutsideCode skips both; this one skips only <pre>.
+    test('a pre block is left byte-identical', () => {
+        const html = '<p>a</p><pre><code>x [1] y</code></pre><p>b</p>';
+        assert.equal(mapOutsidePre(html, (s) => s.replace(/[ab]/g, 'Z')),
+            '<p>Z</p><pre><code>x [1] y</code></pre><p>Z</p>');
+    });
+
+    test('an inline code span is passed to fn, unlike mapOutsideCode', () => {
+        const html = '<p>a <code>b</code> c</p>';
+        const seen = [];
+        mapOutsidePre(html, (s) => { seen.push(s); return s; });
+        assert.equal(seen.join(''), html, 'fn did not see the whole string');
+        // The contrast that motivates the helper existing at all.
+        const seenByCode = [];
+        mapOutsideCode(html, (s) => { seenByCode.push(s); return s; });
+        assert.ok(!seenByCode.join('').includes('<code>'), 'mapOutsideCode should hide it');
+    });
+
+    test('a mermaid pre is protected too', () => {
+        const html = '<div class="mermaid-diagram-container"><pre class="mermaid">A-->B</pre></div>';
+        assert.equal(mapOutsidePre(html, (s) => s.replace(/-->/g, 'X')), html);
+    });
+});
+
 describe('markdown spacing normalizer', () => {
     test('a heading run together with prose gets a break', () => {
         assert.equal(normalizeSpacing('text ## Heading'), 'text\n\n## Heading');
@@ -198,7 +225,52 @@ describe('markdown spacing normalizer', () => {
     });
 
     test('a table pipe before a hash is not turned into a heading', () => {
+        // `#1` has no whitespace after the hash, so `#{1,6}\s+` could never match it — this case
+        // passed with the `|` guard deleted entirely and proved nothing. The real shapes are below.
         const md = '| col | #1 |';
         assert.equal(normalizeSpacing(md), md);
+    });
+
+    test('a "| # |" header cell does not destroy the table', () => {
+        // The reported bug. `|` was in the exclusion class, but `\s*` may match NOTHING, so
+        // `[^\n#|]` matched the SPACE inside the cell instead of the pipe: the header row became
+        // `| ` + a blank line + `# | What to check | Where |`, marked stopped seeing a table, and
+        // the whole thing rendered as a stray <h1> plus one run-together paragraph.
+        const md = '| # | What to check | Where |\n|---|---|---|\n| 1 | ok | Manager |';
+        assert.equal(normalizeSpacing(md), md);
+    });
+
+    test('a numbered bold item inside a table cell does not split the row', () => {
+        const md = '| step | 1. **do it** |\n|---|---|';
+        assert.equal(normalizeSpacing(md), md);
+    });
+
+    test('a reference-list marker inside a table cell does not split the row', () => {
+        const md = '| source | - [1] see there |\n|---|---|';
+        assert.equal(normalizeSpacing(md), md);
+    });
+
+    test('a lone hash inside a table cell is not a heading', () => {
+        const md = '| Fix | use # to comment the line |\n|---|---|';
+        assert.equal(normalizeSpacing(md), md);
+    });
+
+    test('a language name ending in # is not a heading', () => {
+        // "the C# code" became "the C\n\n# code" — an <h1> reading "code" — because the guard only
+        // ever looked at the character touching the whitespace run, and here there is none.
+        assert.equal(normalizeSpacing('the C# code'), 'the C# code');
+        assert.equal(normalizeSpacing('written in C# 5'), 'written in C# 5');
+        assert.equal(normalizeSpacing('C#5 and F# too'), 'C#5 and F# too');
+    });
+
+    test('an indented heading is left where it is', () => {
+        // The old class let the group match a leading SPACE, so an indented heading was split off
+        // from its own indentation.
+        assert.equal(normalizeSpacing('   ## Heading'), '   ## Heading');
+    });
+
+    test('normalizing twice changes nothing more than once', () => {
+        const once = normalizeSpacing('text ## Heading and 1. **item** and Refs: - [1] x');
+        assert.equal(normalizeSpacing(once), once);
     });
 });

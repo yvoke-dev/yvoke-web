@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/chat/v1")
@@ -127,8 +128,8 @@ public class DesktopSyncController {
     }
 
     @PostMapping("/conversations")
-    public ResponseEntity<ConversationDto> createConversation(User user, @jakarta.validation.Valid
-    @RequestBody(required = false) CreateConversationRequest request) {
+    public ResponseEntity<ConversationDto> createConversation(User user,
+        @Valid @RequestBody(required = false) CreateConversationRequest request) {
         String title = request != null ? request.title() : null;
         Map<String, Object> settings = request != null ? request.settings() : null;
         Conversation conversation = syncService.createConversation(user, title, settings);
@@ -137,7 +138,7 @@ public class DesktopSyncController {
 
     @PatchMapping("/conversations/{id}")
     public ResponseEntity<Void> updateConversation(User user, @PathVariable UUID id,
-        @jakarta.validation.Valid @RequestBody UpdateConversationRequest request) {
+        @Valid @RequestBody UpdateConversationRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }
@@ -162,7 +163,7 @@ public class DesktopSyncController {
 
     @PostMapping("/conversations/{id}/messages")
     public Map<String, List<UUID>> appendMessages(User user, @PathVariable UUID id,
-        @jakarta.validation.Valid @RequestBody AppendMessagesRequest request) {
+        @Valid @RequestBody AppendMessagesRequest request) {
         if (request == null || request.messages() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "messages are required");
         }

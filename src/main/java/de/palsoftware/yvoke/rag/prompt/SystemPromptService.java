@@ -7,17 +7,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 
 @Service
 public class SystemPromptService {
 
     private final SystemPromptRepository systemPromptRepository;
     private final String defaultPromptName;
-    private final de.palsoftware.yvoke.shared.config.repository.AppConfigRepository appConfigRepository;
+    private final AppConfigRepository appConfigRepository;
 
     public SystemPromptService(SystemPromptRepository systemPromptRepository,
         @Value("${app.ai.rag.default-prompt-name}") String defaultPromptName,
-        de.palsoftware.yvoke.shared.config.repository.AppConfigRepository appConfigRepository) {
+        AppConfigRepository appConfigRepository) {
         this.systemPromptRepository = systemPromptRepository;
         this.defaultPromptName = defaultPromptName;
         this.appConfigRepository = appConfigRepository;

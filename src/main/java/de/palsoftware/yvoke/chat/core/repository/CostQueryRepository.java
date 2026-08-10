@@ -36,12 +36,6 @@ public class CostQueryRepository {
             .query().listOfRows();
     }
 
-    public List<Map<String, Object>> availableConversations() {
-        return jdbcClient
-            .sql("SELECT id, title FROM conversations ORDER BY created_at DESC LIMIT 200").query()
-            .listOfRows();
-    }
-
     public List<String> availableMasProfiles() {
         return jdbcClient.sql("""
             SELECT DISTINCT ar.profile_name
@@ -534,22 +528,4 @@ public class CostQueryRepository {
         return query.query().listOfRows();
     }
 
-    /**
-     * Appends a half-open UTC {@code [start, end+1day)} predicate on {@code column} and binds
-     * {@code :startDate}/{@code :endDate} (shared across a query's date-filtered columns). A null
-     * bound contributes nothing — matching the retired {@code CostFilters.dateRange} exactly.
-     */
-    private String dateFilter(String column, LocalDate startDate, LocalDate endDate,
-        Map<String, Object> params) {
-        StringBuilder clause = new StringBuilder();
-        if (startDate != null) {
-            clause.append(" AND ").append(column).append(" >= :startDate");
-            params.put("startDate", startDate.atStartOfDay().atOffset(ZoneOffset.UTC));
-        }
-        if (endDate != null) {
-            clause.append(" AND ").append(column).append(" < :endDate");
-            params.put("endDate", endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC));
-        }
-        return clause.toString();
-    }
 }

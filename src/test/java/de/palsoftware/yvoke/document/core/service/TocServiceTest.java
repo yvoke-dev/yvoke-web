@@ -14,6 +14,9 @@ import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import java.time.Instant;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 class TocServiceTest {
 
@@ -27,18 +30,15 @@ class TocServiceTest {
     void setUp() {
         chunkRepository = Mockito.mock(ChunkRepository.class);
         documentRepository = Mockito.mock(DocumentRepository.class);
-        org.springframework.jdbc.core.simple.JdbcClient jdbcClient =
-            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.class);
-        org.springframework.jdbc.core.simple.JdbcClient.StatementSpec statementSpec =
-            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.StatementSpec.class);
+        JdbcClient jdbcClient = Mockito.mock(JdbcClient.class);
+        JdbcClient.StatementSpec statementSpec = Mockito.mock(JdbcClient.StatementSpec.class);
         @SuppressWarnings("unchecked")
-        org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec<Object> mappedQuerySpec =
-            Mockito.mock(org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec.class);
+        JdbcClient.MappedQuerySpec<Object> mappedQuerySpec =
+            Mockito.mock(JdbcClient.MappedQuerySpec.class);
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
         when(statementSpec.param(anyString(), any())).thenReturn(statementSpec);
         @SuppressWarnings("unchecked")
-        org.springframework.jdbc.core.RowMapper<Object> rowMapper =
-            any(org.springframework.jdbc.core.RowMapper.class);
+        RowMapper<Object> rowMapper = any(RowMapper.class);
         when(statementSpec.query(rowMapper)).thenReturn(mappedQuerySpec);
         when(mappedQuerySpec.list()).thenReturn(Collections.emptyList());
         tocService = new TocService(chunkRepository, documentRepository, jdbcClient);
@@ -48,7 +48,7 @@ class TocServiceTest {
     void testGetTocSubtreeCountsAndSorting() {
         DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual", "Manual Title",
             Map.of("tag", "9.3", "source_file", "manual1.md"), "completed", List.of(),
-            java.time.Instant.now());
+            Instant.now());
 
         // Seed chunks forming the hierarchy:
         // Chapter 1 (sort_order = 10)

@@ -14,7 +14,16 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
     private final ObjectMapper objectMapper;
     private final ToolDefinition definition;
 
-    public SearchCorpusToolCallback(SearchCorpusTool tool, ObjectMapper objectMapper) {
+    /**
+     * @param maxLimit {@code app.retrieval.max-limit}, woven into the schema text the MODEL reads.
+     *        It must be the same number {@code HybridSearch} clamps to: the description used to
+     *        hardcode "max 200" (a constant that no longer exists) while the server clamped to 20,
+     *        so a specialist asking for 100 got 20 rows, was told the result was capped and to
+     *        raise the limit, raised it, and got 20 again — a loop the model cannot escape because
+     *        the advice it is given is impossible to follow.
+     */
+    public SearchCorpusToolCallback(SearchCorpusTool tool, ObjectMapper objectMapper,
+        int maxLimit) {
         this.tool = tool;
         this.objectMapper = objectMapper;
         this.definition = new ToolDefinition() {
@@ -48,7 +57,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
                         },
                         "limit": {
                           "type": "integer",
-                          "description": "Max chunks to return. Omit to use the server default (small — around 10). A full page means the result is CAPPED and more may match: raise this (max 200) or narrow the query. To read a whole named section rather than its top-ranked chunks, use 'get_section'."
+                          "description": "Max chunks to return. Omit to use the server default (small — around 10). A full page means the result is CAPPED and more may match: raise this (max %d) or narrow the query. To read a whole named section rather than its top-ranked chunks, use 'get_section'."
                         },
                         "conversation_id": {
                           "type": "string",
@@ -69,7 +78,8 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
                       },
                       "required": ["query", "collection"]
                     }
-                    """;
+                    """
+                    .formatted(maxLimit);
             }
         };
     }

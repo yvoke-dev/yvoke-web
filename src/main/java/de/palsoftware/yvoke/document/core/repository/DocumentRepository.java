@@ -21,6 +21,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
+import java.sql.Types;
 
 @Repository
 public class DocumentRepository {
@@ -95,27 +96,6 @@ public class DocumentRepository {
             throw new IllegalArgumentException(sb.toString().trim());
         }
         return Optional.of(matches.get(0));
-    }
-
-    public long countByIdPrefix(String idPrefix) {
-        if (idPrefix == null) {
-            throw new IllegalArgumentException("ID prefix cannot be null.");
-        }
-        if (idPrefix.isEmpty()) {
-            return 0;
-        }
-        if (!idPrefix.matches("^[0-9a-fA-F-]+$")) {
-            throw new IllegalArgumentException(
-                "Invalid ID prefix format. Must contain only hex characters and dashes.");
-        }
-        if (idPrefix.length() < 8) {
-            throw new IllegalArgumentException("ID prefix must be at least 8 characters long.");
-        }
-
-        String sql =
-            "SELECT COUNT(*) FROM documents WHERE replace(CAST(id AS TEXT), '-', '') LIKE :prefix";
-        String cleanPrefix = idPrefix.replace("-", "").toLowerCase();
-        return jdbcClient.sql(sql).param("prefix", cleanPrefix + "%").query(Long.class).single();
     }
 
     /** Returns which of the given document ids exist, in a single query. */
@@ -686,7 +666,7 @@ public class DocumentRepository {
                 if (c.embedding() != null) {
                     ps.setString(4, VectorUtils.toVectorString(c.embedding()));
                 } else {
-                    ps.setNull(4, java.sql.Types.OTHER);
+                    ps.setNull(4, Types.OTHER);
                 }
                 ps.setArray(5, ps.getConnection().createArrayOf("text", c.headingPath().toArray()));
                 ps.setString(6, c.heading());

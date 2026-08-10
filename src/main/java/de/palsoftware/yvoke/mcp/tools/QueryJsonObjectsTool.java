@@ -19,6 +19,7 @@ import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import jakarta.annotation.Nullable;
+import java.util.Arrays;
 
 
 @Component
@@ -154,6 +155,18 @@ public class QueryJsonObjectsTool {
                             + "break down a nested or spaced value, filter with jsonPath and run "
                             + "one countOnly query per value instead.";
                     }
+                    // JsonObjectService.countGroupedObjects keeps the filter only when it starts
+                    // with '$' and otherwise drops it, so a free-text filter would count the whole
+                    // collection while the header still quoted the filter — a collection-wide
+                    // breakdown that reads as a filtered one. The ungrouped path has no such hole
+                    // (it falls back to countSearch), so reject rather than silently widen.
+                    if (jsonPath != null && !jsonPath.isBlank()
+                        && !jsonPath.trim().startsWith("$")) {
+                        return "Error: filter '" + jsonPath.trim()
+                            + "' is not a jsonPath, and a grouped count can only apply a jsonPath "
+                            + "filter (it must start with '$'). Free-text filtering is supported "
+                            + "without groupBy; with groupBy, express the filter as a jsonPath.";
+                    }
                     Map<String, Long> counts = jsonObjectService
                         .countGroupedObjects(matchedCol.id(), jsonPath, groupBy.trim(), tagList);
                     // The repository fetches one group beyond the cap purely as a probe: seeing it
@@ -243,8 +256,7 @@ public class QueryJsonObjectsTool {
         if (input == null || input.isBlank()) {
             return List.of();
         }
-        return java.util.Arrays.stream(input.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-            .toList();
+        return Arrays.stream(input.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
     private String getNestedValue(Map<String, Object> map, String path) {

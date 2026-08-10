@@ -26,6 +26,7 @@ import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
+import java.time.OffsetDateTime;
 
 public class DocumentAdminControllerTest {
 
@@ -53,7 +54,7 @@ public class DocumentAdminControllerTest {
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
         Collection col = new Collection(UUID.randomUUID(), "OIM", "manual", List.of("9.3"),
-            java.time.OffsetDateTime.now());
+            OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(col));
         when(collectionService.listAllTags()).thenReturn(Collections.emptyList());
         when(collectionService.listTagsOf(any())).thenReturn(Collections.emptyList());

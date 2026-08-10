@@ -180,6 +180,81 @@ class ConfluenceConverterTest {
     }
 
     /**
+     * The 50 MiB guard has to fire BEFORE the download, not after it. The listing already carries
+     * {@code extensions.fileSize}, so the size is known for free; deciding after the fetch means
+     * every oversized attachment on a wiki — VM images, full product ISOs, database exports, all of
+     * which people do attach to Confluence pages — is pulled over the network in full and held in a
+     * single {@code byte[]} on the ingest worker before being discarded. That is an OOM on a shared
+     * JVM running {@code app.worker.concurrency} pages at once, and the crawl dies on a page whose
+     * TEXT was perfectly ingestable; it is also minutes of transfer per page against an instance
+     * that is already rate-limiting the crawl.
+     *
+     * <p>
+     * The second attachment is the half that stops the guard being "fixed" into a bail-out: the
+     * skip is a {@code continue}, so an oversized file must cost only itself and the rest of the
+     * page's attachments must still convert. A {@code break} or an early return would silently
+     * truncate the attachment section of every page whose big file happens to be listed first, and
+     * the page would still look complete. No existing test sets {@code extensions} at all, so
+     * {@code fileSize} has always defaulted to 0 and this branch has never executed.
+     */
+    @Test
+    void anAttachmentOverTheSizeLimitIsSkippedWithoutBeingDownloaded() {
+        when(confluenceClient.getPageAttachments(INSTANCE, "123")).thenReturn(List.of(
+            Map.of("title", "huge.pdf", "metadata", Map.of("mediaType", "application/pdf"),
+                "extensions", Map.of("fileSize", 60L * 1024 * 1024), "_links",
+                Map.of("download", "/download/huge.pdf")),
+            Map.of("title", "notes.txt", "metadata", Map.of("mediaType", "text/plain"),
+                "extensions", Map.of("fileSize", 27L), "_links",
+                Map.of("download", "/download/notes.txt"))));
+        when(confluenceClient.downloadAttachment(INSTANCE, "/download/notes.txt"))
+            .thenReturn("Release notes for build 42.".getBytes(StandardCharsets.UTF_8));
+
+        String markdown =
+            converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
+
+        verify(confluenceClient, never()).downloadAttachment(INSTANCE, "/download/huge.pdf");
+        assertThat(markdown).doesNotContain("huge.pdf");
+        // A `continue`, not a bail-out: the rest of the listing still converts.
+        assertThat(markdown).contains("### Attachment: notes.txt")
+            .contains("Release notes for build 42.");
+    }
+
+    /**
+     * A Tika extraction failure is a property of the FILE, not of the transport, so it must be
+     * recorded and stepped over — while listing and download failures propagate and fail the job.
+     * That asymmetry is the whole design of this block: a throttled or broken crawl must not
+     * produce pages that look complete with every attachment's text silently missing, but one
+     * corrupt or password-protected PDF among a page's attachments must not destroy an otherwise
+     * perfectly good page, and must not kill the wider crawl that is retrying 429s around it. Real
+     * corpora are full of these — truncated uploads, encrypted PDFs, files whose extension lies
+     * about their type.
+     *
+     * <p>
+     * The note matters as much as the survival. Writing the failure INTO the markdown is what makes
+     * the gap visible in the corpus itself: an agent (and a human reading the document) sees that
+     * this page had an attachment whose text could not be read, instead of silently concluding the
+     * attachment did not exist. A log line would not survive into the ingested document, and
+     * nothing downstream reconciles attachment counts against extracted sections.
+     */
+    @Test
+    void aFailingTextExtractionLeavesANoteInsteadOfFailingThePage() {
+        when(confluenceClient.getPageAttachments(INSTANCE, "123")).thenReturn(List
+            .of(Map.of("title", "broken.pdf", "metadata", Map.of("mediaType", "application/pdf"),
+                "_links", Map.of("download", "/download/broken.pdf"))));
+        // A PDF magic header with nothing behind it: Tika detects application/pdf and the parser
+        // throws, which is exactly the shape of a truncated upload in a live space.
+        when(confluenceClient.downloadAttachment(INSTANCE, "/download/broken.pdf"))
+            .thenReturn("%PDF-1.4\nthis file is truncated".getBytes(StandardCharsets.UTF_8));
+
+        String markdown =
+            converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
+
+        assertThat(markdown).contains("Some page content.").contains("## Attachments")
+            .contains("*Failed to extract text from attachment: broken.pdf*")
+            .doesNotContain("### Attachment: broken.pdf");
+    }
+
+    /**
      * The flag comes from the crawl-time snapshot in the job, not from the instance row: flipping
      * "process attachments" while a queue drains must not change what a queued page produces.
      */

@@ -41,6 +41,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import java.util.Map;
+import org.springframework.web.servlet.ModelAndView;
+import java.util.Comparator;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -51,6 +56,9 @@ public class ChatThreadRenderingIT {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JdbcClient jdbcClient;
 
     @Autowired
     private ChatConversationService chatConversationService;
@@ -68,6 +76,245 @@ public class ChatThreadRenderingIT {
     @AfterEach
     public void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    /**
+     * The startup sweep is an UNFILTERED global {@code UPDATE messages SET status='error',
+     * content='⚠️ *[Generation interrupted (system restart)]*'} whose only scope is
+     * {@code WHERE status = 'generating'}. It fires automatically on every boot
+     * ({@code @EventListener(ApplicationReadyEvent)}), has no user or conversation filter, swallows
+     * its own exceptions, and {@code messages.status} carries no CHECK constraint to backstop it.
+     * Widen or drop that predicate — or generalise it to {@code status <> 'done'} when a new
+     * in-flight status is added — and the next {@code ./redeploy.sh} silently replaces the CONTENT
+     * of every message of every user with the interrupt marker, reported as an INFO log line.
+     * The terminal-row assertions are the load-bearing half.
+     */
+    @Test
+    public void theStartupSweepTouchesOnlyGeneratingRowsAndLeavesFinishedAnswersIntact() {
+        setSecurityContext("sweep-oid", "sweep@local", "Sweep User");
+        UUID convId = chatConversationService.createConversation().id();
+
+        UUID generating = UUID.randomUUID();
+        UUID done = UUID.randomUUID();
+        UUID errored = UUID.randomUUID();
+        UUID cancelled = UUID.randomUUID();
+        messageRepository.save(new Message(generating, convId, "assistant", "", null, List.of(),
+            List.of(), Instant.now(), 0, 0, 0, 0, 0, "generating", "m"));
+        messageRepository.save(new Message(done, convId, "assistant", "kept answer", null,
+            List.of(), List.of(), Instant.now(), 1, 1, 2, 0, 0, "done", "m"));
+        messageRepository.save(new Message(errored, convId, "assistant", "prior failure", null,
+            List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "error", "m"));
+        messageRepository.save(new Message(cancelled, convId, "assistant", "stopped by the user",
+            null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "cancelled", "m"));
+
+        messageRepository.resetGeneratingMessages();
+
+        assertThat(messageRepository.findById(generating).orElseThrow().status())
+            .isEqualTo("error");
+        assertThat(messageRepository.findById(generating).orElseThrow().content())
+            .contains("Generation interrupted");
+
+        // Nothing terminal may be rewritten — not its status and not its content.
+        assertThat(messageRepository.findById(done).orElseThrow())
+            .satisfies(m -> assertThat(m.status()).isEqualTo("done"))
+            .satisfies(m -> assertThat(m.content()).isEqualTo("kept answer"));
+        assertThat(messageRepository.findById(errored).orElseThrow().content())
+            .isEqualTo("prior failure");
+        assertThat(messageRepository.findById(cancelled).orElseThrow())
+            .satisfies(m -> assertThat(m.status()).isEqualTo("cancelled"))
+            .satisfies(m -> assertThat(m.content()).isEqualTo("stopped by the user"));
+    }
+
+    /**
+     * {@code GET /chat/{id}} carries two contracts that no test reaches today, and one request
+     * proves both.
+     *
+     * <p>
+     * <b>404 vs 403 is asymmetric.</b> An unknown conversation id must be a 404 for everyone, while
+     * a foreign private one is a 403 — and only the 403 half is pinned (in
+     * {@code ChatConversationServiceTest}). Nothing anywhere requests {@code /chat/<unknown uuid>},
+     * so replacing {@code getConversation(id).orElseThrow(...)} with a bare {@code else} that
+     * treats an unknown id as a fresh thread would silently render an empty new chat: the user
+     * follows a stale link, sees a working page, and never learns the conversation is gone.
+     *
+     * <p>
+     * <b>The model attribute set is the template's whole contract.</b> {@code chat/thread.html}
+     * reads {@code conversation}, {@code messages}, {@code allowedModels}, {@code settings},
+     * {@code feedbacks}, {@code prompts}, {@code isReadOnly}, {@code playbookValidationEnabled} and
+     * {@code orchestratorProfiles}. The three existing rendering ITs in this class assert only on
+     * HTML substrings of the message content, which survive an attribute going missing — Thymeleaf
+     * iterates a null collection as empty and {@code th:if} on a null reads as false. So dropping
+     * one turns a legitimate conversation into a silently degraded page (an empty model picker, no
+     * playbook list, a read-write thread rendered read-only) or, for the attributes the template
+     * dereferences, a 500 — with the failure visible only in production. Asserting on the model
+     * rather than on rendered HTML is deliberate: the render is exactly what fails to notice.
+     */
+    @Test
+    public void anUnknownConversationIdIs404AndAVisibleOneCarriesTheFullThreadModel()
+        throws Exception {
+        String userOid = "thread-model-user-oid";
+        userRepository.upsert(userOid, "thread-model@local", "Thread Model User");
+        setSecurityContext(userOid, "thread-model@local", "Thread Model User");
+        var login = testUserLogin(userOid, "thread-model@local", "Thread Model User");
+
+        // Not "someone else's" — an id that belongs to no conversation at all, which is a 404 for
+        // every caller including an admin.
+        mockMvc.perform(get("/chat/" + UUID.randomUUID()).with(login).with(csrf()))
+            .andExpect(status().isNotFound());
+
+        // Re-seed: MockMvc's security filter clears SecurityContextHolder after every request, and
+        // createConversation() resolves its owner from the holder. Without this the conversation is
+        // created with no owner and the GET below is a 403 rather than the 200 under test.
+        setSecurityContext(userOid, "thread-model@local", "Thread Model User");
+        Conversation conv = chatConversationService.createConversation();
+        UUID convId = conv.id();
+        messageRepository.save(new Message(UUID.randomUUID(), convId, "assistant", "an answer",
+            "oim-ask", List.of(), List.of(), Instant.now(), 1, 1, 2, 0, 0, "done", "m"));
+
+        MvcResult result = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView mav = result.getModelAndView();
+        assertThat(mav).isNotNull();
+        Map<String, Object> viewModel = mav.getModel();
+
+        assertThat(viewModel)
+            .as("every attribute chat/thread.html reads must be present — a missing one degrades "
+                + "the page silently rather than failing the render")
+            .containsKeys("conversation", "messages", "allowedModels", "settings", "feedbacks",
+                "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles");
+
+        assertThat(((Conversation) viewModel.get("conversation")).id()).isEqualTo(convId);
+        assertThat((List<?>) viewModel.get("messages")).hasSize(1);
+        // The model picker is populated from the same whitelist createConversation() seeds the
+        // conversation's model from, so an empty list here means the picker offers nothing at all.
+        assertThat((List<?>) viewModel.get("allowedModels")).isNotEmpty();
+        Object settings = viewModel.get("settings");
+        assertThat(settings).isInstanceOf(Map.class);
+        assertThat(((Map<?, ?>) settings).get("model")).isNotNull();
+        assertThat(viewModel.get("isReadOnly")).isEqualTo(false);
+        assertThat(viewModel.get("playbookValidationEnabled")).isInstanceOf(Boolean.class);
+
+        // Cleanup (the security filter clears the holder after each MockMvc request).
+        setSecurityContext(userOid, "thread-model@local", "Thread Model User");
+        chatConversationService.deleteConversation(convId);
+    }
+
+    /**
+     * {@code messages.model} is what the thread's model badge and the per-message half of the cost
+     * views read, and it is written ONCE — by {@code save}, when the assistant placeholder row is
+     * created. Every later write goes through {@code updateContentAndStatus}, and three of its six
+     * production call sites pass {@code model = null} on purpose: the orchestrated path has no
+     * single model to name, since the orchestrator, the specialists and the reviewer each run their
+     * own. {@code COALESCE(:model, model)} is what makes "I have nothing to say about the model"
+     * mean "leave it alone" rather than "blank it".
+     *
+     * <p>
+     * Turning that into a plain {@code model = :model} reads like removing a redundant wrapper —
+     * every other column in the same SET list is assigned directly — and it fails silently: the row
+     * is still updated, the status is still correct, the answer still renders, and only the model
+     * attribution disappears. No unit test can see it either, because the repository is mocked
+     * everywhere upstream ({@code ChatMessageServiceTest} verifies the ARGUMENTS passed to this
+     * method, never the SQL's effect), so an IT against a real Postgres is the only place the
+     * COALESCE exists at all.
+     */
+    @Test
+    public void anUpdateWithNoModelKeepsTheModelAlreadyOnTheRow() {
+        setSecurityContext("coalesce-oid", "coalesce@local", "Coalesce User");
+        UUID convId = chatConversationService.createConversation().id();
+
+        UUID messageId = UUID.randomUUID();
+        messageRepository.save(new Message(messageId, convId, "assistant", "", null, List.of(),
+            List.of(), Instant.now(), null, null, null, null, null, "generating",
+            "gemini-3.6-flash"));
+
+        // The orchestrated finish: content, tokens and status are known, the model is not.
+        messageRepository.updateContentAndStatus(messageId, "the final answer", List.of(),
+            List.of(), 10, 20, 30, 0, 5, "done", null);
+
+        Message stored = messageRepository.findById(messageId).orElseThrow();
+        assertThat(stored.model())
+            .as("a null model means 'unchanged', never 'blank it' — this row's model is the only "
+                + "record of which model produced it")
+            .isEqualTo("gemini-3.6-flash");
+        // ...and the update genuinely happened, so the assertion above is not passing because the
+        // whole statement was a no-op.
+        assertThat(stored.status()).isEqualTo("done");
+        assertThat(stored.content()).isEqualTo("the final answer");
+
+        // A non-null model still wins, so COALESCE is not simply ignoring the parameter.
+        messageRepository.updateContentAndStatus(messageId, "the final answer", List.of(),
+            List.of(), 10, 20, 30, 0, 5, "done", "gemini-3.6-pro");
+        assertThat(messageRepository.findById(messageId).orElseThrow().model())
+            .isEqualTo("gemini-3.6-pro");
+    }
+
+    /**
+     * {@code ConversationRepository.listAll} is {@code ORDER BY created_at DESC, id ASC} and it is
+     * the ONLY read behind the sidebar — the conversation list, every folder, the tag vocabulary
+     * derived from it, and the {@code SIDEBAR_LIMIT = 100} page it is cut to. Neither half is
+     * pinned anywhere: {@code ConversationRepositoryTest} mocks {@code JdbcClient} and asserts on
+     * SQL substrings, and {@code ChatConversationServiceTest} stubs {@code listAll} with a
+     * ready-made list, so both stay green whatever the ORDER BY says.
+     *
+     * <p>
+     * The {@code id ASC} tie-break is the same defect family as the desktop-sync incident recorded
+     * in CLAUDE.md, and {@code create} makes it reachable: it stamps {@code created_at} with
+     * {@code CURRENT_TIMESTAMP}, which Postgres freezes for the whole TRANSACTION, so any batch
+     * that creates more than one conversation in one transaction ties. Drop the tie-break and the
+     * order among tied rows is whatever the plan happens to return — and because the list is paged
+     * with LIMIT/OFFSET, an unstable order does not merely look untidy, it repeats and skips
+     * conversations across pages, which is how a chat silently disappears from a user's sidebar.
+     *
+     * <p>
+     * The collision is forced with an explicit UPDATE — nothing else makes the tie-break
+     * observable — and the rows are stamped far in the FUTURE so they occupy the head of the list
+     * regardless of what other ITs have left in the table. The UPDATEs are applied in descending id
+     * order so the physical row order left behind is the exact reverse of the answer required,
+     * which is what a plan returning rows in heap order would produce. Postgres orders {@code uuid}
+     * by its 16 bytes, i.e. lexicographically over the canonical lower-case hex — NOT
+     * {@code UUID.compareTo}, which compares the halves as SIGNED longs and disagrees whenever the
+     * top bit is set.
+     */
+    @Test
+    public void theSidebarListIsOrderedByCreatedAtDescendingThenIdAscending() {
+        String userOid = "sidebar-order-user-oid";
+        userRepository.upsert(userOid, "sidebar-order@local", "Sidebar Order User");
+        setSecurityContext(userOid, "sidebar-order@local", "Sidebar Order User");
+
+        List<UUID> newer = new ArrayList<>();
+        List<UUID> older = new ArrayList<>();
+        List<UUID> created = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            UUID id = chatConversationService.createConversation().id();
+            created.add(id);
+            (i < 3 ? older : newer).add(id);
+        }
+
+        List<UUID> stampOrder = new ArrayList<>(created);
+        stampOrder.sort(Comparator.comparing(UUID::toString).reversed());
+        for (UUID id : stampOrder) {
+            jdbcClient.sql("UPDATE conversations SET created_at = :ts::timestamptz WHERE id = :id")
+                .param("ts",
+                    newer.contains(id) ? "2999-01-02 00:00:00+00" : "2999-01-01 00:00:00+00")
+                .param("id", id).update();
+        }
+
+        List<UUID> expected = new ArrayList<>();
+        newer.stream().sorted(Comparator.comparing(UUID::toString)).forEach(expected::add);
+        older.stream().sorted(Comparator.comparing(UUID::toString)).forEach(expected::add);
+
+        List<UUID> actual = chatConversationService.listAllConversations(100, 0).stream()
+            .map(Conversation::id).limit(6).toList();
+
+        assertThat(actual)
+            .as("newest first, and a created_at tie resolved by id ASC — anything else makes the "
+                + "paged sidebar repeat and skip conversations")
+            .isEqualTo(expected);
+
+        for (UUID id : created) {
+            chatConversationService.deleteConversation(id);
+        }
     }
 
     private void setSecurityContext(String oid, String email, String name) {
@@ -88,7 +335,7 @@ public class ChatThreadRenderingIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
             .authorities(new SimpleGrantedAuthority("ROLE_USER"));
@@ -145,6 +392,79 @@ public class ChatThreadRenderingIT {
         assertThat(violations)
             .as("Found top-level script statements that execute before const/let variables (TDZ violation) causing Uncaught ReferenceError on page load!")
             .isEmpty();
+    }
+
+    /**
+     * {@code ChatMessageService.getMessages} is a single {@code findByConversationId(id, 100, 0)}
+     * and it feeds TWO consumers: the rendered thread and the history handed to the model. No test
+     * anywhere seeds more than a handful of messages, so neither half of that one line is
+     * exercised.
+     *
+     * <p>
+     * <b>The cap.</b> Raising or losing it silently changes prompt size and therefore cost on every
+     * long thread — nothing errors, the page simply renders more and the next turn bills more.
+     *
+     * <p>
+     * <b>The total order.</b> {@code ORDER BY created_at ASC, id ASC} is the fix for the desktop-
+     * sync incident: a batched write inside one transaction used to stamp every row with the same
+     * {@code CURRENT_TIMESTAMP}, so the ORDER BY fell through to a random v4 {@code id} and whole
+     * turns rendered answer-above-question — stably, because the covering index reproduces the same
+     * wrong order on every read, and that scrambled log then becomes LLM history on rehydration.
+     * {@code save} now uses {@code clock_timestamp()}, so this test has to force the collision
+     * itself with an explicit UPDATE; that is the only way to make the tie-break observable at all.
+     * Note Postgres orders {@code uuid} by its 16 bytes, i.e. lexicographically over the canonical
+     * lower-case hex — NOT {@code UUID.compareTo}, which compares the halves as SIGNED longs and
+     * disagrees whenever the top bit is set.
+     */
+    @Test
+    public void theThreadRendersAtMostOneHundredMessagesAndInATotalOrder() throws Exception {
+        String userOid = "thread-cap-user-oid";
+        userRepository.upsert(userOid, "thread-cap@local", "Thread Cap User");
+        setSecurityContext(userOid, "thread-cap@local", "Thread Cap User");
+
+        Conversation conv = chatConversationService.createConversation();
+        UUID convId = conv.id();
+
+        // Two batches, each stamped with ONE created_at — exactly what a transactional batch write
+        // produces, which leaves `id ASC` as the only thing deciding the order within a batch.
+        List<UUID> older = new ArrayList<>();
+        List<UUID> newer = new ArrayList<>();
+        for (int i = 0; i < 105; i++) {
+            UUID id = UUID.randomUUID();
+            boolean isOlder = i < 60;
+            (isOlder ? older : newer).add(id);
+            messageRepository.save(new Message(id, convId, (i % 2 == 0) ? "user" : "assistant",
+                "message " + i, null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "done",
+                "m"));
+            jdbcClient.sql("UPDATE messages SET created_at = :ts::timestamptz WHERE id = :id")
+                .param("ts", isOlder ? "2020-01-01 00:00:00+00" : "2020-01-02 00:00:00+00")
+                .param("id", id).update();
+        }
+
+        List<UUID> expected = new ArrayList<>();
+        older.stream().sorted(Comparator.comparing(UUID::toString)).forEach(expected::add);
+        newer.stream().sorted(Comparator.comparing(UUID::toString)).forEach(expected::add);
+
+        var login = testUserLogin(userOid, "thread-cap@local", "Thread Cap User");
+        MvcResult result = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView mav = result.getModelAndView();
+        assertThat(mav).isNotNull();
+        List<?> rendered = (List<?>) mav.getModel().get("messages");
+
+        assertThat(rendered)
+            .as("the thread is capped at 100 messages, and the same call bounds the history handed "
+                + "to the model — changing the cap changes prompt size and cost with no signal")
+            .hasSize(100);
+        assertThat(rendered.stream().map(m -> ((Message) m).id()).toList())
+            .as("created_at ASC then id ASC: a tie resolved by anything else scrambles the turn, "
+                + "and the same list is what rehydrates LLM history")
+            .isEqualTo(expected.subList(0, 100));
+
+        // Cleanup (the security filter clears the holder after each MockMvc request).
+        setSecurityContext(userOid, "thread-cap@local", "Thread Cap User");
+        chatConversationService.deleteConversation(convId);
     }
 
     @Test

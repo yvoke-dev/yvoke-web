@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.Assertions;
 
 public class JobRepositoryTest {
 
@@ -38,7 +40,7 @@ public class JobRepositoryTest {
         // handler").
         EnqueueRequest req = new EnqueueRequest("  ", "source-ref", "some-tag", "collection");
 
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             jobRepository.enqueue(req);
         });
     }
@@ -79,6 +81,62 @@ public class JobRepositoryTest {
     }
 
     /**
+     * S7.3: enqueue is a LOOP of two passes, and the second pass is the whole point.
+     *
+     * <p>
+     * "Inserted nothing AND found nothing" is a real, reachable state, not a paranoid branch: the
+     * job holding the admission slot can reach a terminal status between the {@code INSERT ... ON
+     * CONFLICT DO NOTHING} and the {@code SELECT}, which takes it out of the partial index. The
+     * conflict is real, the lookup is empty, and the work still needs doing — so a second pass
+     * inserts cleanly. Collapse the loop to one pass (the natural "why is this a for-loop?" edit)
+     * and that race becomes an {@link IllegalStateException}, which nothing maps: {@code POST
+     * /api/jobs/v1} answers 500, and on the Confluence crawl — which enqueues INSIDE its batch
+     * consumer, one call per page — a single unlucky page would have abandoned the rest of the tree
+     * before the crawl's own catch was added. The window is widest exactly when the queue is
+     * busiest.
+     *
+     * <p>
+     * {@code testEnqueue_validKindSucceeds} and {@code testEnqueue_duplicateAdoptsTheActiveJob}
+     * both stub a SINGLE insert/select pair, so pass two and the terminal throw are unexecuted
+     * today; both of those tests stay green with the loop bound reduced to one. Four consecutive
+     * empty answers below are what makes the give-up condition observable as "both passes failed"
+     * rather than "one did".
+     */
+    @Test
+    public void theAdoptPathRetriesTheInsertSelectPassBeforeGivingUp() {
+        JdbcClient.StatementSpec statementSpec = mock(JdbcClient.StatementSpec.class);
+        @SuppressWarnings("unchecked")
+        JdbcClient.MappedQuerySpec<UUID> mapped = mock(JdbcClient.MappedQuerySpec.class);
+        when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
+        when(statementSpec.param(anyString(), any())).thenReturn(statementSpec);
+        when(statementSpec.query(UUID.class)).thenReturn(mapped);
+        when(collectionIdResolver.requireId("collection")).thenReturn(UUID.randomUUID());
+
+        UUID insertedOnSecondPass = UUID.randomUUID();
+        // Pass 1: the INSERT hits the partial index (empty), and the SELECT finds nothing because
+        // the job holding the slot finished in between. Pass 2: the slot is free, the INSERT lands.
+        doReturn(Optional.empty(), Optional.empty(), Optional.of(insertedOnSecondPass)).when(mapped)
+            .optional();
+
+        EnqueueResult result = jobRepository.enqueue(
+            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
+
+        assertThat(result)
+            .as("a duplicate that finishes between the INSERT and the SELECT must be re-inserted, "
+                + "not reported as a server fault")
+            .isEqualTo(EnqueueResult.created(insertedOnSecondPass));
+
+        // Only when BOTH passes come up empty is it an IllegalStateException.
+        doReturn(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty())
+            .when(mapped).optional();
+
+        assertThatThrownBy(() -> jobRepository.enqueue(
+            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("kept appearing and finishing");
+    }
+
+    /**
      * A duplicate enqueue adopts the active job instead of throwing: the Confluence crawl enqueues
      * inside its batch consumer, so a thrown DataIntegrityViolationException would abandon the rest
      * of the page tree.
@@ -110,8 +168,8 @@ public class JobRepositoryTest {
     @SuppressWarnings("unchecked")
     private static JdbcClient.MappedQuerySpec<UUID> mockUuidQuery(int rows) {
         JdbcClient.MappedQuerySpec<UUID> query = mock(JdbcClient.MappedQuerySpec.class);
-        when(query.list()).thenReturn(
-            java.util.stream.IntStream.range(0, rows).mapToObj(i -> UUID.randomUUID()).toList());
+        when(query.list())
+            .thenReturn(IntStream.range(0, rows).mapToObj(i -> UUID.randomUUID()).toList());
         return query;
     }
 

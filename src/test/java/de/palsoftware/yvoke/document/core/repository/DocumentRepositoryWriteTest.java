@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.junit.jupiter.api.Assertions;
 
 public class DocumentRepositoryWriteTest {
 
@@ -78,27 +79,27 @@ public class DocumentRepositoryWriteTest {
 
     @Test
     public void upsertManualDocument_blankKindThrowsException() {
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             repository.upsertManualDocument("coll", "v1", "file.txt", "   ", "title");
         });
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             repository.upsertManualDocument("coll", "v1", "file.txt", null, "title");
         });
     }
 
     @Test
     public void updateIngestionStatus_invalidStatusThrowsException() {
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             repository.updateIngestionStatus(UUID.randomUUID(), "invalid-status");
         });
     }
 
     @Test
     public void insertChunks_blankKindThrowsException() {
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             repository.insertChunks(UUID.randomUUID(), "coll", "v1", "file.txt", "   ", List.of());
         });
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             repository.insertChunks(UUID.randomUUID(), "coll", "v1", "file.txt", null, List.of());
         });
     }

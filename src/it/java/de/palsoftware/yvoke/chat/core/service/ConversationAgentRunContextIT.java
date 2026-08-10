@@ -30,17 +30,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.time.Duration;
+import org.awaitility.Awaitility;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.test.context.support.WithMockUser;
 
 @SpringBootTest(properties = {
     "spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration"
 })
-@org.springframework.security.test.context.support.WithMockUser(username = "conv-context-user")
+@WithMockUser(username = "conv-context-user")
 public class ConversationAgentRunContextIT {
 
     @Autowired
@@ -74,7 +80,7 @@ public class ConversationAgentRunContextIT {
     private EmbeddingService embeddingService;
 
     @Autowired
-    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private ApplicationEventPublisher eventPublisher;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -95,9 +101,9 @@ public class ConversationAgentRunContextIT {
             @SuppressWarnings("unchecked")
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
             cb.accept(new LlmResponseChunk("Hello from mocked LLM", null, null, new LlmUsage(50, 25, 75, 0, 0)));
-            de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder.Context ctx = de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder.get();
+            LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
             if (ctx != null && eventPublisher != null) {
-                eventPublisher.publishEvent(new de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent(
+                eventPublisher.publishEvent(new LlmCallLoggedEvent(
                     ctx.conversationId(), ctx.messageId(), ctx.agentRunId(), ctx.userId(),
                     "embedding", "embedding", "voyage-4-large", 15, 0, 0, 0
                 ));
@@ -189,6 +195,66 @@ public class ConversationAgentRunContextIT {
 
         assertThat(logs.stream().anyMatch(r -> "chat".equals(r.get("source")))).isTrue();
         assertThat(logs.stream().anyMatch(r -> "embedding".equals(r.get("source")))).isTrue();
+    }
+
+    /**
+     * {@code llm_call_logs.message_id} is the key the cost dashboard groups a turn by, and all four
+     * chat entry points have to mean the same thing by it: the persisted USER message. The SSE path
+     * ({@code stream}) and {@code generateSync} have no choice — the assistant row does not exist
+     * while the call is in flight and {@code fk_llm_call_logs_messages} would reject it — but this
+     * one DOES write a "generating" assistant placeholder before submitting, so naming
+     * {@code assistantMessageId} here is perfectly legal and nothing at all would fail.
+     *
+     * <p>
+     * That is exactly what makes it the dangerous one. {@code /chat/&#123;id&#125;/send-async} is
+     * the browser's normal send, so most production rows would silently carry a different meaning
+     * from the rest of the table, and any {@code GROUP BY message_id} would split one turn in two —
+     * part attributed to the question, part to the answer — while every total still adds up and
+     * every foreign key still holds. Nothing pinned it: the two ChatMessageService cases above
+     * drive {@code prepare} + {@code stream} and {@code generateSync}, both of which are FK-forced
+     * into the right answer, so the single entry point where the rule is a CHOICE rather than a
+     * constraint was the one with no coverage.
+     */
+    @Test
+    void asyncTurnAttributesCallsToTheUserMessageNotTheAssistantPlaceholder() {
+        UUID convId = UUID.randomUUID();
+        conversationRepository.create(convId, testUser.id(), "Async Chat Conv",
+            Map.of("model", "gemini-2.5-flash"));
+
+        UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(convId,
+            "What is the system status?", "oim-spec");
+
+        // The placeholder is persisted up front, so it WOULD satisfy the FK: on this path the
+        // attribution rule is a deliberate choice, not something the database enforces.
+        assertThat(messageRepository.findById(assistantMessageId)).isPresent();
+
+        Awaitility.await().atMost(Duration.ofSeconds(30))
+            .untilAsserted(() -> assertThat(
+                messageRepository.findById(assistantMessageId).orElseThrow().status())
+                    .as("the background generation never completed").isEqualTo("done"));
+
+        UUID userMessageId = jdbcClient
+            .sql("SELECT id FROM messages WHERE conversation_id = :cid AND role = 'user'")
+            .param("cid", convId).query(UUID.class).single();
+        assertThat(userMessageId).isNotEqualTo(assistantMessageId);
+
+        List<Map<String, Object>> logs = jdbcClient.sql("""
+            SELECT message_id, user_id, source, role
+            FROM llm_call_logs
+            WHERE conversation_id = :cid AND source = 'chat'
+        """)
+        .param("cid", convId)
+        .query()
+        .listOfRows();
+
+        assertThat(logs).as("the async turn logged no LLM spend at all").isNotEmpty();
+        for (Map<String, Object> logRow : logs) {
+            assertThat(logRow.get("message_id"))
+                .as("async spend attributes to the question, like every other entry point")
+                .isEqualTo(userMessageId);
+            assertThat(logRow.get("message_id")).isNotEqualTo(assistantMessageId);
+            assertThat(logRow.get("user_id")).isEqualTo(testUser.id());
+        }
     }
 
     @Test

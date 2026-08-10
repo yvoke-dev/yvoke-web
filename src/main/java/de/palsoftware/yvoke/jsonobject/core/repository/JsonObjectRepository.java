@@ -19,6 +19,8 @@ import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 @Repository
 public class JsonObjectRepository {
@@ -108,41 +110,42 @@ public class JsonObjectRepository {
             }).optional();
     }
 
-    public Optional<JsonObject> findByJsonField(UUID collectionId, String fieldPath, String value) {
-        String querySql =
-            "SELECT j.id, j.collection_id, c.name as collection_name, j.data, j.source_file, j.tags, j.created_at "
-                + "FROM json_objects j " + "JOIN collections c ON j.collection_id = c.id "
-                + "WHERE j.collection_id = :collectionId "
-                + "AND j.data #>> string_to_array(:fieldPath, '.') = :value " + "LIMIT 1";
-        return jdbcClient.sql(querySql).param("collectionId", collectionId)
-            .param("fieldPath", fieldPath).param("value", value).query((rs, rowNum) -> {
-                OffsetDateTime createdAt =
-                    rs.getTimestamp("created_at") != null ? OffsetDateTime.ofInstant(
-                        rs.getTimestamp("created_at").toInstant(), ZoneId.systemDefault()) : null;
-                return new JsonObject(rs.getObject("id", UUID.class),
-                    rs.getObject("collection_id", UUID.class), rs.getString("collection_name"),
-                    JdbcMappers.jsonbToMap(rs, "data", objectMapper), rs.getString("source_file"),
-                    getTagsList(rs, "tags"), createdAt);
-            }).optional();
-    }
-
     /**
      * Resolves, in a SINGLE query, which of {@code values} already exist for {@code fieldPath} in
      * the collection — returning a value → id map. This replaces the per-object existence probe
      * that made bulk import O(N×M) (PRF-02). When several stored rows share a value, an arbitrary
      * one wins (matching the previous {@code LIMIT 1} probe semantics).
      */
+    /** Untagged lookup; kept for callers that import into a collection with no tag scope. */
     public Map<String, UUID> findIdsByJsonField(UUID collectionId, String fieldPath,
         List<String> values) {
+        return findIdsByJsonField(collectionId, fieldPath, values, List.of());
+    }
+
+    /**
+     * Resolves the ids of existing rows carrying these unique values, scoped to the SAME tag set.
+     * The tag scope is load-bearing: one collection deliberately holds several product versions
+     * separated only by tag, and a natural key repeats across them by design — while
+     * {@code updateBatch} rewrites {@code data}, {@code source_file}, {@code created_at} AND
+     * {@code tags} wholesale. A collection-wide lookup therefore let a 10.0 import find 9.3's row,
+     * overwrite its payload and re-tag it, destroying the older version with the job still
+     * reporting a normal count. Comparison is set-based ({@code @>} plus {@code <@}) so tag ORDER
+     * cannot fork one scope into two.
+     */
+    public Map<String, UUID> findIdsByJsonField(UUID collectionId, String fieldPath,
+        List<String> values, List<String> tags) {
         if (values == null || values.isEmpty()) {
             return Map.of();
         }
+        List<String> scope = tags == null ? List.of() : tags;
         String sql = "SELECT j.data #>> string_to_array(:fieldPath, '.') AS uval, j.id "
             + "FROM json_objects j " + "WHERE j.collection_id = :collectionId "
-            + "AND j.data #>> string_to_array(:fieldPath, '.') IN (:values)";
-        Map<String, UUID> result = new java.util.HashMap<>();
+            + "AND j.data #>> string_to_array(:fieldPath, '.') IN (:values) "
+            + "AND j.tags @> :tags::text[] AND j.tags <@ :tags::text[]";
+        Map<String, UUID> result = new HashMap<>();
         jdbcClient.sql(sql).param("collectionId", collectionId).param("fieldPath", fieldPath)
-            .param("values", values).query((rs, rowNum) -> {
+            .param("values", values).param("tags", scope.toArray(new String[0]))
+            .query((rs, rowNum) -> {
                 result.putIfAbsent(rs.getString("uval"), rs.getObject("id", UUID.class));
                 return null;
             }).list();
@@ -192,7 +195,7 @@ public class JsonObjectRepository {
             "SELECT j.id, j.collection_id, c.name as collection_name, j.data, j.source_file, j.tags, j.created_at "
                 + "FROM json_objects j " + "JOIN collections c ON j.collection_id = c.id "
                 + "WHERE j.collection_id = :collectionId " + tagsFilter(tags)
-                + "ORDER BY j.created_at DESC " + "LIMIT :limit OFFSET :offset";
+                + "ORDER BY j.created_at DESC, j.id DESC " + "LIMIT :limit OFFSET :offset";
         var client = jdbcClient.sql(querySql).param("collectionId", collectionId)
             .param("limit", limit).param("offset", offset);
         if (tags != null && !tags.isEmpty()) {
@@ -236,7 +239,8 @@ public class JsonObjectRepository {
             "SELECT j.id, j.collection_id, c.name as collection_name, j.data, j.source_file, j.tags, j.created_at "
                 + "FROM json_objects j " + "JOIN collections c ON j.collection_id = c.id "
                 + "WHERE j.collection_id = :collectionId " + "AND j.data::text ILIKE :searchText "
-                + tagsFilter(tags) + "ORDER BY j.created_at DESC " + "LIMIT :limit OFFSET :offset";
+                + tagsFilter(tags) + "ORDER BY j.created_at DESC, j.id DESC "
+                + "LIMIT :limit OFFSET :offset";
         var client = jdbcClient.sql(querySql).param("collectionId", collectionId)
             .param("searchText", "%" + searchText + "%").param("limit", limit)
             .param("offset", offset);
@@ -286,7 +290,7 @@ public class JsonObjectRepository {
                 // The @? operator (not the jsonb_path_exists function) so the GIN index on data
                 // is usable; ?? is the JDBC escape for a literal ? (PgJDBC unescapes it).
                 "AND j.data @?? :jsonPath::jsonpath " + tagsFilter(tags)
-                + "ORDER BY j.created_at DESC " + "LIMIT :limit OFFSET :offset";
+                + "ORDER BY j.created_at DESC, j.id DESC " + "LIMIT :limit OFFSET :offset";
         var client = jdbcClient.sql(querySql).param("collectionId", collectionId)
             .param("jsonPath", jsonPath).param("limit", limit).param("offset", offset);
         if (tags != null && !tags.isEmpty()) {
@@ -362,7 +366,7 @@ public class JsonObjectRepository {
             client = client.param("tags", tags.toArray(new String[0]));
         }
 
-        Map<String, Long> result = new java.util.LinkedHashMap<>();
+        Map<String, Long> result = new LinkedHashMap<>();
         client.query((rs, rowNum) -> {
             String key = rs.getString("group_key");
             long count = rs.getLong("group_count");
@@ -370,40 +374,6 @@ public class JsonObjectRepository {
             return null;
         }).list();
         return result;
-    }
-
-    public List<JsonObject> queryByContainment(UUID collectionId, Map<String, Object> filter,
-        int limit, int offset) {
-        return queryByContainment(collectionId, filter, null, limit, offset);
-    }
-
-    public List<JsonObject> queryByContainment(UUID collectionId, Map<String, Object> filter,
-        @Nullable List<String> tags, int limit, int offset) {
-        try {
-            String filterJson = objectMapper.writeValueAsString(filter);
-            String querySql =
-                "SELECT j.id, j.collection_id, c.name as collection_name, j.data, j.source_file, j.tags, j.created_at "
-                    + "FROM json_objects j " + "JOIN collections c ON j.collection_id = c.id "
-                    + "WHERE j.collection_id = :collectionId " + "AND j.data @> :filter::jsonb "
-                    + tagsFilter(tags) + "ORDER BY j.created_at DESC "
-                    + "LIMIT :limit OFFSET :offset";
-            var client = jdbcClient.sql(querySql).param("collectionId", collectionId)
-                .param("filter", filterJson).param("limit", limit).param("offset", offset);
-            if (tags != null && !tags.isEmpty()) {
-                client = client.param("tags", tags.toArray(new String[0]));
-            }
-            return client.query((rs, rowNum) -> {
-                OffsetDateTime createdAt =
-                    rs.getTimestamp("created_at") != null ? OffsetDateTime.ofInstant(
-                        rs.getTimestamp("created_at").toInstant(), ZoneId.systemDefault()) : null;
-                return new JsonObject(rs.getObject("id", UUID.class),
-                    rs.getObject("collection_id", UUID.class), rs.getString("collection_name"),
-                    JdbcMappers.jsonbToMap(rs, "data", objectMapper), rs.getString("source_file"),
-                    getTagsList(rs, "tags"), createdAt);
-            }).list();
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Failed to serialize filter map", e);
-        }
     }
 
     public void deleteByCollectionId(UUID collectionId) {

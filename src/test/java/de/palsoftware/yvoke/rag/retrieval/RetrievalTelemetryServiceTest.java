@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
@@ -13,6 +14,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import java.time.OffsetDateTime;
 
 public class RetrievalTelemetryServiceTest {
 
@@ -31,10 +37,102 @@ public class RetrievalTelemetryServiceTest {
             collectionRepository, objectMapper);
 
         collectionId = UUID.randomUUID();
-        de.palsoftware.yvoke.collection.core.model.Collection mockCol =
-            new de.palsoftware.yvoke.collection.core.model.Collection(collectionId, "OIM-TEST",
-                "desc", List.of("1.0"), java.time.OffsetDateTime.now());
+        Collection mockCol =
+            new Collection(collectionId, "OIM-TEST", "desc", List.of("1.0"), OffsetDateTime.now());
         when(collectionRepository.findByName("OIM-TEST")).thenReturn(Optional.of(mockCol));
+    }
+
+    /**
+     * S4.15. Telemetry is pure logging, so its DB write runs on a single-threaded virtual executor
+     * OFF the search's thread, and any failure inside it is logged and swallowed. The two halves
+     * exist for one reason: a row in {@code retrieval_logs} is worth strictly less than the search
+     * that produced it, so nothing about writing it may be allowed to slow down or fail a retrieval
+     * that has ALREADY succeeded — the chunks are in memory and on their way to the model.
+     *
+     * <p>
+     * Move the write onto the caller's thread and every search pays the insert's latency, and a
+     * blocked or slow {@code retrieval_logs} write stalls chat answers and MCP tool calls with no
+     * hint of where the time went. Drop the swallow as well and a transient DB blip turns a
+     * perfectly good search into an exception the caller sees.
+     *
+     * <p>
+     * Nothing catches either today: no test makes {@code saveTelemetry} throw, and
+     * {@code Mockito.timeout()} — which the two persist tests use — passes just as happily for a
+     * synchronous implementation, so asynchrony is asserted nowhere. This test blocks the write and
+     * measures that the caller came back anyway; a synchronous implementation cannot return until
+     * the latch times out.
+     *
+     * <p>
+     * The final verification is the part that matters after a failure: a write that blew up must
+     * not poison the single-threaded pipeline, so the NEXT search still gets its telemetry row.
+     */
+    @Test
+    public void aTelemetryWriteRunsOffTheSearchThreadAndItsFailureNeverReachesTheCaller()
+        throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger attempts = new AtomicInteger();
+        Mockito.doAnswer(inv -> {
+            if (attempts.incrementAndGet() == 1) {
+                entered.countDown();
+                release.await(10, TimeUnit.SECONDS);
+                throw new RuntimeException("retrieval_logs insert failed: connection reset");
+            }
+            return null;
+        }).when(retrievalLogRepository).saveTelemetry(Mockito.any(), Mockito.anyString(),
+            Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString(),
+            Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+
+        SearchOptions opts = new SearchOptions("OIM-TEST", 5, true, true, "1.0", 0);
+
+        long startedAt = System.nanoTime();
+        assertThatCode(() -> telemetryService.logAndPersistTelemetry(UUID.randomUUID(),
+            "a query whose search already succeeded", opts, 3, 2, List.of(), true, List.of(),
+            List.of(), List.of())).as("a logging write must never fail the caller")
+            .doesNotThrowAnyException();
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+
+        assertThat(entered.await(5, TimeUnit.SECONDS))
+            .as("the write must genuinely have been attempted, or this proves nothing").isTrue();
+        assertThat(elapsedMs)
+            .as("the search thread returned while the write was still blocked — telemetry is off "
+                + "the hot path")
+            .isLessThan(2000L);
+
+        release.countDown();
+
+        // A failed write must not poison the single-threaded pipeline: the next search still logs.
+        telemetryService.logAndPersistTelemetry(UUID.randomUUID(), "the next search", opts, 1, 1,
+            List.of(), true, List.of(), List.of(), List.of());
+        Mockito.verify(retrievalLogRepository, Mockito.timeout(5000).times(2)).saveTelemetry(
+            Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.anyString(),
+            Mockito.anyString(), Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(),
+            Mockito.any());
+    }
+
+    /**
+     * A retrieval is a READ. It must never mint corpus rows: an unresolvable telemetry collection
+     * name means the telemetry write is skipped, never backfilled with a new collection. Inserting
+     * into {@code collections} also fires {@code trg_collections_create_chunks_partition}, so a
+     * typo'd or blank name would create a real partition — and a tag-only search passes an empty
+     * collection, which would mint a collection literally named "".
+     */
+    @Test
+    public void testTelemetryNeverMintsACollectionForAnUnknownName() {
+        when(collectionRepository.findByName(Mockito.anyString())).thenReturn(Optional.empty());
+        SearchOptions opts = new SearchOptions("oim-typo", 5, true, true, "1.0", 0);
+
+        telemetryService.logAndPersistTelemetry(UUID.randomUUID(), "q", opts, 3, 2, List.of(), true,
+            List.of(), List.of(), List.of());
+
+        // The persist runs on the telemetry executor, so `after` (which waits out the window)
+        // is required here — a bare `never()` would pass before the task had even run.
+        verify(collectionRepository, Mockito.after(1000).never()).create(Mockito.anyString(),
+            Mockito.anyString());
+        verify(retrievalLogRepository, Mockito.never()).saveTelemetry(Mockito.any(),
+            Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.anyString(),
+            Mockito.anyString(), Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(),
+            Mockito.any());
     }
 
     @Test

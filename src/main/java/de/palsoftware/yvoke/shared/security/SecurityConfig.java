@@ -48,6 +48,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.SavedRequest;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -197,11 +199,18 @@ public class SecurityConfig {
     public SecurityFilterChain apiKeySecurityFilterChain(HttpSecurity http) throws Exception {
         http.securityMatcher("/api/ingest/**", "/api/document/**", "/api/jobs/**")
             .authorizeHttpRequests(authorize -> authorize
-                // ROLE_INGEST is the scoped authority granted to the X-API-Key principal;
-                // browser
-                // sessions reach these endpoints with their existing USER/ADMIN
-                // authorities.
-                .anyRequest().hasAnyRole("INGEST", "USER", "ADMIN"));
+                // ROLE_INGEST is the scoped authority granted to the X-API-Key principal (see
+                // ApiKeyAuthenticationFilter); ROLE_ADMIN is how the admin UI's job-progress
+                // EventSource reaches this chain with its cookie session.
+                //
+                // ROLE_USER is deliberately NOT admitted. This is the corpus WRITE surface: a plain
+                // signed-in person could otherwise upload files and queue import jobs into ANY
+                // knowledge area straight from their browser session — content that then becomes
+                // searchable by everyone and is cited as authoritative, that spends money on
+                // summarisation and embedding, and that is never audited (only admin-screen imports
+                // are). No UI depends on the USER grant: /api/document/** has no browser caller and
+                // the only /api/jobs/** consumer is the admin-only job page.
+                .anyRequest().hasAnyRole("INGEST", "ADMIN"));
         // NOTE: this chain is intentionally NOT stateless — the admin UI reaches these endpoints
         // with its cookie session (e.g. the job-progress EventSource on /api/jobs/v1/**/progress).
         // CSRF is disabled here for the non-browser X-API-Key clients; the residual CSRF exposure
@@ -211,7 +220,7 @@ public class SecurityConfig {
 
         if (apiKeyConfigured()) {
             http.addFilterBefore(new ApiKeyAuthenticationFilter("X-API-Key", apiKey),
-                org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+                UsernamePasswordAuthenticationFilter.class);
         } else {
             log.warn(
                 "app.security.api-key is unset or left at the default placeholder; the X-API-Key "
@@ -219,6 +228,18 @@ public class SecurityConfig {
         }
 
         http.csrf(csrf -> csrf.disable());
+
+        // No request cache on this chain. ExceptionTranslationFilter saves the denied request into
+        // the RequestCache before commencing the entry point, and without this line that is the
+        // default HttpSessionRequestCache (AnyRequestMatcher, createSessionAllowed=true) — so every
+        // anonymous or wrong-role hit on the corpus WRITE surface allocated a server-side session
+        // holding a DefaultSavedRequest (URL, headers, cookies, query string, all caller-supplied)
+        // for the session timeout, with no credential required: unauthenticated memory growth from
+        // anything that walks the API. The stateless chains get a NullRequestCache for free; this
+        // one is deliberately session-capable (the admin job-progress EventSource arrives with a
+        // cookie), so it has to say so explicitly. Nothing is lost — the chain has no login flow,
+        // so a saved request is never resumed.
+        http.requestCache(cache -> cache.disable());
 
         return http.build();
     }
@@ -352,19 +373,17 @@ public class SecurityConfig {
         }
 
         @Override
-        public org.springframework.security.oauth2.core.OAuth2TokenValidatorResult validate(
-            Jwt jwt) {
+        public OAuth2TokenValidatorResult validate(Jwt jwt) {
             List<String> audiences = jwt.getAudience();
             if (audiences != null) {
                 String cleanAudience =
                     allowedAudience.startsWith("api://") ? allowedAudience.substring(6)
                         : allowedAudience;
                 if (audiences.contains(allowedAudience) || audiences.contains(cleanAudience)) {
-                    return org.springframework.security.oauth2.core.OAuth2TokenValidatorResult
-                        .success();
+                    return OAuth2TokenValidatorResult.success();
                 }
             }
-            return org.springframework.security.oauth2.core.OAuth2TokenValidatorResult.failure(
+            return OAuth2TokenValidatorResult.failure(
                 new OAuth2Error("invalid_token", "The required audience is missing", null));
         }
     }

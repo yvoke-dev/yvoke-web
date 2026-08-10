@@ -187,7 +187,7 @@ public class SearchGraphEntitiesTool {
                 continue;
             }
             String kind = row.get("kind");
-            String key = name.toLowerCase(Locale.ROOT) + " "
+            String key = name.toLowerCase(Locale.ROOT) + "\0"
                 + ((kind != null) ? kind.toLowerCase(Locale.ROOT) : "");
             displayNameKind.putIfAbsent(key,
                 name + ((kind != null && !kind.isBlank()) ? " (" + kind + ")" : ""));

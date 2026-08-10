@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
@@ -26,14 +27,16 @@ public class McpToolsConfig {
     private static final Logger log = LoggerFactory.getLogger(McpToolsConfig.class);
 
     @Bean
-    public List<ToolCallback> mcpToolCallbacks(ApplicationContext applicationContext) {
+    public List<ToolCallback> mcpToolCallbacks(ApplicationContext applicationContext,
+        @Value("${app.retrieval.max-limit}") int maxLimit) {
         List<ToolCallback> callbacksList = new ArrayList<>();
         Set<String> registeredNames = new HashSet<>();
 
         try {
             SearchCorpusTool searchCorpusTool = applicationContext.getBean(SearchCorpusTool.class);
             ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            callbacksList.add(new SearchCorpusToolCallback(searchCorpusTool, objectMapper));
+            callbacksList
+                .add(new SearchCorpusToolCallback(searchCorpusTool, objectMapper, maxLimit));
             registeredNames.add("search_corpus");
             log.info("Manually registered Context-Aware Tool callback: search_corpus");
         } catch (Exception e) {

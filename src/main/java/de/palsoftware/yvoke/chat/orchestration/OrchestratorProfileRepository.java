@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 @Repository
 public class OrchestratorProfileRepository {
@@ -93,7 +95,7 @@ public class OrchestratorProfileRepository {
             .update();
     }
 
-    private OrchestratorProfile mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+    private OrchestratorProfile mapRow(ResultSet rs) throws SQLException {
         Timestamp cat = rs.getTimestamp("created_at");
         Timestamp uat = rs.getTimestamp("updated_at");
         List<String> specialistPlaybooks =

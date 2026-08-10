@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import java.util.Collections;
+import java.util.List;
 
 @Controller
 @RequestMapping("/admin/costs")
@@ -32,10 +34,10 @@ public class CostMonitoringAdminController {
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-        @RequestParam(required = false) java.util.List<String> selectedModels,
-        @RequestParam(required = false) java.util.List<UUID> selectedUserIds,
-        @RequestParam(required = false) java.util.List<String> selectedSources,
-        @RequestParam(required = false) java.util.List<String> selectedPlaybooks,
+        @RequestParam(required = false) List<String> selectedModels,
+        @RequestParam(required = false) List<UUID> selectedUserIds,
+        @RequestParam(required = false) List<String> selectedSources,
+        @RequestParam(required = false) List<String> selectedPlaybooks,
         @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
         Model model) {
         log.info("Accessing Cost Monitoring view");
@@ -46,10 +48,10 @@ public class CostMonitoringAdminController {
         endDate = dates[1];
 
         if (!"RAW".equalsIgnoreCase(viewLevel) && !"CALL".equalsIgnoreCase(viewLevel)) {
-            selectedSources = java.util.Collections.emptyList();
+            selectedSources = Collections.emptyList();
         }
         if (!"MESSAGE".equalsIgnoreCase(viewLevel)) {
-            selectedPlaybooks = java.util.Collections.emptyList();
+            selectedPlaybooks = Collections.emptyList();
         }
 
         model.addAttribute("explorerReport",
@@ -63,13 +65,13 @@ public class CostMonitoringAdminController {
         model.addAttribute("startDate", startDate);
         model.addAttribute("endDate", endDate);
         model.addAttribute("selectedModels",
-            selectedModels != null ? selectedModels : java.util.Collections.emptyList());
+            selectedModels != null ? selectedModels : Collections.emptyList());
         model.addAttribute("selectedUserIds",
-            selectedUserIds != null ? selectedUserIds : java.util.Collections.emptyList());
+            selectedUserIds != null ? selectedUserIds : Collections.emptyList());
         model.addAttribute("selectedSources",
-            selectedSources != null ? selectedSources : java.util.Collections.emptyList());
+            selectedSources != null ? selectedSources : Collections.emptyList());
         model.addAttribute("selectedPlaybooks",
-            selectedPlaybooks != null ? selectedPlaybooks : java.util.Collections.emptyList());
+            selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
         model.addAttribute("viewLevel", viewLevel);
         model.addAttribute("subTab", "explorer");
         return "chat/admin/cost-monitoring";
@@ -82,10 +84,10 @@ public class CostMonitoringAdminController {
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-        @RequestParam(required = false) java.util.List<String> selectedModels,
-        @RequestParam(required = false) java.util.List<UUID> selectedUserIds,
-        @RequestParam(required = false) java.util.List<String> selectedSources,
-        @RequestParam(required = false) java.util.List<String> selectedPlaybooks,
+        @RequestParam(required = false) List<String> selectedModels,
+        @RequestParam(required = false) List<UUID> selectedUserIds,
+        @RequestParam(required = false) List<String> selectedSources,
+        @RequestParam(required = false) List<String> selectedPlaybooks,
         @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
         @RequestParam(required = false) String cursor, Model model) {
 
@@ -94,10 +96,10 @@ public class CostMonitoringAdminController {
         endDate = dates[1];
 
         if (!"RAW".equalsIgnoreCase(viewLevel) && !"CALL".equalsIgnoreCase(viewLevel)) {
-            selectedSources = java.util.Collections.emptyList();
+            selectedSources = Collections.emptyList();
         }
         if (!"MESSAGE".equalsIgnoreCase(viewLevel)) {
-            selectedPlaybooks = java.util.Collections.emptyList();
+            selectedPlaybooks = Collections.emptyList();
         }
 
         model.addAttribute("explorerReport",
@@ -111,109 +113,15 @@ public class CostMonitoringAdminController {
         model.addAttribute("startDate", startDate);
         model.addAttribute("endDate", endDate);
         model.addAttribute("selectedModels",
-            selectedModels != null ? selectedModels : java.util.Collections.emptyList());
+            selectedModels != null ? selectedModels : Collections.emptyList());
         model.addAttribute("selectedUserIds",
-            selectedUserIds != null ? selectedUserIds : java.util.Collections.emptyList());
+            selectedUserIds != null ? selectedUserIds : Collections.emptyList());
         model.addAttribute("selectedSources",
-            selectedSources != null ? selectedSources : java.util.Collections.emptyList());
+            selectedSources != null ? selectedSources : Collections.emptyList());
         model.addAttribute("selectedPlaybooks",
-            selectedPlaybooks != null ? selectedPlaybooks : java.util.Collections.emptyList());
+            selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
         model.addAttribute("viewLevel", viewLevel);
         model.addAttribute("subTab", "explorer");
-        return "chat/admin/cost-monitoring :: cost-fragment";
-    }
-
-    @GetMapping("/fragment/overview")
-    public String getOverviewFragment(
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, Model model) {
-        // One pricing snapshot for all four overview reports (PRF-14) instead of four reads.
-        CostCalculationService.OverviewReport overview =
-            costCalculationService.getOverviewReport(startDate, endDate, 10);
-        model.addAttribute("report", overview.report());
-        model.addAttribute("topUsers", overview.topUsers());
-        model.addAttribute("topConversations", overview.topConversations());
-        model.addAttribute("masProfilesList", overview.masProfiles());
-        model.addAttribute("startDate", startDate);
-        model.addAttribute("endDate", endDate);
-        model.addAttribute("subTab", "overview");
-        return "chat/admin/cost-monitoring :: cost-fragment";
-    }
-
-    @GetMapping("/fragment/pricing")
-    public String getPricingFragment(Model model) {
-        model.addAttribute("prices", costCalculationService.getAllModelPricing());
-        model.addAttribute("subTab", "pricing");
-        return "chat/admin/cost-monitoring :: cost-fragment";
-    }
-
-    @RequestMapping(value = "/pricing/save",
-        method = org.springframework.web.bind.annotation.RequestMethod.POST)
-    public String savePricing(@RequestParam String modelName,
-        @RequestParam java.math.BigDecimal prompt, @RequestParam java.math.BigDecimal completion,
-        @RequestParam java.math.BigDecimal cached, @RequestParam java.math.BigDecimal thought,
-        Model model) {
-        costCalculationService.updateModelPricing(modelName, prompt, completion, cached, thought);
-        return getPricingFragment(model);
-    }
-
-    @GetMapping("/fragment/user")
-    public String getUserFragment(@RequestParam(required = false) UUID userId,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, Model model) {
-        if (userId != null) {
-            model.addAttribute("report",
-                costCalculationService.calculateCostByUser(userId, startDate, endDate));
-        }
-        model.addAttribute("availableUsers", costCalculationService.getAvailableUsers());
-        model.addAttribute("userId", userId);
-        model.addAttribute("startDate", startDate);
-        model.addAttribute("endDate", endDate);
-        model.addAttribute("subTab", "users");
-        return "chat/admin/cost-monitoring :: cost-fragment";
-    }
-
-    @GetMapping("/fragment/conversation")
-    public String getConversationFragment(@RequestParam(required = false) UUID conversationId,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, Model model) {
-        if (conversationId != null) {
-            model.addAttribute("report", costCalculationService
-                .calculateCostByConversation(conversationId, startDate, endDate));
-            model.addAttribute("messageDetails",
-                costCalculationService.getMessagesByConversation(conversationId));
-        }
-        model.addAttribute("availableConversations",
-            costCalculationService.getAvailableConversations());
-        model.addAttribute("conversationId", conversationId);
-        model.addAttribute("startDate", startDate);
-        model.addAttribute("endDate", endDate);
-        model.addAttribute("subTab", "conversations");
-        return "chat/admin/cost-monitoring :: cost-fragment";
-    }
-
-    @GetMapping("/fragment/mas-profile")
-    public String getMasProfileFragment(@RequestParam(required = false) String profileName,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, Model model) {
-        if (profileName != null && !profileName.isBlank()) {
-            model.addAttribute("report",
-                costCalculationService.calculateCostByMasProfile(profileName, startDate, endDate));
-        }
-        model.addAttribute("availableMasProfiles",
-            costCalculationService.getAvailableMasProfiles());
-        model.addAttribute("profileName", profileName);
-        model.addAttribute("startDate", startDate);
-        model.addAttribute("endDate", endDate);
-        model.addAttribute("subTab", "mas-profiles");
         return "chat/admin/cost-monitoring :: cost-fragment";
     }
 

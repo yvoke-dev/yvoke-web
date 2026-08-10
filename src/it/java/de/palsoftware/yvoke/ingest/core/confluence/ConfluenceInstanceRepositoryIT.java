@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import java.lang.reflect.Method;
+import java.lang.reflect.Field;
+import java.util.Map;
 
 // Same properties as OrchestratorProfileRepositoryIT on purpose: an identical configuration reuses
 // that cached TestContext instead of minting a new one.
@@ -228,6 +231,179 @@ public class ConfluenceInstanceRepositoryIT {
                 .isInstanceOf(IllegalArgumentException.class);
         } finally {
             repository.deleteById(id);
+        }
+    }
+
+    /**
+     * {@code target_collection} is a collection NAME, resolved case-insensitively at use time, and
+     * deliberately NOT a foreign key — V1 says so in a comment and says "Do not fix this into an
+     * FK". A comment is not an enforcement: adding {@code REFERENCES collections(name)} is a
+     * one-line edit that reads like an obvious integrity improvement, and {@code collections.name}
+     * is UNIQUE, so it would be accepted.
+     *
+     * <p>
+     * With {@code ON DELETE CASCADE} the consequence is that deleting a collection from the admin
+     * collections page — destructive, but a routine and entirely legitimate action one click away —
+     * silently destroys the connector configuration too: the root page id, the label filters, and
+     * the ENCRYPTED API TOKEN. Nothing warns, nothing errors, and the admin cannot restore it
+     * without obtaining a fresh Confluence token. With {@code RESTRICT}/{@code NO ACTION} instead,
+     * the collection delete fails with an opaque 23503 from a table the operator was not editing. A
+     * dangling name is the intended and strictly better outcome: the connector page can render it
+     * as a missing target and let the operator repoint it, which is what the tail of this test
+     * pins. Nothing else in the suite looks at what a collection delete does to a connector row.
+     */
+    @Test
+    void deletingTheTargetCollectionLeavesTheInstanceAndItsCredentialsIntact() {
+        String collectionName = "IT - Confluence Orphan Probe";
+        jdbcClient
+            .sql("INSERT INTO collections (id, name) VALUES (:id, :name) "
+                + "ON CONFLICT (name) DO NOTHING")
+            .param("id", UUID.randomUUID()).param("name", collectionName).update();
+
+        ConfluenceInstance inserted = repository.upsert(new ConfluenceInstance(null,
+            "IT_Confluence_Orphan", "it-conf-orphan", "https://mycompany.atlassian.net/wiki",
+            "svc@example.com", "enc:orphan-ciphertext", "0123456789abcdef", "DOCS", "12345", null,
+            null, collectionName, "10.0", true, true, null, null));
+        try {
+            jdbcClient.sql("DELETE FROM collections WHERE name = :name")
+                .param("name", collectionName).update();
+            assertThat(jdbcClient.sql("SELECT count(*) FROM collections WHERE name = :name")
+                .param("name", collectionName).query(Long.class).single()).isZero();
+
+            ConfluenceInstance survivor = repository.findBySlug("it-conf-orphan").orElseThrow();
+            assertThat(survivor.id()).isEqualTo(inserted.id());
+            assertThat(survivor.apiTokenEnc())
+                .as("a collection delete must never take a credential with it")
+                .isEqualTo("enc:orphan-ciphertext");
+            assertThat(survivor.tokenKeyId()).isEqualTo("0123456789abcdef");
+            assertThat(survivor.tokenHealth("0123456789abcdef")).isEqualTo(TokenHealth.OK);
+            assertThat(survivor.targetCollection()).isEqualTo(collectionName);
+            assertThat(survivor.targetTag()).isEqualTo("10.0");
+            assertThat(survivor.space()).isEqualTo("DOCS");
+            assertThat(survivor.rootPageId()).isEqualTo("12345");
+            assertThat(repository.findAll()).extracting(ConfluenceInstance::id)
+                .contains(inserted.id());
+
+            // ...and the dangling name stays repairable: repointing it is an ordinary save.
+            ConfluenceInstance repointed = repository.upsert(new ConfluenceInstance(survivor.id(),
+                survivor.name(), survivor.slug(), survivor.domain(), survivor.email(), null, null,
+                survivor.space(), survivor.rootPageId(), null, null, "IT - Confluence",
+                survivor.targetTag(), true, true, null, null));
+            assertThat(repointed.targetCollection()).isEqualTo("IT - Confluence");
+            assertThat(repointed.apiTokenEnc()).isEqualTo("enc:orphan-ciphertext");
+        } finally {
+            repository.deleteById(inserted.id());
+            jdbcClient.sql("DELETE FROM collections WHERE name = :name")
+                .param("name", collectionName).update();
+        }
+    }
+
+    /**
+     * {@code target_tag = ''} is not "no tag" — it is a value that breaks two pipelines quietly.
+     * At enqueue it becomes {@code List.of("")}, which hard-fails {@code CollectionTagEnqueueValidator}
+     * the moment the target collection declares any tag; and it defeats the ingest version-skip,
+     * which tests {@code :tag IS NULL} ({@code ''} is neither NULL nor a member of the document's
+     * tags array), so every sync re-embeds the entire space instead of skipping unchanged pages.
+     *
+     * <p>
+     * The record's compact constructor normalizes {@code ''} to null, and
+     * {@code testUpsertInsertsThenUpdatesKeepingTheId} asserts exactly that — which is the reason
+     * the CHECK constraint looks redundant and is not. The constructor only guards writes that go
+     * through the record: a data-only restore, a hand-run UPDATE against production, a future
+     * repository method that binds the form value straight into SQL, and the V2-style backfill that
+     * promoted whatever an administrator once typed into {@code app_config} all reach the column
+     * without it. Deleting the constraint as "already enforced in Java" leaves nothing at the layer
+     * that actually stores the value, and the corruption surfaces days later as a connector that
+     * re-ingests everything on every run. Nothing else in the suite writes this column raw.
+     */
+    @Test
+    void aBlankTargetTagIsRejectedByTheDatabaseEvenOnARawInsert() {
+        String slug = "it-conf-blank-tag";
+        try {
+            assertThatThrownBy(() -> insertRawInstance(slug, ""))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_confluence_instances_target_tag_not_blank");
+            assertThat(repository.findBySlug(slug)).isEmpty();
+
+            // Control: NULL IS the supported "no tag", so the constraint rejects '' specifically
+            // rather than every row that carries no tag at all.
+            insertRawInstance(slug, null);
+            assertThat(repository.findBySlug(slug)).isPresent()
+                .get().extracting(ConfluenceInstance::targetTag).isNull();
+        } finally {
+            jdbcClient.sql("DELETE FROM confluence_instances WHERE slug = :slug").param("slug", slug)
+                .update();
+        }
+    }
+
+    /** Bypasses the record's compact constructor, which normalizes '' to null before any write. */
+    private void insertRawInstance(String slug, String targetTag) {
+        jdbcClient.sql("""
+            INSERT INTO confluence_instances (id, name, slug, domain, email, space, root_page_id,
+                                              target_collection, target_tag)
+            VALUES (:id, :name, :slug, :domain, :email, :space, :rootPageId, :collection, :tag)
+            """).param("id", UUID.randomUUID()).param("name", "IT_Confluence_Blank_Tag")
+            .param("slug", slug).param("domain", "https://mycompany.atlassian.net/wiki")
+            .param("email", "svc@example.com").param("space", "DOCS").param("rootPageId", "12345")
+            .param("collection", "IT - Confluence").param("tag", targetTag).update();
+    }
+
+    /**
+     * Deleting an instance must drop its cached {@link ConfluenceClientService} client — which
+     * carries {@code Basic base64(email:plaintextToken)} as a DEFAULT HEADER — as a direct,
+     * synchronous consequence of the delete, on a call path where <em>no transaction is active</em>.
+     *
+     * <p>
+     * That last clause is the whole point and it is invisible in the code:
+     * {@link ConfluenceInstanceRepository#deleteById} publishes one line after the DELETE and
+     * {@code ConfluenceClientService.onInstanceCredentialsChanged} is a plain {@code @EventListener}.
+     * Promote that listener to {@code @TransactionalEventListener} — a change that looks like
+     * tightening, compiles, and passes review — and Spring SILENTLY SKIPS delivery whenever no
+     * transaction is bound to the thread ({@code fallbackExecution} is false by default; it logs
+     * "No transaction is active" at trace and returns). {@code deleteById} and {@code clearToken} are
+     * plain JdbcClient methods with no {@code @Transactional} anywhere on the class, so that is
+     * every non-service caller: the row is deleted, the token is revoked, and the built client with
+     * the old credential stays reachable in the heap until the next restart. Deferring the publish
+     * to an {@code afterCommit} synchronization has the same shape of consequence.
+     *
+     * <p>
+     * {@code ConfluenceInstanceRepositoryValidationTest} verifies only THAT an event is published,
+     * against a mocked publisher with no listener on the other end — it says nothing about whether
+     * anything ever receives it, and it passes under both changes above. Nothing else wires the
+     * repository and the cache together.
+     *
+     * <p>
+     * The cache is seeded with a sentinel rather than a real client because the only warming entry
+     * point runs {@code assertSafeConfluenceUrl}, which calls {@code InetAddress.getAllByName} —
+     * a live DNS lookup for {@code mycompany.atlassian.net}. {@code evict} only removes by key, so
+     * the sentinel exercises the identical code path.
+     */
+    @Test
+    void deletingAnInstanceDropsItsCachedClientWithNoTransactionInPlay(
+        @Autowired ConfluenceClientService clientService) throws Exception {
+        ConfluenceInstance inserted =
+            repository.upsert(sample("IT_Confluence_Evict", "it-conf-evict", null));
+
+        Field cacheField =
+            ConfluenceClientService.class.getDeclaredField("clientCache");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<UUID, Object> clientCache =
+            (Map<UUID, Object>) cacheField.get(clientService);
+
+        try {
+            clientCache.put(inserted.id(), "client-carrying-the-basic-auth-header");
+            assertThat(clientCache).containsKey(inserted.id());
+
+            repository.deleteById(inserted.id());
+
+            assertThat(clientCache)
+                .as("the deleted instance's client — and the credential inside it — must be dropped "
+                    + "by the delete itself, on a path with no transaction to defer to")
+                .doesNotContainKey(inserted.id());
+        } finally {
+            clientCache.remove(inserted.id());
+            repository.deleteById(inserted.id());
         }
     }
 

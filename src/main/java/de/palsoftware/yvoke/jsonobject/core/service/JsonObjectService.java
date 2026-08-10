@@ -66,8 +66,11 @@ public class JsonObjectService {
                     uniqueValues.add(uv);
                 }
             }
+            // Scoped to this import's tag set: a natural key repeats across product versions by
+            // design, and updateBatch rewrites tags wholesale, so a collection-wide match would
+            // overwrite the other version's row and re-tag it.
             existingIdByValue = jsonObjectRepository.findIdsByJsonField(collectionId,
-                uniqueFieldPath, uniqueValues);
+                uniqueFieldPath, uniqueValues, tags);
         }
 
         for (Map<String, Object> data : objects) {
@@ -227,16 +230,6 @@ public class JsonObjectService {
         return jsonObjectRepository.queryByJsonPath(collectionId, jsonPath, tags, limit, offset);
     }
 
-    public List<JsonObject> queryObjectsByFilter(UUID collectionId, Map<String, Object> filter,
-        int limit, int offset) {
-        return queryObjectsByFilter(collectionId, filter, null, limit, offset);
-    }
-
-    public List<JsonObject> queryObjectsByFilter(UUID collectionId, Map<String, Object> filter,
-        List<String> tags, int limit, int offset) {
-        return jsonObjectRepository.queryByContainment(collectionId, filter, tags, limit, offset);
-    }
-
     public Optional<JsonSchema> getSchema(UUID collectionId, String tag) {
         return jsonSchemaRepository.findByCollectionId(collectionId, tag);
     }
@@ -246,17 +239,22 @@ public class JsonObjectService {
      * stored, replacing any previously inferred schema rather than merging into it. Use this to
      * recover from a schema that has drifted — e.g. retaining keys or a type from data that has
      * since been deleted or re-shaped, which the additive {@link #importObjects} merge cannot undo.
-     * A manual schema is never overwritten.
+     * Only an inferred schema is ever overwritten. Any other provenance — 'manual' from the admin
+     * editor, 'imported' from a reviewed declaration applied out of band — is authored, and
+     * re-inferring it is lossy in a way the database cannot undo: {@link JsonSchemaExtractor} emits
+     * only type/properties/items, so every enum and every description would be discarded with no
+     * way to regenerate them from the data. This matches the guard in {@code upsertSchemaForTag},
+     * which likewise merges only into 'inferred'.
      *
      * @return {@code true} if the schema was rebuilt; {@code false} if it was left untouched
-     *         because an existing schema is manually maintained.
+     *         because an existing schema is authored rather than inferred.
      */
     @Transactional
     public boolean rebuildSchema(UUID collectionId, String tag) {
         String normalizedTag = (tag != null && tag.isBlank()) ? null : tag;
         Optional<JsonSchema> existing =
             jsonSchemaRepository.findByCollectionId(collectionId, normalizedTag);
-        if (existing.isPresent() && "manual".equals(existing.get().source())) {
+        if (existing.isPresent() && !"inferred".equals(existing.get().source())) {
             return false;
         }
 

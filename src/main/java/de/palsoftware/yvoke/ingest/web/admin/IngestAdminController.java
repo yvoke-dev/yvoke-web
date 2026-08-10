@@ -93,6 +93,7 @@ public class IngestAdminController {
         @RequestParam(value = "entitiesFile", required = false) String entitiesFile,
         @RequestParam(value = "relationshipsFile", required = false) String relationshipsFile,
         @RequestParam(value = "enableGraph", required = false) Boolean enableGraph,
+        @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
         RedirectAttributes redirectAttributes) throws IOException {
 
         if (file.isEmpty()) {
@@ -128,6 +129,12 @@ public class IngestAdminController {
         }
         if (relationshipsFile != null && !relationshipsFile.isBlank()) {
             settings.put("relationshipsFile", relationshipsFile.trim());
+        }
+        // The form has always posted this (ingest.html) and JsonImportJobHandler has always read
+        // it, but the controller never bound it — so an admin-initiated json-import silently
+        // ignored the operator's unique field and appended duplicates instead of upserting.
+        if (jsonUniqueField != null && !jsonUniqueField.isBlank()) {
+            settings.put("jsonUniqueField", jsonUniqueField.trim());
         }
         if (enableGraph != null) {
             settings.put("enableGraph", enableGraph);

@@ -18,10 +18,14 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.server.ResponseStatusException;
+import org.mockito.ArgumentMatchers;
 
 public class ChatConversationServiceTest {
     private ConversationRepository conversationRepository;
@@ -55,6 +59,90 @@ public class ChatConversationServiceTest {
         assertThat(result).isNotNull();
         verify(conversationRepository).create(any(UUID.class), eq(null), eq("New Conversation"),
             anyMap());
+    }
+
+    /**
+     * What is seeded here IS the contract for a brand-new conversation, and the two halves of it
+     * fail in opposite directions.
+     *
+     * <p>
+     * A missing key is fatal on the next send: {@code ChatMessageService.resolveModelToUse} throws
+     * {@code IllegalStateException} on a blank model, so dropping the model seed makes every fresh
+     * conversation die on its first question with a generic system error the user cannot act on.
+     * The other three are read by the UI, and {@code thinking-level} additionally reaches the
+     * provider — seed it with anything other than "medium" and every new conversation silently
+     * starts on a different thinking budget, changing both answer quality and cost for every user,
+     * with nothing on screen to show it happened.
+     *
+     * <p>
+     * An EXTRA key is just as damaging, which is why this asserts on the whole map rather than
+     * checking four entries. {@code orchestrator-profile} and {@code chat-prompt} are deliberately
+     * absent: {@code prepareAndSubmitAsync} routes to the multi-agent orchestrator whenever
+     * {@code orchestrator-profile} is present and non-blank, so seeding it — even with a value that
+     * merely looks like a sensible default — silently puts every new conversation into MAS mode,
+     * multiplying cost per turn and bypassing the playbook path entirely. Seeding
+     * {@code chat-prompt} similarly overrides the system prompt for everyone.
+     *
+     * <p>
+     * {@code testCreateConversation} asserts only that {@code create} was called with
+     * {@code anyMap()}, so it passes against any seed at all, correct or not.
+     */
+    @Test
+    public void aNewConversationIsSeededWithExactlyTheFourDefaultSettings() {
+        Conversation created = new Conversation(UUID.randomUUID(), null, "New Conversation",
+            Collections.emptyMap(), null, null, Collections.emptyList());
+        when(conversationRepository.findById(any())).thenReturn(Optional.of(created));
+
+        chatConversationService.createConversation();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> settingsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).create(any(UUID.class), eq(null), eq("New Conversation"),
+            settingsCaptor.capture());
+
+        // The model is the FIRST entry of app.chat.allowed-models (here the one configured in
+        // setUp) — the whitelist's head is the default, so reordering the list changes it.
+        assertThat(settingsCaptor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
+            entry("streaming", false), entry("show-thinking", false),
+            entry("thinking-level", "medium"));
+    }
+
+    /**
+     * With no allowed models configured, creating a conversation must FAIL rather than seed a blank
+     * one — and it must fail before the row is written.
+     *
+     * <p>
+     * {@code app.chat.allowed-models} carries {@code @NotEmpty}, but that constraint only binds
+     * configuration properties: it is bypassed by any programmatically-constructed
+     * {@code ChatProperties} and, more to the point, by a deployment that supplies the key with an
+     * empty value. {@code ChatPropertiesTest} pins the annotation and nothing pins this branch, so
+     * the guard is unexecuted today.
+     *
+     * <p>
+     * The regression that matters is not deleting the {@code throw} — it is softening the ternary
+     * above it to a harmless-looking default ({@code : ""}), which is what someone reaches for when
+     * a fresh environment refuses to open a chat. The conversation is then created and stored with
+     * a blank {@code model} setting, the page renders normally with an empty model picker, and the
+     * failure surfaces one step later and somewhere else: {@code resolveModelToUse} throws on the
+     * first question and the user gets the generic system error, on a conversation that already
+     * exists and whose title is about to be taken from the message that failed.
+     *
+     * <p>
+     * The {@code never()} on the repository is the half that catches that: an assertion on the
+     * exception alone would still pass if the row were written first and the throw came after.
+     */
+    @Test
+    public void anEmptyAllowedModelListRefusesToCreateAConversationAtAll() {
+        ChatProperties noModels = new ChatProperties(true, List.of(), true);
+        ChatConversationService withoutModels = new ChatConversationService(conversationRepository,
+            userService, noModels, tagRepository);
+
+        assertThatThrownBy(withoutModels::createConversation)
+            .as("a blank default model must fail here, not on the conversation's first question")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("app.chat.allowed-models");
+
+        verify(conversationRepository, never()).create(any(), any(), any(), any());
     }
 
     @Test
@@ -144,6 +232,95 @@ public class ChatConversationServiceTest {
             argThat((Map<String, Object> m) -> "gemini-3.1-flash-lite".equals(m.get("model"))));
     }
 
+    /**
+     * All six settings live in ONE jsonb column and every settings endpoint funnels through this
+     * merge, so a regression to a plain replace makes each write silently delete the others:
+     * posting {@code /thinking-level} would drop {@code model}, and {@code resolveModelToUse} then
+     * throws on the blank model so the NEXT generation dies with a generic error the user cannot
+     * trace; posting {@code /streaming} would drop {@code orchestrator-profile}, quietly demoting
+     * an orchestrated conversation to a plain run. The loss is invisible until the next send — spec
+     * § 2 lists "one setting write erasing the others" under MUST NOT happen. Asserting on the FULL
+     * captured map is the point: a containsEntry check on the incoming key alone passes against a
+     * replace.
+     */
+    @Test
+    public void updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt() {
+        UUID id = UUID.randomUUID();
+        Conversation existing = new Conversation(id, null, "Title", Map.of("model",
+            "gemini-3.1-flash-lite", "thinking-level", "high", "orchestrator-profile", "oim"), null,
+            null, Collections.emptyList());
+        when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        chatConversationService.updateSettings(id, Map.of("streaming", true));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
+            entry("thinking-level", "high"), entry("orchestrator-profile", "oim"),
+            entry("streaming", true));
+    }
+
+    /** On a key collision the incoming value wins, and the untouched keys still survive. */
+    @Test
+    public void updateSettingsLetsTheIncomingValueWinWithoutDroppingTheRest() {
+        UUID id = UUID.randomUUID();
+        Conversation existing = new Conversation(id, null, "Title",
+            Map.of("model", "gemini-3.1-flash-lite", "thinking-level", "high"), null, null,
+            Collections.emptyList());
+        when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        chatConversationService.updateSettings(id, Map.of("thinking-level", "low"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
+            entry("thinking-level", "low"));
+    }
+
+    /**
+     * The auto-title is the only thing that ever names a conversation, and it is derived from text
+     * the user typed — i.e. unbounded input written into a column the sidebar renders on every
+     * page. The 80-character cap is what keeps that survivable: paste a 4,000-word requirements
+     * document as the first question (routine on this corpus) and without the truncation the whole
+     * document becomes the title, is stored in {@code conversations.title}, and is re-rendered into
+     * every sidebar row and every folder listing — the chat index turns into a wall of text, and
+     * the layout breaks for every conversation the user can see, not just that one.
+     *
+     * <p>
+     * The exact split matters as much as the cap: 77 characters plus a three-character ellipsis is
+     * what makes the result exactly 80 wide, which is what the sidebar CSS is sized for. Cutting at
+     * 80 and appending "..." would yield 83 and quietly overflow; cutting at 77 without the
+     * ellipsis would present a truncated sentence as if it were the whole title.
+     *
+     * <p>
+     * Both boundaries are pinned here because the branch is {@code > 80}, not {@code >= 80}: a
+     * message of exactly 80 characters must pass through untouched, so an off-by-one that rewrites
+     * it as 77 + "..." — losing three characters of a title that already fitted — fails on the
+     * second assertion. The leading/trailing whitespace on the long input pins the {@code trim()}
+     * that runs first, which is what stops a title from beginning with the blank lines an editor
+     * paste brings along.
+     */
+    @Test
+    public void aLongFirstMessageIsTruncatedToSeventySevenCharactersPlusEllipsis() {
+        UUID conversationId = UUID.randomUUID();
+        String longQuestion = "x".repeat(200);
+
+        // Whitespace is stripped first, so it is the 200 real characters that get cut.
+        chatConversationService.autoTitle(conversationId, "  " + longQuestion + "  ");
+        // Exactly at the boundary: must be stored verbatim, not truncated.
+        String exactly80 = "y".repeat(80);
+        chatConversationService.autoTitle(conversationId, exactly80);
+
+        ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
+        verify(conversationRepository, times(2)).updateTitle(eq(conversationId),
+            titleCaptor.capture());
+        List<String> titles = titleCaptor.getAllValues();
+        assertThat(titles.get(0)).hasSize(80).endsWith("...").isEqualTo("x".repeat(77) + "...");
+        assertThat(titles.get(1)).isEqualTo(exactly80);
+    }
+
     private Conversation conv(UUID userId, List<String> tags) {
         return new Conversation(UUID.randomUUID(), userId, "Title", Collections.emptyMap(), null,
             null, tags);
@@ -208,5 +385,31 @@ public class ChatConversationServiceTest {
             disabledService.createConversation();
         });
     }
-}
 
+    /**
+     * The {@code public} tag grants READS to non-owners, never writes.
+     *
+     * <p>
+     * Sharing is one tag away, has no confirmation step and no per-person control, so the read
+     * carve-out is deliberately wide — which is exactly why the write side has to be narrow. Every
+     * mutating path calls {@code verifyOwnership(id, false)}; passing {@code true} anywhere would
+     * let any signed-in colleague retag, re-model, stop or delete a conversation they can merely
+     * see, and the owner would have no way to tell it had happened. The same carve-out serves
+     * ROLE_ADMIN, so the blast radius is every shared conversation in the system.
+     */
+    @Test
+    public void aPublicViewerCannotChangeTheSettingsOfAConversationTheyOnlyRead() {
+        UUID conversationId = UUID.randomUUID();
+        User viewer = new User(UUID.randomUUID(), "entra-viewer", "viewer@test.local", "V", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
+
+        // Owned by someone else, and shared — so this viewer may READ it.
+        Conversation shared = new Conversation(conversationId, UUID.randomUUID(), "Shared Chat",
+            Collections.emptyMap(), null, null, List.of("public"));
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(shared));
+
+        Assertions.assertThrows(AccessDeniedException.class,
+            () -> chatConversationService.updateSettings(conversationId, Map.of("k", "v")));
+        verify(conversationRepository, never()).updateSettings(any(), any());
+    }
+}

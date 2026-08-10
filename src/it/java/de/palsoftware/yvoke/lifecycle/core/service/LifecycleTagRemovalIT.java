@@ -111,6 +111,75 @@ public class LifecycleTagRemovalIT {
         assertThat(audits).isGreaterThanOrEqualTo(1);
     }
 
+    /**
+     * Two asymmetries in the json-object half of the tag cascade, neither of them stated in the
+     * javadoc of the methods that implement them.
+     *
+     * <p>
+     * First, {@code JsonObjectRepository.removeTagAndPurgeOrphans} is TWO statements — a DELETE for
+     * sole-tag rows and an UPDATE that {@code array_remove}s the tag from everything else — and only
+     * the DELETE is pinned today. {@link #removeTagKeepsMultiTaggedContentAndDeletesOnlyExclusiveContent()}
+     * asserts that the multi-tagged json object still EXISTS but never looks at what it is tagged
+     * with, unlike its documents/entities assertions which do check {@code tagsOf}. So copying the
+     * DELETE's {@code cardinality(tags) = 1} guard onto the UPDATE — a one-line, entirely
+     * plausible-looking tidy-up — leaves every shared row still carrying the removed tag, and the
+     * whole suite stays green. That is not cosmetic: {@code json_objects} is read with
+     * {@code :tag = ANY(tags)}, so a stale tag makes a removed product version keep answering
+     * {@code query_json_objects} and {@code get_json_schema} as if it were still installed.
+     *
+     * <p>
+     * Second, the cascade does NOT touch {@code json_schemas}, and that is easy to assume wrong
+     * because the sibling {@code deleteObjectsByCollection} DOES delete both tables. Removing a tag
+     * therefore leaves the per-tag SCHEMA DECLARATION behind after every object it described is
+     * gone — an orphan that {@code get_json_schema} will still hand an agent as the shape of data
+     * that no longer exists. The assertion below is characterisation, not endorsement: it exists so
+     * that whoever fixes this has to change the expectation deliberately rather than discover the
+     * behaviour from a support ticket.
+     */
+    @Test
+    public void removingATagDetachesTheSurvivingJsonObjectAndLeavesItsSchemaDeclarationBehind() {
+        UUID jsonShared = insertJson("v1", "v2");
+        UUID jsonV1Only = insertJson("v1");
+        UUID jsonV2Only = insertJson("v2");
+        insertJsonSchema("v1");
+        insertJsonSchema("v2");
+
+        lifecycleService.removeTagFromCollection(collectionId, "v1");
+
+        // The sole-'v1' row dies; the shared row survives AND must actually be detached.
+        assertThat(exists("json_objects", jsonV1Only)).isFalse();
+        assertThat(exists("json_objects", jsonShared)).isTrue();
+        assertThat(tagsOf("json_objects", jsonShared))
+            .as("the array_remove must run on json_objects too, not only on documents/entities")
+            .isEqualTo("v2");
+
+        // A row that never carried the tag is untouched — the UPDATE is scoped, not collection-wide.
+        assertThat(exists("json_objects", jsonV2Only)).isTrue();
+        assertThat(tagsOf("json_objects", jsonV2Only)).isEqualTo("v2");
+
+        // Characterisation: the schema declarations are outside the cascade entirely, so the 'v1'
+        // declaration outlives every 'v1' object. Change this expectation only on purpose.
+        assertThat(schemaCount("v1"))
+            .as("removeTagAndPurgeOrphans does not reach json_schemas — the declaration is orphaned")
+            .isEqualTo(1);
+        assertThat(schemaCount("v2")).isEqualTo(1);
+    }
+
+    /** A hand-authored per-tag declaration, i.e. the kind the inference path refuses to rewrite. */
+    private void insertJsonSchema(String tag) {
+        jdbcTemplate.update(
+            "INSERT INTO json_schemas (id, collection_id, schema_data, source, tag) "
+                + "VALUES (?, ?, '{\"fields\":{}}'::jsonb, 'imported', ?)",
+            UUID.randomUUID(), collectionId, tag);
+    }
+
+    private int schemaCount(String tag) {
+        Integer n = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM json_schemas WHERE collection_id = ? AND tag = ?", Integer.class,
+            collectionId, tag);
+        return n == null ? 0 : n;
+    }
+
     private boolean exists(String table, UUID id) {
         Integer c = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM " + table + " WHERE id = ?", Integer.class, id);

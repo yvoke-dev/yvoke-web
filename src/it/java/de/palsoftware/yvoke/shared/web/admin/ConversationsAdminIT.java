@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -44,7 +45,7 @@ public class ConversationsAdminIT {
         return userRepository.findByEntraOid(entraOid).orElseThrow().id();
     }
 
-    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor adminUser() {
+    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor adminUser() {
         return oidcLogin().idToken(token -> token.claim("oid", "mock-admin-oid")).authorities(
             new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
     }

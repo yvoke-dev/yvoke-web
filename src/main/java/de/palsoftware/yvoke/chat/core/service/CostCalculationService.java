@@ -239,14 +239,6 @@ public class CostCalculationService {
         return costQueryRepository.availableUsers();
     }
 
-    public List<Map<String, Object>> getAvailableConversations() {
-        return costQueryRepository.availableConversations();
-    }
-
-    public List<String> getAvailableMasProfiles() {
-        return costQueryRepository.availableMasProfiles();
-    }
-
     public List<String> getAvailableModels() {
         return costQueryRepository.availableModels();
     }
@@ -289,10 +281,6 @@ public class CostCalculationService {
         BigDecimal promptPricePerMillion, BigDecimal completionPricePerMillion,
         BigDecimal cachedPricePerMillion, BigDecimal thoughtPricePerMillion, Instant updatedAt,
         long usageCount) {}
-
-    public List<ModelPricing> getAllModelPricing() {
-        return (List<ModelPricing>) pricingRepository.findAll();
-    }
 
     public List<UsedModelPricingStatus> getAllUsedModelsWithPricingStatus() {
         Map<String, ModelPricing> dbPrices = loadPricingMap();

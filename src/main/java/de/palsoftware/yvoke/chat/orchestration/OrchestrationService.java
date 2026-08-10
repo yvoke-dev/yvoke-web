@@ -25,6 +25,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.lang.Nullable;
 
 /**
  * Runs a multi-agent orchestration: a pro-model orchestrator delegates sub-questions to flash-model
@@ -52,11 +53,9 @@ public class OrchestrationService {
     private final ConversationRepository conversationRepository;
 
     public OrchestrationService(RagService ragService, PlaybookService playbookService,
-        OrchestratorProperties properties,
-        @org.springframework.lang.Nullable OrchestratorProfileService profileService,
+        OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
         AgentRunRepository runRepository, AgentStepRepository stepRepository,
-        ObjectMapper objectMapper,
-        @org.springframework.lang.Nullable ConversationRepository conversationRepository) {
+        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository) {
         this.ragService = ragService;
         this.playbookService = playbookService;
         this.properties = properties;

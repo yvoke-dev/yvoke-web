@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.junit.jupiter.api.Assertions;
 
 public class FeedbackRepositoryTest {
 
@@ -53,11 +54,11 @@ public class FeedbackRepositoryTest {
     public void testUpsert_invalidRatingThrowsException() {
         UUID messageId = UUID.randomUUID();
 
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             feedbackRepository.upsert(messageId, -2, "Bad rating");
         });
 
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
             feedbackRepository.upsert(messageId, 6, "Bad rating");
         });
     }

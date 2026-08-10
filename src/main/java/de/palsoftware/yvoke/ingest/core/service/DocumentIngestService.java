@@ -400,12 +400,10 @@ public class DocumentIngestService {
 
         return transactionTemplate.execute(status -> {
             UUID documentId = documentRepository.upsertManualDocument(collection, tags, sourceFile,
-                de.palsoftware.yvoke.document.core.model.DocumentKind.HIERARCHICAL.getValue(),
-                titleH1);
+                DocumentKind.HIERARCHICAL.getValue(), titleH1);
             documentRepository.deleteChunksForDocument(documentId);
             documentRepository.insertChunks(documentId, collection, tags, sourceFile,
-                de.palsoftware.yvoke.document.core.model.DocumentKind.HIERARCHICAL.getValue(),
-                inserts);
+                DocumentKind.HIERARCHICAL.getValue(), inserts);
             documentRepository.updateIngestionStatus(documentId, "completed");
             return documentId;
         });

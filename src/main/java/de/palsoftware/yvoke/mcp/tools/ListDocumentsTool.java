@@ -60,6 +60,9 @@ public class ListDocumentsTool {
         @McpToolParam(
             description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
             required = false)
+        @ToolParam(
+            description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
+            required = false)
         @Nullable Integer offset,
         @McpToolParam(
             description = "Fuzzy document-title filter: finds documents by approximate title (e.g. a process-chain or config-namespace name). Matches case-insensitive substrings and close trigram matches, ranked best-first. When nothing is specified all titles are considered.",
@@ -107,12 +110,17 @@ public class ListDocumentsTool {
             if (knd != null) {
                 List<String> validKinds = documentRepository.findDistinctKindsInCollection(col);
                 if (!validKinds.isEmpty()) {
-                    boolean isValid = validKinds.stream().anyMatch(knd::equalsIgnoreCase);
-                    if (!isValid) {
+                    // Adopt the stored casing: validation is case-insensitive but the filter is
+                    // `AND d.kind = :kind` (case-sensitive), so forwarding the caller's spelling
+                    // would pass validation and then match nothing.
+                    String storedKind =
+                        validKinds.stream().filter(knd::equalsIgnoreCase).findFirst().orElse(null);
+                    if (storedKind == null) {
                         return "Error: kind '" + knd
                             + "' is not valid or does not exist in collection '" + col
                             + "'. Valid kinds in this collection are: " + validKinds + ".";
                     }
+                    knd = storedKind;
                 }
             }
 

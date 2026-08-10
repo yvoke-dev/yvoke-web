@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 
 @Repository
 public class AgentStepRepository {
@@ -108,10 +110,10 @@ public class AgentStepRepository {
         if (ts == null) {
             return null;
         }
-        if (ts instanceof java.sql.Timestamp t) {
+        if (ts instanceof Timestamp t) {
             return t.toInstant();
         }
-        if (ts instanceof java.time.OffsetDateTime odt) {
+        if (ts instanceof OffsetDateTime odt) {
             return odt.toInstant();
         }
         return null;

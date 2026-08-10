@@ -22,6 +22,7 @@ import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
+import java.util.stream.IntStream;
 
 public class AdminControllerTest {
 
@@ -96,8 +97,8 @@ public class AdminControllerTest {
 
     @Test
     public void testCancelQueuedJobsReportsTheCountAndAuditsIt() {
-        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki")).thenReturn(
-            java.util.stream.IntStream.range(0, 616).mapToObj(i -> UUID.randomUUID()).toList());
+        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+            .thenReturn(IntStream.range(0, 616).mapToObj(i -> UUID.randomUUID()).toList());
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
         String view = adminController.cancelQueuedJobs("confluence-page-import:icc-wiki", redirect);
@@ -106,6 +107,51 @@ public class AdminControllerTest {
         assertThat(redirect.getFlashAttributes().get("success").toString()).contains("616");
         verify(auditLogRepository).log("anonymous_admin", "CANCEL_QUEUED_JOBS",
             "confluence-page-import:icc-wiki", Map.of("cancelled", 616));
+    }
+
+    /**
+     * Every path that changes job rows behind the engine's back MUST publish a snapshot per row, or
+     * open job pages keep streaming a state that no longer exists.
+     *
+     * <p>
+     * The single-job Stop goes through {@code JobService.stopJob}-and-publish, so it is covered by
+     * {@code testStopJobPublishesTheNewStatusAndAudits}. This endpoint does not: it calls
+     * {@code jobRepository.cancelQueued(kind)}, one bulk UPDATE that flips hundreds of rows to
+     * {@code cancelled} without the engine ever seeing them. A job-detail page open on any of those
+     * rows subscribed to {@link de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker}
+     * and is waiting for a terminal frame that now will never be produced — the job is cancelled,
+     * so no worker will ever run it and emit one. The page therefore shows "Queued" with a live
+     * Stop button on an already-cancelled job, indefinitely, and the operator's next click reports
+     * "Job could not be stopped" for no visible reason.
+     *
+     * <p>
+     * The broker has NO replay buffer ({@code publish} fans out to currently-subscribed emitters
+     * only), so the snapshot has to be published here, at cancel time — there is no later moment
+     * that can repair it. And it has to be per id: publishing once, or for the first id, silently
+     * leaves every other open page stale, which is exactly the shape a refactor to "publish the
+     * summary" would take.
+     *
+     * <p>
+     * The existing cancel tests assert only the flash message and the audit row, both of which are
+     * derived from {@code cancelledIds.size()} — so they pass whether the ids are used for anything
+     * else or thrown away.
+     */
+    @Test
+    public void bulkCancellingQueuedWorkPublishesASnapshotForEveryCancelledJob() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+            .thenReturn(List.of(first, second, third));
+        RedirectAttributes redirect = new RedirectAttributesModelMap();
+
+        adminController.cancelQueuedJobs("confluence-page-import:icc-wiki", redirect);
+
+        verify(jobService).publishSnapshot(first);
+        verify(jobService).publishSnapshot(second);
+        verify(jobService).publishSnapshot(third);
+        // Exactly those three and nothing else: a page left un-notified is the whole bug.
+        verifyNoMoreInteractions(jobService);
     }
 
     @Test

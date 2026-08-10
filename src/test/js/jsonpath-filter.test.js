@@ -80,6 +80,27 @@ describe('buildJsonPath quoting', () => {
             '@.unknown == "abc"');
     });
 
+    test('a field widened to a type array falls back to value-shape quoting', () => {
+        // JsonSchemaExtractor.mergeSchema records the UNION of observed types: a field seen once as
+        // an integer and once as a string is stored as `type: ['integer','string']` (sorted), which
+        // getFieldType returns verbatim. buildJsonPath compares it with === against scalar type
+        // names, so NO branch matches and quoting silently falls through to the value's shape.
+        // That fallback is the only thing keeping such a field usable, and it is invisible: if the
+        // else branch ever quoted unconditionally, `@.count == "42"` would compare a JSON number
+        // against a string in Postgres jsonpath — no error, no rows, and the admin sees an empty
+        // result for a filter that reads correctly on screen. Every other case in this file uses a
+        // field whose declared type IS a scalar string, so none of them exercises this path.
+        const WIDENED = { properties: { count: { type: ['integer', 'string'] } } };
+
+        assert.deepEqual(getFieldType(WIDENED, 'count'), ['integer', 'string'],
+            'the widened type must reach the builder as an array, not be collapsed');
+
+        assert.equal(buildJsonPath(group('&&', rule('count', '==', '42')), WIDENED),
+            '@.count == 42');
+        assert.equal(buildJsonPath(group('&&', rule('count', '==', 'abc')), WIDENED),
+            '@.count == "abc"');
+    });
+
     test('does not double-quote a value the user already quoted', () => {
         assert.equal(buildJsonPath(group('&&', rule('category', '==', '"schema"')), SCHEMA),
             '@.category == "schema"');

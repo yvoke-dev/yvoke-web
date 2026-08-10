@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.yaml.snakeyaml.Yaml;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class MarkdownTree {
 
@@ -77,7 +80,7 @@ public final class MarkdownTree {
             }
             // heading_path = ancestor titles, top-most first.
             List<String> headingPath = new ArrayList<>(stackTitles);
-            java.util.Collections.reverse(headingPath);
+            Collections.reverse(headingPath);
 
             int bodyStart = lineNo + 1;
             int bodyEnd = (idx + 1 < headingPositions.size()) ? headingPositions.get(idx + 1)[0]
@@ -129,7 +132,7 @@ public final class MarkdownTree {
     public static List<Section> dropEmptyPlaceholders(List<Section> sections) {
         // A section is a group node iff the immediately-following section is deeper (matches the
         // single-step lookahead in _drop_empty_placeholders, which breaks on the first `later`).
-        java.util.Set<String> titlesWithChildren = new java.util.HashSet<>();
+        Set<String> titlesWithChildren = new HashSet<>();
         for (int i = 0; i + 1 < sections.size(); i++) {
             Section s = sections.get(i);
             if (sections.get(i + 1).depth() > s.depth()) {

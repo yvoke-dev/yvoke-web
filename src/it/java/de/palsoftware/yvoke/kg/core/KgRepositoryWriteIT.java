@@ -35,7 +35,7 @@ public class KgRepositoryWriteIT {
         // Collections are no longer auto-created by KG writes; the target must pre-exist.
         jdbcTemplate.update(
             "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-            java.util.UUID.randomUUID(), COLLECTION);
+            UUID.randomUUID(), COLLECTION);
     }
 
     @AfterEach

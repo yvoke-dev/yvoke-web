@@ -13,8 +13,8 @@
  */
 
 import {
-    mapOutsideCode,
     mapOutsideFences,
+    mapOutsidePre,
     normalizeSpacing,
     protectTokens,
     restoreTokens,
@@ -70,17 +70,49 @@ export function forceToolCallNewlines(text) {
 }
 
 /**
+ * One run of tool-call chatter: the 🔧 marker and everything up to the next block boundary.
+ *
+ * The boundaries are `<p`/`<div` rather than the literal `<p>`/`<div>` they used to be. Our own
+ * mermaid container is `<div class="mermaid-diagram-container">`, which the literal did not match,
+ * so a diagram straight after a tool call had its opening tag swallowed into the hidden span and
+ * the output was only well-formed by the browser's error recovery. `</p>` closes a run too, so the
+ * wrapper nests inside the paragraph instead of straddling it — this HTML goes to innerHTML with
+ * no sanitizer after it, so it has to be well-formed on its own.
+ */
+const TOOL_CALL_RUN =
+    /(🔧\s*(?:<\w+>)?\*?Calling\s+tool(?:<\/\w+>)?[\s\S]*?(?=(?:<p\b|<div\b|<\/p>|🔧|\s*$)))/gi;
+
+/** An inline `code` span in rendered HTML. */
+const INLINE_CODE = /<code\b[\s\S]*?<\/code>/g;
+
+/**
  * Wraps rendered tool-call chatter in a span so CSS can hide it.
  *
- * Runs only outside <pre>/<code>. The pattern consumes everything up to the next block boundary, so
- * inside a code block it would swallow real answer text into a `display:none` element — the answer
- * would simply vanish with no error anywhere.
+ * `<pre>` blocks are skipped: a run consumes everything to the next block boundary, so a fenced
+ * block following a tool call would be swallowed into a `display:none` element and the answer would
+ * simply vanish with no error anywhere.
+ *
+ * Inline `<code>` is **masked, not skipped** — and that distinction is the whole point. This used
+ * to run through `mapOutsideCode`, which skips both. A tool call whose arguments contain a
+ * backticked path — which the desktop agent produces constantly, quoting sandbox paths like
+ * `C:\…\tool-results\mcp-yvoke-get_section-<ts>.txt` — was therefore cut into three: the half
+ * carrying the marker was wrapped and hidden, the `<code>` was left alone by design, and the text
+ * after it had no marker left to match, so nothing wrapped it. Everything from the first backtick
+ * to the end of the paragraph stayed on screen — and because `hide-thinking-process` correctly hid
+ * the marker half, the user saw an orphaned Windows path and raw argument prose mid-answer with
+ * nothing to explain it. Masking lets a run continue through inline code while still keeping a
+ * literal marker *inside* inline code from starting one, which is what skipping bought.
  */
 export function wrapToolCalls(html) {
-    return mapOutsideCode(html, function (segment) {
-        return segment.replace(
-            /(🔧\s*(?:<\w+>)?\*?Calling\s+tool(?:<\/\w+>)?[\s\S]*?(?=(?:<p>|<div>|🔧|\s*$)))/gi,
-            '<span class="tool-call">$1</span>');
+    return mapOutsidePre(html, function (segment) {
+        const codes = [];
+        const masked = segment.replace(INLINE_CODE, function (match) {
+            codes.push(match);
+            return `%%TOOLCODE_${codes.length - 1}%%`;
+        });
+        const wrapped = masked.replace(TOOL_CALL_RUN, '<span class="tool-call">$1</span>');
+        return wrapped.replace(/%%TOOLCODE_(\d+)%%/g,
+            (match, idx) => (codes[Number(idx)] === undefined ? match : codes[Number(idx)]));
     });
 }
 

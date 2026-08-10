@@ -228,6 +228,63 @@ public class SchemaPresenceIT {
     }
 
     /**
+     * The eight corpus indexes that serve the hot filter/lookup paths and that no test names.
+     *
+     * <p>
+     * Every one of them is invisible when it disappears: the query still returns exactly the right
+     * rows, just sequentially, so no test fails, no error is logged and the only symptom is that the
+     * app gets slower as the corpus grows. That is the whole reason to assert them by name — a
+     * migration that renames or drops one is indistinguishable from a correct one at the row level.
+     *
+     * <p>
+     * They are not interchangeable filler. {@code idx_documents_metadata_source_file} serves the
+     * per-page Confluence version-skip ({@code DocumentRepository.getMetadataAndStatus} and
+     * {@code findIdByFile} both probe {@code metadata->>'source_file'}) once per crawled page over a
+     * 22k-row table — losing it turns a sync into tens of thousands of sequential scans.
+     * {@code idx_collections_tags} / {@code idx_documents_tags} back the {@code &&} overlap that the
+     * whole two-versions-in-one-collection design filters on, {@code idx_documents_id_nodash} and
+     * {@code idx_chunks_id_nodash} back the dash-stripped prefix lookup that resolves every
+     * citation, {@code idx_documents_title_trgm} backs the fuzzy title search's
+     * {@code similarity()} ranking, and {@code idx_chunks_document_id_kg_ok} backs the per-row
+     * kg-status subqueries the corpus browser runs for every document on the page.
+     *
+     * <p>
+     * The db image bakes the migrations in, so this doubles as the guard the project's own runbook
+     * asks for: a {@code docker compose up -d} against a stale image reports a clean Flyway run
+     * while the schema it validated is not the one on disk.
+     */
+    @Test
+    public void testCorpusFilterAndLookupIndexesExist() {
+        assertThat(indexExists("collections", "idx_collections_tags"))
+            .withFailMessage("GIN index idx_collections_tags should exist (tag overlap filter)")
+            .isTrue();
+
+        assertThat(indexExists("documents", "idx_documents_tags"))
+            .withFailMessage("GIN index idx_documents_tags should exist (tag overlap filter)")
+            .isTrue();
+        assertThat(indexExists("documents", "idx_documents_collection_id"))
+            .withFailMessage("Index idx_documents_collection_id should exist (collection join)")
+            .isTrue();
+        assertThat(indexExists("documents", "idx_documents_metadata_source_file"))
+            .withFailMessage("Index idx_documents_metadata_source_file should exist — it serves the"
+                + " per-page Confluence version-skip lookup on every crawled page")
+            .isTrue();
+        assertThat(indexExists("documents", "idx_documents_id_nodash"))
+            .withFailMessage("Index idx_documents_id_nodash should exist (citation prefix lookup)")
+            .isTrue();
+        assertThat(indexExists("documents", "idx_documents_title_trgm"))
+            .withFailMessage("Trigram index idx_documents_title_trgm should exist (fuzzy title)")
+            .isTrue();
+
+        assertThat(indexExists("chunks", "idx_chunks_document_id_kg_ok"))
+            .withFailMessage("Index idx_chunks_document_id_kg_ok should exist (kg-status subquery)")
+            .isTrue();
+        assertThat(indexExists("chunks", "idx_chunks_id_nodash"))
+            .withFailMessage("Index idx_chunks_id_nodash should exist (citation prefix lookup)")
+            .isTrue();
+    }
+
+    /**
      * V2 columns. The migration SQL is baked into the db image, so {@code docker compose up -d}
      * reuses the old one and the columns silently never appear — this is the cheapest guard against
      * a migration that looks applied but is not.
@@ -288,6 +345,53 @@ public class SchemaPresenceIT {
             .withFailMessage("Table 'tags' must not exist: the vocabulary is derived from"
                 + " collections.tags / conversations.tags (V6)")
             .isFalse();
+    }
+
+    /**
+     * {@code spring.datasource.hikari.connection-init-sql} runs {@code SET statement_timeout =
+     * '60s'} once per physical connection, so every statement the application issues — web,
+     * background worker and MCP alike — is capped, out of one shared pool of 20.
+     *
+     * <p>
+     * It is the only backstop against a single query pinning a connection indefinitely, and this
+     * application has several ways to produce one: an HNSW/BM25 scan across the {@code chunks}
+     * partitions, a cost-explorer range that touches the whole {@code llm_call_logs} table, or a
+     * lock wait behind a long ingest transaction. Twenty such statements exhaust the pool, and at
+     * that point nothing at all can obtain a connection — the application stops serving rather than
+     * degrading, and Postgres is left holding twenty sessions that will never finish on their own.
+     *
+     * <p>
+     * The line looks like tuning, which is exactly why it disappears: it sits among
+     * {@code maximum-pool-size}/{@code idle-timeout}/{@code connection-timeout} in a block that gets
+     * rewritten whenever someone tunes the pool, and removing it changes nothing observable — every
+     * query this suite runs finishes in milliseconds. Asserting it here, on a connection actually
+     * handed out by the pool, is what makes the setting's absence visible; asserting the YAML text
+     * would only prove the string is present, not that Hikari applied it to the connections the
+     * application uses.
+     *
+     * <p>
+     * The comparison is made as an {@code interval} rather than against the text {@code SHOW}
+     * returns, because Postgres normalises an interval GUC to its largest exact unit — 60s reads
+     * back as {@code 1min} today, and a future value of, say, 90s would read back as {@code 90s}.
+     * Pinning the rendered string would make this test fail for a reason that has nothing to do
+     * with the rule. An unset timeout is {@code 0}, which is {@code 00:00:00} as an interval.
+     */
+    @Test
+    public void pooledConnectionsCarryTheSixtySecondStatementTimeout() {
+        String rendered = jdbcTemplate.queryForObject("SHOW statement_timeout", String.class);
+
+        Boolean unbounded = jdbcTemplate.queryForObject(
+            "SELECT current_setting('statement_timeout')::interval = interval '0'", Boolean.class);
+        assertThat(unbounded)
+            .withFailMessage("pooled connections must carry a statement_timeout, but it was '%s': "
+                + "an unbounded query can hold one of the 20 pooled connections forever", rendered)
+            .isFalse();
+
+        Boolean sixtySeconds = jdbcTemplate.queryForObject(
+            "SELECT current_setting('statement_timeout')::interval = interval '60 seconds'",
+            Boolean.class);
+        assertThat(sixtySeconds)
+            .withFailMessage("statement_timeout should be 60s but was '%s'", rendered).isTrue();
     }
 
     private boolean tableExists(String tableName) {

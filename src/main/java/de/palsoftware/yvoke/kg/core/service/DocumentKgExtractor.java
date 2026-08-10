@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Service
 public class DocumentKgExtractor {
@@ -398,7 +399,7 @@ public class DocumentKgExtractor {
     private JsonNode parseJson(String raw) {
         try {
             return objectMapper.readTree(stripCodeFence(raw));
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Unparseable KG extraction JSON", e);
         }
     }

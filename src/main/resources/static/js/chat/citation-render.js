@@ -22,8 +22,29 @@
  */
 const CODE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>|<code\\b[\\s\\S]*?<\\/code>';
 
+/**
+ * The block-level half of {@link CODE_REGION} — a fenced block or a mermaid diagram source.
+ *
+ * Split out because hiding tool-call chatter needs the two halves treated OPPOSITELY, and treating
+ * them alike is what leaked sandbox paths into finished answers. A `<pre>` following a tool call is
+ * answer content and must end the run; an inline `<code>` is part of the tool's own arguments (the
+ * desktop agent quotes its sandbox paths in backticks) and must not. See `wrapToolCalls`.
+ */
+const PRE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>';
+
 /** A fenced code block in RAW markdown, before marked has run. */
 const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
+
+/**
+ * A whole line that is a GFM table row (or its `|---|---|` delimiter): pipe-delimited, opening and
+ * closing with a pipe. `.` never crosses a newline, so a match is always exactly one line; the
+ * lookbehind/lookahead keep the surrounding newlines OUTSIDE the match so the text on either side
+ * still reads as adjacent when the repairs below run on it.
+ *
+ * Such a line is structure, not prose: nothing inside it may be re-broken, because a break anywhere
+ * in the header row stops marked seeing a table at all and the rest collapses into one paragraph.
+ */
+const MD_TABLE_ROW = '(?<=^|\\n)[^\\S\\n]*\\|[^\\n]*\\|[^\\S\\n]*(?=\\n|$)';
 
 /**
  * Matches `[1]`, `[42]`, `[1, 2]`, `[1,2,3]` — but not `config[1]` (preceded by a word character,
@@ -59,6 +80,14 @@ export function mapOutsideCode(html, fn) {
     return mapOutsideRegions(html, CODE_REGION, fn);
 }
 
+/**
+ * Applies `fn` only outside `<pre>` blocks, leaving inline `<code>` spans for `fn` to see and
+ * decide about. The caller that needs this ({@link wrapToolCalls}) masks them instead of skipping.
+ */
+export function mapOutsidePre(html, fn) {
+    return mapOutsideRegions(html, PRE_REGION, fn);
+}
+
 /** Applies `fn` only outside fenced code blocks of raw markdown. */
 export function mapOutsideFences(markdown, fn) {
     return mapOutsideRegions(markdown, MD_FENCE, fn);
@@ -67,20 +96,42 @@ export function mapOutsideFences(markdown, fn) {
 /**
  * Re-inserts the blank lines that models omit around headings, numbered bold list items and
  * reference-list entries. Skips fenced code, where a bash `# comment` or a SQL `-- [id]` line is
- * content, not markdown.
+ * content, not markdown — and skips table rows, which are structure rather than prose.
  *
- * The heading rule's preceding-character class excludes `#` — previously `([^\n])` matched the
- * heading's OWN first hash, so a message starting "## X" rendered as a stray empty heading plus a
- * level shift — and `|` so table cells survive. Word characters stay allowed: they are what makes
- * "text ## Heading" split correctly, and the trailing `\s+` already stops "C#5" and "#42" from
- * being mistaken for headings.
+ * Every rule here is "a marker appears mid-line; put it on its own line", so every rule has to
+ * answer the same question: what is the last non-whitespace character BEFORE the marker? The old
+ * classes asked it wrong. `([^\n#|])\s*` names the character touching the whitespace run, and
+ * `\s*` may match nothing — so in a table cell `| # | h |` the class matched the SPACE, the `|`
+ * exclusion it was written for never applied, and the header row was split into `| ` + `# | h |`.
+ * That is fatal rather than cosmetic: marked then sees no table, the delimiter row and every data
+ * row lazily continue one paragraph, and a rendered checklist arrives as a wall of pipes.
+ *
+ * Two independent guards, because they fail differently:
+ *   1. `[^\s#|]` — the group can no longer be whitespace, so it really is the last non-whitespace
+ *      character, and excluding `|` finally protects a pipe-adjacent marker (including a table
+ *      written without leading/trailing pipes, which rule 2 below does not see). Excluding `#`
+ *      keeps a heading's own hashes from being eaten — `## X` once became `#\n\n# X`. It also stops
+ *      an indented heading being split from its indentation.
+ *   2. MD_TABLE_ROW — the whole row is excised first, so a marker anywhere in ANY cell is safe,
+ *      not just one sitting next to a pipe. `| Fix | use # to comment |` needs this one.
+ *
+ * The heading rule additionally requires whitespace before the hashes when the preceding character
+ * is a word character: "the C# code" is not a heading named "code", and on a corpus full of C#
+ * and VB.NET scripts that mis-parse was routine. `#{1,6}\s+` already excludes `C#5` and `#42`,
+ * which is what the previous note here mistook for covering the whole family.
  */
 export function normalizeSpacing(text) {
     return mapOutsideFences(text, function (segment) {
-        let out = segment.replace(/([^\n#|])\s*(#{1,6}\s+)/g, '$1\n\n$2');
-        out = out.replace(/([^\n])\s*(\d+\.\s+\*\*)/g, '$1\n\n$2');
-        out = out.replace(new RegExp('([^\\n])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
-        return out;
+        return mapOutsideRegions(segment, MD_TABLE_ROW, function (prose) {
+            let out = prose.replace(/([^\s#|])(\s*)(#{1,6}\s+)/g,
+                function (match, before, gap, hashes) {
+                    if (gap === '' && /\w/.test(before)) return match; // C#, F#, VB#
+                    return before + '\n\n' + hashes;
+                });
+            out = out.replace(/([^\s|])\s*(\d+\.\s+\*\*)/g, '$1\n\n$2');
+            out = out.replace(new RegExp('([^\\s|])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
+            return out;
+        });
     });
 }
 

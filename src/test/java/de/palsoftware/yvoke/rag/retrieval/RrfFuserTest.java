@@ -24,23 +24,15 @@ public class RrfFuserTest {
         // id2 (rank 1), id3 (rank 2)
         List<ChunkRow> fulltext = List.of(createMockRow(id2, "doc2"), createMockRow(id3, "doc3"));
 
-        // Limits: semanticLimit = 5, ftLimitCap = 5
-        List<RrfFuser.IntermediateRrfResult> results = fuser.fuse(semantic, fulltext, 5, 5);
+        List<RrfFuser.IntermediateRrfResult> results = fuser.fuse(semantic, fulltext);
 
         // All 3 elements should be present
         assertThat(results).hasSize(3);
 
-        // id2 appears in both (rank 2 in semantic, rank 1 in full-text)
-        // Score for id2: (1/(60+2) + 1/(60+1)) / 2
-        // id1 appears in semantic (rank 1 in semantic, rank 5 in full-text fallback)
-        // Score for id1: (1/(60+1) + 1/(60+5)) / 2
-        // id3 appears in full-text (rank 5 in semantic fallback, rank 2 in full-text)
-        // Score for id3: (1/(60+5) + 1/(60+2)) / 2
-
-        // Scores comparison:
-        // id2: 0.5 * (1/62 + 1/61) = 0.5 * (0.016129 + 0.016393) = 0.01626
-        // id1: 0.5 * (1/61 + 1/65) = 0.5 * (0.016393 + 0.015384) = 0.01588
-        // id3: 0.5 * (1/65 + 1/62) = 0.5 * (0.015384 + 0.016129) = 0.01575
+        // A lane that did not rank a chunk contributes nothing for it — no fallback rank.
+        // id2 appears in both (rank 2 semantic, rank 1 full-text): 0.5 * (1/62 + 1/61) = 0.016261
+        // id1 appears in semantic only (rank 1): 0.5 * (1/61 + 0) = 0.008197
+        // id3 appears in full-text only (rank 2): 0.5 * (0 + 1/62) = 0.008065
         // Order should be id2 (rank 1), id1 (rank 2), id3 (rank 3)
         assertThat(results.get(0).getRow().id()).isEqualTo(id2);
         assertThat(results.get(0).getRrfRank()).isEqualTo(1);
@@ -72,20 +64,100 @@ public class RrfFuserTest {
         // id2 is top full-text match (rank 1).
         List<ChunkRow> fulltext = List.of(createMockRow(id2, "fulltext-top"));
 
-        List<RrfFuser.IntermediateRrfResult> results = fuser.fuse(semantic, fulltext, 2, 2);
+        List<RrfFuser.IntermediateRrfResult> results = fuser.fuse(semantic, fulltext);
 
         // id1 score should be weighted much higher by semantic weight 2.0
-        // id1: (2.0 * (1/61) + 0.5 * (1/62)) / 2.5
-        // id2: (2.0 * (1/62) + 0.5 * (1/61)) / 2.5
+        // id1: (2.0 * (1/61) + 0) / 2.5 = 0.013115
+        // id2: (0 + 0.5 * (1/61)) / 2.5 = 0.003279
         assertThat(results.get(0).getRow().id()).isEqualTo(id1);
         assertThat(results.get(1).getRow().id()).isEqualTo(id2);
+    }
+
+    /**
+     * The defect this pins: a chunk absent from a lane used to be charged that lane's requested
+     * pool size as its rank, so the penalty scaled with the OTHER lane's pool rather than with
+     * anything about relevance. With the production pools (semantic 12, full-text 30) missing from
+     * full-text cost rank 30 while missing from semantic cost only 12, so a BM25-only hit outranked
+     * a vector-only hit at the same in-lane rank — measured live, the best possible semantic-only
+     * chunk could not enter the top 14 of fusion however relevant it was. Worse, the direction
+     * flipped with page size, because {@code semanticLimit} is derived from the request while the
+     * BM25 pool was a constant. Canonical RRF sums only over the lanes that actually ranked the
+     * document, which makes the two lanes symmetric by construction.
+     */
+    @Test
+    public void aRowFoundByOneLaneScoresTheSameWhicheverLaneFoundIt() {
+        RrfFuser fuser = new RrfFuser(60, 1.0, 1.0);
+
+        UUID semOnly = UUID.randomUUID();
+        UUID ftOnly = UUID.randomUUID();
+
+        List<RrfFuser.IntermediateRrfResult> results = fuser
+            .fuse(List.of(createMockRow(semOnly, "sem")), List.of(createMockRow(ftOnly, "ft")));
+
+        assertThat(scoreOf(results, semOnly)).isEqualTo(scoreOf(results, ftOnly));
+    }
+
+    /**
+     * Cross-lane agreement is the one signal fusion adds over either lane alone, and it should be
+     * worth something: under the old fallback a both-lane row led a single-lane rank-1 row by ~8%,
+     * because the phantom term handed the single-lane row most of a second lane's credit. It is now
+     * ~2x. That matters most where agreement is rarest — the measured corpus overlapped on 1 of 42
+     * candidates.
+     */
+    @Test
+    public void aRowFoundByBothLanesOutranksEitherSingleLaneRow() {
+        RrfFuser fuser = new RrfFuser(60, 1.0, 1.0);
+
+        UUID both = UUID.randomUUID();
+        UUID semOnly = UUID.randomUUID();
+        UUID ftOnly = UUID.randomUUID();
+
+        // `both` is rank 2 in each lane — beaten on rank in both, yet it must still lead.
+        List<RrfFuser.IntermediateRrfResult> results =
+            fuser.fuse(List.of(createMockRow(semOnly, "s"), createMockRow(both, "b")),
+                List.of(createMockRow(ftOnly, "f"), createMockRow(both, "b")));
+
+        assertThat(results.get(0).getRow().id()).isEqualTo(both);
+        assertThat(scoreOf(results, both)).isGreaterThan(scoreOf(results, semOnly));
+        assertThat(scoreOf(results, both)).isGreaterThan(scoreOf(results, ftOnly));
+    }
+
+    /**
+     * Symmetry makes exact ties systematic rather than accidental, so the tie-break becomes
+     * load-bearing. The previous sort fell through to {@code HashMap} iteration order — arbitrary,
+     * and unstable as soon as the id set changes. Ordering by id is equally arbitrary with respect
+     * to relevance (an exact tie IS a genuine tie) but it is total and reproducible, which is the
+     * property a caller can rely on.
+     */
+    @Test
+    public void exactTiesResolveByIdSoTheOrderIsReproducible() {
+        RrfFuser fuser = new RrfFuser(60, 1.0, 1.0);
+
+        // Both ids are chosen with a zero high half: UUID.compareTo compares mostSigBits as a
+        // SIGNED long, so `ffffffff-...` (-1) would sort BEFORE `00000000-...` (0) and an id pair
+        // picked by string-lexicographic intuition asserts the wrong winner.
+        UUID low = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID high = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+        // `high` tops the semantic lane, `low` tops the full-text lane: identical scores.
+        List<RrfFuser.IntermediateRrfResult> results =
+            fuser.fuse(List.of(createMockRow(high, "s")), List.of(createMockRow(low, "f")));
+
+        assertThat(results.get(0).getRrfScore()).isEqualTo(results.get(1).getRrfScore());
+        assertThat(results.get(0).getRow().id()).isEqualTo(low);
+        assertThat(results.get(0).getRrfRank()).isEqualTo(1);
+    }
+
+    private double scoreOf(List<RrfFuser.IntermediateRrfResult> results, UUID id) {
+        return results.stream().filter(r -> r.getRow().id().equals(id)).findFirst().orElseThrow()
+            .getRrfScore();
     }
 
     @Test
     public void testRrfFusionEmptyLanes() {
         RrfFuser fuser = new RrfFuser(60, 1.0, 1.0);
         List<RrfFuser.IntermediateRrfResult> results =
-            fuser.fuse(Collections.emptyList(), Collections.emptyList(), 10, 10);
+            fuser.fuse(Collections.emptyList(), Collections.emptyList());
         assertThat(results).isEmpty();
     }
 

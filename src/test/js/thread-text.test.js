@@ -191,8 +191,15 @@ describe('chatInputDefaultPlaceholder', () => {
             'Add your question for "mystery"...');
     });
 
-    test('uses the generic hint when no playbook is active', () => {
-        assert.match(chatInputDefaultPlaceholder(null, prompts), /^Ask a question/);
+    // Pins the wording, not just the opening words. The same sentence is ALSO hardcoded in
+    // chat/thread.html (the server renders it on first paint; this function restores it when the
+    // active playbook is cleared), and nothing else ties the two copies together — an assertion of
+    // /^Ask a question/ passed whatever the rest of the sentence said, including the old "select a
+    // skill", which was the product's only remaining use of that word.
+    test('uses the generic hint when no playbook is active, naming the playbook picker', () => {
+        assert.equal(chatInputDefaultPlaceholder(null, prompts),
+            'Ask a question… (type "/" or click "+" to select a playbook, '
+            + 'Shift + Enter for new line, Enter to send)');
     });
 
     test('survives an absent prompt list', () => {

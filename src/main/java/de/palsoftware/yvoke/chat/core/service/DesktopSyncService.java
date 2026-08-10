@@ -23,6 +23,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.util.HashMap;
 
 @Service
 public class DesktopSyncService {
@@ -113,13 +114,13 @@ public class DesktopSyncService {
 
     @Transactional
     public void updateConversation(UUID conversationId, User user, String title,
-        java.util.Map<String, Object> settings) {
+        Map<String, Object> settings) {
         verifyOwnership(conversationId, user);
         if (title != null && !title.isBlank()) {
             conversationRepository.updateTitle(conversationId, title.trim());
         }
         if (settings != null && !settings.isEmpty()) {
-            java.util.Map<String, Object> mapped = new java.util.HashMap<>(settings);
+            Map<String, Object> mapped = new HashMap<>(settings);
             if (mapped.containsKey("thinkingLevel")) {
                 mapped.put("thinking-level", mapped.remove("thinkingLevel"));
             }

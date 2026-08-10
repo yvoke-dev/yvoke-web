@@ -43,9 +43,13 @@ public class RetrievalTelemetryService {
     /**
      * Blocks until all telemetry submitted so far has been persisted. The executor is
      * single-threaded FIFO, so awaiting a no-op task implies every earlier write completed.
-     * Intended for tests that assert on retrieval_logs right after a search.
+     *
+     * <p>
+     * Used by tests that assert on retrieval_logs right after a search, and by the admin search
+     * console, which reads the row back by {@code searchId} to render its telemetry panel — without
+     * the barrier that read usually loses the race and finds nothing.
      */
-    void flush() {
+    public void flush() {
         try {
             telemetryExecutor.submit(() -> {
             }).get();
@@ -148,9 +152,18 @@ public class RetrievalTelemetryService {
                     collectionName = collectionName.split(",")[0];
                 }
                 String finalColName = collectionName.trim();
-                UUID collectionId = collectionRepository.findByName(finalColName)
-                    .map(Collection::id).orElseGet(() -> collectionRepository
-                        .create(finalColName, "Auto-created for telemetry").id());
+                // A retrieval is a READ: it must never mint corpus rows. Creating the collection
+                // here also fires trg_collections_create_chunks_partition, so an unknown or blank
+                // name (a tag-only search passes "") would materialise a real partition. Skip the
+                // telemetry row instead — losing a log line is strictly better than corrupting the
+                // corpus, and the cause belongs upstream where the bad name came from.
+                UUID collectionId =
+                    collectionRepository.findByName(finalColName).map(Collection::id).orElse(null);
+                if (collectionId == null) {
+                    log.warn("Skipping retrieval telemetry: collection '{}' does not exist",
+                        finalColName);
+                    return;
+                }
 
                 retrievalLogRepository.saveTelemetry(searchId, query, collectionId, opts.tag(),
                     poolsJson, finalJson, rerankJson, retrievedChunkIds, initialChunkIds,

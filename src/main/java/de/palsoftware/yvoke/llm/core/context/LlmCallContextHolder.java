@@ -49,17 +49,6 @@ public final class LlmCallContextHolder {
         CONTEXT.remove();
     }
 
-    public static void runWithContext(UUID conversationId, UUID messageId, UUID agentRunId,
-        UUID userId, String source, String role, Runnable action) {
-        Context previous = get();
-        try {
-            set(conversationId, messageId, agentRunId, userId, source, role);
-            action.run();
-        } finally {
-            restore(previous);
-        }
-    }
-
     public static <T> T callWithContext(UUID conversationId, UUID messageId, UUID agentRunId,
         UUID userId, String source, String role, Callable<T> action) throws Exception {
         Context previous = get();

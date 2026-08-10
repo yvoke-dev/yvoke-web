@@ -24,6 +24,7 @@ import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.openai.core.http.StreamResponse;
 
 public class OpenRouterLlmClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(OpenRouterLlmClient.class);
@@ -95,7 +96,7 @@ public class OpenRouterLlmClient implements LlmClient {
         log.info("Sending streaming request to OpenRouter: model={}", request.model());
         ChatCompletionCreateParams params = buildCreateParams(request, true);
 
-        try (com.openai.core.http.StreamResponse<ChatCompletionChunk> stream =
+        try (StreamResponse<ChatCompletionChunk> stream =
             client.chat().completions().createStreaming(params)) {
             stream.stream().forEach(chunk -> {
                 if (Thread.currentThread().isInterrupted()) {

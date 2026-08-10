@@ -14,10 +14,13 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogDetails;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
+import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryRow;
+import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +34,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.hamcrest.Matchers;
 
 /**
  * Full Thymeleaf render coverage for the RAG admin pages after the DTO-at-boundary refactor
@@ -79,22 +83,29 @@ public class RagAdminRenderingIT {
 
     @Test
     public void searchConsoleRendersSearchResultDtos() throws Exception {
-        HybridSearchResult result = new HybridSearchResult(UUID.randomUUID(), UUID.randomUUID(),
+        UUID chunkId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        HybridSearchResult result = new HybridSearchResult(chunkId, UUID.randomUUID(),
             "chunk body text for render", List.of("Introduction"), "Introduction", 1, 0, "9.3",
             "Doc Title", "standard", COLLECTION, Map.of(), 0.9876, new TelemetryInfo(true, false, 5, 0, 1));
-        when(hybridSearch.search(anyString(), any())).thenReturn(List.of(result));
-        // The (Group-B) telemetry panel renders alongside results and reads these keys — supply a
-        // realistic row so the render exercises the SearchResultView section under test.
-        when(retrievalLogRepository.findLatestTelemetry(anyString())).thenReturn(List.of(Map.of(
-            "pools_text", "{\"sem\": 5, \"ft\": 3}",
-            "final_text", "{\"n\": 8, \"both\": 2, \"sem_only\": 3, \"ft_only\": 3}",
-            "rerank_text",
-            "{\"promotions\": 1, \"top1_changed\": false, \"avg_disp\": 0.5, \"rrf_order\": \"[]\"}")));
+        UUID searchId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any()))
+            .thenReturn(new SearchWithId(List.of(result), searchId));
+        // The telemetry panel renders alongside results and reads these keys — supply a realistic
+        // row so the render exercises the SearchResultView section under test AND the lane-trace
+        // block, whose stage snapshots must satisfy initial.length == sem + ft to produce a trace.
+        when(retrievalLogRepository.findTelemetryById(any())).thenReturn(Optional.of(
+            new RetrievalTelemetryRow("{\"sem\": 5, \"ft\": 3}",
+                "{\"n\": 8, \"both\": 2, \"sem_only\": 3, \"ft_only\": 3}",
+                "{\"promotions\": 1, \"top1_changed\": false, \"avg_disp\": 0.5, \"rrf_order\": \"[]\"}",
+                1, 1, List.of(chunkId, otherId), List.of(chunkId, otherId), List.of(chunkId))));
 
         mockMvc.perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
                 .param("tag", "all").param("semantic", "true").param("fulltext", "true").with(admin()))
             .andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("chunk body text for render")));
+            .andExpect(content().string(Matchers.containsString("chunk body text for render")))
+            .andExpect(content().string(Matchers.containsString("Returned Rows by Lane")))
+            .andExpect(content().string(Matchers.containsString("fused candidates")));
     }
 
     @Test
@@ -106,13 +117,14 @@ public class RagAdminRenderingIT {
         HybridSearchResult result = new HybridSearchResult(UUID.randomUUID(), UUID.randomUUID(),
             "results without telemetry", List.of("Introduction"), "Introduction", 1, 0, "9.3",
             "Doc Title", "standard", COLLECTION, Map.of(), 0.5, new TelemetryInfo(false, false, 5, 0, 1));
-        when(hybridSearch.search(anyString(), any())).thenReturn(List.of(result));
-        when(retrievalLogRepository.findLatestTelemetry(anyString())).thenReturn(List.of());
+        when(hybridSearch.searchWithId(anyString(), any()))
+            .thenReturn(new SearchWithId(List.of(result), UUID.randomUUID()));
+        when(retrievalLogRepository.findTelemetryById(any())).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
                 .param("tag", "all").param("semantic", "true").param("fulltext", "true").with(admin()))
             .andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("results without telemetry")));
+            .andExpect(content().string(Matchers.containsString("results without telemetry")));
     }
 
     @Test
@@ -125,6 +137,6 @@ public class RagAdminRenderingIT {
 
         mockMvc.perform(get("/admin/logs").with(admin())).andExpect(status().isOk())
             .andExpect(content().string(
-                org.hamcrest.Matchers.containsString("the retrieval message content")));
+                Matchers.containsString("the retrieval message content")));
     }
 }

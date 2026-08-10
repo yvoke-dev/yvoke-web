@@ -198,5 +198,5 @@ export function chatInputDefaultPlaceholder(activePlaybookName, prompts) {
         const title = playbookObj ? playbookObj.title : activePlaybookName;
         return `Add your question for "${title}"...`;
     }
-    return 'Ask a question… (type "/" or click "+" to select a skill, Shift + Enter for new line, Enter to send)';
+    return 'Ask a question… (type "/" or click "+" to select a playbook, Shift + Enter for new line, Enter to send)';
 }

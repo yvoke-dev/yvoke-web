@@ -241,6 +241,25 @@ public class JobRepository {
             .update();
     }
 
+    /**
+     * Re-queues ONE job that was reserved but never actually started (an executor rejection). It is
+     * deliberately not {@link #requeueOrphans()}: that has no id predicate, so using it here would
+     * flip every currently-executing job back to {@code queued} while its thread is still running,
+     * and the next poll tick would claim those rows a second time — two workers on one job, which
+     * the whole claim protocol exists to prevent. Scoped to {@code running} so it cannot resurrect
+     * a job an admin cancelled in the meantime.
+     */
+    public int requeueJob(UUID id) {
+        return jdbcClient.sql("""
+            UPDATE ingestion_jobs
+            SET status = 'queued',
+                step = NULL,
+                started_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id AND status = 'running'
+            """).param("id", id).update();
+    }
+
     public int requeueOrphans() {
         String sql = """
             UPDATE ingestion_jobs

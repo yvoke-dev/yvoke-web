@@ -28,6 +28,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.hamcrest.Matchers;
 
 /**
  * The feedback dashboard's two htmx write cells and its filter/sort controls.
@@ -143,7 +144,7 @@ public class AdminFeedbackWriteIT {
             .perform(post("/admin/feedback/" + feedbackId + "/notes").with(csrf()).with(admin())
                 .param("notes", "Chased with the author.").header("HX-Request", "true"))
             .andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("Chased with")));
+            .andExpect(content().string(Matchers.containsString("Chased with")));
 
         assertThat(jdbcTemplate.queryForObject("SELECT notes FROM message_feedback WHERE id = ?",
             String.class, feedbackId)).isEqualTo("Chased with the author.");

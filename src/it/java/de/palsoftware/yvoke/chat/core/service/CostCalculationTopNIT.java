@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import de.palsoftware.yvoke.llm.core.model.GatewayCacheStatus;
 
 /**
  * Characterization coverage for the cost dashboard's top-N methods
@@ -136,6 +137,121 @@ public class CostCalculationTopNIT {
             .filter(r -> PROFILE.equals(r.profileName())).findFirst().orElseThrow();
         assertThat(p.totalTokens()).isEqualTo(2000);
         assertThat(p.estimatedCostUsd()).isEqualByComparingTo("0.001000");
+    }
+
+    /**
+     * The dashboard's gateway-cache rule is not implemented once — it is implemented once per
+     * query. {@code topUserTokenRows}, {@code topConversationTokenRows} and
+     * {@code masProfileTokenRows} are three separate statements, each of which has to carry
+     * {@code l.gateway_cache_status} in its SELECT <b>and</b> its GROUP BY so the service sees a
+     * row that is uniformly replayed or uniformly forwarded. Drop it from one of them and that
+     * grouping silently merges a replay with a real call: the merged row loses the discriminator,
+     * {@code isReplayed} returns false, and the tab charges list price for tokens the provider was
+     * never asked to produce — while every other tab still reports zero, so the dashboard
+     * disagrees with itself and with the persisted ledger, and nothing fails. The existing
+     * {@code aGatewayReplayedCallContributesTokensButNoCostToTheTopNTabs} covers only the
+     * top-USERS query, so the MAS-profile and top-conversation statements can regress
+     * independently and unnoticed. Seeding one REPLAYED and one FORWARDED call with identical
+     * tokens and model makes the loss unambiguous: any view that prices them the same has dropped
+     * the column. Tokens must still be counted for both — a replay is free, not absent.
+     */
+    @Test
+    void aReplayedCallIsFreeOnTheMasProfileAndTopConversationTabs() {
+        UUID user5 = createUser("oim-topn-u5@example.com", "TopN User Five");
+        UUID conv5 = UUID.randomUUID();
+        conversationRepository.create(conv5, user5, "OIM-TOPN-C5", Map.of(), "web");
+        UUID runId = UUID.randomUUID();
+        String profile = "OIM-TOPN-PROFILE-CACHE-" + UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO agent_runs (id, conversation_id, profile_name, status) VALUES (?, ?, ?, ?)",
+            runId, conv5, profile, "completed");
+
+        // Same shape twice under the same run: only the forwarded call ever reached the provider.
+        insertCall(conv5, user5, runId, 1000, 500, 0, 0, "REPLAYED");
+        insertCall(conv5, user5, runId, 1000, 500, 0, 0, "FORWARDED");
+
+        // 1000 prompt @0.50/M = 0.000500 + 500 completion @1.50/M = 0.000750 -> 0.001250.
+        CostCalculationService.MasProfileCostRow masRow =
+            costCalculationService.getMasProfilesByCost(null, null).stream()
+                .filter(r -> profile.equals(r.profileName())).findFirst().orElseThrow();
+        assertThat(masRow.totalTokens())
+            .as("both exchanges are real and must still be counted on the MAS-profile tab")
+            .isEqualTo(3000L);
+        assertThat(masRow.estimatedCostUsd())
+            .as("only the forwarded call was billed")
+            .isEqualByComparingTo(new BigDecimal("0.001250"));
+
+        CostCalculationService.ConversationCostRow convRow =
+            costCalculationService.getTopConversationsByCost(null, null, 1000).stream()
+                .filter(r -> r.conversationId().equals(conv5)).findFirst().orElseThrow();
+        assertThat(convRow.totalTokens())
+            .as("and the same two calls on the top-conversation tab").isEqualTo(3000L);
+        assertThat(convRow.estimatedCostUsd())
+            .as("which is a different query and can lose the discriminator on its own")
+            .isEqualByComparingTo(new BigDecimal("0.001250"));
+    }
+
+    /**
+     * The three per-entity summaries — {@code calculateCostByAgentRun},
+     * {@code calculateCostByConversation} and {@code calculateCostByMasProfile} — are three MORE
+     * grouped statements, each of which has to carry {@code gateway_cache_status} in its SELECT and
+     * its GROUP BY on its own. Drop it from any one of them and that view merges a replay with a
+     * real call: the merged row has no discriminator left, {@code isReplayed} returns false, and the
+     * run / conversation / MAS-profile cost card charges list price for tokens the provider was
+     * never asked to produce — while the explorer and the top-N tabs, which read different
+     * statements, keep reporting zero for exactly those calls. The dashboard then disagrees with
+     * itself and with the persisted ledger, and nothing fails: these three methods have no coverage
+     * of the gateway-cache rule at all today, and the existing replay tests exercise only the top-N
+     * queries.
+     *
+     * <p>The status is seeded through {@code GatewayCacheStatus.REPLAYED.name()} rather than the
+     * string {@code "REPLAYED"} deliberately. The read side compares the literal {@code "REPLAYED"}
+     * ({@code CostCalculationService.GATEWAY_REPLAYED}) against a value the write side derives from
+     * the enum, the column has no CHECK constraint, and nothing links the two — so renaming the enum
+     * constant compiles, starts cleanly, and silently makes every replayed call billable again.
+     * Going through the enum here is what makes that rename red.
+     */
+    @Test
+    void aReplayedGatewayCallIsFreeOnTheAgentRunConversationAndProfileSummariesToo() {
+        UUID user6 = createUser("oim-topn-u6@example.com", "TopN User Six");
+        UUID conv6 = UUID.randomUUID();
+        conversationRepository.create(conv6, user6, "OIM-TOPN-C6", Map.of(), "web");
+        UUID runId = UUID.randomUUID();
+        String profile = "OIM-TOPN-PROFILE-SUMMARY-" + UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO agent_runs (id, conversation_id, profile_name, status) VALUES (?, ?, ?, ?)",
+            runId, conv6, profile, "completed");
+
+        // The same exchange twice under one run / conversation / profile; only one of them was ever
+        // forwarded to the provider, so only one of them was paid for.
+        insertCall(conv6, user6, runId, 1000, 500, 0, 0, GatewayCacheStatus.REPLAYED.name());
+        insertCall(conv6, user6, runId, 1000, 500, 0, 0, GatewayCacheStatus.FORWARDED.name());
+
+        // 1000 prompt @0.50/M = 0.000500 + 500 completion @1.50/M = 0.000750, charged once.
+        BigDecimal billedOnce = new BigDecimal("0.001250");
+
+        CostCalculationService.CostReport run =
+            costCalculationService.calculateCostByAgentRun(runId);
+        assertThat(run.totalPromptTokens())
+            .as("both exchanges are real and must still be counted").isEqualTo(2000L);
+        assertThat(run.totalCompletionTokens()).isEqualTo(1000L);
+        assertThat(run.estimatedCostUsd()).as("only the forwarded call was billed")
+            .isEqualByComparingTo(billedOnce);
+        assertThat(run.breakdowns())
+            .as("the replayed/forwarded split is merged back into one row per model").hasSize(1);
+
+        CostCalculationService.CostReport conv =
+            costCalculationService.calculateCostByConversation(conv6, null, null);
+        assertThat(conv.totalPromptTokens()).isEqualTo(2000L);
+        assertThat(conv.estimatedCostUsd())
+            .as("a separate statement, which can lose the discriminator on its own")
+            .isEqualByComparingTo(billedOnce);
+
+        CostCalculationService.CostReport mas =
+            costCalculationService.calculateCostByMasProfile(profile, null, null);
+        assertThat(mas.totalPromptTokens()).isEqualTo(2000L);
+        assertThat(mas.estimatedCostUsd()).as("and so can the profile join")
+            .isEqualByComparingTo(billedOnce);
     }
 
     // ---- helpers ----

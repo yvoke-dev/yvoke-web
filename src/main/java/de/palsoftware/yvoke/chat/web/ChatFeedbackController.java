@@ -27,11 +27,13 @@ public class ChatFeedbackController {
      * in.
      *
      * <p>
-     * Two shapes of request arrive here. Submitting the comment form writes a row. Clicking a thumb
-     * sends only a rating: if a row already exists the rating is updated and the stored comment
-     * kept, otherwise nothing is persisted and the vote is shown as transient UI state (the comment
-     * is what creates the row). Either way the caller is authorized for the message first, so an id
-     * they don't own is rejected rather than reflected.
+     * Two shapes of request arrive here, and BOTH write a row. Submitting the comment form stores
+     * rating and comment together. Clicking a thumb sends only a rating: an existing row is updated
+     * with its stored comment kept, and where no row exists yet one is created with a null comment
+     * — a bare thumb is never discarded, so the interface cannot show a vote the server did not
+     * save. An empty result is therefore a failed write and throws, rather than being papered over
+     * with a synthetic row that renders as if it had persisted. Either way the caller is authorized
+     * for the message first, so an id they don't own is rejected rather than reflected.
      */
     @PostMapping("/message/{messageId}/feedback")
     public String submitFeedback(@PathVariable UUID messageId, @RequestParam("rating") int rating,
@@ -57,8 +59,12 @@ public class ChatFeedbackController {
                 .orElseThrow(() -> new IllegalStateException(
                     "feedback for message " + messageId + " was not persisted"));
         } else {
+            // Always persisted now, including a bare first rating — so an empty result means the
+            // write did not land, and must surface rather than be papered over with a synthetic row
+            // that renders as though it had. Matches the commented branch above.
             feedback = chatFeedbackService.submitRatingPreservingComment(messageId, rating)
-                .orElseGet(() -> new Feedback(null, messageId, rating, null, null, null));
+                .orElseThrow(() -> new IllegalStateException(
+                    "rating for message " + messageId + " was not persisted"));
         }
 
         model.addAttribute("messageId", messageId);

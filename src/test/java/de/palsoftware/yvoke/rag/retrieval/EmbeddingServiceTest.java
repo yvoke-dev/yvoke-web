@@ -6,6 +6,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +18,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import java.util.ArrayList;
+import org.mockito.Mockito;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.test.web.client.response.MockRestResponseCreators;
+import org.springframework.web.client.HttpServerErrorException;
 
 public class EmbeddingServiceTest {
 
@@ -130,16 +141,14 @@ public class EmbeddingServiceTest {
             .andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
-        float[] result =
-            embeddingService.embed(new org.springframework.ai.document.Document("doc text"));
+        float[] result = embeddingService.embed(new Document("doc text"));
         assertThat(result).containsExactly(0.7f, 0.8f);
         server.verify();
     }
 
     @Test
     public void testEmbedNullDocument() {
-        assertThatThrownBy(
-            () -> embeddingService.embed((org.springframework.ai.document.Document) null))
+        assertThatThrownBy(() -> embeddingService.embed((Document) null))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -164,8 +173,8 @@ public class EmbeddingServiceTest {
             .andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
-        org.springframework.ai.embedding.EmbeddingResponse response = embeddingService.call(
-            new org.springframework.ai.embedding.EmbeddingRequest(List.of("call text"), null));
+        EmbeddingResponse response =
+            embeddingService.call(new EmbeddingRequest(List.of("call text"), null));
 
         assertThat(response).isNotNull();
         assertThat(response.getResults()).hasSize(1);
@@ -177,11 +186,10 @@ public class EmbeddingServiceTest {
     public void testEmbedServerError() {
         server.expect(requestTo("https://api.voyageai.com/v1/embeddings"))
             .andExpect(method(HttpMethod.POST))
-            .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
-                .withServerError());
+            .andRespond(MockRestResponseCreators.withServerError());
 
         assertThatThrownBy(() -> embeddingService.embed("error query"))
-            .isInstanceOf(org.springframework.web.client.HttpServerErrorException.class);
+            .isInstanceOf(HttpServerErrorException.class);
         server.verify();
     }
 
@@ -201,7 +209,7 @@ public class EmbeddingServiceTest {
     public void testEmbedBatchChunkingSplitsLargeBatch() {
         // Create texts exceeding MAX_BATCH_SIZE (128)
         int totalTexts = EmbeddingService.MAX_BATCH_SIZE + 5; // 133 texts
-        List<String> texts = new java.util.ArrayList<>();
+        List<String> texts = new ArrayList<>();
         for (int i = 0; i < totalTexts; i++) {
             texts.add("text_" + i);
         }
@@ -246,10 +254,72 @@ public class EmbeddingServiceTest {
         server.verify();
     }
 
+    /**
+     * {@code embedBatch} splits on TWO independent budgets — at most 128 texts, and at most ~400k
+     * characters per request. Only the count budget has ever been tested.
+     *
+     * <p>
+     * The character budget is the one that actually fires in this corpus. A hierarchical section or
+     * a Confluence page with tables runs to tens of thousands of characters, so a batch reaches the
+     * provider's payload/token ceiling long before it reaches 128 items — the count check alone
+     * would happily post a single multi-megabyte request. What comes back is not a clean failure
+     * this class would surface either: the provider rejects the batch, {@code doEmbedBatch} throws,
+     * and the whole ingest job dies at the embed step with a transport error that says nothing
+     * about size — for the largest, most valuable documents in the corpus, and only for those, so
+     * it reads as "that document is cursed" rather than "the batch was too big".
+     *
+     * <p>
+     * Order is asserted alongside the split because the two are the same guarantee. The caller
+     * ({@code persistDocument}) zips the returned vectors against its sections BY INDEX, so a split
+     * that returns the batches out of order, or drops the per-response index sort, attaches every
+     * vector to the wrong chunk. Nothing fails: the count still matches, the job completes, and the
+     * corpus simply retrieves the wrong passages forever. The second response below deliberately
+     * lists index 1 before index 0 so the per-batch sort is exercised rather than assumed.
+     *
+     * <p>
+     * {@code testEmbedBatchChunkingSplitsLargeBatch} uses 133 short texts and
+     * {@code testEmbedBatchNoChunkingWithinLimit} exactly 128, so both stay far inside the
+     * character budget: the entire clause can be deleted and both remain green.
+     */
+    @Test
+    public void embedBatchSplitsOnTheCharacterBudgetNotOnlyOnTheBatchSize() {
+        // Four texts — nowhere near MAX_BATCH_SIZE — but 600k characters in total, so the split can
+        // only come from the character budget.
+        List<String> texts = List.of("a".repeat(150_000), "b".repeat(150_000), "c".repeat(150_000),
+            "d".repeat(150_000));
+
+        String firstBatch = "{\"object\":\"list\",\"data\":["
+            + "{\"object\":\"embedding\",\"embedding\":[1.0],\"index\":0},"
+            + "{\"object\":\"embedding\",\"embedding\":[2.0],\"index\":1}"
+            + "],\"model\":\"voyage-4-large\",\"usage\":{\"total_tokens\":100}}";
+        // Out of index order on purpose: the response order must not become the result order.
+        String secondBatch = "{\"object\":\"list\",\"data\":["
+            + "{\"object\":\"embedding\",\"embedding\":[4.0],\"index\":1},"
+            + "{\"object\":\"embedding\",\"embedding\":[3.0],\"index\":0}"
+            + "],\"model\":\"voyage-4-large\",\"usage\":{\"total_tokens\":100}}";
+
+        server.expect(requestTo("https://api.voyageai.com/v1/embeddings"))
+            .andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess(firstBatch, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.voyageai.com/v1/embeddings"))
+            .andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess(secondBatch, MediaType.APPLICATION_JSON));
+
+        List<float[]> results = embeddingService.embedBatch(texts);
+
+        // Two requests, not one: server.verify() fails on an unconsumed expectation.
+        server.verify();
+        assertThat(results).hasSize(4);
+        assertThat(results.get(0)).containsExactly(1.0f);
+        assertThat(results.get(1)).containsExactly(2.0f);
+        assertThat(results.get(2)).containsExactly(3.0f);
+        assertThat(results.get(3)).containsExactly(4.0f);
+    }
+
     @Test
     public void testEmbedBatchNoChunkingWithinLimit() {
         // Exactly MAX_BATCH_SIZE texts — should be a single API call
-        List<String> texts = new java.util.ArrayList<>();
+        List<String> texts = new ArrayList<>();
         for (int i = 0; i < EmbeddingService.MAX_BATCH_SIZE; i++) {
             texts.add("text_" + i);
         }
@@ -276,8 +346,7 @@ public class EmbeddingServiceTest {
 
     @Test
     public void testEmbed_publishesModelUsageEvent() {
-        org.springframework.context.ApplicationEventPublisher mockPublisher =
-            org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
+        ApplicationEventPublisher mockPublisher = Mockito.mock(ApplicationEventPublisher.class);
 
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
@@ -310,15 +379,65 @@ public class EmbeddingServiceTest {
         assertThat(result).containsExactly(0.1f, 0.2f);
         mockServer.verify();
 
-        org.mockito.Mockito.verify(mockPublisher)
-            .publishEvent(new de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent("embedding",
-                "embedding", "voyage-4-large", 12, 0, 0, 0));
+        Mockito.verify(mockPublisher).publishEvent(
+            new LlmCallLoggedEvent("embedding", "embedding", "voyage-4-large", 12, 0, 0, 0));
+    }
+
+    /**
+     * Voyage does not always return a {@code usage} block, and the embedding rows this event
+     * creates in {@code llm_call_logs} are what the cost dashboard prices. A call logged with zero
+     * tokens is a call the dashboard values at $0 — so a corpus re-embed, which is hundreds of
+     * thousands of chunks and one of the larger line items in the month, would silently vanish from
+     * every report while the invoice does not. There is no error and no gap in the data to notice:
+     * the rows are all there, just free.
+     *
+     * <p>
+     * The estimate is deliberately per-text and floored at one token rather than computed over the
+     * concatenated batch, because integer division would otherwise round a batch of short strings
+     * (titles, headings, entity names — a large share of what this corpus embeds) down to zero and
+     * reproduce the same $0 outcome by a different route. Every sibling test in this file feeds a
+     * response that DOES carry {@code usage.total_tokens}, so the fallback branch is never executed
+     * by the suite today and could be deleted outright without a single test going red.
+     */
+    @Test
+    public void embeddingUsageFallsBackToACharacterEstimateWhenVoyageOmitsUsage() {
+        ApplicationEventPublisher mockPublisher = mock(ApplicationEventPublisher.class);
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
+        EmbeddingService serviceWithPublisher = new EmbeddingService(builder, "mock-key",
+            "voyage-4-large", "https://api.voyageai.com/v1", mockPublisher);
+
+        // No "usage" member at all — the shape that triggers the estimate.
+        String jsonResponse = """
+            {
+              "object": "list",
+              "data": [
+                {"object": "embedding", "embedding": [0.1, 0.2], "index": 0},
+                {"object": "embedding", "embedding": [0.3, 0.4], "index": 1}
+              ],
+              "model": "voyage-4-large"
+            }
+            """;
+
+        mockServer.expect(requestTo("https://api.voyageai.com/v1/embeddings"))
+            .andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+
+        LlmCallContextHolder.clear();
+        List<float[]> results = serviceWithPublisher.embedBatch(List.of("abcdefgh", "ab"));
+
+        assertThat(results).hasSize(2);
+        mockServer.verify();
+
+        // "abcdefgh" -> 8 / 4 = 2; "ab" -> max(1, 0) = 1. Three prompt tokens, nothing else billed.
+        verify(mockPublisher).publishEvent(
+            new LlmCallLoggedEvent("embedding", "embedding", "voyage-4-large", 3, 0, 0, 0));
     }
 
     @Test
     public void testEmbed_publishesModelUsageEventWithContext() {
-        org.springframework.context.ApplicationEventPublisher mockPublisher =
-            org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
+        ApplicationEventPublisher mockPublisher = Mockito.mock(ApplicationEventPublisher.class);
 
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
@@ -358,8 +477,7 @@ public class EmbeddingServiceTest {
 
         mockServer.verify();
 
-        org.mockito.Mockito.verify(mockPublisher)
-            .publishEvent(new de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent(convId, msgId,
-                null, null, "embedding", "embedding", "voyage-4-large", 12, 0, 0, 0));
+        Mockito.verify(mockPublisher).publishEvent(new LlmCallLoggedEvent(convId, msgId, null, null,
+            "embedding", "embedding", "voyage-4-large", 12, 0, 0, 0));
     }
 }

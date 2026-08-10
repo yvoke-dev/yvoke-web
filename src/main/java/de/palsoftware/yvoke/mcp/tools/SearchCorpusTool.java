@@ -29,18 +29,26 @@ public class SearchCorpusTool {
      */
     private final int defaultLimit;
 
+    /**
+     * The ceiling {@link HybridSearch} actually applies. Read here too so the truncation notice
+     * compares against the limit that ran rather than the one the caller asked for.
+     */
+    private final int maxLimit;
+
     public SearchCorpusTool(HybridSearch hybridSearch, CollectionService collectionService,
-        @Value("${app.retrieval.default-limit}") int defaultLimit) {
+        @Value("${app.retrieval.default-limit}") int defaultLimit,
+        @Value("${app.retrieval.max-limit}") int maxLimit) {
         this.hybridSearch = hybridSearch;
         this.collectionService = collectionService;
         this.defaultLimit = defaultLimit;
+        this.maxLimit = maxLimit;
     }
 
     /**
      * @param limit max chunks to return; {@code null} leaves {@code app.retrieval.default-limit} in
      *        effect. Deliberately not defaulted here — that property is the single source of truth
-     *        and is shared with the chat retrieval path. {@link SearchOptions} floors it at 1 and
-     *        caps it at its own {@code MAX_LIMIT}.
+     *        and is shared with the chat retrieval path. {@link SearchOptions} floors it at 1;
+     *        {@link HybridSearch} caps it at {@code app.retrieval.max-limit}.
      */
     public String searchCorpus(String query, String collection, @Nullable String tag,
         @Nullable Integer limit, @Nullable AgenticChatContext context) {
@@ -78,7 +86,10 @@ public class SearchCorpusTool {
             }
         }
 
-        List<String> cols = List.of(col);
+        // The stored name, not the caller's spelling: the match above is case-insensitive but
+        // ChunkRepository.resolveCollectionIds is `WHERE name IN (:names)` (case-sensitive), so
+        // forwarding `col` would resolve to zero ids and search an existing collection for nothing.
+        List<String> cols = List.of(matchedCol.name());
         List<String> tagList = (parsedTag != null) ? List.of(parsedTag) : List.of();
         boolean rrk = true;
 
@@ -106,7 +117,11 @@ public class SearchCorpusTool {
             // raising the ceiling only moves the silent cliff. Sections routinely exceed it — the
             // Release Notes' "Known issues" is 22 part-chunks — so an unlabelled full page gets
             // enumerated as if it were everything.
-            int effectiveLimit = (opts.limit() != null) ? opts.limit() : defaultLimit;
+            // The caller's number is a request, not the limit that ran: HybridSearch clamps it to
+            // app.retrieval.max-limit. Comparing against the caller's original figure would call a
+            // genuinely truncated page complete.
+            int effectiveLimit =
+                Math.min((opts.limit() != null) ? opts.limit() : defaultLimit, maxLimit);
             String truncation = (chunks.size() >= effectiveLimit) ? "\n\n_(showing " + chunks.size()
                 + " chunks — the result is capped and more may match. Raise `limit` or narrow "
                 + "the query; for a whole section use `get_section`.)_" : "";

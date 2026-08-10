@@ -16,10 +16,13 @@ import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import java.sql.Array;
+import org.assertj.core.data.Offset;
 
 @SpringBootTest
 public class HybridSearchIT {
@@ -35,6 +38,9 @@ public class HybridSearchIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private RetrievalLogRepository retrievalLogRepository;
 
     @MockitoBean
     private EmbeddingService embeddingService;
@@ -139,7 +145,7 @@ public class HybridSearchIT {
         assertThat(results).isNotEmpty();
         // Since we filtered for COLLECTION, Chunk 1 should be the top match (distance = 0.0, score = 1.0)
         assertThat(results.get(0).id()).isEqualTo(chunkId1);
-        assertThat(results.get(0).score()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(0.01));
+        assertThat(results.get(0).score()).isCloseTo(1.0, Offset.offset(0.01));
         assertThat(results.get(0).telemetry().inSem()).isTrue();
         assertThat(results.get(0).telemetry().inFt()).isFalse();
         assertThat(results.get(0).telemetry().semPool()).isEqualTo(results.size());
@@ -331,9 +337,9 @@ public class HybridSearchIT {
         assertThat(logRow.get("collection_name")).isEqualTo(COLLECTION);
 
         // Verify retrieved_chunk_ids
-        java.sql.Array chunkIdsArray = (java.sql.Array) logRow.get("retrieved_chunk_ids");
+        Array chunkIdsArray = (Array) logRow.get("retrieved_chunk_ids");
         assertThat(chunkIdsArray).isNotNull();
-        java.util.UUID[] chunkIds = (java.util.UUID[]) chunkIdsArray.getArray();
+        UUID[] chunkIds = (UUID[]) chunkIdsArray.getArray();
         assertThat(chunkIds).containsExactly(chunkId2, chunkId1, chunkId3);
         
         // Verify JSON fields
@@ -341,6 +347,73 @@ public class HybridSearchIT {
         assertThat(rerankJson).contains("\"top1_changed\": true");
         assertThat(rerankJson).contains("\"promotions\": 0"); 
         assertThat(rerankJson).contains("\"avg_disp\": 0.67"); 
+    }
+
+    /**
+     * The admin search console's lane trace is sliced out of ONE {@code retrieval_logs} row:
+     * {@code RagAdminViewService.toLaneTrace} guards on
+     * {@code initialChunkIds.size() == semPool + ftPool}, then reads {@code initial[0..semPool)} as
+     * the semantic lane and the rest as the BM25 lane. A wrong boundary from
+     * {@code findTelemetryById} fails in one of two silent ways: the guard trips and the whole lane
+     * trace vanishes from /admin/search with no error, or -- when the pools happen to sum correctly
+     * -- every chunk is attributed to the wrong lane while each rendered row still looks plausible.
+     * That trace is the only instrument for diagnosing fusion/recall problems, so mis-attribution
+     * actively misleads whoever is debugging retrieval.
+     *
+     * <p>
+     * The last assertion pins why the method exists: it replaced a
+     * {@code findLatestTelemetry(collection)} that fell back to the newest row for the collection,
+     * so (telemetry being async) the console showed the PREVIOUS search's numbers beside the
+     * current results. An unknown searchId must yield an empty Optional, never a neighbour.
+     *
+     * <p>
+     * The fixture is deliberately asymmetric -- with semantic-limit-multiplier 1.5 the vector lane
+     * asks for ceil(1.5*5)=8 and gets all 3 seeded chunks, while only chunk 1 contains "database"
+     * so the BM25 lane pool is 1. A symmetric fixture would let a sem/ft swap pass unnoticed.
+     */
+    @Test
+    public void theTelemetryReadBackByIdSplitsTheTwoLanesAtTheBoundaryTheSearchActuallyUsed() {
+        when(embeddingService.embed(anyString())).thenReturn(createMockVector(1));
+
+        SearchOptions opts = new SearchOptions(COLLECTION, 5, true, true, null, 0);
+        SearchWithId search = hybridSearch.searchWithId("database", opts);
+        List<HybridSearchResult> results = search.results();
+        assertThat(results).isNotEmpty();
+
+        // Telemetry is written on a single-threaded executor; the console flushes for the same
+        // reason before reading its row back.
+        telemetryService.flush();
+
+        RetrievalTelemetryRow row =
+            retrievalLogRepository.findTelemetryById(search.searchId()).orElseThrow();
+
+        assertThat(row.semPool()).isEqualTo(3);
+        assertThat(row.ftPool()).isEqualTo(1);
+        assertThat(row.semPool()).isEqualTo(results.get(0).telemetry().semPool());
+        assertThat(row.ftPool()).isEqualTo(results.get(0).telemetry().ftPool());
+
+        // initial_chunk_ids is the semantic ids in rank order followed by the BM25 ids in rank
+        // order, undeduped -- the concatenation boundary IS semPool.
+        assertThat(row.initialChunkIds()).hasSize(row.semPool() + row.ftPool());
+        List<UUID> semLane = row.initialChunkIds().subList(0, row.semPool());
+        List<UUID> ftLane =
+            row.initialChunkIds().subList(row.semPool(), row.semPool() + row.ftPool());
+        assertThat(semLane).containsExactlyInAnyOrder(chunkId1, chunkId2, chunkId3);
+        assertThat(ftLane).containsExactly(chunkId1);
+
+        List<UUID> ftMembers = results.stream().filter(r -> r.telemetry().inFt())
+            .map(HybridSearchResult::id).toList();
+        assertThat(ftLane).containsExactlyInAnyOrderElementsOf(ftMembers);
+
+        assertThat(row.retrievedChunkIds())
+            .containsExactlyElementsOf(results.stream().map(HybridSearchResult::id).toList());
+
+        // The guard in toLaneTrace only passes when the recorded boundary is the real one.
+        assertThat(RagAdminViewService.toLaneTrace(row, 10).fusionOrder()).isNotEmpty();
+
+        Optional<RetrievalTelemetryRow> someOtherSearch =
+            retrievalLogRepository.findTelemetryById(UUID.randomUUID());
+        assertThat(someOtherSearch).isEmpty();
     }
 
     private void insertChunkForColl(UUID id, UUID docId, String text, float[] vector, String[] headingPath, String heading, int depth, int sortOrder, String version, String srcFile, String collection) {
@@ -364,6 +437,84 @@ public class HybridSearchIT {
             }
             return null;
         });
+    }
+
+    /**
+     * Pins {@code updateMessageId}, {@code RetrievalLogDetailsMapper.mapRow} and the two-hop LEFT
+     * JOIN in {@code listLogs} together, because they only mean anything together. /admin/logs
+     * exists to answer "which retrievals produced answers the user marked bad", and the only path
+     * from a retrieval_logs row to a message_feedback row is
+     * retrieval_logs.message_id -> messages.id -> message_feedback.message_id. Break the write and
+     * the join still executes, the page still renders and every row still looks normal -- the
+     * ratings column is simply empty forever, which an operator reads as "nobody gave feedback"
+     * rather than "the link is missing", and the one signal for finding bad retrievals is gone.
+     *
+     * <p>
+     * Asserting the BEFORE state (rating null while message_id is null) and the AFTER state is what
+     * makes this a contract rather than a smoke test, and it is the first execution of mapRow's
+     * column names, its {@code getObject("feedback_rating", Integer.class)} read and
+     * {@code JdbcMappers.arrayToUuidList} against real Postgres.
+     *
+     * <p>
+     * Note {@code listLogs} selects {@code l.query AS message_content} -- the message content column
+     * carries the RETRIEVAL's query, not the message body -- so that is what is asserted here.
+     */
+    @Test
+    public void linkingARetrievalLogToItsMessageIsWhatMakesTheUsersFeedbackVisibleInTheAdminLog() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        UUID searchId = UUID.randomUUID();
+        String query = "how do I size the identity manager database connection pool?";
+        try {
+            jdbcTemplate.update(
+                "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+                userId, "oid-" + userId, "logs-it@example.com", "Logs IT");
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+                conversationId, userId, "retrieval log linking");
+            jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+                messageId, conversationId, "assistant", "Configure it in the connection string.");
+            jdbcTemplate.update(
+                "INSERT INTO message_feedback (id, message_id, rating, comment) VALUES (?, ?, ?, ?)",
+                UUID.randomUUID(), messageId, -1, "answer cited the wrong kit version");
+
+            retrievalLogRepository.saveTelemetry(searchId, query, collectionId1, "9.3",
+                "{\"sem\": 2, \"ft\": 1}", "{\"n\": 2}", "{\"promotions\": 0}",
+                List.of(chunkId1, chunkId2), List.of(chunkId1, chunkId2, chunkId1),
+                List.of(chunkId1, chunkId2), List.of(chunkId1, chunkId2));
+
+            RetrievalLogDetails before = findLoggedSearch(searchId);
+            assertThat(before.messageId()).isNull();
+            assertThat(before.feedbackRating()).isNull();
+            assertThat(before.feedbackComment()).isNull();
+
+            retrievalLogRepository.updateMessageId(searchId, messageId);
+
+            RetrievalLogDetails after = findLoggedSearch(searchId);
+            assertThat(after.messageId()).isEqualTo(messageId);
+            assertThat(after.feedbackRating()).isEqualTo(-1);
+            assertThat(after.feedbackComment()).isEqualTo("answer cited the wrong kit version");
+            assertThat(after.messageContent()).isEqualTo(query);
+            assertThat(after.collection()).isEqualTo(COLLECTION);
+            assertThat(after.tag()).isEqualTo("9.3");
+            assertThat(after.retrievedChunkIds()).containsExactly(chunkId1, chunkId2);
+        } finally {
+            // cleanup() only removes rows for this class's two collections; the chat-side rows
+            // seeded here are ours to remove (message_feedback cascades from messages, and
+            // retrieval_logs.message_id is ON DELETE SET NULL).
+            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", messageId);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", conversationId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+        }
+    }
+
+    private RetrievalLogDetails findLoggedSearch(UUID searchId) {
+        return retrievalLogRepository.listLogs(50, 0).stream()
+            .filter(l -> searchId.equals(l.id())).findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "retrieval log " + searchId + " not on the first page of listLogs"));
     }
 
     @Test

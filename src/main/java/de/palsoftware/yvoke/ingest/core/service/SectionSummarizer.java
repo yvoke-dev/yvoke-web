@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.security.concurrent.DelegatingSecurityContextExecutorService;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import java.sql.Types;
 
 @Service
 public class SectionSummarizer {
@@ -180,7 +181,7 @@ public class SectionSummarizer {
                     ps.setObject(2, documentId);
                     ps.setArray(3, ps.getConnection().createArrayOf("text", node.path.toArray()));
                     ps.setString(4, node.summary);
-                    ps.setNull(5, java.sql.Types.OTHER);
+                    ps.setNull(5, Types.OTHER);
                 }
 
                 @Override

@@ -233,8 +233,26 @@
                                     <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">Allowed Tools:</span>
                                     <span th:each="tool : ${playbook.tools}" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary);" th:text="${tool}">tool-name</span>
                                 </div>
+                                <!-- No tools selected. For a specialist (the user-facing role) this means the
+                                     playbook answers from the question alone, without searching — worth a
+                                     warning. For orchestrator/reviewer the column is not read at all, so it
+                                     is simply not applicable. This block used to read "Allowed Tools: All",
+                                     which was wrong in every case: an unset list is stored as an empty
+                                     array, and an empty allow-list grants nothing. -->
                                 <div th:if="${playbook.tools == null or #lists.isEmpty(playbook.tools)}" style="margin-top: 0.75rem; display: flex; align-items: center;">
-                                    <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">Allowed Tools: <span style="font-weight: 400; color: var(--text-secondary);">All</span></span>
+                                    <span th:if="${playbook.targetAgent == null or #strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}"
+                                          title="This playbook has no tools, so it cannot search the knowledge base. Answers will come from the model alone, without sources."
+                                          style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--color-warning, #b45309); padding: 0.15rem 0.45rem; border-radius: var(--radius-sm); color: var(--color-warning, #b45309); font-weight: 600;">⚠ No tools — answers without searching</span>
+                                    <span th:unless="${playbook.targetAgent == null or #strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}"
+                                          style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">Allowed Tools: <span style="font-weight: 400; color: var(--text-secondary);">not used for this role</span></span>
+                                </div>
+
+                                <!-- Tools ARE selected but this role ignores them: the orchestrator and the
+                                     reviewer receive a hardcoded tool list at the call site, so anything
+                                     chosen here is silently discarded. -->
+                                <div th:if="${playbook.tools != null and !#lists.isEmpty(playbook.tools) and playbook.targetAgent != null and !#strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}" style="margin-top: 0.4rem; display: flex; align-items: center;">
+                                    <span title="Orchestrator and reviewer playbooks are given a fixed tool list when they run, so the tools selected here have no effect."
+                                          style="font-size: 0.75rem; color: var(--color-warning, #b45309); font-weight: 600;">⚠ Not used for this role — these tools are ignored</span>
                                 </div>
                             </div>
 
@@ -321,7 +339,7 @@
                                 <select id="tools" name="tools" class="form-input" multiple style="min-height: 120px;">
                                     <option th:each="tool : ${availableTools}" th:value="${tool}" th:text="${tool}"></option>
                                 </select>
-                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Select the tools allowed for this playbook. Hold Ctrl/Cmd to select multiple. Leave empty to allow no tools.</span>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Select the tools allowed for this playbook. Hold Ctrl/Cmd to select multiple. <strong>Leaving this empty allows no tools at all</strong> — a Specialized Agent with no tools answers from the model alone and cannot search the knowledge base. Reviewer and Orchestrator playbooks ignore this field entirely; they are given a fixed tool list when they run.</span>
                             </div>
                             <div class="form-group">
                                 <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">

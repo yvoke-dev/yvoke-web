@@ -197,8 +197,7 @@ class ConfluenceIngestServiceTest {
     @SafeVarargs
     private void crawlReturns(Map<String, Object>... pages) {
         doAnswer(invocation -> {
-            java.util.function.Consumer<List<Map<String, Object>>> consumer =
-                invocation.getArgument(1);
+            Consumer<List<Map<String, Object>>> consumer = invocation.getArgument(1);
             consumer.accept(List.of(pages));
             return null;
         }).when(confluenceClient).crawlAllDescendantPages(eq(instance), any());
@@ -345,6 +344,61 @@ class ConfluenceIngestServiceTest {
             .hasMessageContaining("12 page(s)");
     }
 
+    /**
+     * The version-skip has exactly one positive clause — the stored row is {@code completed} AND
+     * its recorded version parses to the crawled one — and its three negative clauses have no
+     * witness anywhere: every other case stubs a {@code completed} row, so a non-{@code completed}
+     * status, an unparseable stored version and a crawl result carrying no version at all all fall
+     * through the unstubbed {@code Optional.empty()} branch and prove nothing about the predicate.
+     *
+     * <p>
+     * Each one is a silent corpus failure if it ever starts skipping. A row that is not
+     * {@code completed} is the record of an ingest that ABORTED — suppressing it makes the
+     * half-written page permanently unrepairable, because no later crawl will ever offer it again.
+     * An unparseable or absent version means "we do not know which revision is stored", and
+     * skipping on unknown freezes the page at whatever revision it happened to hold while
+     * Confluence moves on. Neither surfaces: the crawl logs them as ordinary skips and the job goes
+     * green. The last page is the control — genuinely up to date, and still skipped — so the test
+     * cannot pass by simply never skipping.
+     */
+    @Test
+    void aPageIsReIngestedUnlessItsStoredRowIsCompletedWithAParsableMatchingVersion() {
+        String pageUrl = "https://example.com/wiki/spaces/SPACE/pages/";
+        assertThat(SOURCE_FILE).isEqualTo(pageUrl + "page-1");
+
+        crawlReturns(page("page-1", "Aborted mid-ingest", 4), page("page-2", "Failed ingest", 4),
+            page("page-3", "Garbled stored version", 4),
+            Map.<String, Object>of("id", "page-4", "title", "Crawled without a version"),
+            page("page-5", "Genuinely unchanged", 4));
+
+        // 'pending'/'failed' = the previous ingest never finished; the page must be offered again.
+        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-1"),
+            eq("confluence")))
+            .thenReturn(Optional.of(new DocumentMetadataAndStatus("pending", "4")));
+        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-2"),
+            eq("confluence")))
+            .thenReturn(Optional.of(new DocumentMetadataAndStatus("failed", "4")));
+        // Completed, but the stored version is not a number, so nothing is known about it.
+        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-3"),
+            eq("confluence")))
+            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4.1-SNAPSHOT")));
+        // Completed at 4 — but the crawl result reports no version, so equality is unknowable.
+        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-4"),
+            eq("confluence")))
+            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-5"),
+            eq("confluence")))
+            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+
+        JobCounts counts = service.ingest(crawlJobContext());
+
+        ArgumentCaptor<EnqueueRequest> enqueued = ArgumentCaptor.forClass(EnqueueRequest.class);
+        verify(jobService, times(4)).enqueue(enqueued.capture());
+        assertThat(enqueued.getAllValues().stream().map(r -> r.settings().get("pageId")).toList())
+            .containsExactly("page-1", "page-2", "page-3", "page-4");
+        assertThat(counts.docs()).isEqualTo(4);
+    }
+
     @Test
     void testIngestSkipsEnqueuingIfVersionMatches() {
         crawlReturns(page("page-1", "Page 1", 4));
@@ -365,6 +419,26 @@ class ConfluenceIngestServiceTest {
      * be crawled and the corpus would be silently partial. The page is counted as a skip and the
      * crawl carries on.
      */
+    @Test
+    void anUndeclaredTagFailsTheWholeCrawlInsteadOfBeingCountedAsAPerPageSkip() {
+        // The crawl loop catches IllegalStateException ONLY — a page already queued is a normal,
+        // counted skip and must not abandon the rest of the page tree. An IllegalArgumentException
+        // from the enqueue validators (unknown collection, or a tag the collection does not
+        // declare) is categorically different: it applies to EVERY page, so swallowing it per page
+        // would turn a misconfigured connector into a crawl that "succeeds" having queued nothing
+        // — the exact silent-empty outcome the validator exists to prevent. Widening this catch to
+        // Exception or RuntimeException reintroduces that.
+        crawlReturns(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4));
+        when(jobService.enqueue(any())).thenThrow(
+            new IllegalArgumentException("Tag '9.9' is not declared on collection 'OIM'"));
+
+        assertThatThrownBy(() -> service.ingest(crawlJobContext()))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not declared");
+
+        // It must abort on the FIRST page, not plough through the whole tree.
+        verify(jobService, times(1)).enqueue(any());
+    }
+
     @Test
     void testIngestKeepsCrawlingWhenAPageIsAlreadyQueued() {
         crawlReturns(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4));
@@ -455,6 +529,62 @@ class ConfluenceIngestServiceTest {
 
         verify(jobService, times(2)).enqueue(any());
         assertThat(counts.docs()).isEqualTo(1);
+    }
+
+    /**
+     * Two halves of the page-job snapshot that no test has ever looked at, and both fail silently.
+     *
+     * <p>
+     * {@code sourceRef} is not a label: it is one column of
+     * {@code ux_ingestion_jobs_active_work (kind, source_ref, collection_id, tags)}, the partial
+     * unique index that makes {@code JobService.enqueue} ADOPT an in-flight job instead of creating
+     * a second one. A re-triggered crawl draining alongside the first is an ordinary event here, so
+     * if the shape of this key changes — dropping the space, say, or switching to the page title —
+     * the two crawls stop colliding and every page is imported TWICE concurrently, each run
+     * deleting and re-inserting the other's chunks under one document id. Nothing errors; the two
+     * jobs both report success.
+     * {@code crawlSnapshotsTheResolvedTargetIntoEveryPageJobAndNeverTheToken} captures this very
+     * request and asserts every settings key, but never {@code sourceRef()}.
+     *
+     * <p>
+     * The second half is {@code required()}. Every {@code pageJobContext} fixture in this class
+     * supplies domain/space/collection, so its throw has never executed once. It has to throw,
+     * because the branch next door — a job with NO {@code instanceId} at all — deliberately falls
+     * back to the LIVE instance row: a null-tolerant {@code required()} would send a partially
+     * snapshotted job down that path and write a queued crawl's pages into whatever collection the
+     * connector happens to point at now. That is exactly the cross-collection contamination the
+     * snapshot exists to prevent, and it is invisible — the job completes green, in the wrong
+     * corpus.
+     */
+    @Test
+    void aPageJobIsKeyedOnSpaceAndPageAndRefusesToRunOnAPartialSnapshot() {
+        crawlReturns(page("page-1", "Page 1", 4));
+
+        service.ingest(crawlJobContext());
+
+        ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
+        verify(jobService).enqueue(captor.capture());
+        assertThat(captor.getValue().sourceRef())
+            .as("the admission key of ux_ingestion_jobs_active_work: one job per space + page")
+            .isEqualTo("confluence/SPACE/page-1");
+
+        // A snapshot that lost any one of its three target keys must FAIL, never quietly fall
+        // through to the live instance's current collection.
+        for (String key : List.of("domain", "space", "collection")) {
+            Map<String, Object> partial = pageSettings(4);
+            partial.remove(key);
+            JobContext ctx = pageJobContext(partial);
+
+            assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
+                .as("a page job missing its '%s' snapshot must fail loudly", key)
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(key)
+                .hasMessageContaining("re-run the sync");
+        }
+
+        // ...and nothing was fetched or written on any of those three attempts.
+        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
+            nullable(String.class), any(), any(), any());
     }
 
     /**

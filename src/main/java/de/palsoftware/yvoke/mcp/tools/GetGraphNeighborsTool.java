@@ -92,6 +92,11 @@ public class GetGraphNeighborsTool {
         if (matchedCol == null) {
             return "Error: Collection '" + col + "' does not exist.";
         }
+        // The stored spelling, not the caller's: the match above is case-insensitive but every
+        // KgGraphReadRepository query is `c.name = :collection` / `c.name IN (:collections)`,
+        // i.e. case-SENSITIVE. Forwarding `col` rejects valid relation types and returns an empty
+        // neighbour set for a graph that exists.
+        String colName = matchedCol.name();
 
         // Validate tag (optional)
         String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
@@ -111,7 +116,7 @@ public class GetGraphNeighborsTool {
 
         // Validate relation_type (optional)
         if (relation_type != null && !relation_type.isBlank()) {
-            if (!kgRepository.relationshipPredicateExists(relation_type, List.of(col))) {
+            if (!kgRepository.relationshipPredicateExists(relation_type, List.of(colName))) {
                 return "Error: Relation type '" + relation_type + "' does not exist in collection '"
                     + col + "'.";
             }
@@ -147,7 +152,7 @@ public class GetGraphNeighborsTool {
             // candidates are already narrowed to one product version by the time we get here.
             if (kindHint == null) {
                 List<KgEntityKindEdgeCount> candidates = kgRepository
-                    .findEntityKindsWithEdgeCounts(bareName, parsedTag, col, relType, dir);
+                    .findEntityKindsWithEdgeCounts(bareName, parsedTag, colName, relType, dir);
                 if (distinctKinds(candidates) > 1) {
                     return renderDisambiguation(bareName, col, parsedTag, candidates);
                 }
@@ -156,7 +161,7 @@ public class GetGraphNeighborsTool {
             // Predicate and direction are filtered in SQL, and the result is capped so a hub
             // node cannot return an unbounded edge set.
             KgNeighborEdges result = kgRepository.getEntityRelationships(bareName, kindHint,
-                parsedTag, col, relType, dir, MAX_EDGES);
+                parsedTag, colName, relType, dir, MAX_EDGES);
 
             // Direction and counterpart come resolved from the repository (by endpoint id).
             // Re-deriving them from the name text here reported every edge between two same-named

@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.EnqueueValidator;
 import java.util.List;
 import org.springframework.stereotype.Component;
+import java.util.ArrayList;
 
 /**
  * Validates and normalizes an enqueue request against the collection catalog: the collection must
@@ -27,7 +28,7 @@ public class CollectionTagEnqueueValidator implements EnqueueValidator {
             .orElseThrow(() -> new IllegalArgumentException(
                 "Collection '" + req.collection() + "' does not exist."));
 
-        List<String> finalTags = new java.util.ArrayList<>();
+        List<String> finalTags = new ArrayList<>();
         if (!col.tags().isEmpty()) {
             List<String> reqTags = req.tags();
             if (reqTags == null || reqTags.isEmpty()) {

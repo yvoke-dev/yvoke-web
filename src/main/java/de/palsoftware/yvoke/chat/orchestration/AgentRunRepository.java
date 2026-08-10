@@ -8,6 +8,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.util.List;
 
 @Repository
 public class AgentRunRepository {
@@ -70,7 +75,7 @@ public class AgentRunRepository {
         FROM agent_runs
         """;
 
-    private static AgentRun mapRow(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
+    private static AgentRun mapRow(ResultSet rs, int n) throws SQLException {
         return new AgentRun(rs.getObject("id", UUID.class),
             rs.getObject("conversation_id", UUID.class), rs.getObject("message_id", UUID.class),
             rs.getString("profile_name"), rs.getString("status"), rs.getString("config"),
@@ -87,7 +92,7 @@ public class AgentRunRepository {
     }
 
     /** Most recent runs first, for the admin trace viewer. */
-    public java.util.List<AgentRun> findRecent(int limit) {
+    public List<AgentRun> findRecent(int limit) {
         return jdbcClient.sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
             .param("limit", limit).query(AgentRunRepository::mapRow).list();
     }
@@ -108,10 +113,10 @@ public class AgentRunRepository {
         if (ts == null) {
             return null;
         }
-        if (ts instanceof java.sql.Timestamp t) {
+        if (ts instanceof Timestamp t) {
             return t.toInstant();
         }
-        if (ts instanceof java.time.OffsetDateTime odt) {
+        if (ts instanceof OffsetDateTime odt) {
             return odt.toInstant();
         }
         return null;

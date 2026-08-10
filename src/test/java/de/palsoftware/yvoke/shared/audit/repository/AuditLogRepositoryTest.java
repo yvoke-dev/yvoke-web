@@ -15,6 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import java.io.Closeable;
 
 public class AuditLogRepositoryTest {
 
@@ -54,6 +56,50 @@ public class AuditLogRepositoryTest {
         verify(statementSpec).param(eq("action"), eq("TEST_ACTION"));
         verify(statementSpec).param(eq("target"), eq("target1"));
         verify(statementSpec).update();
+    }
+
+    /**
+     * The audit trail is a security record, and its {@code detail} column is decoration on top of
+     * the {@code who / what / target} triple that actually matters. So {@code log()} treats an
+     * empty map and a value Jackson cannot serialize identically: both store NULL, and neither is
+     * allowed to stop the INSERT. That asymmetry is the whole point — {@code detail} is assembled
+     * from caller-supplied, sometimes corpus- or LLM-derived values, so it is exactly the argument
+     * most likely to contain something unserializable, and it arrives at the audit call AFTER the
+     * audited action has already happened. Let the serialization failure escape and the effect is
+     * inverted: the privileged operation succeeds, the record of it is lost, and the admin sees a
+     * 500 for an action that in fact took effect — the one combination an audit log exists to make
+     * impossible. No existing test reaches either path: {@code testLog} passes a well-formed
+     * {@code Map.of("key", "value")} and never asserts what is bound to {@code :detail}, so the
+     * repository could bind {@code "{}"} or throw and stay green.
+     */
+    @Test
+    public void unserializableOrEmptyAuditDetailStoresNullWithoutFailingTheAction()
+        throws Exception {
+        when(statementSpec.update()).thenReturn(1);
+
+        // (1) An empty detail map carries no information: store NULL, not "{}".
+        auditLogRepository.log("admin", "EMPTY_DETAIL", "target1", Map.of());
+        verify(statementSpec).param(eq("detail"), isNull());
+        verify(statementSpec).update();
+
+        // (2) A detail value Jackson refuses to write must degrade to NULL, not abort the INSERT.
+        ObjectMapper failingMapper = mock(ObjectMapper.class);
+        when(failingMapper.writeValueAsString(any()))
+            .thenThrow(new JsonMappingException((Closeable) null, "cannot serialize audit detail"));
+        JdbcClient failingClient = mock(JdbcClient.class);
+        JdbcClient.StatementSpec failingSpec = mock(JdbcClient.StatementSpec.class);
+        when(failingClient.sql(anyString())).thenReturn(failingSpec);
+        when(failingSpec.param(anyString(), any())).thenReturn(failingSpec);
+        when(failingSpec.update()).thenReturn(1);
+        AuditLogRepository repository = new AuditLogRepository(failingClient, failingMapper);
+
+        repository.log("admin", "BAD_DETAIL", "target2", Map.of("payload", new Object()));
+
+        verify(failingSpec).param(eq("entraOid"), eq("admin"));
+        verify(failingSpec).param(eq("action"), eq("BAD_DETAIL"));
+        verify(failingSpec).param(eq("target"), eq("target2"));
+        verify(failingSpec).param(eq("detail"), isNull());
+        verify(failingSpec).update();
     }
 
     @Test

@@ -21,6 +21,50 @@ class SystemPromptServiceTest {
         service = new SystemPromptService(repository, "default-chat", appConfigRepository);
     }
 
+    /**
+     * S5.1. The active chat prompt is an {@code app_config} row that a fresh deployment has never
+     * written, so the fallback handed to the repository is what actually governs every answer until
+     * an admin touches the setting. It must be this service's own
+     * {@code @Value("${app.ai.rag.default-prompt-name}")} — the same property the shipped prompt is
+     * seeded under — and not a literal or a null.
+     *
+     * <p>
+     * Get it wrong and the resolved name matches no row: {@code getPrompt} returns empty and
+     * {@code RagService.loadAgenticSystemPrompt} maps that to {@code ""}, so every chat answer runs
+     * with an EMPTY system prompt. Nothing throws, nothing logs, the admin screens still show a
+     * perfectly normal configuration — the model simply answers with none of the corpus rules,
+     * citation discipline or refusal behaviour the prompt carries, which from outside looks like
+     * the model got worse.
+     *
+     * <p>
+     * {@code AppConfigRepositoryIT.getMissingKeyReturnsDefault} pins that the repository echoes its
+     * default argument when the key is absent; that is the behaviour stubbed here. What is
+     * unpinned, and asserted here, is the consequence: which name the service resolves, and that
+     * the name still finds a prompt. The second half pins the other direction — a stored row must
+     * still beat the configured default, so this cannot be satisfied by ignoring {@code app_config}
+     * altogether.
+     */
+    @Test
+    void theActiveChatPromptNameFallsBackToTheConfiguredDefaultAndStillResolvesAPrompt() {
+        SystemPrompt shipped = new SystemPrompt("default-chat", SystemPromptType.CHAT,
+            "Cite every claim.", "the shipped default");
+        when(repository.findByName("default-chat")).thenReturn(Optional.of(shipped));
+        // No app_config row: the repository hands back whatever default it was given.
+        when(appConfigRepository.get(eq("default-chat-prompt"), anyString()))
+            .thenAnswer(inv -> inv.getArgument(1));
+
+        String resolved = service.getDefaultChatPromptName();
+
+        assertEquals("default-chat", resolved);
+        assertTrue(service.getPrompt(resolved).isPresent(),
+            "the fallback name must resolve to a real prompt, or every answer runs ungoverned");
+
+        // An admin-set row still wins over the configured default.
+        when(appConfigRepository.get(eq("default-chat-prompt"), anyString()))
+            .thenReturn("oim-agentic");
+        assertEquals("oim-agentic", service.getDefaultChatPromptName());
+    }
+
     @Test
     void testExportAndImportPrompt() {
         SystemPrompt prompt = new SystemPrompt("test-prompt", SystemPromptType.CHAT,

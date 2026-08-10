@@ -91,18 +91,6 @@ public class MessageRepository {
             .optional();
     }
 
-    public void updateStatus(UUID messageId, String status) {
-        String sql = """
-            UPDATE messages
-            SET status = :status, updated_at = CURRENT_TIMESTAMP
-            WHERE id = :id
-            """;
-        int rows = jdbcClient.sql(sql).param("status", status).param("id", messageId).update();
-        if (rows == 0) {
-            log.warn("updateStatus modified 0 rows for message id: {}", messageId);
-        }
-    }
-
     public void updateContentAndStatus(UUID id, String content, List<UUID> retrievedChunkIds,
         List<CitationCheckResult> citations, Integer promptTokens, Integer completionTokens,
         Integer totalTokens, Integer cachedTokens, Integer thoughtTokens, String status,

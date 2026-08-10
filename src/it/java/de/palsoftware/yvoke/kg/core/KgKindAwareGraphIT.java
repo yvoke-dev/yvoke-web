@@ -61,6 +61,61 @@ public class KgKindAwareGraphIT {
         jdbcTemplate.update("DELETE FROM collections WHERE name = ?", COLLECTION);
     }
 
+    /**
+     * Within ONE {@code upsertEntitiesBatch} call, several mentions of the same identity collapse
+     * to one entity and the FIRST of them wins.
+     *
+     * <p>
+     * The dedup is a {@code LinkedHashMap.putIfAbsent} keyed on {@code lower(kind):lower(name)},
+     * and it does two jobs at once. It makes the returned map — which is what the job reports as
+     * its entity count — count distinct identities rather than mentions: an extractor that names
+     * {@code Person} in forty chunks of one document produces one node, not forty. And it decides
+     * which spec is actually written, because the description, embedding and
+     * {@code metadata.document_id} of the inserted row all come from the surviving entry.
+     *
+     * <p>
+     * Neither half is observed anywhere. Every existing case in this class and in
+     * {@code KgWriteRepositoryTagIdentityIT} passes distinct identities, or repeats the whole call
+     * — and a repeated CALL is absorbed by the SELECT-then-insert resolve step and by
+     * {@code ON CONFLICT ... DO NOTHING}, so it proves nothing about the in-batch map. Swap
+     * {@code putIfAbsent} for {@code put} (the obvious "same thing, fewer characters" edit) and
+     * last-mention-wins silently: the row keeps the LAST mention's spelling and description while
+     * every earlier, usually better-described mention is discarded. Break the key instead — drop
+     * the {@code toLowerCase}, or drop the kind — and the count inflates to the number of mentions
+     * while the database quietly absorbs the surplus through the same {@code ON CONFLICT} clause,
+     * so the job reports a graph far larger than the one it built.
+     *
+     * <p>
+     * Case variants are the realistic shape here: the OIM corpus writes the same table as
+     * {@code Person}, {@code PERSON} and {@code person} across frontmatter, jsonl and prose.
+     */
+    @Test
+    public void oneBatchCountsIdentitiesNotMentionsAndTheFirstOccurrenceWins() {
+        Map<String, UUID> byKey = kgWriteRepository.upsertEntitiesBatch(COLLECTION, List.of(TAG),
+            List.of(new EntityUpsert("Person", "table", "first mention - this one must win"),
+                new EntityUpsert("PERSON", "Table", "second mention of the same identity"),
+                new EntityUpsert("person", "TABLE", "third mention of the same identity")));
+
+        assertThat(byKey)
+            .as("three mentions of one identity are ONE entity - the count is identities, not"
+                + " mentions")
+            .hasSize(1).containsKey("table:person");
+        assertThat(entityCount("Person"))
+            .as("the database must not be left to absorb the surplus through ON CONFLICT")
+            .isEqualTo(1);
+
+        Map<String, Object> stored = jdbcTemplate.queryForMap(
+            "SELECT e.name, e.description FROM entities e "
+                + "JOIN collections c ON e.collection_id = c.id "
+                + "WHERE c.name = ? AND lower(e.name) = 'person'",
+            COLLECTION);
+        assertThat(stored.get("name")).as("first occurrence wins, so its spelling is the row's")
+            .isEqualTo("Person");
+        assertThat(stored.get("description"))
+            .as("last-mention-wins silently discards every earlier, usually richer mention")
+            .isEqualTo("first mention - this one must win");
+    }
+
     private int entityCount(String name) {
         Integer n = jdbcTemplate.queryForObject(
             "SELECT count(*) FROM entities e JOIN collections c ON e.collection_id = c.id "
@@ -414,6 +469,50 @@ public class KgKindAwareGraphIT {
 
         assertThat(tagsOfEdge(person, org)).containsExactly(TAG);
         assertThat(tagsOfEdge(person, dept)).containsExactly("10.0");
+    }
+
+    /**
+     * A predicate is the edge's only name. {@code relKey} keys the batch by
+     * {@code subject_id|lower(predicate)|object_id} and the neighbor reads hand the model
+     * {@code predicate} verbatim as the relation type, so an edge whose predicate is null or blank
+     * has no identity at all: every blank-predicate edge between the same two nodes collapses onto
+     * ONE key, and the row that survives tells the model two entities are related by {@code ""} —
+     * which reads as a real but unnamed relation rather than as missing data, and is unfilterable
+     * by {@code relationType} forever after. Extraction produces these routinely: an LLM emitting
+     * {@code "relation": ""} and a jsonl record whose predicate column is absent both land here.
+     *
+     * <p>
+     * Dropping the predicate half of the guard is a plausible tidy-up — the endpoint-id half looks
+     * like the whole point of the check — and nothing would notice: {@code relationships.predicate}
+     * is only {@code NOT NULL}, so {@code ''} inserts happily, the job reports a normal edge count,
+     * and {@link #relationshipWithAnUnresolvedEndpointIsSkippedInsteadOfInserted()} covers only the
+     * endpoint half. The null case is worse than a bad row: {@code relKey} lower-cases the
+     * predicate unconditionally, so an unguarded null NPEs and takes the whole batch — every valid
+     * edge in it included — down with it, turning one malformed record into a failed ingest.
+     */
+    @Test
+    public void anEdgeWithABlankPredicateIsSkippedInsteadOfInsertedWithAnEmptyPredicate() {
+        Map<String, UUID> byKey = kgWriteRepository.upsertEntitiesBatch(COLLECTION, List.of(TAG),
+            List.of(new EntityUpsert("Person", "table", "person table"),
+                new EntityUpsert("Org", "table", "org table")));
+        UUID person = byKey.get(KgWriteRepository.entityKey("table", "Person"));
+        UUID org = byKey.get(KgWriteRepository.entityKey("table", "Org"));
+
+        int inserted = kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of(TAG),
+            List.of(
+                new RelationshipUpsert("Person", "fk_to", "Org", person, org, "a real edge", null),
+                new RelationshipUpsert("Person", "   ", "Org", person, org, "blank predicate",
+                    null),
+                new RelationshipUpsert("Person", null, "Org", person, org, "null predicate",
+                    null)));
+
+        assertThat(inserted).as("only the identifiable edge counts as written").isEqualTo(1);
+        List<String> predicates = jdbcTemplate.queryForList(
+            "SELECT r.predicate FROM relationships r JOIN collections c ON r.collection_id = c.id "
+                + "WHERE c.name = ?",
+            String.class, COLLECTION);
+        assertThat(predicates).as("an unnamed edge must never reach the graph")
+            .containsExactly("fk_to");
     }
 
     /**

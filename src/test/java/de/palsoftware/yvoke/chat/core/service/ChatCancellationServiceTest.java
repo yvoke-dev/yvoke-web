@@ -61,6 +61,63 @@ class ChatCancellationServiceTest {
         assertFalse(thread.isInterrupted());
     }
 
+    /**
+     * The CANCELLED sentinel has no lifetime, and this is where that stops being an implementation
+     * detail.
+     *
+     * <p>
+     * {@code stop()} uses {@code compute()} and writes the sentinel whenever the current value is
+     * not a Thread — INCLUDING when there is no value at all. {@code deregister()} is
+     * {@code activeTasks.remove(id, thread)}, identity-scoped, so it can never clear a sentinel;
+     * nothing else removes one and nothing expires it. So a Stop click that lands even a moment
+     * after the run it was aimed at has finished leaves a permanent mark on that conversation id,
+     * and {@code register()} interrupts whatever thread arrives next for it — whenever that is,
+     * minutes or hours later.
+     *
+     * <p>
+     * That is reachable from the UI, not theoretical: {@code ChatController.stopGeneration} calls
+     * {@code stop(id)} unconditionally once ownership checks out, and both async paths call
+     * {@code register()} as the FIRST statement of the executor task
+     * ({@code ChatMessageService}:159 and :243) — so the user's next question in that conversation
+     * starts already interrupted, falls straight into the {@code CancellationException} branch, and
+     * is persisted as status {@code cancelled} with "[Generation stopped by user]" against a
+     * question the user never stopped. The sentinel is deliberate and correct for the intra-run
+     * race it was written for (stop arriving before the worker registers,
+     * {@code testStopBeforeRegister_EagerlyInterruptsThread}); what is undecided is whether it
+     * should survive the run it belongs to.
+     *
+     * <p>
+     * This is a CHARACTERIZATION test: it pins what the code does today so the cross-run
+     * consequence is visible in the suite instead of being reasoned out from three files.
+     * {@code testStopAfterDeregister_DoesNothing} looks like it covers this case and does not — it
+     * asserts only that the already-finished thread is not interrupted, never inspects the map, and
+     * stays green with the leftover sentinel sitting there. If the owner decides a stop with
+     * nothing in flight should be a no-op, this test must be changed deliberately, and that is the
+     * point.
+     */
+    @Test
+    void aStopWithNothingRunningLeavesASentinelThatInterruptsTheNextGeneration() {
+        UUID id = UUID.randomUUID();
+        TestThread finished = new TestThread();
+
+        // A generation that ran to completion and deregistered itself in its finally block.
+        service.register(id, finished);
+        service.deregister(id, finished);
+
+        // The Stop click lands after that — nothing is in flight for this conversation.
+        service.stop(id);
+        assertFalse(finished.isInterrupted(), "the finished run's thread must not be touched");
+
+        // Later: the user asks their next question in the SAME conversation.
+        TestThread next = new TestThread();
+        service.register(id, next);
+
+        assertTrue(next.isInterrupted(),
+            "current behaviour: the CANCELLED sentinel left by the no-op stop never expires, so the "
+                + "next generation for this conversation begins interrupted and is persisted as "
+                + "'cancelled' with '[Generation stopped by user]'");
+    }
+
     @Test
     void testStaleDeregisterDoesNotClobberNewerRegistration() {
         UUID id = UUID.randomUUID();

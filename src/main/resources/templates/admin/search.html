@@ -26,7 +26,7 @@
                         </div>
                         <div class="form-group" style="width: 150px;">
                             <label for="limit" class="form-label">Limit (Top-K)</label>
-                            <input type="number" id="limit" name="limit" th:value="${limit != null ? limit : 8}" class="form-input" min="1" max="50">
+                            <input type="number" id="limit" name="limit" th:value="${limit != null ? limit : 8}" class="form-input" min="1" th:max="${maxLimit}">
                         </div>
                     </div>
 
@@ -143,7 +143,9 @@
                     <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
                         <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Lane Composition</h4>
                         <div class="telemetry-item">
-                            <span class="telemetry-label">Total Fused (n)</span>
+                            <!-- This is the size of the returned page, NOT of the fused candidate
+                                 set (which the Fusion Order block below reports as its total). -->
+                            <span class="telemetry-label">Returned Rows (n)</span>
                             <span class="telemetry-value mono-text" th:text="${telemetryFinal.get('n')}">0</span>
                         </div>
                         <div class="telemetry-item">
@@ -179,6 +181,56 @@
                         <div class="telemetry-item" style="flex-direction: column; align-items: flex-start; border-bottom: none; gap: 0.25rem;">
                             <span class="telemetry-label">Pre-Rerank RRF Rank Order</span>
                             <span class="telemetry-value mono-text" th:text="${telemetryRerank.get('rrf_order')}" style="word-break: break-all; font-size: 0.85rem; color: var(--text-secondary);">[]</span>
+                        </div>
+                    </div>
+
+                    <!-- Lane trace. Reconstructed from the stage snapshots retrieval_logs already
+                         stores: initial_chunk_ids is the semantic ids in rank order followed by the
+                         BM25 ids in rank order, sliced at the recorded pool sizes. -->
+                    <div th:if="${laneTrace != null and !laneTrace.isEmpty()}" style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
+
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Returned Rows by Lane</h4>
+                            <div style="overflow-x: auto;">
+                                <table class="mono-text" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                                    <thead>
+                                        <tr style="color: var(--text-secondary); text-align: right;">
+                                            <th style="text-align: left; padding: 0.15rem 0.35rem;">#</th>
+                                            <th style="padding: 0.15rem 0.35rem;">RRF</th>
+                                            <th style="padding: 0.15rem 0.35rem;">Sem</th>
+                                            <th style="padding: 0.15rem 0.35rem;">FT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="r : ${laneTrace.returnedOrder()}" style="text-align: right;">
+                                            <td style="text-align: left; padding: 0.15rem 0.35rem;" th:text="${r.position()}">1</td>
+                                            <td style="padding: 0.15rem 0.35rem;" th:text="${r.rrfRank()}">3</td>
+                                            <td style="padding: 0.15rem 0.35rem;"
+                                                th:classappend="${r.semRank() != null} ? 'text-info' : ''"
+                                                th:text="${r.semRank() != null ? r.semRank() : '—'}">—</td>
+                                            <td style="padding: 0.15rem 0.35rem;"
+                                                th:classappend="${r.ftRank() != null} ? 'text-warning' : ''"
+                                                th:text="${r.ftRank() != null ? r.ftRank() : '—'}">—</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">Each returned row's rank before reranking (RRF) and within each lane.</span>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <h4 style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Fusion Order</h4>
+                            <div class="mono-text" style="font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.1rem;">
+                                <span th:each="r : ${laneTrace.fusionOrder()}">
+                                    <span th:text="${r.position()} + '.'" style="color: var(--text-secondary);">1.</span>
+                                    <span th:if="${r.semRank() != null}" class="text-info" th:text="'s' + ${r.semRank()}">s1</span>
+                                    <span th:if="${r.ftRank() != null}" class="text-warning" th:text="'f' + ${r.ftRank()}">f1</span>
+                                </span>
+                            </div>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);"
+                                  th:text="${laneTrace.isFusionTruncated()}
+                                           ? 'Showing ' + ${laneTrace.fusionShown()} + ' of ' + ${laneTrace.fusedTotal()} + ' fused candidates.'
+                                           : 'All ' + ${laneTrace.fusedTotal()} + ' fused candidates.'">Showing 15 of 41 fused candidates.</span>
                         </div>
                     </div>
                 </div>

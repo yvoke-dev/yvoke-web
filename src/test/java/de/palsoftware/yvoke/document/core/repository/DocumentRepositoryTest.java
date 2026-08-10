@@ -15,6 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
+import java.time.Instant;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 public class DocumentRepositoryTest {
 
@@ -33,8 +36,7 @@ public class DocumentRepositoryTest {
         jdbcClient = mock(JdbcClient.class);
         objectMapper = new ObjectMapper();
         documentRepository = new DocumentRepository(jdbcClient, objectMapper,
-            mock(org.springframework.jdbc.core.JdbcTemplate.class),
-            mock(de.palsoftware.yvoke.shared.db.CollectionIdResolver.class));
+            mock(JdbcTemplate.class), mock(CollectionIdResolver.class));
 
         statementSpec = mock(JdbcClient.StatementSpec.class);
         querySpec =
@@ -55,7 +57,7 @@ public class DocumentRepositoryTest {
     public void testListDocuments() {
         DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
             "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), java.time.Instant.now());
+            Collections.emptyList(), Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result = documentRepository.listDocuments(null, 10, 0, "manual");
@@ -78,7 +80,7 @@ public class DocumentRepositoryTest {
     public void testListDocumentsWithSearchId() {
         DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
             "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), java.time.Instant.now());
+            Collections.emptyList(), Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result =
@@ -112,7 +114,7 @@ public class DocumentRepositoryTest {
     public void testListDocumentsWithSearchTitle() {
         DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
             "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), java.time.Instant.now());
+            Collections.emptyList(), Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result =

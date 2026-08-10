@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.microsoft.playwright.Page;
 
 /**
  * Horizontal-overflow invariants for the admin console: wide content must scroll inside its own
@@ -110,7 +111,7 @@ class LayoutOverflowE2EIT extends AbstractE2E {
   /** Kills animated transforms so a mid-flight geometry read cannot be off by the animation offset. */
   private void freezeAnimations() {
     page.addStyleTag(
-        new com.microsoft.playwright.Page.AddStyleTagOptions()
+        new Page.AddStyleTagOptions()
             .setContent("*,*::before,*::after{animation:none!important;transition:none!important}"));
   }
 

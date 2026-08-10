@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.palsoftware.yvoke.chat.api.model.*;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
@@ -32,6 +36,14 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
+import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
+import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.shared.web.UserArgumentResolver;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 
 class DesktopSyncControllerTest {
 
@@ -89,6 +101,54 @@ class DesktopSyncControllerTest {
         controller = new DesktopSyncController(syncService, systemPromptService, playbookService,
             new OrchestratorProperties(null, null, null, null), orchestratorRunService);
         assertThat(controller.listOrchestratorProfiles()).isEmpty();
+    }
+
+    /**
+     * The desktop's bootstrap makes two GETs against this controller, and both have to prefer the
+     * live source and degrade rather than fail. Neither branch runs today: both existing profile
+     * tests build the controller through the 5-arg constructor, which passes a NULL
+     * {@code OrchestratorProfileService}, so the DB-first branch has never executed; and both
+     * {@code getSystemPrompt} tests resolve a real prompt, so the empty-string branch has never
+     * executed either.
+     *
+     * <p>
+     * If DB profiles stopped being returned, the desktop would silently fall back to the
+     * yml-configured set and run a DIFFERENT orchestrator/reviewer/specialist trio than the one an
+     * admin edited in the UI — answers still arrive, nothing looks broken, and the only symptom is
+     * that a playbook fix "did not take". The fallback is deliberately conditioned on an EMPTY db
+     * list, so both directions are asserted here: a non-empty db list must WIN, an empty one must
+     * fall through. And if an unknown prompt name started 404ing instead of returning
+     * {@code {"systemPrompt":""}}, the desktop's prompt bootstrap would fail hard on a name it
+     * merely has not heard of rather than running with no system prompt.
+     */
+    @Test
+    void orchestratorProfilesComeFromTheDatabaseAndAnUnknownPromptDegradesToEmpty() {
+        OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, systemPromptService,
+            playbookService, orchestratorProperties, profileService, orchestratorRunService);
+
+        when(profileService.listAllProfiles())
+            .thenReturn(List.of(new OrchestratorProfile("OIM", 2, 8, "oim-orchestrator-edited",
+                "oim-orchestrator-reviewer-edited", List.of("oim-access-governance-edited"), null,
+                null, null, null, null, null, null, null)));
+
+        assertThat(dbBacked.listOrchestratorProfiles())
+            .as("the admin-edited profile wins over the yml one of the same name")
+            .extracting(OrchestratorProfileDto::orchestratorPlaybook)
+            .containsExactly("oim-orchestrator-edited");
+
+        when(profileService.listAllProfiles()).thenReturn(List.of());
+
+        assertThat(dbBacked.listOrchestratorProfiles())
+            .as("an EMPTY db list, and only that, falls back to the configured profiles")
+            .extracting(OrchestratorProfileDto::orchestratorPlaybook)
+            .containsExactly("oim-orchestrator");
+
+        when(systemPromptService.getPrompt("no-such-prompt")).thenReturn(Optional.empty());
+
+        ResponseEntity<Map<String, String>> unknown = dbBacked.getSystemPrompt("no-such-prompt");
+        assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(unknown.getBody()).containsEntry("systemPrompt", "");
     }
 
     @Test
@@ -155,6 +215,64 @@ class DesktopSyncControllerTest {
             new AppendMessagesRequest(null))).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    /**
+     * SEC-18 lives in two halves and only one of them is visible from a unit test that calls the
+     * controller method directly: the bounds are DECLARED on {@code AppendMessagesRequest} /
+     * {@code NewMessageDto}, but they are only ENFORCED because the handler parameter carries
+     * {@code @Valid}. Drop that annotation and the constraints stay in the source, keep reading as
+     * a guard in review, and do nothing — the batch flows straight into
+     * {@code DesktopSyncService.appendMessages}, which is {@code @Transactional} and inserts the
+     * whole list in one transaction, so an unbounded desktop-sync post becomes an unbounded server
+     * -side allocation plus a long write transaction on the messages table. This is a bearer-token
+     * endpoint reachable by any synced desktop client, so "our own client would never send that" is
+     * not a control.
+     *
+     * <p>
+     * Exercised through MockMvc because the enforcement point is Spring's argument resolution, not
+     * the method body: every other test in this class invokes {@code controller.appendMessages(..)}
+     * as a plain Java call, which bypasses validation entirely and therefore passes with or without
+     * {@code @Valid}. The cascade is asserted too ({@code List<@Valid NewMessageDto>}) because a
+     * single 1 MB-plus message is the other shape of the same attack, and the element-level bound
+     * only fires if the list annotation is honoured.
+     */
+    @Test
+    void anOversizedBatchIsRejectedBeforeReachingTheService() throws Exception {
+        UserService userService = mock(UserService.class);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
+        // The real resolver + the real JSON error advice, so the boundary behaves as in production.
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        StringBuilder oversizedBatch = new StringBuilder("{\"messages\":[");
+        for (int i = 0; i <= 500; i++) {
+            if (i > 0) {
+                oversizedBatch.append(',');
+            }
+            oversizedBatch.append("{\"role\":\"user\",\"content\":\"m").append(i).append("\"}");
+        }
+        oversizedBatch.append("]}");
+
+        mockMvc
+            .perform(post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(oversizedBatch.toString()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("messages")))
+            .andExpect(jsonPath("$.error", containsString("500")));
+
+        // The per-message bound: one element over @Size(max = 1_000_000) fails the same way.
+        String oversizedContent = "x".repeat(1_000_001);
+        mockMvc
+            .perform(post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + oversizedContent
+                    + "\"}]}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("content")));
+
+        verify(syncService, never()).appendMessages(any(), any(), any());
     }
 
     @Test

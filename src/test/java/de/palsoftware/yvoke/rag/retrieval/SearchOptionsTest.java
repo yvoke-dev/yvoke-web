@@ -38,16 +38,17 @@ public class SearchOptionsTest {
         assertThat(opts.limit()).isEqualTo(10); // zero normalizes to 10
     }
 
+    /**
+     * The ceiling is policy, not normalization, and it lives in exactly one place:
+     * {@code app.retrieval.max-limit}, applied by {@link HybridSearch#searchWithId} — the single
+     * choke point all three lane paths pass through. This record used to carry its own hardcoded
+     * {@code MAX_LIMIT = 200}; two ceilings that only a human keeps in sync is the drift trap, so
+     * the record now normalizes (null, non-positive) and nothing more.
+     */
     @Test
-    public void testLimitCappingOver200() {
-        SearchOptions opts = new SearchOptions("OIM", 500, true, true, null, 0);
-        assertThat(opts.limit()).isEqualTo(200); // capped at 200
-    }
-
-    @Test
-    public void testLimitExactly200() {
-        SearchOptions opts = new SearchOptions("OIM", 200, true, true, null, 0);
-        assertThat(opts.limit()).isEqualTo(200); // boundary — not capped
+    public void aLargeLimitPassesThroughUncapped() {
+        assertThat(new SearchOptions("OIM", 500, true, true, null, 0).limit()).isEqualTo(500);
+        assertThat(new SearchOptions("OIM", 200, true, true, null, 0).limit()).isEqualTo(200);
     }
 
     @Test

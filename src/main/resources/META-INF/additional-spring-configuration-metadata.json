@@ -362,10 +362,16 @@
       "defaultValue": 1.0
     },
     {
-      "name": "app.retrieval.rrf.fulltext-limit-cap",
+      "name": "app.retrieval.max-limit",
       "type": "java.lang.Integer",
-      "description": "Maximum number of fulltext database results processed by fuser.",
-      "defaultValue": 50
+      "description": "Hard ceiling on the number of chunks any retrieval may return. HybridSearch clamps every request to it, and it is woven into the search_corpus tool schema the model reads, so the advertised ceiling and the enforced one cannot drift apart.",
+      "defaultValue": 20
+    },
+    {
+      "name": "app.retrieval.fulltext-limit-multiplier",
+      "type": "java.lang.Double",
+      "description": "Multiplier applied to the requested limit when sizing the full-text candidate pool before fusion.",
+      "defaultValue": 3.0
     },
     {
       "name": "app.worker.enabled",

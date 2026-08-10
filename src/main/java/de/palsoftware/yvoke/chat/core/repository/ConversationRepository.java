@@ -68,6 +68,17 @@ public class ConversationRepository {
             .param("offset", offset).query(new ConversationRowMapper(objectMapper)).list();
     }
 
+    /**
+     * Owner-scoped, deliberately unlike {@link #listAll} above.
+     *
+     * <p>
+     * This feeds the desktop API only ({@code DesktopSyncService.listConversations}), whose
+     * ownership check is a bare {@code conversation.userId() == caller} with no {@code public} and
+     * no admin carve-out — so the sibling query's {@code OR 'public' = ANY(tags)} listed rows that
+     * every follow-up call then rejected with 403, and the listed title is auto-generated from the
+     * owner's first message, i.e. their question text. The web sidebar keeps the wider rule because
+     * {@code ChatConversationService} actually serves those reads.
+     */
     public List<Conversation> listByUserAndSource(UUID userId, String source, int limit,
         int offset) {
         ConversationSource.fromValue(source);
@@ -75,7 +86,7 @@ public class ConversationRepository {
             """
                 SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source
                 FROM conversations
-                WHERE (user_id = :userId OR 'public' = ANY(tags)) AND source = :source
+                WHERE user_id = :userId AND source = :source
                 ORDER BY updated_at DESC, id ASC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -92,19 +103,6 @@ public class ConversationRepository {
             """;
         jdbcClient.sql(sql).param("id", id).update();
     }
-
-    public List<Conversation> listAllGlobal(int limit, int offset) {
-        String sql =
-            """
-                SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source
-                FROM conversations
-                ORDER BY created_at DESC, id ASC
-                LIMIT :limit OFFSET :offset
-                """;
-        return jdbcClient.sql(sql).param("limit", limit).param("offset", offset)
-            .query(new ConversationRowMapper(objectMapper)).list();
-    }
-
 
     public void updateTitle(UUID id, String title) {
         String sql = """

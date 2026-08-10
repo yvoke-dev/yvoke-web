@@ -28,6 +28,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
+import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
+import java.util.stream.Collectors;
+import org.mockito.ArgumentCaptor;
+import java.util.Arrays;
 
 class JobApiControllerTest {
 
@@ -42,6 +47,52 @@ class JobApiControllerTest {
         jobRepository = mock(JobRepository.class);
         progressBroker = mock(JobProgressBroker.class);
         controller = new JobApiController(jobService, jobRepository, progressBroker);
+    }
+
+    /**
+     * The snapshot frame must go out under the SSE event NAME the admin page subscribes to.
+     *
+     * <p>
+     * {@code admin/job-detail.html} calls {@code eventSource.addEventListener('progress', …)}, and
+     * an {@code EventSource} dispatches strictly by name: a frame sent as anything else arrives, is
+     * parsed, and is then delivered to a listener nobody registered. The job itself runs and
+     * completes perfectly — only the page freezes at 0%, with no console error, no network error
+     * and a connection that stays open, so the operator concludes the worker has hung and
+     * cancels/re-enqueues real work.
+     *
+     * <p>
+     * Nothing asserts the name today:
+     * {@code subscribingToAFinishedJobSendsOneFrameAndClosesTheStream} verifies
+     * {@code send(any(SseEventBuilder.class))}, which stays true for every possible name, and no
+     * browser e2e covers job progress against a live worker. Asserting the BUILT frame rather than
+     * the builder call is the point — the name only exists once the builder is serialised.
+     */
+    @Test
+    void theSnapshotFrameCarriesTheProgressEventNameTheAdminPageListensFor() throws Exception {
+        UUID id = UUID.randomUUID();
+        SseEmitter emitter = mock(SseEmitter.class);
+        when(jobRepository.findById(id)).thenReturn(Optional.of(job(id, JobStatus.RUNNING)));
+        when(progressBroker.subscribe(id)).thenReturn(emitter);
+
+        controller.progress(id);
+
+        ArgumentCaptor<SseEventBuilder> frame = ArgumentCaptor.forClass(SseEventBuilder.class);
+        verify(emitter).send(frame.capture());
+        var parts = frame.getValue().build();
+
+        String wire =
+            parts.stream().map(p -> String.valueOf(p.getData())).collect(Collectors.joining());
+        assertThat(wire)
+            .as("EventSource dispatches by name; admin/job-detail.html listens for 'progress'")
+            .containsPattern("event:\\s*progress\\R");
+
+        assertThat(parts.stream().map(p -> p.getData()).filter(ProgressEvent.class::isInstance)
+            .map(ProgressEvent.class::cast).toList())
+            .as("the frame must carry the job's current state, not an empty ping").singleElement()
+            .satisfies(event -> {
+                assertThat(event.jobId()).isEqualTo(id);
+                assertThat(event.status()).isEqualTo(JobStatus.RUNNING.dbValue());
+            });
     }
 
     private static IngestionJob job(UUID id, JobStatus status) {
@@ -122,6 +173,44 @@ class JobApiControllerTest {
         verify(progressBroker).subscribe(id);
     }
 
+    /**
+     * A subscriber that arrives after the job has already finished must be told what happened and
+     * then released. The snapshot frame is the ONLY event such a subscriber will ever receive —
+     * {@link JobProgressBroker} publishes on state changes and a terminal job has none left — so
+     * without the immediate {@code complete()} the emitter sits until its 30-minute timeout: the
+     * job-detail page's EventSource stays open with a live spinner next to a finished job, and
+     * every reload of that page leaks another idle connection that nothing will ever close. The
+     * RUNNING half is the same rule read the other way: completing there would hang up on the very
+     * stream the client just subscribed for, and it would then see nothing for the rest of the run.
+     * Neither direction is covered today — {@code progressKnownJobSubscribesAndSendsSnapshot} hands
+     * back a real {@code SseEmitter} and asserts only that {@code subscribe} was called, which
+     * stays true whatever the controller afterwards tells that emitter to do.
+     */
+    @Test
+    void subscribingToAFinishedJobSendsOneFrameAndClosesTheStream() throws Exception {
+        UUID finishedId = UUID.randomUUID();
+        SseEmitter finishedEmitter = mock(SseEmitter.class);
+        when(jobRepository.findById(finishedId))
+            .thenReturn(Optional.of(job(finishedId, JobStatus.COMPLETED)));
+        when(progressBroker.subscribe(finishedId)).thenReturn(finishedEmitter);
+
+        assertThat(controller.progress(finishedId)).isSameAs(finishedEmitter);
+
+        verify(finishedEmitter).send(any(SseEventBuilder.class));
+        verify(finishedEmitter).complete();
+
+        UUID runningId = UUID.randomUUID();
+        SseEmitter runningEmitter = mock(SseEmitter.class);
+        when(jobRepository.findById(runningId))
+            .thenReturn(Optional.of(job(runningId, JobStatus.RUNNING)));
+        when(progressBroker.subscribe(runningId)).thenReturn(runningEmitter);
+
+        assertThat(controller.progress(runningId)).isSameAs(runningEmitter);
+
+        verify(runningEmitter).send(any(SseEventBuilder.class));
+        verify(runningEmitter, never()).complete();
+    }
+
     // ---------------------------------------------------------------------
     // SEC: the connector kinds run with the STORED Confluence admin credentials and take an
     // arbitrary pageId, so they must not be reachable by a plain ROLE_USER / ROLE_INGEST caller.
@@ -135,7 +224,7 @@ class JobApiControllerTest {
     private static void authenticateWith(String... roles) {
         SecurityContextHolder.getContext()
             .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
-                java.util.Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
+                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     private static void assertForbidden(Runnable call) {

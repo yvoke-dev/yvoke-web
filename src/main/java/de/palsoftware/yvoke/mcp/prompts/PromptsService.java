@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
 public class PromptsService {
@@ -16,7 +17,7 @@ public class PromptsService {
         this(new PlaybookService(playbookRepository, null));
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public PromptsService(PlaybookService playbookService) {
         this.playbookService = playbookService;
     }

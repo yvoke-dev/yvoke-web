@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.security.access.AccessDeniedException;
+import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -94,6 +95,66 @@ public class ChatConversationTagsIT {
 
         // Cleanup
         chatConversationService.deleteConversation(convId);
+    }
+
+    /**
+     * The chat folder vocabulary is its own namespace, derived from the conversations THIS caller
+     * can already see — never from a shared registry. That registry existed until V6 and was wrong
+     * in two directions at once: it offered corpus version tags ({@code 9.3.1}, {@code 10.0}) as
+     * folder names, and it handed every user every other user's folder names, which are free text
+     * an operator types about customers and projects.
+     *
+     * <p>
+     * Nothing pins the derivation today. {@code TagServiceTest} only forbids {@code findAll*} on
+     * {@code TagService}/{@code TagRepository}, so re-pointing {@code findAllTags} at any other
+     * source — a wider conversation query, or {@code CollectionRepository.findAllTagNames()} —
+     * passes the entire suite, and the existing assertion here is a bare
+     * {@code contains("AI", "Spring")} by a single user, which every wrong source also satisfies.
+     * The failure is silent by construction: an autocomplete that offers too many names looks like
+     * a longer list, not like a leak.
+     *
+     * <p>
+     * So the vocabulary is asserted to be EXACTLY the tag set of the conversations the caller can
+     * list — no more (user A's private folder name must not reach user B) and no less (B's own
+     * folder must be offered to B).
+     */
+    @Test
+    public void theFolderVocabularyIsExactlyTheFoldersOfTheConversationsThisUserCanSee() {
+        // User A — authenticated by setUp — files a conversation under a customer-named folder.
+        Conversation ownedByA = chatConversationService.createConversation();
+        chatConversationService.addTag(ownedByA.id(), "Kunde-Mustermann-Angebot");
+
+        userRepository.upsert("test-oid-folder-b", "folderB@yvoke.com", "Folder B");
+        OidcUser oidcUserB = mock(OidcUser.class);
+        when(oidcUserB.getClaimAsString("oid")).thenReturn("test-oid-folder-b");
+        when(oidcUserB.getClaimAsString("name")).thenReturn("Folder B");
+        Authentication authB = mock(Authentication.class);
+        when(authB.isAuthenticated()).thenReturn(true);
+        when(authB.getPrincipal()).thenReturn(oidcUserB);
+        SecurityContext contextB = SecurityContextHolder.createEmptyContext();
+        contextB.setAuthentication(authB);
+        SecurityContextHolder.setContext(contextB);
+
+        Conversation ownedByB = chatConversationService.createConversation();
+        chatConversationService.addTag(ownedByB.id(), "B-Eigener-Ordner");
+
+        List<String> foldersOfferedToB = chatConversationService.findAllTags();
+        List<String> tagsOnConversationsBCanSee =
+            chatConversationService.listAllConversations(100, 0).stream().map(Conversation::tags)
+                .filter(Objects::nonNull).flatMap(List::stream).distinct().toList();
+
+        assertThat(foldersOfferedToB).as("B's own folder has to be offered to B")
+            .contains("B-Eigener-Ordner");
+        assertThat(foldersOfferedToB)
+            .as("a folder name is free text about a customer - not another user's business")
+            .doesNotContain("Kunde-Mustermann-Angebot");
+        assertThat(foldersOfferedToB)
+            .as("the vocabulary is derived from the visible conversations and from nothing else")
+            .containsExactlyInAnyOrderElementsOf(tagsOnConversationsBCanSee);
+
+        chatConversationService.deleteConversation(ownedByB.id());
+        setUp();
+        chatConversationService.deleteConversation(ownedByA.id());
     }
 
     @Test

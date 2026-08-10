@@ -25,7 +25,7 @@ public class RetrievalLogDetailsMapper implements RowMapper<RetrievalLogDetails>
         Instant createdAt = ts != null ? ts.toInstant() : null;
 
         String messageContent = rs.getString("message_content");
-        Integer feedbackRating = rs.getObject("feedback_rating", java.lang.Integer.class);
+        Integer feedbackRating = rs.getObject("feedback_rating", Integer.class);
         String feedbackComment = rs.getString("feedback_comment");
 
         List<UUID> retrievedChunkIds = JdbcMappers.arrayToUuidList(rs, "retrieved_chunk_ids");

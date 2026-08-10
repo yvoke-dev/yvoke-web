@@ -9,6 +9,8 @@ import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assertions;
+import org.springframework.test.util.ReflectionTestUtils;
 
 public class RagServiceTest {
 
@@ -29,10 +31,9 @@ public class RagServiceTest {
 
     @Test
     public void testRagDisabledThrowsException() {
-        org.springframework.test.util.ReflectionTestUtils.setField(ragService, "chatEnabled",
-            false);
+        ReflectionTestUtils.setField(ragService, "chatEnabled", false);
 
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> {
+        Assertions.assertThrows(IllegalStateException.class, () -> {
             ragService.generateAgenticAnswer(
                 AgenticRequest.builder().query("query").modelOverride("model").build(), token -> {
                 });

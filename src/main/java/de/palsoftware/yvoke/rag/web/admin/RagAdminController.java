@@ -9,17 +9,21 @@ import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
-import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.RagAdminViewService;
+import de.palsoftware.yvoke.rag.retrieval.RagAdminViews.LaneTrace;
 import de.palsoftware.yvoke.rag.retrieval.RagAdminViews.RetrievalLogView;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
+import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryRow;
+import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
+import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import de.palsoftware.yvoke.rag.core.service.RagService;
 
 
 @Controller
@@ -46,23 +51,40 @@ public class RagAdminController {
 
     private static final Logger log = LoggerFactory.getLogger(RagAdminController.class);
 
+    /**
+     * How many rows of the fused ordering the console lists. The fused set runs to
+     * {@code semanticLimit + fullTextLimit} candidates, far more than fits the panel; the template
+     * states the total alongside, so a truncated list never reads as the whole ordering.
+     */
+    private static final int FUSION_TRACE_ROWS = 15;
+
     private final HybridSearch hybridSearch;
+    private final RetrievalTelemetryService telemetryService;
     private final RetrievalLogRepository retrievalLogRepository;
     private final RagAdminViewService ragAdminViewService;
     private final CollectionService collectionService;
     private final PlaybookService playbookService;
     private final SystemPromptService systemPromptService;
-    private final de.palsoftware.yvoke.rag.core.service.RagService ragService;
+    private final RagService ragService;
     private final ObjectMapper objectMapper;
     private final int logQueryMaxChars;
+
+    /**
+     * Bound into the search form's {@code max} so the console cannot offer a Top-K that
+     * {@link HybridSearch} will silently clamp — a form accepting 50 against a ceiling of 20
+     * returns 20 rows with nothing on screen saying why.
+     */
+    private final int maxLimit;
 
     public RagAdminController(HybridSearch hybridSearch,
         RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
         CollectionService collectionService, PlaybookService playbookService,
-        SystemPromptService systemPromptService,
-        de.palsoftware.yvoke.rag.core.service.RagService ragService, ObjectMapper objectMapper,
-        @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars) {
+        SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
+        RetrievalTelemetryService telemetryService,
+        @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars,
+        @Value("${app.retrieval.max-limit}") int maxLimit) {
         this.hybridSearch = hybridSearch;
+        this.telemetryService = telemetryService;
         this.retrievalLogRepository = retrievalLogRepository;
         this.ragAdminViewService = ragAdminViewService;
         this.collectionService = collectionService;
@@ -71,6 +93,7 @@ public class RagAdminController {
         this.ragService = ragService;
         this.objectMapper = objectMapper;
         this.logQueryMaxChars = logQueryMaxChars;
+        this.maxLimit = maxLimit;
     }
 
     @SuppressWarnings("unchecked")
@@ -144,30 +167,33 @@ public class RagAdminController {
         model.addAttribute("collection", activeCollection);
         model.addAttribute("tag", tagParam);
         model.addAttribute("limit", limit);
+        model.addAttribute("maxLimit", maxLimit);
         model.addAttribute("semantic", activeSemantic);
         model.addAttribute("fulltext", activeFulltext);
 
         if (query != null && !query.isBlank()) {
             SearchOptions opts = new SearchOptions(activeCollection, limit, activeSemantic,
                 activeFulltext, tagParam, 0);
-            List<HybridSearchResult> results = hybridSearch.search(query, opts);
-            model.addAttribute("results", ragAdminViewService.toSearchResults(results));
+            SearchWithId search = hybridSearch.searchWithId(query, opts);
+            model.addAttribute("results", ragAdminViewService.toSearchResults(search.results()));
 
-            // Fetch the most recent telemetry entry logged for this search query
-            List<Map<String, Object>> telemetryList =
-                retrievalLogRepository.findLatestTelemetry(activeCollection);
+            // Telemetry is written off the search hot path, so read it back for THIS searchId
+            // rather than "the newest row for this collection" — the latter renders the previous
+            // search's numbers beside the current results whenever the write has not landed yet,
+            // and every field still looks plausible when it does.
+            telemetryService.flush();
+            Optional<RetrievalTelemetryRow> telemetry =
+                retrievalLogRepository.findTelemetryById(search.searchId());
 
-            if (!telemetryList.isEmpty()) {
-                Map<String, Object> tel = telemetryList.get(0);
-                model.addAttribute("telemetryPool", parseJsonMap((String) tel.get("pools_text")));
-                model.addAttribute("telemetryFinal", parseJsonMap((String) tel.get("final_text")));
-                model.addAttribute("telemetryRerank",
-                    parseJsonMap((String) tel.get("rerank_text")));
-            } else {
-                model.addAttribute("telemetryPool", Collections.emptyMap());
-                model.addAttribute("telemetryFinal", Collections.emptyMap());
-                model.addAttribute("telemetryRerank", Collections.emptyMap());
-            }
+            model.addAttribute("telemetryPool",
+                parseJsonMap(telemetry.map(RetrievalTelemetryRow::poolsJson).orElse(null)));
+            model.addAttribute("telemetryFinal",
+                parseJsonMap(telemetry.map(RetrievalTelemetryRow::finalJson).orElse(null)));
+            model.addAttribute("telemetryRerank",
+                parseJsonMap(telemetry.map(RetrievalTelemetryRow::rerankJson).orElse(null)));
+            model.addAttribute("laneTrace",
+                telemetry.map(t -> RagAdminViewService.toLaneTrace(t, FUSION_TRACE_ROWS))
+                    .orElseGet(LaneTrace::empty));
         }
 
         return "admin/search";
