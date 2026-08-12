@@ -24,8 +24,7 @@ yvoke/
 │   │   │   ├── chat/       # Chat sessions, messages, feedback, RAG orchestration, desktop sync
 │   │   │   │   ├── api/    # Desktop-sync REST API (/api/chat/v1) + DTOs
 │   │   │   │   │   └── model/ # Desktop sync request/response DTOs
-│   │   │   │   ├── core/   # Conversations/messages/feedback repositories & services; admin queries
-│   │   │   │   │   ├── config/ # Chat configuration (e.g., pricing properties)
+│   │   │   │   ├── core/   # Conversations/messages/feedback repositories & services; admin queries. ChatConfig/ChatProperties sit here directly, not in a config/ subpackage
 │   │   │   │   │   ├── model/ # Chat model records (Conversation, Message, settings)
 │   │   │   │   │   ├── repository/ # Chat database repositories and mappers
 │   │   │   │   │   ├── service/ # Chat business logic and conversation services

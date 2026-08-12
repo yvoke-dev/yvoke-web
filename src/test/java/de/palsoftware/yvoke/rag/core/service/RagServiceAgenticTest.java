@@ -19,6 +19,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import java.util.Collections;
@@ -881,6 +882,67 @@ public class RagServiceAgenticTest {
         assertThat(replayedAssistant)
             .as("every banner form is removed and only the model's real prose is replayed")
             .containsExactly("real text", "second text", "third text", "fourth text");
+    }
+
+    /**
+     * {@code priorMessages} continues a conversation the caller already holds, verbatim — system
+     * prompt, tool calls and tool results included — and only the new user turn is appended.
+     *
+     * <p>
+     * This is the channel {@code history} cannot be: the assertion below on the {@code tool}
+     * message is the whole reason the field exists, because {@link RagService#buildInitialMessages}
+     * keeps only {@code user}/{@code assistant} content strings and silently discards every tool
+     * result. An agent handed its own past conversation through {@code history} therefore loses the
+     * evidence in it — which is what made the orchestrator re-research a question it had already
+     * answered on every review round.
+     *
+     * <p>
+     * The system prompt is deliberately NOT re-applied over index 0: the earlier turns were
+     * answering the instructions already in the seed, and overwriting them would rewrite the
+     * question those answers belong to.
+     */
+    @Test
+    public void priorMessagesContinueTheConversationVerbatimInsteadOfRebuildingIt() {
+        List<LlmMessage> prior = List.of(new LlmMessage("system", "SEEDED SYSTEM PROMPT"),
+            new LlmMessage("user", "original question"),
+            new LlmMessage("assistant", "draft", null,
+                List.of(new LlmToolCall("call-1", "function", "search_corpus", "{}")), null, null),
+            new LlmMessage("tool", "TOOL EVIDENCE", null, null, "call-1", "search_corpus"));
+
+        List<LlmRequest> seen = new ArrayList<>();
+        doAnswer(inv -> {
+            seen.add(inv.getArgument(0));
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("revised", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        ragService.generateAgenticAnswer(AgenticRequest.builder().query("now fix the citation")
+            .modelOverride("m").systemPromptOverride("IGNORED OVERRIDE")
+            .history(List.of(new LlmMessage("user", "unrelated chat history"))).priorMessages(prior)
+            .build(), tok -> {
+            });
+
+        List<LlmMessage> sent = seen.get(0).messages();
+        assertThat(sent).as("the seed verbatim, plus exactly one new user turn")
+            .hasSize(prior.size() + 1);
+        assertThat(sent.get(0).content())
+            .as("the seed's own system prompt stands; the override must not rewrite it")
+            .isEqualTo("SEEDED SYSTEM PROMPT");
+        assertThat(sent.get(2).toolCalls()).as("tool CALLS survive, which history cannot carry")
+            .isNotNull();
+        assertThat(sent.get(3)).as("and so do tool RESULTS — the evidence history silently drops")
+            .satisfies(m -> {
+                assertThat(m.role()).isEqualTo("tool");
+                assertThat(m.content()).isEqualTo("TOOL EVIDENCE");
+                assertThat(m.toolCallId()).isEqualTo("call-1");
+            });
+        assertThat(sent).as("history is ignored when a seed is supplied, not merged into it")
+            .noneSatisfy(m -> assertThat(m.content()).contains("unrelated chat history"));
+        assertThat(sent.get(sent.size() - 1)).satisfies(m -> {
+            assertThat(m.role()).isEqualTo("user");
+            assertThat(m.content()).isEqualTo("now fix the citation");
+        });
     }
 
     /**

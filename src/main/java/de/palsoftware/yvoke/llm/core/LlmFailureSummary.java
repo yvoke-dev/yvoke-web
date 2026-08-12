@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.llm.core;
 
+import com.azure.core.exception.HttpResponseException;
 import com.google.genai.errors.ApiException;
 import java.util.regex.Pattern;
 
@@ -12,8 +13,9 @@ import java.util.regex.Pattern;
  * both trailing fields come back empty — OkHttp exposes no HTTP/2 reason phrase, and the SDK only
  * parses Google's own {@code {"error":{"message":…}}} error shape. A real rate-limit failure was
  * therefore persisted as the literal string {@code "429 . "}, and diagnosing it meant reading
- * container logs. {@link #code(Throwable)} is the one field the SDK reliably supplies, so mapping
- * it to a phrase is where the value is.
+ * container logs. The HTTP status is the one field the SDK reliably supplies, so mapping it to a
+ * phrase is where the value is. Azure's {@link HttpResponseException} has the same shape of problem
+ * from the other direction — no reason phrase at all — and is normalised onto the same output.
  *
  * <p>
  * Output of {@link #detail} is persisted and rendered on an admin page. It reads only the throwable
@@ -44,10 +46,10 @@ public final class LlmFailureSummary {
         if (t == null) {
             return "(no exception recorded)";
         }
-        ApiException api = findApiException(t);
-        if (api != null) {
-            return api.getClass().getSimpleName() + ": HTTP " + api.code() + " ("
-                + describeCode(api.code()) + ")";
+        ProviderFault fault = findProviderFault(t);
+        if (fault != null) {
+            return fault.type() + ": HTTP " + fault.code() + " (" + describeCode(fault.code())
+                + ")";
         }
         String message = t.getMessage();
         return t.getClass().getSimpleName() + ": "
@@ -64,11 +66,18 @@ public final class LlmFailureSummary {
         }
         StringBuilder out = new StringBuilder(shortLine(t));
 
-        ApiException api = findApiException(t);
-        if (api != null) {
-            out.append("\nprovider: status=\"").append(field(api.status())).append("\" message=\"")
-                .append(field(api.message())).append("\" raw=\"").append(field(api.getMessage()))
-                .append('"');
+        ProviderFault fault = findProviderFault(t);
+        if (fault != null) {
+            out.append("\nprovider: status=\"").append(field(fault.status()))
+                .append("\" message=\"").append(field(fault.message())).append("\" raw=\"")
+                .append(field(fault.raw())).append('"');
+        }
+
+        // What the provider's headers said, which on a 429 is the only place it says anything
+        // useful: the body names neither the exhausted budget nor when to return.
+        String rateLimit = ProviderRateLimit.from(t).describe();
+        if (!rateLimit.isEmpty()) {
+            out.append('\n').append(rateLimit);
         }
 
         out.append("\nretries: ").append(retryNote(t));
@@ -123,11 +132,26 @@ public final class LlmFailureSummary {
         return "not recorded";
     }
 
+    /**
+     * The provider's own account of an HTTP failure, normalised across SDKs so the rendered block
+     * looks the same whichever provider produced it. Fields other than {@code code} are
+     * best-effort: google-genai supplies a status and message it parsed out of Google's error
+     * shape, while azure-core exposes no reason phrase at all and folds the error body into the
+     * message.
+     */
+    private record ProviderFault(String type, int code, String status, String message,
+        String raw) {}
+
     /** Walks the cause chain the same way {@link LlmRetry#isTransient} does. */
-    private static ApiException findApiException(Throwable t) {
+    private static ProviderFault findProviderFault(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
             if (c instanceof ApiException api) {
-                return api;
+                return new ProviderFault(api.getClass().getSimpleName(), api.code(), api.status(),
+                    api.message(), api.getMessage());
+            }
+            if (c instanceof HttpResponseException http && http.getResponse() != null) {
+                return new ProviderFault(c.getClass().getSimpleName(),
+                    http.getResponse().getStatusCode(), null, null, c.getMessage());
             }
             if (c.getCause() == c) {
                 break;

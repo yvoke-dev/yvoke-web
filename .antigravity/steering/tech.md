@@ -12,7 +12,7 @@
 - **Spring Boot Starter Web**: Web server and REST endpoints.
 - **Spring Boot Starter Thymeleaf**: HTML views.
 - **Spring AI**: Used for embeddings (`voyage-4-large`) and the MCP server implementation.
-- **Custom LLM Abstraction**: Custom abstraction layer (`de.palsoftware.yvoke.llm`) with clients for Gemini and OpenRouter (DeepSeek) using Spring's REST client.
+- **Custom LLM Abstraction**: Custom abstraction layer (`de.palsoftware.yvoke.llm`) selected by `AI_PROVIDER` in `LlmConfig`, with clients for Gemini (`google-genai`, direct or via the Cloudflare AI Gateway), OpenRouter (`openai-java`) and Azure OpenAI (`com.azure:azure-ai-openai`). All are wrapped by the `@Primary` `AccountingLlmClient`. The Azure client uses the **async** SDK client over the JDK HTTP transport; that pairing is load-bearing for token-by-token streaming — see § 6 of `AGENTS.md` before changing it.
 - **Spring Security (OIDC / OAuth2 client / resource server)**: Authentication against Microsoft Entra ID.
 - **Spring Boot Actuator**: Health metrics and diagnostics.
 
@@ -50,9 +50,12 @@
 - **YAML-based**: Config in `src/main/resources/application.yml`.
 
 - **Environment variables**:
-  - `AI_PROVIDER`: Selects the default LLM provider (e.g., `gemini` or `openrouter`).
+  - `AI_PROVIDER`: Selects the default LLM provider (`cloudflare-gemini`, `gemini`, `openrouter` or `azure-openai`).
   - `GEMINI_API_KEY`: API key for Gemini models.
   - `OPENROUTER_API_KEY`: API key for OpenRouter (DeepSeek) models.
+  - `AZURE_OPENAI_ENDPOINT`: Azure OpenAI resource endpoint. Required when the provider is `azure-openai` — startup fails without it, because the SDK would otherwise target the public OpenAI service and forward the key there.
+  - `AZURE_OPENAI_API_KEY`: API key for Azure OpenAI.
+  - `AZURE_OPENAI_REASONING_MODELS`: Optional comma-separated deployment names that address a reasoning model, when the deployment is not named after the model it serves.
   - `VOYAGE_API_KEY`: API key for Voyage embeddings and reranker.
   - `APP_SECURITY_MOCK`: Set to `true` to bypass OAuth2 authentication and use a mock user context for local offline development. **Fails closed (SEC-09):** mock auth is only permitted when a development profile (`dev`/`local`/`test`) is active; with no such profile the context refuses to start. Local `docker-compose` sets `SPRING_PROFILES_ACTIVE=local`; the IT harness (`PostgresTestContainerInitializer`) activates `test`.
   - `APP_SECRET_KEY` / `APP_SECRET_SALT`: at-rest encryption key + per-deployment KDF salt for stored secrets (e.g. the Confluence token). **Fail closed (SEC-05/15):** outside a dev profile the app refuses to start without a key; a configured key requires its own salt (there is no shared default salt).

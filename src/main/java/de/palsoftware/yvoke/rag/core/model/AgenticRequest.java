@@ -13,7 +13,15 @@ public record AgenticRequest(
     @Nullable List<String> allowedTools,
     @Nullable String thinkingLevel,
     boolean codeExecution,
-    @Nullable List<ToolCallback> extraTools) {
+    @Nullable List<ToolCallback> extraTools,
+    /**
+     * A complete message list to continue from, verbatim — system prompt, tool calls, tool results
+     * and all. Unlike {@code history}, which is flattened to user/assistant content strings and so
+     * cannot carry a tool-calling conversation, this crosses the call boundary intact. When set it
+     * REPLACES the seed that {@code history} and {@code systemPromptOverride} would have built, and
+     * {@code query} is appended to it as the next user turn.
+     */
+    @Nullable List<LlmMessage> priorMessages) {
 
   public static Builder builder() {
     return new Builder();
@@ -28,6 +36,7 @@ public record AgenticRequest(
     private String thinkingLevel;
     private boolean codeExecution;
     private List<ToolCallback> extraTools;
+    private List<LlmMessage> priorMessages;
 
     public Builder query(String query) {
       this.query = query;
@@ -69,8 +78,13 @@ public record AgenticRequest(
       return this;
     }
 
+    public Builder priorMessages(List<LlmMessage> priorMessages) {
+      this.priorMessages = priorMessages;
+      return this;
+    }
+
     public AgenticRequest build() {
       return new AgenticRequest(query, modelOverride, history, systemPromptOverride, allowedTools,
-          thinkingLevel, codeExecution, extraTools);
+          thinkingLevel, codeExecution, extraTools, priorMessages);
     }
   }}

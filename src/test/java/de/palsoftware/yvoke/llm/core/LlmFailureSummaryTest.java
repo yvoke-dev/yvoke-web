@@ -2,9 +2,18 @@ package de.palsoftware.yvoke.llm.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.azure.core.exception.HttpResponseException;
+import com.azure.core.http.HttpHeaders;
+import com.azure.core.http.HttpMethod;
+import com.azure.core.http.HttpRequest;
+import com.azure.core.http.HttpResponse;
 import com.google.genai.errors.ClientException;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 /**
  * Tests for the diagnostic renderer that turns a provider exception into something an admin can act
@@ -145,5 +154,77 @@ class LlmFailureSummaryTest {
     void shortLine_describesCancellationPlainly() {
         assertThat(LlmFailureSummary.shortLine(new CancellationException("stopped")))
             .contains("CancellationException");
+    }
+
+    /**
+     * Azure has the same problem from the other side: azure-core exposes no reason phrase at all
+     * (OkHttp and the JDK client both drop it), so an unmapped Azure failure would render as the
+     * bare exception class name. The status is the informative field, exactly as for Gemini, and
+     * both providers must reach the same phrase for the same code.
+     */
+    @Test
+    void shortLine_readsTheStatusOffAnAzureFailureToo() {
+        assertThat(LlmFailureSummary.shortLine(azure(429))).contains("429").contains("rate limit");
+        assertThat(LlmFailureSummary.shortLine(azure(401))).contains("credentials");
+        assertThat(LlmFailureSummary.shortLine(azure(503))).contains("provider unavailable");
+    }
+
+    /** The redaction applies whatever produced the text: it is third-party input either way. */
+    @Test
+    void detail_redactsCredentialsInsideAnAzureMessage() {
+        HttpResponseException e = new HttpResponseException(
+            "Status code 401, \"{\"error\":\"bad api_key=sk-live-abcdef123456\"}\"",
+            mockResponse(401));
+
+        String out = LlmFailureSummary.detail(e);
+
+        assertThat(out).doesNotContain("sk-live-abcdef123456");
+        assertThat(out).contains("401");
+    }
+
+    private static HttpResponseException azure(int statusCode) {
+        return new HttpResponseException("Status code " + statusCode + ", \"\"",
+            mockResponse(statusCode));
+    }
+
+    private static HttpResponse mockResponse(int statusCode) {
+        HttpRequest request = new HttpRequest(HttpMethod.POST, "https://example.openai.azure.com");
+        return new HttpResponse(request) {
+            @Override
+            public int getStatusCode() {
+                return statusCode;
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public String getHeaderValue(String name) {
+                return null;
+            }
+
+            @Override
+            public HttpHeaders getHeaders() {
+                return new HttpHeaders();
+            }
+
+            @Override
+            public Flux<ByteBuffer> getBody() {
+                return Flux.empty();
+            }
+
+            @Override
+            public Mono<byte[]> getBodyAsByteArray() {
+                return Mono.empty();
+            }
+
+            @Override
+            public Mono<String> getBodyAsString() {
+                return Mono.empty();
+            }
+
+            @Override
+            public Mono<String> getBodyAsString(Charset charset) {
+                return Mono.empty();
+            }
+        };
     }
 }

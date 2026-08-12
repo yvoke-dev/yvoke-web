@@ -115,7 +115,7 @@ public class AgentRunAdminRenderingIT {
         agentRunRepository.create(failedRunId, conversationId, "default-profile", Map.of());
         agentRunRepository.finish(failedRunId, null, "error", 0, null, 0, 0, 0, 0, 0,
             "agent: role=specialist playbook=oim-install-kit model=gemini-3.6-flash round=0"
-                + " afterSteps=4 specialistCalls=2\n"
+                + " atStep=4 specialistCalls=2\n"
                 + "ClientException: HTTP 429 (rate limit / quota exhausted)\n"
                 + "provider: status=\"\" message=\"\" raw=\"429 . \"\n"
                 + "retries: Gemini.generateStream failed on attempt 3/3");

@@ -1,8 +1,10 @@
 package de.palsoftware.yvoke.llm.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.llm.core.service.AzureOpenAiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.CloudflareGeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.GeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
@@ -48,6 +50,7 @@ public class LlmConfigTest {
     public void providerSelectionIsCaseInsensitiveAndUnknownFallsBackToGemini() {
         LlmClient openRouter = providerFor("OpenRouter");
         LlmClient cloudflare = providerFor("CLOUDFLARE-GEMINI");
+        LlmClient azure = providerFor("Azure-OpenAI");
         LlmClient unknown = providerFor("totally-bogus");
         try {
             assertThat(openRouter).as("mixed-case 'OpenRouter' must still select OpenRouter")
@@ -55,14 +58,34 @@ public class LlmConfigTest {
             assertThat(cloudflare)
                 .as("upper-case 'CLOUDFLARE-GEMINI' must still select the gateway")
                 .isExactlyInstanceOf(CloudflareGeminiLlmClient.class);
+            assertThat(azure).as("mixed-case 'Azure-OpenAI' must still select Azure OpenAI")
+                .isExactlyInstanceOf(AzureOpenAiLlmClient.class);
             assertThat(unknown)
                 .as("an unrecognised provider must fall back to plain Gemini, not fail startup")
                 .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(openRouter);
             close(cloudflare);
+            close(azure);
             close(unknown);
         }
+    }
+
+    /**
+     * The one provider that must NOT fall back silently. The Azure SDK decides Azure-versus-public
+     * OpenAI purely from the endpoint: with none set it targets {@code api.openai.com} and sends
+     * the credential as a bearer token. A forgotten {@code AZURE_OPENAI_ENDPOINT} would therefore
+     * hand the Azure key to a third party rather than merely fail, so the placeholder that
+     * {@code isUsable} strips must end in a startup failure, not a working-looking client.
+     */
+    @Test
+    public void aMissingAzureEndpointFailsStartupInsteadOfTargetingPublicOpenAi() {
+        assertThatThrownBy(() -> new LlmConfig().llmProviderClient("azure-openai",
+            new ObjectMapper(), "https://openrouter.example/api/v1", "test-openrouter-key",
+            "test-gemini-key", false, "low", "https://gemini.example", "test-cf-account",
+            "test-cf-gateway", "test-cf-gateway-token", "test-cf-gemini-key", false, "low",
+            "placeholder-azure-openai-endpoint", "test-azure-key", false, "low", ""))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("endpoint");
     }
 
     /**
@@ -108,7 +131,7 @@ public class LlmConfigTest {
             new ObjectMapper(), "https://openrouter.example/api/v1", "test-openrouter-key",
             "test-gemini-key", false, "low", "https://gemini.example", "placeholder-cf-account-id",
             "placeholder-cf-gateway-id", "test-cf-gateway-token", "test-cf-gemini-key", false,
-            "low");
+            "low", "https://azure.example", "test-azure-key", false, "low", "");
         try {
             assertThat(client).isExactlyInstanceOf(CloudflareGeminiLlmClient.class);
 
@@ -152,7 +175,8 @@ public class LlmConfigTest {
         return new LlmConfig().llmProviderClient(provider, new ObjectMapper(),
             "https://openrouter.example/api/v1", "test-openrouter-key", "test-gemini-key", false,
             "low", "https://gemini.example", "test-cf-account", "test-cf-gateway",
-            "test-cf-gateway-token", "test-cf-gemini-key", false, "low");
+            "test-cf-gateway-token", "test-cf-gemini-key", false, "low", "https://azure.example",
+            "test-azure-key", false, "low", "");
     }
 
     /** Releases the SDK connection pools; {@code OpenRouterLlmClient} is not closeable. */

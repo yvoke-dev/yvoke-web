@@ -126,6 +126,36 @@
             <artifactId>openai-java</artifactId>
             <version>4.41.0</version>
         </dependency>
+        <!-- Azure OpenAI. 1.0.0-beta.16 is the newest RELEASED version (beta.17 exists only on the
+             SDK's main branch). Do not go below beta.16: earlier betas dropped the `content` field
+             of every ChatRequestMessage subclass on serialization.
+
+             The transport choice is load-bearing and is the ONLY one of the three that streams SSE
+             token by token, so do not "simplify" it:
+              - azure-core-http-netty pins Netty 4.1.135 and reactor-netty 1.2.18, while Spring
+                Boot 4 manages Netty 4.2.15 and reactor-netty 1.3.6. Incompatible.
+              - azure-core-http-okhttp reads the body through FluxUtil.toFluxByteBuffer, which
+                loops until its 8 KiB buffer is FULL before emitting. An SSE answer then arrives in
+                8 KiB blocks — usually meaning the whole answer at once, at the end.
+              - azure-core-http-jdk-httpclient's async response exposes the JDK's own body
+                publisher untouched, so chunks surface as they arrive. It also adds no transitive
+                dependencies at all. -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-ai-openai</artifactId>
+            <version>1.0.0-beta.16</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.azure</groupId>
+                    <artifactId>azure-core-http-netty</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core-http-jdk-httpclient</artifactId>
+            <version>1.1.5</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
@@ -174,6 +204,14 @@
                 <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- azure-ai-openai asks for azure-core 1.55.3 and azure-core-http-okhttp for 1.58.1,
+                 both one level deep, so without this pin the winner is declaration order. 1.58.1 is
+                 the pairing the SDK's own main branch ships. -->
+            <dependency>
+                <groupId>com.azure</groupId>
+                <artifactId>azure-core</artifactId>
+                <version>1.58.1</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

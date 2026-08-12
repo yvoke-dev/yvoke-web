@@ -185,7 +185,7 @@ a register of everyone's conversations.
 - **Folder names are free text** with no length or character limit and no rename. Renaming a folder means
   removing the tag from every conversation and adding a new one.
 - **In-depth mode is only available** where an administrator has defined at least one profile.
-- **The reasoning effort setting does nothing on some models.** Low / Medium / High is offered on every conversation and always saves, but only models that support extended thinking act on it — on the others the answer is produced with no thinking effort at all, and neither the selector nor the answer says so.
+- **The reasoning effort setting does nothing on some models.** Low / Medium / High is offered on every conversation and always saves, but only models that support extended thinking act on it — on the others the answer is produced with no thinking effort at all, and neither the selector nor the answer says so. Some models go further and refuse the setting whenever the assistant is allowed to search the knowledge base, which is every ordinary question; there the level is dropped and the model thinks at its own default, again silently.
 
 ### Not supported
 
@@ -242,6 +242,16 @@ in-depth profiles, and can inspect any search or trace.
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of two allows three answers: the first draft plus
   two revisions.
+- **The lead agent keeps one conversation for the whole investigation.** A rejected draft does not
+  restart it: the lead still has its own working notes, what each specialist told it and the answer it
+  wrote, and is given the reviewer's notes plus the source material behind those specialist answers. It
+  edits rather than investigating the question again, and can still delegate for something genuinely
+  missing — but a correction the evidence already supports needs no specialist at all. The reviewer is
+  deliberately excluded from that conversation, so each review is an independent check rather than a
+  negotiation it took part in.
+- **The trace is numbered in the order the work started.** A specialist runs inside the lead agent's
+  turn and therefore finishes before it, so numbering on completion listed the answer above the request
+  that caused it.
 - **The specialist budget is per question, not per round.** Once spent, the lead agent is told to
   conclude with what it has rather than failing the answer.
 - **The reviewer cannot run a search.** It works from the evidence the specialists collected, and may
@@ -301,6 +311,9 @@ in-depth profiles, and can inspect any search or trace.
 - Automatic retry of an answer that fails review. It is delivered as it stands.
 - User control over which specialists run, or any way to intervene mid-investigation.
 - Learning from feedback. Ratings are stored but change neither ranking nor future answers.
+- Code execution on every AI service. A playbook can enable it, but only some services can run code;
+  on the others the checkbox is accepted, the question is answered without running any code, and
+  neither the playbook screen nor the answer says so.
 
 ---
 

@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.llm.core;
 
+import com.azure.core.exception.HttpResponseException;
 import com.google.genai.errors.ApiException;
 import com.google.genai.errors.GenAiIOException;
 import java.io.IOException;
@@ -46,8 +47,10 @@ public final class LlmRetry {
                     throw e;
                 }
                 long backoffMs = backoffMs(attempt, e);
-                log.warn("{} failed (attempt {}/{}), retrying in {} ms: {}", operation, attempt,
-                    maxAttempts, backoffMs, e.toString());
+                String rateLimit = ProviderRateLimit.from(e).describe();
+                log.warn("{} failed (attempt {}/{}), retrying in {} ms: {}{}", operation, attempt,
+                    maxAttempts, backoffMs, e.toString(),
+                    rateLimit.isEmpty() ? "" : " [" + rateLimit + "]");
                 try {
                     Thread.sleep(backoffMs);
                 } catch (InterruptedException ie) {
@@ -68,8 +71,20 @@ public final class LlmRetry {
      * can be asserted without a test actually sleeping through it.
      */
     static long backoffMs(int attempt, Throwable t) {
-        long base = isRateLimit(t) ? RATE_LIMIT_BASE_BACKOFF_MS : BASE_BACKOFF_MS;
-        long cap = isRateLimit(t) ? RATE_LIMIT_MAX_BACKOFF_MS : MAX_BACKOFF_MS;
+        boolean rateLimited = isRateLimit(t);
+        if (rateLimited) {
+            // The server's own instruction beats any schedule we could invent. It matters most
+            // exactly where our guess is worst: against shared, best-effort capacity a rejection
+            // says nothing about our quota — a deployment at 7 requests/minute of a 250 RPM
+            // allowance took repeated 429s — so how long to wait is knowable only from the
+            // response. Clamped, because obeying an hour-long Retry-After would park the run.
+            Long serverInterval = ProviderRateLimit.from(t).retryAfterMillisClamped();
+            if (serverInterval != null) {
+                return serverInterval;
+            }
+        }
+        long base = rateLimited ? RATE_LIMIT_BASE_BACKOFF_MS : BASE_BACKOFF_MS;
+        long cap = rateLimited ? RATE_LIMIT_MAX_BACKOFF_MS : MAX_BACKOFF_MS;
         int shift = Math.min(Math.max(attempt - 1, 0), 20);
         long scaled = base << shift;
         return scaled <= 0 ? cap : Math.min(cap, scaled);
@@ -77,8 +92,9 @@ public final class LlmRetry {
 
     private static boolean isRateLimit(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
-            if (c instanceof ApiException apiException) {
-                return apiException.code() == 429;
+            Integer status = providerStatus(c);
+            if (status != null) {
+                return status == 429;
             }
             if (c.getCause() == c) {
                 break;
@@ -87,15 +103,31 @@ public final class LlmRetry {
         return false;
     }
 
+    /**
+     * The HTTP status a provider SDK reported, or {@code null} if this link in the cause chain is
+     * not a provider HTTP failure. Every supported SDK models the status as a typed field; reading
+     * it is what keeps a 429 on the quota-scale backoff instead of the half-second blip schedule.
+     */
+    private static Integer providerStatus(Throwable c) {
+        if (c instanceof ApiException apiException) {
+            return apiException.code();
+        }
+        if (c instanceof HttpResponseException httpResponseException
+            && httpResponseException.getResponse() != null) {
+            return httpResponseException.getResponse().getStatusCode();
+        }
+        return null;
+    }
+
     static boolean isTransient(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
             // Prefer the SDK's typed HTTP status over brittle message-substring matching:
             // ApiException.getMessage() is "500 Internal Server Error. ..." (no leading space), so
             // a substring check for " 500" would miss genuine 5xx errors.
-            if (c instanceof ApiException apiException) {
-                int code = apiException.code();
-                return code == 408 || code == 429 || code == 500 || code == 502 || code == 503
-                    || code == 504;
+            Integer status = providerStatus(c);
+            if (status != null) {
+                return status == 408 || status == 429 || status == 500 || status == 502
+                    || status == 503 || status == 504;
             }
             if (c instanceof GenAiIOException || c instanceof SocketTimeoutException
                 || c instanceof IOException) {

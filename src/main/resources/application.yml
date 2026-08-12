@@ -137,6 +137,14 @@ app:
       api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:placeholder-gemini-api-key}}
       enable-thinking: true
       thinking-level: ${GEMINI_THINKING_LEVEL:medium}
+    azure-openai:
+      endpoint: ${AZURE_OPENAI_ENDPOINT:placeholder-azure-openai-endpoint}
+      api-key: ${AZURE_OPENAI_API_KEY:placeholder-azure-openai-api-key}
+      enable-thinking: true
+      thinking-level: ${AZURE_OPENAI_THINKING_LEVEL:medium}
+      # Deployment names that address a reasoning model, when the deployment is not named after the
+      # model it serves. Leave empty to detect from the name.
+      reasoning-models: ${AZURE_OPENAI_REASONING_MODELS:}
     rag:
       max-iterations: ${APP_AI_RAG_MAX_ITERATIONS:20}
       max-tokens: 16384

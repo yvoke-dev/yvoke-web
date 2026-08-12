@@ -137,7 +137,7 @@ public class RagService {
             resolvedModel);
 
         AgenticChatContext ctx = new AgenticChatContext();
-        List<LlmMessage> messages = buildInitialMessages(systemPromptOverride, history, query);
+        List<LlmMessage> messages = seedMessages(request, systemPromptOverride, history, query);
 
         // Per-run tool dispatch: the shared registry plus any run-scoped extra tools (e.g. the
         // orchestrator's call_specialist / the reviewer's submit_review). Extra tools are always
@@ -334,6 +334,33 @@ public class RagService {
         }
         turn.emitted.append(token);
         sink.accept(token);
+    }
+
+    /**
+     * The message list this call starts from: either a continuation of a conversation the caller
+     * already holds, or a fresh one built from {@code history}.
+     *
+     * <p>
+     * The two channels are not interchangeable and the difference is the whole point of the
+     * distinction. {@code history} is flattened by {@link #buildInitialMessages} to user/assistant
+     * content strings, which is right for prior chat turns but silently drops tool calls and every
+     * {@code tool} message — so an agent handed its own past conversation that way loses the
+     * evidence in it. {@code priorMessages} is taken verbatim, system prompt included, and only the
+     * new user turn is appended. It is therefore the caller's job to supply a list that already
+     * begins with a system message; {@code systemPromptOverride} is deliberately not re-applied,
+     * because overwriting index 0 would silently rewrite the instructions the earlier turns were
+     * answering.
+     */
+    private List<LlmMessage> seedMessages(AgenticRequest request, String systemPromptOverride,
+        List<LlmMessage> history, String query) {
+        List<LlmMessage> prior = request.priorMessages();
+        if (prior == null || prior.isEmpty()) {
+            return buildInitialMessages(systemPromptOverride, history, query);
+        }
+        List<LlmMessage> messages = new ArrayList<>(prior);
+        messages.add(new LlmMessage("user", query));
+        log.info("Continuing an existing agent conversation: {} prior messages", prior.size());
+        return messages;
     }
 
     private List<LlmMessage> buildInitialMessages(String systemPromptOverride,

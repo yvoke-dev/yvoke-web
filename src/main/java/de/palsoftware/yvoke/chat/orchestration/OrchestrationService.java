@@ -118,10 +118,18 @@ public class OrchestrationService {
             String reviewFeedback = null;
             while (true) {
                 st.round = round;
-                String orchestratorQuery = (reviewFeedback == null) ? question
-                    : question
-                        + "\n\n## Reviewer feedback to address (revise your previous answer)\n"
-                        + reviewFeedback;
+                // The orchestrator keeps ONE conversation for the whole run. Round 2 continues the
+                // transcript that produced the draft — its own tool calls, the specialists' answers
+                // and the draft itself are all still there — instead of starting a fresh call that
+                // remembers none of it and can only research the question again. What it never saw
+                // is the specialists' own tool output, which is harvested into st.evidence for the
+                // reviewer; that travels as text, and only the entries not already sent, since
+                // anything sent in an earlier round is still in the transcript.
+                boolean revising = reviewFeedback != null;
+                String orchestratorQuery = revising ? renderRevisionTask(
+                    st.evidence.subList(st.evidenceSent, st.evidence.size()), reviewFeedback)
+                    : question;
+                st.evidenceSent = st.evidence.size();
 
                 // Orchestrator turn — may call specialists via call_specialist.
                 ToolCallback callSpecialist = new CallSpecialistTool(objectMapper, specialistNames,
@@ -129,7 +137,12 @@ public class OrchestrationService {
                 AgentOutcome orch = runAgent(st, ROLE_ORCHESTRATOR, orchestratorPlaybook.name(),
                     orchestratorSystemPrompt, orchestratorQuery, orchestratorQuery,
                     profile.orchestrator(), List.of("ask_clarifying_question"), false,
-                    List.<ToolCallback>of(callSpecialist), history, null);
+                    List.<ToolCallback>of(callSpecialist), revising ? null : history,
+                    st.orchestratorMessages, null);
+                // Everything this turn said and was told, carried into the next round. The prior
+                // conversation is already inside it, so the chat history is passed only on the
+                // first turn — after that it is in the transcript and re-sending would duplicate.
+                st.orchestratorMessages = orch.result().messages();
 
                 if (orch.result().clarifyingQuestion() != null) {
                     // Orchestrator escalated a clarification to the user — deliver it, skip review.
@@ -145,10 +158,14 @@ public class OrchestrationService {
                 Verdict[] holder = new Verdict[1];
                 ToolCallback submitReview = new SubmitReviewTool(objectMapper, v -> holder[0] = v);
                 String reviewTask = renderReviewTask(question, answer, st.evidence);
+                // No history and no prior messages: the reviewer judges the answer against the
+                // supplied evidence alone, and inheriting the orchestrator's transcript — including
+                // its own earlier drafts and the reviewer's previous notes — would stop it being a
+                // validate-only, independent check.
                 runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
                     reviewerPlaybook.templateText(), reviewTask, reviewTask, profile.reviewer(),
                     List.of("verify_citations", "get_section"), false,
-                    List.<ToolCallback>of(submitReview), null, holder);
+                    List.<ToolCallback>of(submitReview), null, null, holder);
                 verdict = holder[0] != null ? holder[0]
                     : Verdict.reject("Reviewer did not submit a verdict.");
 
@@ -264,7 +281,7 @@ public class OrchestrationService {
 
         AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), null, query, subQuestion,
             profileSpecialistCfg(st), allowed, pb.codeExecution(), List.<ToolCallback>of(), null,
-            null);
+            null, null);
 
         collectEvidence(outcome.result(), st.evidence, pb.name());
 
@@ -298,8 +315,15 @@ public class OrchestrationService {
     private AgentOutcome runAgent(RunState st, String role, String playbookName,
         String systemPromptOverride, String query, String traceInput,
         OrchestratorProperties.RoleConfig cfg, List<String> allowedTools, boolean codeExecution,
-        List<ToolCallback> extraTools, List<LlmMessage> history, Verdict[] verdictHolder) {
+        List<ToolCallback> extraTools, List<LlmMessage> history, List<LlmMessage> priorMessages,
+        Verdict[] verdictHolder) {
 
+        // Allocated when the step STARTS, not when it finishes. A specialist runs nested inside the
+        // orchestrator's turn and therefore completes first, so numbering on completion recorded
+        // every specialist ahead of the orchestrator that delegated to it — the trace read
+        // backwards, showing work before the decision that caused it. The failure path below reuses
+        // this number rather than minting its own, or a failed step would consume two.
+        int seq = st.seq.incrementAndGet();
         StringBuilder emitted = new StringBuilder();
         // A specialist runs NESTED inside the orchestrator's own agentic loop, on the same thread:
         // call_specialist is wired as an inline tool handler, so this method re-enters itself.
@@ -312,9 +336,9 @@ public class OrchestrationService {
                 "orchestrator", role);
             RagResult result = ragService.generateAgenticAnswer(
                 AgenticRequest.builder().query(query).modelOverride(cfg.model()).history(history)
-                    .systemPromptOverride(systemPromptOverride).allowedTools(allowedTools)
-                    .thinkingLevel(cfg.thinkingLevel()).codeExecution(codeExecution)
-                    .extraTools(extraTools).build(),
+                    .priorMessages(priorMessages).systemPromptOverride(systemPromptOverride)
+                    .allowedTools(allowedTools).thinkingLevel(cfg.thinkingLevel())
+                    .codeExecution(codeExecution).extraTools(extraTools).build(),
                 token -> {
                     if (token != null) {
                         emitted.append(token);
@@ -325,11 +349,11 @@ public class OrchestrationService {
             Verdict verdict = verdictHolder != null ? verdictHolder[0] : null;
 
             st.accumulate(result);
-            int seq = st.seq.incrementAndGet();
             stepRepository.insert(UUID.randomUUID(), st.runId, seq, role, st.round, playbookName,
-                cfg.model(), cfg.thinkingLevel(), traceInput, emitted.toString(), result.messages(),
-                verdict, result.promptTokens(), result.completionTokens(), result.totalTokens(),
-                result.cachedTokens(), result.thoughtTokens());
+                cfg.model(), cfg.thinkingLevel(), traceInput, emitted.toString(),
+                messagesAddedBy(result, priorMessages), verdict, result.promptTokens(),
+                result.completionTokens(), result.totalTokens(), result.cachedTokens(),
+                result.thoughtTokens());
 
             // LLM usage is accounted for by AccountingLlmClient, one row per actual call, using
             // the source/role set on LlmCallContextHolder above.
@@ -338,10 +362,10 @@ public class OrchestrationService {
         } catch (Exception e) {
             // The step row is written only on success, so a throwing agent left no trace at all —
             // its role, playbook, model, prompt and partially-streamed output died with the frame.
-            st.lastFailure =
-                new FailureContext(e, role, playbookName, cfg.model(), st.round, st.seq.get());
+            st.lastFailure = new FailureContext(e, role, playbookName, cfg.model(), st.round, seq);
             if (!(e instanceof CancellationException)) {
-                recordFailedStep(st, role, playbookName, cfg, traceInput, emitted.toString(), e);
+                recordFailedStep(st, seq, role, playbookName, cfg, traceInput, emitted.toString(),
+                    e);
             }
             throw e;
         } finally {
@@ -359,11 +383,10 @@ public class OrchestrationService {
      * Writes the trace row for an agent that threw. Best-effort and deliberately swallowing: a
      * failure to record must never replace the exception the caller is about to see.
      */
-    private void recordFailedStep(RunState st, String role, String playbookName,
+    private void recordFailedStep(RunState st, int seq, String role, String playbookName,
         OrchestratorProperties.RoleConfig cfg, String traceInput, String partialOutput,
         Throwable cause) {
         try {
-            int seq = st.seq.incrementAndGet();
             stepRepository.insertFailed(UUID.randomUUID(), st.runId, seq, role, st.round,
                 playbookName, cfg.model(), cfg.thinkingLevel(), traceInput, partialOutput,
                 LlmFailureSummary.detail(cause));
@@ -409,6 +432,39 @@ public class OrchestrationService {
             sb.append("\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * The next turn of the orchestrator's own conversation after a rejection. The question, the
+     * draft and every specialist answer are already in that conversation, so this says only what is
+     * new: the specialists' own tool output, which the orchestrator never saw because it lives
+     * inside the specialists' nested runs, and what the reviewer wants changed.
+     */
+    private static String renderRevisionTask(List<String> newEvidence, String feedback) {
+        StringBuilder sb = new StringBuilder();
+        if (!newEvidence.isEmpty()) {
+            sb.append("## Source evidence behind the specialist answers above\n")
+                .append(String.join("\n\n", newEvidence)).append("\n\n");
+        }
+        sb.append("## Reviewer feedback to address\n").append(feedback).append(
+            "\n\nRevise the answer you just gave. Keep everything the reviewer did not object to, "
+                + "and delegate again only for material that is genuinely missing above.");
+        return sb.toString();
+    }
+
+    /**
+     * The messages this turn actually added. The orchestrator's list is cumulative across rounds,
+     * so persisting all of it per step would store round 1 again inside round 2's row, and again
+     * inside round 3's — the trace would grow quadratically while showing each step work it did not
+     * do.
+     */
+    private static List<LlmMessage> messagesAddedBy(RagResult result,
+        List<LlmMessage> priorMessages) {
+        List<LlmMessage> all = result.messages();
+        if (priorMessages == null || all == null || all.size() <= priorMessages.size()) {
+            return all;
+        }
+        return List.copyOf(all.subList(priorMessages.size(), all.size()));
     }
 
     private static String renderReviewTask(String question, String answer, List<String> evidence) {
@@ -513,7 +569,7 @@ public class OrchestrationService {
      * the run: a specialist failure the orchestrator recovers from must not label a later error.
      */
     private record FailureContext(Throwable throwable, String role, String playbookName,
-        String model, int round, int completedSteps) {
+        String model, int round, int seq) {
 
         boolean matches(Throwable candidate) {
             for (Throwable c = candidate; c != null; c = c.getCause()) {
@@ -528,9 +584,11 @@ public class OrchestrationService {
         }
 
         String describe(RunState st) {
+            // The failing step's own number, not a count of finished ones: seq is now allocated
+            // when a step starts, so "afterSteps=N" would have named the step that failed while
+            // claiming N had completed before it.
             return "role=" + role + " playbook=" + playbookName + " model=" + model + " round="
-                + round + " afterSteps=" + completedSteps + " specialistCalls="
-                + st.specialistCalls;
+                + round + " atStep=" + seq + " specialistCalls=" + st.specialistCalls;
         }
     }
 
@@ -553,6 +611,19 @@ public class OrchestrationService {
         int round;
         OrchestratorProperties.RoleConfig specialistCfg;
         FailureContext lastFailure;
+
+        /**
+         * The orchestrator's conversation, carried across review rounds so a revision continues it
+         * rather than starting a new one that remembers nothing. Null until its first turn returns.
+         */
+        List<LlmMessage> orchestratorMessages;
+
+        /**
+         * How much of {@link #evidence} the orchestrator has already been sent. Entries beyond this
+         * are new since its last turn; everything below it is already in
+         * {@link #orchestratorMessages} and re-sending it would duplicate.
+         */
+        int evidenceSent;
 
         RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
             UUID userId) {

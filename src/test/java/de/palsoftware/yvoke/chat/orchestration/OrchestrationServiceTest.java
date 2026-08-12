@@ -1,11 +1,15 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.InstanceOfAssertFactories.type;
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -29,7 +33,9 @@ import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -412,13 +418,15 @@ public class OrchestrationServiceTest {
      * invisible because an unreviewed answer looks exactly like a reviewed one.
      *
      * <p>
-     * The second half is what the rejection is FOR. The orchestrator is re-run with the feedback
-     * appended under the {@code ## Reviewer feedback to address} header, and that appended text is
-     * the only difference between round 1 and round 2 — everything else (question, history, system
-     * prompt, tools) is identical. Lose the append and every round asks the model the
-     * byte-identical question, so it produces the byte-identical answer, so the reviewer rejects it
-     * again: a rejected run burns {@code maxReviewRounds + 1} full pro-model turns to deliver the
-     * same text it already had after the first one, flagged.
+     * The second half is what the rejection is FOR. The orchestrator is re-run with its own draft
+     * and the feedback appended, and that appended text is the only difference between round 1 and
+     * round 2 — everything else (question, history, system prompt, tools) is identical. Lose the
+     * append and every round asks the model the byte-identical question, so it produces the
+     * byte-identical answer, so the reviewer rejects it again: a rejected run burns
+     * {@code maxReviewRounds + 1} full pro-model turns to deliver the same text it already had
+     * after the first one, flagged. The draft half of the append is pinned by
+     * {@link #aRevisionCarriesTheAnswerItIsAskedToRevise()}, which is where the reasoning for
+     * including it lives; this test pins the exact rendering the two halves produce together.
      *
      * <p>
      * Neither string appears anywhere in the test sources today. The stubbed reviewer in
@@ -463,13 +471,171 @@ public class OrchestrationServiceTest {
             .isEqualTo("cross-topic question");
         assertThat(orchestratorTurns.get(1).query())
             .as("a revision must be told WHAT to revise, or it reproduces the same answer")
-            .isEqualTo("cross-topic question\n\n"
-                + "## Reviewer feedback to address (revise your previous answer)\n"
-                + "Reviewer did not submit a verdict.");
+            .isEqualTo("## Reviewer feedback to address\nReviewer did not submit a verdict."
+                + "\n\nRevise the answer you just gave. Keep everything the reviewer did not "
+                + "object to, and delegate again only for material that is genuinely missing "
+                + "above.");
+        assertThat(orchestratorTurns.get(1).priorMessages())
+            .as("the question and the draft are in the conversation this turn continues")
+            .isNotNull();
 
         assertThat(r.status()).as("silence is not approval").isEqualTo("delivered_flagged");
         assertThat(r.content()).as("and the user is told why, in the reviewer's own words")
             .contains("Reviewer notes: Reviewer did not submit a verdict.");
+    }
+
+    /**
+     * A revision must carry the answer it is revising. The prompt says "revise your previous
+     * answer", and the previous answer was never in it — so the orchestrator was asked to edit a
+     * text it had never seen, with the evidence behind it held only by the reviewer. It cannot
+     * revise under those conditions; it can only research the question again from nothing, which is
+     * exactly what it did.
+     *
+     * <p>
+     * Measured on run {@code ec419a8a}, where the reviewer's sole objection was one mis-numbered
+     * citation: round 2 re-ran the full specialist search at 216,667 prompt tokens to fix a
+     * reference number it could have corrected by editing one character. The run spent 539,391
+     * tokens, roughly double what it needed, and died on {@code HTTP 429} at the last reviewer turn
+     * — a rate limit the duplicated research is what provoked. From the user's seat the visible
+     * symptom is the answer restarting from the beginning instead of finishing.
+     *
+     * <p>
+     * The orchestrator therefore keeps ONE conversation for the whole run: round 2 continues the
+     * transcript that produced the draft instead of opening a fresh call. That is what
+     * {@code priorMessages} is for — {@code history} cannot serve, because
+     * {@code RagService.buildInitialMessages} flattens it to user/assistant content strings and
+     * drops every {@code tool} message, which is precisely the material a revision needs. Asserting
+     * on the seed rather than on rendered prompt text is deliberate: the draft is carried
+     * structurally now, so a string assertion over {@code query()} would pass while proving
+     * nothing.
+     */
+    @Test
+    public void aRevisionContinuesTheConversationThatProducedTheDraft() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
+        assertThat(orchestratorTurns).as("one rejection, so two orchestrator turns").hasSize(2);
+
+        assertThat(orchestratorTurns.get(0).priorMessages())
+            .as("the first turn starts a conversation, so it seeds nothing").isNull();
+        assertThat(orchestratorTurns.get(0).query()).isEqualTo("cross-topic question");
+
+        List<LlmMessage> seed = orchestratorTurns.get(1).priorMessages();
+        assertThat(seed).as("the revision must continue the previous turn's conversation")
+            .isNotNull();
+        assertThat(seed).as("and that conversation ends with the draft under review")
+            .last(as(type(LlmMessage.class))).satisfies(m -> {
+                assertThat(m.role()).isEqualTo("assistant");
+                assertThat(m.content()).contains("final orchestrated answer");
+            });
+        assertThat(orchestratorTurns.get(1).query())
+            .as("the new turn says only what is new — what to change").contains("needs work");
+        assertThat(orchestratorTurns.get(1).history())
+            .as("the chat history is already inside the seed; re-sending it would duplicate")
+            .isNull();
+    }
+
+    /**
+     * The reviewer must not inherit the orchestrator's conversation. It is a validate-only check
+     * against the supplied evidence, and a reviewer holding the orchestrator's transcript would see
+     * its own previous notes and every earlier draft — it would be reviewing a negotiation it took
+     * part in rather than judging an answer against sources.
+     */
+    @Test
+    public void theReviewerNeverInheritsTheOrchestratorsConversation() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        assertThat(capturedTurns("submit_review")).hasSize(2).allSatisfy(r -> {
+            assertThat(r.priorMessages()).as("no seeded transcript").isNull();
+            assertThat(r.history()).as("and no chat history either").isNull();
+        });
+    }
+
+    /**
+     * The trace must read in the order the work happened. A specialist runs NESTED inside the
+     * orchestrator's turn — {@code call_specialist} re-enters {@code runAgent} on the same thread —
+     * so it COMPLETES first, and allocating {@code seq} after the agentic call returned numbered
+     * every specialist ahead of the orchestrator that delegated to it. On the run that prompted
+     * this, the recorded trace opened with a specialist at seq 1 and the orchestrator that asked
+     * for it at seq 2: the trace showed the work before the decision that caused it, and since
+     * {@code AgentStepRepository.findByRunId} orders by seq with no tiebreaker, that is exactly
+     * what the admin page rendered.
+     */
+    @Test
+    public void theTraceIsNumberedInTheOrderStepsStartedNotFinished() {
+        rejectFirstNReviews = 0;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<Integer> seqs = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<String> roles = ArgumentCaptor.forClass(String.class);
+        verify(stepRepository, atLeastOnce()).insert(any(), any(), seqs.capture(), roles.capture(),
+            anyInt(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
+            anyInt(), anyInt());
+
+        // Sorted by seq, which is exactly how AgentStepRepository.findByRunId reads them back and
+        // therefore how the admin trace renders. Insertion order is deliberately NOT what is
+        // asserted: rows are written when a step finishes, and the whole point is that the number
+        // no longer follows that.
+        Map<Integer, String> bySeq = new TreeMap<>();
+        for (int i = 0; i < seqs.getAllValues().size(); i++) {
+            bySeq.put(seqs.getAllValues().get(i), roles.getAllValues().get(i));
+        }
+        assertThat(bySeq).as("the orchestrator delegated, so it started before its specialist")
+            .containsExactly(entry(1, "orchestrator"), entry(2, "specialist"),
+                entry(3, "reviewer"));
+    }
+
+    /**
+     * The draft alone is not enough to revise from. The evidence behind it — the specialists' tool
+     * output — was rendered into the reviewer's task and nowhere else, so a revising orchestrator
+     * holding its own answer still could not check a claim against a source without delegating
+     * again. On the observed run that is precisely what the extra round bought: one targeted
+     * specialist call, 35,750 prompt tokens, to look up a chunk id that was already sitting in the
+     * evidence the reviewer had been reading.
+     *
+     * <p>
+     * It costs what the reviewer already pays for the same block (~25k prompt tokens on that run)
+     * and replaces a re-search an order of magnitude larger. The orchestrator keeps
+     * {@code call_specialist}, so feedback that genuinely demands new material can still be
+     * delegated — this only removes the need to delegate for material already in hand.
+     *
+     * <p>
+     * Note what the conversation seed does NOT contain: a specialist's raw tool output lives inside
+     * its own nested run, so the orchestrator only ever saw the specialist's synthesised answer.
+     * The evidence therefore still has to travel as text, and it is sent as a DELTA — anything sent
+     * in an earlier round is already in the transcript, so re-sending it would duplicate the
+     * largest block in the prompt once per round.
+     */
+    @Test
+    public void aRevisionCarriesTheEvidenceSoItNeedNotDelegateAgain() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
+        assertThat(orchestratorTurns).hasSize(2);
+        assertThat(orchestratorTurns.get(0).query())
+            .as("the first turn gathers evidence, so it must not be handed any")
+            .doesNotContain("Source evidence");
+        assertThat(orchestratorTurns.get(1).query()).as(
+            "the revision must carry the specialists' output, attributed as the reviewer sees it")
+            .contains("Source evidence").contains("[spec-a · query_json_objects]")
+            .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
+    }
+
+    /** The turns captured on the mocked {@code ragService}, identified by their extra tool. */
+    private List<AgenticRequest> capturedTurns(String extraToolName) {
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        return requests.getAllValues().stream()
+            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
+                && extraToolName.equals(q.extraTools().get(0).getToolDefinition().name()))
+            .toList();
     }
 
     /**
@@ -782,7 +948,12 @@ public class OrchestrationServiceTest {
             .containsExactly("specialist", "orchestrator", "reviewer");
         assertThat(seq.getAllValues())
             .as("one counter for the whole run: the first step is 1 and no two steps collide")
-            .containsExactly(1, 2, 3);
+            .containsExactlyInAnyOrder(1, 2, 3);
+        // Rows are WRITTEN in completion order and NUMBERED in start order, so the specialist that
+        // finished first carries the higher number — see
+        // theTraceIsNumberedInTheOrderStepsStartedNotFinished, which owns that guarantee.
+        assertThat(seq.getAllValues().get(0)).as("the nested specialist started second")
+            .isEqualTo(2);
     }
 
     /**

@@ -5,7 +5,20 @@ This is Yvoke, built using Java, Spring Boot, and PostgreSQL.
 ## Prerequisites
 
 - **Java**: Java 25
-- **Docker**: Desktop or CLI with Compose support
+- **Docker**: Desktop or CLI with Compose support. Builds go through a **multi-platform buildx
+  builder**, which is machine-local configuration and therefore not in the repository — create it
+  once per machine:
+
+  ```bash
+  docker buildx create --name multi-platform-builder --driver docker-container --platform linux/amd64,linux/arm64 --bootstrap && docker buildx use --default --global multi-platform-builder
+  ```
+
+  The stock `default`/`desktop-linux` builders use the `docker` driver, which can only build one
+  platform per invocation; the `docker-container` driver builds manifest lists. Everything else is
+  unchanged: `docker compose build` and `docker build -t …` still load into the local image store
+  (Docker Desktop's containerd image store handles multi-arch loads), so `./redeploy.sh` works as
+  before. `redeploy.sh k8s` still targets `linux/amd64` only — override with
+  `PLATFORM=linux/amd64,linux/arm64 ./redeploy.sh k8s` when the cluster needs both.
 - **Node**: Node 22+ — required, not optional. The browser-side JavaScript has its own test tier
   bound to the Maven `test` phase, so without `node` on `PATH` every `./mvnw test`, `package`,
   `verify` and `install` fails. There is nothing to install: the tier has **zero dependencies**

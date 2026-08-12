@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.llm.core;
 
 import de.palsoftware.yvoke.llm.core.service.AccountingLlmClient;
+import de.palsoftware.yvoke.llm.core.service.AzureOpenAiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.CloudflareGeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.GeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
@@ -51,8 +52,24 @@ public class LlmConfig {
         @Value("${app.ai.cloudflare-gemini.gateway-token}") String cfGatewayToken,
         @Value("${app.ai.cloudflare-gemini.api-key}") String cfGeminiApiKey,
         @Value("${app.ai.cloudflare-gemini.enable-thinking}") boolean cfEnableThinking,
-        @Value("${app.ai.cloudflare-gemini.thinking-level}") String cfThinkingLevel) {
+        @Value("${app.ai.cloudflare-gemini.thinking-level}") String cfThinkingLevel,
+        @Value("${app.ai.azure-openai.endpoint}") String azureEndpoint,
+        @Value("${app.ai.azure-openai.api-key}") String azureApiKey,
+        @Value("${app.ai.azure-openai.enable-thinking}") boolean azureEnableThinking,
+        @Value("${app.ai.azure-openai.thinking-level}") String azureThinkingLevel,
+        @Value("${app.ai.azure-openai.reasoning-models}") String azureReasoningModels) {
         log.info("Configuring LLM client with provider: {}", provider);
+
+        if ("azure-openai".equalsIgnoreCase(provider)) {
+            String apiKey = resolveKey(azureApiKey, "AZURE_OPENAI_API_KEY");
+            warnIfMissing(apiKey, "Azure OpenAI", "AZURE_OPENAI_API_KEY");
+            // The endpoint is fatal rather than merely warned about: without one the SDK targets
+            // the
+            // public OpenAI service and forwards the Azure key to it as a bearer token.
+            String endpoint = resolveKey(azureEndpoint, "AZURE_OPENAI_ENDPOINT");
+            return new AzureOpenAiLlmClient(endpoint, apiKey, objectMapper, azureEnableThinking,
+                azureThinkingLevel, azureReasoningModels);
+        }
 
         if ("openrouter".equalsIgnoreCase(provider)) {
             String apiKey = resolveKey(openRouterApiKey, "OPENROUTER_API_KEY");

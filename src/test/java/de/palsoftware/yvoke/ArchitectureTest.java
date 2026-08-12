@@ -257,7 +257,7 @@ class ArchitectureTest {
         noClasses().that().resideOutsideOfPackage("de.palsoftware.yvoke.llm..").should()
             .dependOnClassesThat()
             .haveNameMatching("de\\.palsoftware\\.yvoke\\.llm\\.core\\.service\\."
-                + "(Gemini|CloudflareGemini|OpenRouter)LlmClient")
+                + "(Gemini|CloudflareGemini|OpenRouter|AzureOpenAi)LlmClient")
             .because("every call must go through the @Primary AccountingLlmClient; bypassing it "
                 + "produces LLM calls that are never logged, priced or shown on the cost dashboard")
             .check(classes);

@@ -36,6 +36,11 @@
       "description": "Google Gemini AI provider settings."
     },
     {
+      "name": "app.ai.azure-openai",
+      "type": "java.lang.Object",
+      "description": "Azure OpenAI provider settings."
+    },
+    {
       "name": "app.ai.rag",
       "type": "java.lang.Object",
       "description": "RAG (Retrieval-Augmented Generation) parameters."
@@ -160,8 +165,8 @@
     {
       "name": "app.ai.provider",
       "type": "java.lang.String",
-      "description": "Active LLM client provider backend ('gemini' or 'openrouter').",
-      "defaultValue": "gemini"
+      "description": "Active LLM client provider backend ('cloudflare-gemini', 'gemini', 'openrouter' or 'azure-openai').",
+      "defaultValue": "cloudflare-gemini"
     },
     {
       "name": "app.ai.openrouter.base-url",
@@ -192,6 +197,36 @@
       "type": "java.lang.String",
       "description": "Thinking level for reasoning effort of Gemini models (low, medium, high).",
       "defaultValue": "medium"
+    },
+    {
+      "name": "app.ai.azure-openai.endpoint",
+      "type": "java.lang.String",
+      "description": "Azure OpenAI resource endpoint, e.g. https://my-resource.openai.azure.com. Required when the provider is azure-openai: without it the SDK would target the public OpenAI service.",
+      "defaultValue": "placeholder-azure-openai-endpoint"
+    },
+    {
+      "name": "app.ai.azure-openai.api-key",
+      "type": "java.lang.String",
+      "description": "Authentication token/API Key for Azure OpenAI service requests.",
+      "defaultValue": "placeholder-azure-openai-api-key"
+    },
+    {
+      "name": "app.ai.azure-openai.enable-thinking",
+      "type": "java.lang.Boolean",
+      "description": "Whether to send a reasoning effort to Azure OpenAI reasoning models.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.ai.azure-openai.thinking-level",
+      "type": "java.lang.String",
+      "description": "Reasoning effort for Azure OpenAI reasoning models (minimal, low, medium, high).",
+      "defaultValue": "medium"
+    },
+    {
+      "name": "app.ai.azure-openai.reasoning-models",
+      "type": "java.lang.String",
+      "description": "Comma-separated Azure deployment names that address a reasoning model. Empty means detect from the deployment name.",
+      "defaultValue": ""
     },
     {
       "name": "app.ai.rag.max-iterations",
