@@ -258,6 +258,12 @@
                         <span sec:authorize="hasRole('ADMIN')">Admin</span>
                         <span sec:authorize="!hasRole('ADMIN') and hasRole('USER')">User</span>
                     </span>
+                    <!-- Which build is running. Shown to every signed-in user, so a report about an
+                         answer can name the build that produced it. Not on the login page: that is
+                         pre-authentication and would disclose the build to the whole internet. -->
+                    <span class="build-version"
+                          th:text="${@buildProperties.version}"
+                          th:title="${@buildProperties.version}">dev</span>
                 </div>
                 <form th:action="@{/logout}" method="post" class="logout-form">
                     <button type="submit" class="logout-btn" title="Sign Out">

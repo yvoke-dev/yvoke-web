@@ -12,10 +12,22 @@ labels:
       app.kubernetes.io/part-of: yvoke
       app.kubernetes.io/environment: k3s
 
+# The release this cluster runs, declared rather than computed: `git show <tag>:k8s/app/kustomization.yaml`
+# answers "what does this release deploy?" with nothing to run, and `kustomize build k8s/app` is a
+# complete deploy from any machine.
+#
+# Both tags MUST be the same value, and that value MUST equal the git tag of the commit they are
+# committed on. This file is a mirror of the tag, never a second source of it — redeploy.sh derives
+# the version from git and refuses to push when the two disagree, because a manifest pinned to one
+# version on a commit tagged another deploys a release that was never built, and nothing else
+# notices.
+#
+# These lines are rewritten by .github/workflows/release.yml, which sets both from ONE value and
+# commits that immediately before creating the tag. Editing them by hand is not the normal path.
 images:
   - name: yvoke/app
     newName: edipal/yvoke-app
-    newTag: "latest"
+    newTag: "1.0.0"
   - name: yvoke/db-migration
     newName: edipal/yvoke-db-migration
-    newTag: "latest"
+    newTag: "1.0.0"

@@ -55,8 +55,15 @@ spec:
               drop:
                 - ALL
         - name: flyway-migrate
-          image: yvoke/db-migration:latest
-          imagePullPolicy: Always
+          # Tag supplied by the `images:` transformer in k8s/app/kustomization.yaml, which declares
+          # the release this cluster runs. The sentinel is a legal tag that cannot be pulled, so
+          # applying this file directly — bypassing kustomize, and therefore the release
+          # declaration — fails visibly instead of deploying a plausible-but-wrong image.
+          image: yvoke/db-migration:SET-BY-KUSTOMIZE
+          # IfNotPresent is correct once the tag is immutable: it identifies its content, so a
+          # re-pull buys nothing and would make every pod start depend on the registry. The
+          # corollary is a rule: a published tag must never be overwritten.
+          imagePullPolicy: IfNotPresent
           args:
             - migrate
           envFrom:
@@ -89,8 +96,11 @@ spec:
                 - ALL
       containers:
         - name: yvoke-app
-          image: yvoke/app:latest
-          imagePullPolicy: Always
+          # Tag supplied by the kustomization (see the flyway-migrate initContainer above). Both
+          # images always carry the same release version: they are the code and the schema of one
+          # release, and a skew between them has no loud symptom.
+          image: yvoke/app:SET-BY-KUSTOMIZE
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080

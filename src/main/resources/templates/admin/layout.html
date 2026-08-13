@@ -197,6 +197,12 @@
                         <span sec:authorize="hasRole('ADMIN')">Admin</span>
                         <span sec:authorize="!hasRole('ADMIN') and hasRole('USER')">User</span>
                     </span>
+                    <!-- Which build is running. Admin console only: the audience is the operator
+                         and the support person. A non-release build renders a long git-describe
+                         string, so the CSS truncates and the title keeps the full value. -->
+                    <span class="build-version"
+                          th:text="${@buildProperties.version}"
+                          th:title="${@buildProperties.version}">dev</span>
                 </div>
                 <form th:action="@{/logout}" method="post" class="logout-form">
                     <button type="submit" class="logout-btn" title="Sign Out">

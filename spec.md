@@ -727,6 +727,10 @@ running corpus scripts and the evaluation harness.
   one. Clients should follow that job rather than read the response as a failure.
 - **AI clients and the in-app assistant share one tool set.** Adding, renaming or re-describing a tool
   changes both surfaces at once; there is no way to ship one without the other.
+- **A connecting client is told which build of the assistant it is talking to.** The version it receives
+  when it connects is the version that was released, so a client or a bug report can state which build
+  produced an answer. Builds that are not a release identify themselves as such rather than borrowing
+  the last release's number.
 
 ### Limits
 
@@ -825,6 +829,10 @@ feedback triage and answer traces; every user rates answers.
   old name and is never added to the new one.
 - **Search and ranking calls count as spend**, but only when they succeed. A failed search leaves no cost
   record, while a failed answer still records what the provider charged.
+- **Every signed-in page states which build it is running**, in the sidebar — both in chat and in the
+  administration console — so a report about an answer, a behaviour or a cost can name the build it
+  came from without the reporter needing admin access. It is never shown before sign-in, and a build
+  that is not a release says so rather than showing the last release's number.
 
 ### Limits
 

@@ -1,0 +1,130 @@
+# Builds and pushes the two release images, triggered by the GitHub Release that "Release" creates.
+#
+# Both images carry the SAME tag because they are the code and the schema of one release, and a
+# skew between them has no loud symptom: Flyway ignores future migrations by default, so an older
+# migration image against a newer database applies nothing and reports success.
+#
+# The jar is DOWNLOADED from the release rather than rebuilt. Rebuilding would produce a second jar
+# with the same build.version but a different build.time — and build.time is precisely what tells an
+# operator which build is running when two images claim one version. Downloading also means the
+# bytes in the image are the bytes the release workflow verified.
+#
+# This workflow fires on ANY published release, including one created by hand, so it validates the
+# tag shape and the manifest itself rather than trusting the event.
+name: Docker Build and Publish
+
+on:
+  release:
+    types:
+      - published
+  # Re-drivable on purpose. If this half fails after the release exists, the tag and the manifest
+  # are already public and the images are not — and deleting the Release to retry would destroy the
+  # jar asset this workflow depends on. Dispatching with the version republishes from the same tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release version to (re-)publish images for, e.g. 1.0.0"
+        required: true
+        type: string
+
+concurrency:
+  group: docker-publish-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  docker-build-publish:
+    name: Build and push yvoke images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # On a release event this is the tagged commit; on a manual re-drive we must
+          # name the tag explicitly, since the default would be the branch head.
+          ref: ${{ github.event.release.tag_name || inputs.version }}
+
+      - name: Validate the release tag and the manifest it deploys
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # This project's version is the tag verbatim — no prefix, no suffix. A release named
+          # v1.2.3 or 1.2.3-rc1 would otherwise be baked into the jar's build.version and into both
+          # image tags, and Docker Hub tags are not cheaply retractable.
+          if [[ ! "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag '${RELEASE_VERSION}' is not a plain semantic version." >&2
+            echo "This project tags releases as 1.2.3 with no prefix." >&2
+            exit 1
+          fi
+
+          # The commit being published must declare the release it deploys. Without this, a release
+          # cut by hand would publish images the manifest at that commit does not reference.
+          pinned="$(grep -c "newTag: \"${RELEASE_VERSION}\"" k8s/app/kustomization.yaml || true)"
+          if [[ "$pinned" -ne 2 ]]; then
+            echo "k8s/app/kustomization.yaml at this commit does not pin both images to ${RELEASE_VERSION}." >&2
+            grep -n "newTag:" k8s/app/kustomization.yaml >&2
+            exit 1
+          fi
+
+      - name: Download the verified release jar
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # The Dockerfile copies target/yvoke.jar by name (the pom's <finalName>), so the asset is
+          # written there rather than under its release-asset name.
+          mkdir -p target
+          gh release download "${RELEASE_VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern '*.jar' \
+            --output target/yvoke.jar \
+            --clobber
+
+          # The jar must claim the version it is about to be tagged as, or the running app would
+          # report a different version than the one it was deployed under.
+          unzip -p target/yvoke.jar META-INF/build-info.properties \
+            | grep -qxF "build.version=${RELEASE_VERSION}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: edipal
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Only the release version is published — deliberately no `latest`. The k8s manifests pull
+      # with IfNotPresent precisely because a tag identifies its content, and a moving tag in this
+      # registry would invite a deploy that re-runs the Flyway migration initContainer on a pod
+      # restart. Nothing references `latest`, so publishing one would only create that temptation.
+      - name: Build and push the app image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: Dockerfile
+          # amd64 only: this is what the k3s cluster runs and what redeploy.sh has always built.
+          # Local development builds its own images natively through docker compose.
+          platforms: linux/amd64
+          push: true
+          tags: edipal/yvoke-app:${{ github.event.release.tag_name || inputs.version }}
+
+      - name: Build and push the db-migration image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: docker/db/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: edipal/yvoke-db-migration:${{ github.event.release.tag_name || inputs.version }}

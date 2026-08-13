@@ -3,9 +3,17 @@ package de.palsoftware.yvoke;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -177,6 +185,167 @@ public class ApplicationYamlInvariantsTest {
         assertThat(exposedEndpoints())
             .as("a wider exposure list publishes /actuator/env, i.e. every resolved secret")
             .containsExactlyInAnyOrder("health", "info");
+    }
+
+    /**
+     * The other half of the rule above, which application.yml cannot express: nothing may publish
+     * the management port.
+     *
+     * <p>
+     * {@code /actuator/info} is anonymous by design (the {@code @Order(0)} chain permits it) and
+     * now carries the build version, so the only thing keeping the operational surface off the
+     * public network is that no {@code Service} routes to 9090 — a pod's own port is reachable
+     * in-cluster regardless, and an Ingress can only target a Service. Every manifest is walked
+     * rather than one named file, because a NEW Service added anywhere under {@code k8s/} would
+     * expose it just as effectively as an edit to the existing one.
+     */
+    @Test
+    public void noServicePublishesTheManagementPort() throws Exception {
+        String managementPort = text("management", "server", "port");
+        List<Map<String, Object>> services = new ArrayList<>();
+        List<Object> workloads = new ArrayList<>();
+
+        try (Stream<Path> files = Files.walk(Path.of("k8s"))) {
+            for (Path manifest : files.filter(Files::isRegularFile)
+                .filter(p -> p.getFileName().toString().endsWith(".yaml")).toList()) {
+                for (Object document : new Yaml()
+                    .loadAll(Files.readString(manifest, StandardCharsets.UTF_8))) {
+                    if (document instanceof Map<?, ?> map && "Service".equals(map.get("kind"))) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> service = (Map<String, Object>) map;
+                        services.add(service);
+                    } else if (document != null) {
+                        workloads.add(document);
+                    }
+                }
+            }
+        }
+
+        assertThat(services)
+            .as("vacuity guard: at least one Service manifest must be found under k8s/, or this "
+                + "test passes without examining anything")
+            .isNotEmpty();
+
+        // A Service selects a container port by NUMBER or by its NAME, and this repository's own
+        // Service uses the name form (`targetPort: http`). Scanning the spec for the literal 9090
+        // therefore missed the idiomatic way of making the mistake: `targetPort: management` routes
+        // to the actuator port while containing no "9090" anywhere. Resolve the aliases first.
+        Set<String> managementAliases = new TreeSet<>();
+        managementAliases.add(managementPort);
+        collectPortNames(workloads, managementPort, managementAliases);
+
+        assertThat(managementAliases)
+            .as("vacuity guard: the container port %s must be declared with a name somewhere under "
+                + "k8s/ — if nothing resolves, this check has silently degraded to the literal "
+                + "number scan it replaced", managementPort)
+            .hasSizeGreaterThan(1);
+
+        for (Map<String, Object> service : services) {
+            for (Object entry : servicePorts(service)) {
+                for (String key : List.of("port", "targetPort", "nodePort")) {
+                    Object value = ((Map<?, ?>) entry).get(key);
+                    if (value == null) {
+                        continue;
+                    }
+                    assertThat(String.valueOf(value))
+                        .as("a Service must not route to the management port — reachable as %s. "
+                            + "/actuator/info is anonymous and carries the build metadata, and "
+                            + "/actuator/health/** is anonymous too, so the containment is the "
+                            + "port and not the authorization", managementAliases)
+                        .isNotIn(managementAliases);
+                }
+            }
+        }
+    }
+
+    /** Every name any container gives to {@code port}, walked over whole manifests. */
+    private static void collectPortNames(Object node, String port, Set<String> names) {
+        if (node instanceof Map<?, ?> map) {
+            Object containerPort = map.get("containerPort");
+            Object name = map.get("name");
+            if (containerPort != null && String.valueOf(containerPort).equals(port)
+                && name != null) {
+                names.add(String.valueOf(name));
+            }
+            map.values().forEach(child -> collectPortNames(child, port, names));
+        } else if (node instanceof List<?> list) {
+            list.forEach(child -> collectPortNames(child, port, names));
+        }
+    }
+
+    private static List<?> servicePorts(Map<String, Object> service) {
+        if (service.get("spec") instanceof Map<?, ?> spec
+            && spec.get("ports") instanceof List<?> ports) {
+            return ports;
+        }
+        return List.of();
+    }
+
+    /**
+     * {@code /actuator/info} may disclose what the build IS; it must not disclose where it was
+     * built.
+     *
+     * <p>
+     * Binding the {@code build-info} goal populated this endpoint with group/artifact/version/time
+     * — deliberate, and harmless. The adjacent contributor is not: {@code management.info.git} is
+     * enabled by default in Boot, so the moment a {@code git.properties} appears on the classpath
+     * (the standard companion move for a git-driven versioning scheme —
+     * {@code git-commit-id-maven-plugin} writes exactly that file) the anonymous endpoint silently
+     * gains branch and commit, and {@code mode: full} adds the build host, the committer's email
+     * and the remote URL. Nothing warns: the sibling test above pins the endpoint EXPOSURE list and
+     * says nothing about which contributors fill those endpoints.
+     *
+     * <p>
+     * Both halves are asserted because they fail independently — the flag can be flipped back, and
+     * the resource can appear without anyone touching this file.
+     */
+    @Test
+    public void theInfoEndpointNeverDisclosesTheBuildMachine() {
+        assertThat(text("management", "info", "git", "enabled"))
+            .as("management.info.git must stay disabled: it defaults to ENABLED, so this key is "
+                + "not redundant — it is the whole guard")
+            .isEqualTo("false");
+
+        assertThat(ApplicationYamlInvariantsTest.class.getResourceAsStream("/git.properties"))
+            .as("no git.properties may reach the classpath. The contributor above is disabled, so "
+                + "this is defence in depth — but it is the half that changes without anyone "
+                + "editing configuration, because it arrives as a side effect of adding a plugin")
+            .isNull();
+    }
+
+    /**
+     * The version advertised to external MCP clients must be the version that was built.
+     *
+     * <p>
+     * This was a hardcoded {@code "1.0.0"} that had already drifted from the pom, equalled the
+     * spring-ai library default so it conveyed nothing, and was the only version any MCP client is
+     * ever told. It is now {@code @project.version@}, substituted by the Spring Boot parent's
+     * resource filtering — which is why this test reading the CLASSPATH copy rather than the source
+     * file is essential rather than incidental: the source says {@code @project.version@} and only
+     * the filtered copy says what clients actually receive.
+     */
+    @Test
+    public void theMcpServerVersionIsTheBuildVersion() throws Exception {
+        Properties buildInfo = new Properties();
+        try (InputStream in = ApplicationYamlInvariantsTest.class
+            .getResourceAsStream("/META-INF/build-info.properties")) {
+            assertThat(in).as("build-info.properties must be on the classpath — it is what the "
+                + "version below is compared against").isNotNull();
+            buildInfo.load(in);
+        }
+
+        String advertised = text("spring", "ai", "mcp", "server", "version");
+
+        assertThat(advertised)
+            .as("an unsubstituted '@project.version@' would be advertised verbatim to every MCP "
+                + "client. Note the defaultOf() helper unwraps only ${...}, so an @...@ token "
+                + "sails through as an ordinary string and would otherwise pass unnoticed")
+            .doesNotStartWith("@").doesNotEndWith("@");
+
+        assertThat(advertised)
+            .as("MCP clients cache serverInfo; telling them a version the artifact does not have "
+                + "makes every field report unfalsifiable")
+            .isEqualTo(buildInfo.getProperty("build.version"));
     }
 
     /**

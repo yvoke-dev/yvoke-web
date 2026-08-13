@@ -1,0 +1,269 @@
+# Cuts a release: resolves the next version, pins it into the k8s manifest, verifies the whole
+# suite at that version, then commits and tags. Nothing reaches the remote until every check has
+# passed, so a tag in this repository always names a commit that was green and that declares the
+# release it deploys.
+#
+# Images are NOT built here — "Docker Build and Publish" reacts to the GitHub Release this workflow
+# creates, and takes the jar from its assets. That chaining is why the checkout uses secrets.GH_TOKEN
+# rather than the default GITHUB_TOKEN: GitHub deliberately refuses to trigger workflows from events
+# raised with the default token, so a release created with it would never start the image build.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Choose the semantic version bump for this release."
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+# Two dispatches would resolve the SAME next version — the tag-exists probe happens before a build
+# that can run for the better part of an hour, so it cannot protect the push that follows it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# Deliberately read-only: every write on this job (the checkout's persisted credentials, the branch
+# and tag push, the release) goes through secrets.GH_TOKEN, because a release raised with the
+# workflow's own GITHUB_TOKEN would not trigger the image build.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Validate, tag, and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Verify main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "This release workflow can only be run manually from main."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Mandatory: release-version.sh derives the version from the tags, and the default
+          # depth-1 tagless checkout would make every build here resolve a SNAPSHOT.
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Configure Git
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        env:
+          VERSION_BUMP: ${{ inputs.version_bump }}
+        run: |
+          set -euo pipefail
+
+          # The git tags are the version history; this project keeps no VERSION file and no version
+          # in the pom (it builds from -Drevision), so the previous release IS the newest tag. The
+          # glob restricts the candidates to release tags: without it any unrelated tag that sorts
+          # higher (a stray 'v1.0.0', a 'nightly') would be read as the previous release and would
+          # block every release until someone found and deleted it.
+          current_version="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+
+          if [[ -z "$current_version" ]]; then
+            release_version="1.0.0"
+            echo "No release tags yet — this is the first release: ${release_version}"
+          else
+            if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "Newest release tag is not a plain semantic version: ${current_version}" >&2
+              echo "This project tags releases as 1.2.3 with no prefix." >&2
+              exit 1
+            fi
+
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+
+            case "$VERSION_BUMP" in
+              patch) patch="$((patch + 1))" ;;
+              minor) minor="$((minor + 1))"; patch=0 ;;
+              major) major="$((major + 1))"; minor=0; patch=0 ;;
+              *) echo "Unsupported version bump: ${VERSION_BUMP}" >&2; exit 1 ;;
+            esac
+
+            release_version="${major}.${minor}.${patch}"
+            echo "Previous release ${current_version} + ${VERSION_BUMP} -> ${release_version}"
+          fi
+
+          echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release tag does not exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --tags origin \
+              "refs/tags/${{ steps.version.outputs.release_version }}" >/dev/null 2>&1; then
+            echo "Tag ${{ steps.version.outputs.release_version }} already exists"
+            exit 1
+          fi
+
+      - name: Pin the release into the k8s manifest
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          # Both images are pinned to the same version and committed on the commit that gets
+          # tagged, so `git show <tag>:k8s/app/kustomization.yaml` states what that release
+          # deploys. Doing it here rather than by hand is what makes the manifest and the tag
+          # incapable of disagreeing: they come from one value.
+          #
+          # The pattern replaces the whole value rather than a quoted one: a manifest reformatted
+          # to unquoted YAML would otherwise silently match nothing while the suite stayed green.
+          sed -i -E "s|^(\s*newTag: ).*|\1\"${RELEASE_VERSION}\"|" k8s/app/kustomization.yaml
+
+          # `|| true` because grep exits 1 on zero matches, and under `set -e` that would abort the
+          # assignment before the diagnostic below — losing the diff in exactly the case that needs
+          # it most.
+          pinned="$(grep -c "newTag: \"${RELEASE_VERSION}\"" k8s/app/kustomization.yaml || true)"
+          if [[ "$pinned" -ne 2 ]]; then
+            echo "Expected both images pinned to ${RELEASE_VERSION}, found ${pinned}" >&2
+            git diff -- k8s/app/kustomization.yaml >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      # The integration tests need this image and it exists in no registry, so it is built here for
+      # the same reason ci.yml builds it.
+      - name: Build pgvector + pg_search Postgres image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ./docker/postgres
+          tags: yvoke/pgvector-pg_search:pg16-0.24.0
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      # The JS tier is bound to the Maven `test` phase, so `verify` fails without node on PATH.
+      # NOTE: the only action here not pinned to a digest — no verified SHA was available to copy.
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify at the release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          ./mvnw --batch-mode --no-transfer-progress verify -Pit-tests -Drevision="${RELEASE_VERSION}"
+
+      - name: Assert the artifact carries the release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          # The version reaches the running app through this file, so read it back rather than
+          # trusting that -Drevision was honoured.
+          grep -qxF "build.version=${RELEASE_VERSION}" target/classes/META-INF/build-info.properties
+
+      - name: Commit the release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git add k8s/app/kustomization.yaml
+
+          # A first release whose manifest already carries the target version leaves nothing staged,
+          # and `git commit` exits non-zero on an empty index — which under `set -e` would kill the
+          # run after the full verify. The tag simply goes on the current HEAD in that case.
+          if git diff --cached --quiet; then
+            echo "Manifest already pins ${{ steps.version.outputs.release_version }} — nothing to commit."
+          else
+            git commit -m "chore(release): ${{ steps.version.outputs.release_version }} [skip ci]"
+          fi
+
+      - name: Create the git tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git tag -a "${{ steps.version.outputs.release_version }}" \
+            -m "Release ${{ steps.version.outputs.release_version }}"
+
+      - name: Assert the tagged tree derives exactly this version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          # The gate that proves the whole scheme holds for this release: on the tagged commit, the
+          # version every later build derives must be the tag itself. A dirty tree or a mistagged
+          # commit shows up here as a -SNAPSHOT.
+          #
+          # Runs BEFORE the push on purpose. The tag object already exists locally, so the check is
+          # fully meaningful — and a failure leaves the remote untouched and the run retryable,
+          # rather than stranding a published tag that the tag-exists guard would then refuse.
+          derived="$(./release-version.sh)"
+          if [[ "$derived" != "${RELEASE_VERSION}" ]]; then
+            echo "Tagged tree derives '${derived}', expected '${RELEASE_VERSION}'" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
+      - name: Push the release commit and tag
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # --atomic: without it the two ref updates apply independently, so a branch update
+          # rejected because main moved during the build would still create the tag — publishing a
+          # tag that is on no branch, and permanently burning that version, since the tag-exists
+          # guard then blocks every retry.
+          git push --atomic origin "HEAD:${TARGET_BRANCH}" --follow-tags
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # The attached jar is the one the suite just verified, and it is the same jar the publish
+          # workflow puts into the image — that workflow downloads this asset rather than building
+          # its own, so exactly one jar exists per release rather than two that differ in build.time.
+          gh release create "${{ steps.version.outputs.release_version }}" \
+            --verify-tag \
+            --generate-notes \
+            --title "${{ steps.version.outputs.release_version }}" \
+            "target/yvoke.jar#yvoke-${{ steps.version.outputs.release_version }}.jar"

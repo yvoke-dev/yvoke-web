@@ -10,10 +10,19 @@
     </parent>
     <groupId>de.pal-software.ai</groupId>
     <artifactId>yvoke</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <name>yvoke</name>
     <description>Knowledge Base</description>
     <properties>
+        <!-- The GIT TAG is the source of truth for the release version, and the version is the tag
+             verbatim: tag 1.0.0 builds 1.0.0 and ships edipal/yvoke-app:1.0.0. A release build
+             passes -Drevision=<tag>; release-version.sh derives it and is the only thing that does.
+             `revision` is one of exactly three property names Maven resolves inside <version>
+             (with `sha1` and `changelist`) — a differently named property is accepted by the XML
+             and then silently fails to resolve. This default is what an untagged working copy and
+             every CI push build resolve to, and it ends in -SNAPSHOT deliberately: a build that is
+             not an exact clean tag must never be mistakable for a release. -->
+        <revision>0.0.0-SNAPSHOT</revision>
         <java.version>25</java.version>
         <spring-ai.version>2.0.0-RC1</spring-ai.version>
         <skipUnitTests>false</skipUnitTests>
@@ -217,6 +226,11 @@
     </dependencyManagement>
 
     <build>
+        <!-- Pins the artifact filename so it does not move with the version. The Dockerfile copies
+             exactly this name: `COPY target/*.jar` into a non-directory destination fails outright
+             once two jars match, and a version-derived filename makes a stale sibling in target/
+             ordinary rather than exotic. -->
+        <finalName>yvoke</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -224,6 +238,19 @@
                 <configuration>
                     <mainClass>de.palsoftware.yvoke.YvokeApplication</mainClass>
                 </configuration>
+                <executions>
+                    <!-- Writes target/classes/META-INF/build-info.properties at generate-resources,
+                         which is what gives the running app a BuildProperties bean (the bean is
+                         @ConditionalOnResource on exactly this file, so unbinding this execution
+                         removes it silently). A distinct execution id is mandatory: executions
+                         merge with the parent's by id, and reusing `repackage` would replace it. -->
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>

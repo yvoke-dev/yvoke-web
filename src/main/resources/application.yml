@@ -79,7 +79,13 @@ spring:
       server:
         enabled: true
         name: "Yvoke"
-        version: "1.0.0"
+        # Substituted at build time by the Spring Boot parent's resource filtering, which uses @
+        # as its ONLY delimiter for application*.yml — so this is the correct token and
+        # ${project.version} would NOT be substituted (it would reach Spring's runtime resolver
+        # instead and fail there). Quoting is mandatory: YAML treats a leading @ as reserved.
+        # This is the only version an external MCP client is ever told, and it was previously a
+        # hardcoded literal that had already drifted from the pom.
+        version: "@project.version@"
         protocol: STREAMABLE
         stdio: false
         streamable-http:
@@ -100,6 +106,15 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  info:
+    git:
+      # /actuator/info is anonymous, and the build-info contributor deliberately publishes
+      # group/artifact/version/time there. The git contributor is a different matter: it is
+      # ENABLED by default, so the moment a git.properties reaches the classpath (which is what
+      # git-commit-id-maven-plugin exists to do) the same anonymous endpoint would also serve the
+      # branch and commit — and with mode=full, the build host and the committer's email. What
+      # the build IS may be disclosed; where it was built may not.
+      enabled: false
 app:
   upload-dir: ${APP_UPLOADS_DIR:uploads}
   security:

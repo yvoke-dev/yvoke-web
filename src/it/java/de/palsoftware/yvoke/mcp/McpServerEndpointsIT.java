@@ -13,9 +13,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.List;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
+import org.springframework.boot.info.BuildProperties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -41,6 +44,15 @@ public class McpServerEndpointsIT {
 
     @Autowired
     private PlaybookRepository playbookRepository;
+
+    /**
+     * Present only because the build-info goal writes META-INF/build-info.properties; the bean is
+     * @ConditionalOnResource on it. Injecting it here is therefore also a guard: if that execution
+     * were ever unbound, this context would fail to start rather than the MCP server quietly
+     * advertising nothing.
+     */
+    @Autowired
+    private BuildProperties buildProperties;
 
     private class McpSession implements AutoCloseable {
         private final String sessionId;
@@ -128,6 +140,24 @@ public class McpServerEndpointsIT {
         }
         assertEquals(200, initResponse.statusCode());
         assertTrue(initResponse.body().contains("protocolVersion"), "Initialize response should negotiate protocolVersion");
+
+        // The version an external MCP client is actually handed, asserted on the wire rather than
+        // in configuration. The unit tier already pins that application.yml resolves to the build
+        // version; this proves spring-ai puts that value into serverInfo, which is the only place
+        // a client ever reads it. Both sides come from real artefacts — the response body and the
+        // BuildProperties bean — so they cannot agree by construction.
+        //
+        // Matched inside the serverInfo object specifically: the request above sends a clientInfo
+        // carrying its own "version", so a body-wide substring search could be satisfied by the
+        // echo of our own input. The pattern tolerates whitespace and SSE framing, neither of
+        // which is part of the contract being asserted.
+        Matcher serverInfo = Pattern
+            .compile("\"serverInfo\"\\s*:\\s*\\{[^}]*?\"version\"\\s*:\\s*\"([^\"]+)\"")
+            .matcher(initResponse.body());
+        assertTrue(serverInfo.find(),
+            "Initialize response should carry serverInfo.version, but was: " + initResponse.body());
+        assertEquals(buildProperties.getVersion(), serverInfo.group(1),
+            "serverInfo must advertise the version this artifact was built as");
 
         // Extract session ID from Mcp-Session-Id header
         String sessionId = initResponse.headers().firstValue("Mcp-Session-Id")
