@@ -5,20 +5,10 @@ This is Yvoke, built using Java, Spring Boot, and PostgreSQL.
 ## Prerequisites
 
 - **Java**: Java 25
-- **Docker**: Desktop or CLI with Compose support. Builds go through a **multi-platform buildx
-  builder**, which is machine-local configuration and therefore not in the repository — create it
-  once per machine:
-
-  ```bash
-  docker buildx create --name multi-platform-builder --driver docker-container --platform linux/amd64,linux/arm64 --bootstrap && docker buildx use --default --global multi-platform-builder
-  ```
-
-  The stock `default`/`desktop-linux` builders use the `docker` driver, which can only build one
-  platform per invocation; the `docker-container` driver builds manifest lists. Everything else is
-  unchanged: `docker compose build` and `docker build -t …` still load into the local image store
-  (Docker Desktop's containerd image store handles multi-arch loads), so `./redeploy.sh` works as
-  before. `redeploy.sh k8s` still targets `linux/amd64` only — override with
-  `PLATFORM=linux/amd64,linux/arm64 ./redeploy.sh k8s` when the cluster needs both.
+- **Docker**: Desktop or CLI with Compose support. The stock builder is enough — nothing here
+  cross-builds. Every image the cluster runs is built and pushed by GitHub Actions (see
+  [Releasing](#releasing)), and `docker compose build` produces single-platform images for this
+  machine only. A `docker-container` buildx builder left over from an earlier setup is harmless.
 - **Node**: Node 22+ — required, not optional. The browser-side JavaScript has its own test tier
   bound to the Maven `test` phase, so without `node` on `PATH` every `./mvnw test`, `package`,
   `verify` and `install` fails. There is nothing to install: the tier has **zero dependencies**
@@ -114,12 +104,36 @@ transformation would be a second derivation, and two derivations can disagree.
 2. ***Docker Build and Publish* runs automatically** when that workflow publishes the GitHub
    Release. It downloads the verified jar from the release assets — it does not rebuild — and pushes
    both images under the release tag.
-3. **Deploy once both are green:** `git pull && ./redeploy.sh k8s --deploy-only`. Between step 1 and
-   the end of step 2 the manifest references images that do not exist yet, so deploying early gives
-   an `ImagePullBackOff`.
+3. **Deploy once both are green:** `git pull && ./redeploy.sh k8s`. Between step 1 and the end of
+   step 2 the manifest references images that do not exist yet, so deploying early gives an
+   `ImagePullBackOff`.
 
 Nothing is released by hand. Do not create a tag yourself: the workflow sets the manifest version
 and the tag from one value, and that is the only thing keeping them from disagreeing.
+
+`redeploy.sh k8s` builds and pushes nothing — it applies the release the tracked manifest declares.
+All three images are published by GitHub Actions, so no local machine needs registry credentials and
+no local build can reach the cluster.
+
+### The Postgres image
+
+The custom Postgres image (pgvector + ParadeDB `pg_search`) is the third release image and the odd
+one out: it is versioned by what it *contains*, not by the git tag, so it moves only when Postgres
+or `pg_search` is bumped — roughly never. It has its own manual workflow, ***Publish Postgres
+Image***.
+
+Both versions live in `docker/postgres/Dockerfile` — the base image tag carries the Postgres major,
+`ARG PG_SEARCH_VERSION` selects the ParadeDB `.deb`. To bump one:
+
+1. Edit `docker/postgres/Dockerfile`, and set the matching tag in `k8s/app/database/cluster.yaml`
+   **in the same commit**. The workflow reads both and refuses to run when they disagree;
+   `PostgresImageVersionTest` fails the build if any other reference drifts.
+2. Run ***Publish Postgres Image***. It publishes exactly the image `cluster.yaml` names.
+3. Deploy with `./redeploy.sh k8s`.
+
+It refuses to overwrite a published tag. That rule is stricter here than for the release images,
+because CNPG pulls this one with `imagePullPolicy: Always` — a replaced tag is adopted by the next
+pod restart, with no deploy and nothing in git recording that the database engine moved.
 
 ### Which version is where
 
@@ -169,14 +183,21 @@ an init container in the app's own pod. Two consequences decide how migrations m
 ### Rolling back
 
 ```bash
-git checkout <previous-version> && ./redeploy.sh k8s --deploy-only
+git checkout <previous-version> && ./redeploy.sh k8s
 ```
 
 The images are still in the registry (tags are never overwritten, which is why the manifests pull
 with `IfNotPresent`), so this needs no rebuild. The checked-out manifest is what selects the version
-— there is no `TAG=` to set. It rolls the code **and** the migration image back together, safe only
-because migrations are additive: the schema stays forward, and rolling the migration image back is a
-silent no-op rather than an error.
+— there is no `TAG=` to set, and no local build can produce a different answer. It rolls the code
+**and** the migration image back together, safe only because migrations are additive: the schema
+stays forward, and rolling the migration image back is a silent no-op rather than an error.
+
+**The checkout also restores that release's own `redeploy.sh`** — the script that runs is the one
+from the tag, not this one. Releases cut before the push was removed (anything up to and including
+`1.0.0`) carry the build-and-push script, whose bare `k8s` target spends a full
+`verify -Pit-tests` and then refuses at the registry probe without applying anything. Roll back to
+one of those with `./redeploy.sh k8s --deploy-only` instead — that flag exists there and is what
+the old script's rollback path used.
 
 If *Docker Build and Publish* fails after the release exists, the tag and manifest are public but the
 images are not. Re-drive it from the Actions tab with the version as input rather than deleting the
@@ -184,17 +205,16 @@ Release — deleting it destroys the jar asset that workflow builds from.
 
 ### Versions outside a release
 
-`./release-version.sh` prints what a build *driven through `redeploy.sh`* will identify itself as:
-an exact tag on a clean tree prints that tag, anything else prints `<git-describe>-SNAPSHOT`. A plain
-`./mvnw verify -Pit-tests` never consults it — it resolves the pom's own `0.0.0-SNAPSHOT` default —
-so no version flag is needed there either way.
+`./release-version.sh` prints what a **local** build will identify itself as: an exact tag on a clean
+tree prints that tag, anything else prints `<git-describe>-SNAPSHOT`. `redeploy.sh` stamps it into
+the jar it builds for `docker compose`, which is what the sidebar footer and `/actuator/info` then
+report. A plain `./mvnw verify -Pit-tests` never consults it — it resolves the pom's own
+`0.0.0-SNAPSHOT` default — so no version flag is needed there either way.
 
-`./redeploy.sh k8s` refuses to push a SNAPSHOT (`ALLOW_SNAPSHOT_PUSH=1` overrides, for a deliberate
-throwaway), refuses when the derived version disagrees with the manifest, and refuses to overwrite an
-image tag that is already published (`ALLOW_TAG_OVERWRITE=1` overrides). The version is deliberately
-**not** settable from the environment: releases are cut by the workflow, not from a laptop. Local
-`docker compose` images are unversioned by design; the admin sidebar shows the derived version, so
-you can always see what is running.
+That version reaches nothing outside your machine. `redeploy.sh` cannot publish an image, so the
+guards it used to need are gone with the push: there is no `ALLOW_SNAPSHOT_PUSH`, no
+`ALLOW_TAG_OVERWRITE`, no `TAG=`, and no way to talk a laptop into putting a dirty-tree build behind
+a release tag. Releases are cut by the workflow, from a tagged commit, or not at all.
 
 ## Project Module Layout
 

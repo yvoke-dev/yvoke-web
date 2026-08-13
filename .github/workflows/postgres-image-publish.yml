@@ -1,0 +1,151 @@
+# Publishes the custom Postgres image (pgvector + ParadeDB pg_search) that the CNPG cluster runs.
+#
+# Separate from "Docker Build and Publish" on purpose. The app and migration images are versioned by
+# the git tag and rebuilt every release; this one is versioned by what it CONTAINS — the Postgres
+# major and the pg_search release — so it moves only when one of those is bumped, which is roughly
+# never. Tying it to the release cadence would republish an identical image under a new name every
+# time and destroy the property that its tag identifies its bytes.
+#
+# It exists because this image had exactly one publisher for the life of the project: a `docker push`
+# in redeploy.sh. That meant shipping a database engine required a laptop with registry credentials,
+# and the push could not be removed without making the image unpublishable.
+#
+# Nothing here carries a version. The Dockerfile is the single source — it selects the base image and
+# the .deb that gets installed — and k8s/app/database/cluster.yaml declares what the cluster pulls.
+# This workflow reads both and refuses to run when they disagree, so the image that gets published is
+# by construction the image the cluster is asking for.
+name: Publish Postgres Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_overwrite:
+        description: "Replace the tag if it is already published. Changes the database engine under the next pod restart — see the refusal step."
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: postgres-image-publish
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Build and push the pgvector + pg_search image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      # This workflow holds production registry credentials and is dispatchable by hand, so without
+      # this it would publish from whatever branch it was launched on — a Dockerfile and a
+      # cluster.yaml that agree with each other on a feature branch pass every gate below while
+      # having been reviewed by nobody. release.yml carries the same check for the same reason.
+      - name: Verify main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "The Postgres image can only be published from main (was: ${GITHUB_REF_NAME})." >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve the image from the Dockerfile and the cluster manifest
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # What the image will actually contain. Both values are pinned in the Dockerfile and
+          # nowhere else authoritative: the base tag carries the Postgres major, and
+          # PG_SEARCH_VERSION selects the ParadeDB .deb that gets installed into it.
+          pg_major="$(sed -nE 's|^FROM pgvector/pgvector:pg([0-9]+).*|\1|p' docker/postgres/Dockerfile)"
+          pg_search="$(sed -nE 's|^ARG PG_SEARCH_VERSION=([0-9]+\.[0-9]+\.[0-9]+).*|\1|p' docker/postgres/Dockerfile)"
+
+          if [[ -z "$pg_major" || -z "$pg_search" ]]; then
+            echo "Could not read the Postgres major and pg_search version from docker/postgres/Dockerfile." >&2
+            echo "Both must be pinned literally — a floating value would change what the image" >&2
+            echo "contains without changing what it is called." >&2
+            exit 1
+          fi
+
+          # What the cluster asks for. Publishing this string verbatim is what makes a mismatch
+          # impossible rather than merely unlikely: there is no second place to spell the name.
+          declared="$(sed -nE 's|^[[:space:]]*imageName:[[:space:]]*([^[:space:]]+).*|\1|p' k8s/app/database/cluster.yaml)"
+          if [[ -z "$declared" ]]; then
+            echo "k8s/app/database/cluster.yaml declares no imageName." >&2
+            exit 1
+          fi
+
+          declared_tag="${declared##*:}"
+          expected_tag="${pg_major}-${pg_search}"
+
+          # The gate. A bump that edits only the Dockerfile would otherwise publish new contents
+          # under the old tag; a bump that edits only the manifest would leave the cluster pulling a
+          # tag nobody ever pushed. Neither reports anything at the time it happens.
+          if [[ "$declared_tag" != "$expected_tag" ]]; then
+            echo "cluster.yaml pulls '${declared_tag}' but the Dockerfile builds '${expected_tag}'." >&2
+            echo "Bump both in the same commit: the tag is the only record of what is in the image." >&2
+            exit 1
+          fi
+
+          echo "image=${declared}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${declared} (Postgres ${pg_major}, pg_search ${pg_search})"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: edipal
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Probed after the login so the answer is the same for a private repository as a public one:
+      # an unauthenticated inspect of a private tag fails identically to one that does not exist,
+      # which would turn this guard into a silent pass exactly where it matters.
+      - name: Refuse to overwrite a published tag
+        if: ${{ !inputs.allow_overwrite }}
+        shell: bash
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          set -euo pipefail
+
+          # Stricter than the rule for the release images, and for a worse failure. The CNPG cluster
+          # pulls this one with `imagePullPolicy: Always`, so a replaced tag is adopted by the next
+          # pod restart — an OOM kill, a node reboot — with no deploy, no manifest change and
+          # nothing in git recording that the database engine moved.
+          # Fails CLOSED. `docker manifest inspect` exits non-zero for any failure, so treating a
+          # bare non-zero as "not published" would let a network blip, an expired credential or a
+          # rate limit turn this guard off silently — and the one run where the registry is
+          # unhappy is not the run you want overwriting a tag. Only a recognised not-found answer
+          # is accepted as proof the tag is free.
+          if probe="$(docker manifest inspect "${IMAGE}" 2>&1)"; then
+            echo "Refusing to overwrite ${IMAGE}, which is already published." >&2
+            echo "Bump PG_SEARCH_VERSION (or the base image) in docker/postgres/Dockerfile and the" >&2
+            echo "matching tag in k8s/app/database/cluster.yaml, or re-run with allow_overwrite." >&2
+            exit 1
+          elif ! grep -qiE 'manifest unknown|not found|no such manifest|does not exist' <<<"${probe}"; then
+            echo "Could not determine whether ${IMAGE} is already published:" >&2
+            echo "${probe}" >&2
+            echo "Refusing to push rather than risk replacing a published tag." >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      # amd64 only, matching the k3s cluster and the release images. Local development never pulls
+      # this image — docker compose and ci.yml build docker/postgres natively under their own name.
+      - name: Build and push the Postgres image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ./docker/postgres
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.image }}

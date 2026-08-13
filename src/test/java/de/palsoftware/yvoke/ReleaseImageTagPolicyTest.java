@@ -15,18 +15,27 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A release is identified by exactly one string, and this test pins the places that could quietly
- * introduce a second one. The version is DERIVED from the git tag by {@code release-version.sh} and
- * used for the Maven build and both image tags; {@code k8s/app/kustomization.yaml} DECLARES the
- * release the cluster runs, committed on the commit that gets tagged.
+ * introduce a second one. The release version originates in the git tag: {@code release.yml}
+ * resolves it, stamps the jar with it and pins it into {@code k8s/app/kustomization.yaml}, which
+ * DECLARES the release the cluster runs on the commit that gets tagged. ({@code release-version.sh}
+ * derives the same string from a working tree — it is what the release workflow re-runs as its
+ * final gate, and what stamps a local build; it no longer names an image, because nothing outside
+ * CI publishes one.)
  *
  * <p>
  * Those two are a source and a mirror, never two sources. The manifest is what makes
  * {@code git show 1.0.0:k8s/app/kustomization.yaml} answer "what does this release deploy?" with no
  * script in the loop, and it is what a pull-based GitOps controller would read — but a version read
  * FROM the manifest would be a disaster in the other direction: a dirty working tree would then
- * build a jar stamping itself as a release. So git decides, the manifest records, and
- * {@code redeploy.sh} refuses to push when they disagree. Nothing else would notice a manifest
- * pinned to 1.0.0 on a commit tagged 1.0.1.
+ * build a jar stamping itself as a release. So git decides and the manifest records.
+ *
+ * <p>
+ * Their agreement is enforced where publishing happens rather than where deploying happens:
+ * {@code release.yml} writes both {@code newTag}s from one value and then re-derives the version on
+ * the tagged tree, and {@code docker-build-publish.yml} refuses to push unless the commit it is
+ * publishing pins the release twice. {@code redeploy.sh} used to carry a third copy of that check,
+ * because it could push; it now publishes nothing at all, which is why it needs no guard — see
+ * {@link #theDeployScriptCannotPublishAnImage()}.
  *
  * <p>
  * The arrangement replaces {@code :latest} on both release images, which was not merely untidy.
@@ -57,6 +66,8 @@ public class ReleaseImageTagPolicyTest {
     private static final Path KUSTOMIZATION = Path.of("k8s/app/kustomization.yaml");
     private static final Path DEPLOYMENT = Path.of("k8s/app/yvoke-app/deployment.yaml");
     private static final Path MIGRATION_DOCKERFILE = Path.of("docker/db/Dockerfile");
+    private static final Path PUBLISH_WORKFLOW =
+        Path.of(".github/workflows/docker-build-publish.yml");
 
     /**
      * The placeholder {@code deployment.yaml} carries where a tag would otherwise sit. The
@@ -104,6 +115,21 @@ public class ReleaseImageTagPolicyTest {
             Pattern.compile("usage\\(\\)\\s*\\{.*?\\n(.*?)\\nEOF", Pattern.DOTALL).matcher(script);
         assertThat(usage.find()).as("redeploy.sh must define usage() as a heredoc").isTrue();
         return usage.group(1);
+    }
+
+    /**
+     * The script with its comments AND its {@code usage()} heredoc removed — what actually runs.
+     *
+     * <p>
+     * The heredoc has to go for the same reason the comments do, and it is the easier of the two to
+     * forget: it is a shell string rather than a comment, so {@code stripComments} leaves it, and
+     * it legitimately says things like "builds and pushes NO images". An assertion that the script
+     * never pushes is otherwise unwritable — the word is right there in the help text, describing
+     * its own absence.
+     */
+    private static String executableBody(String script) {
+        return stripComments(
+            script.replaceAll("(?s)usage\\(\\)\\s*\\{.*?\\nEOF", "usage() { :; }"));
     }
 
     private static List<String> matches(String text, String regex) {
@@ -161,8 +187,9 @@ public class ReleaseImageTagPolicyTest {
 
         assertThat(tags.get(0))
             .as("the pinned tag must look like a release version. This is the value that must "
-                + "equal the git tag of the commit it is committed on — redeploy.sh refuses to "
-                + "push when they disagree, because nothing else would notice")
+                + "equal the git tag of the commit it is committed on — release.yml writes both "
+                + "newTags from that one value, and docker-build-publish.yml refuses to push "
+                + "unless the commit it is publishing pins the release twice")
             .matches("\\d+\\.\\d+\\.\\d+");
 
         String deployment = read(DEPLOYMENT);
@@ -185,21 +212,18 @@ public class ReleaseImageTagPolicyTest {
     @Test
     public void theDeployScriptDerivesOneVersionAndUsesItEverywhere() throws IOException {
         String redeploy = stripComments(read(REDEPLOY));
-        assertThat(redeploy).as("vacuity guard: redeploy.sh must still build and push images")
-            .contains("docker build").contains("docker push");
+        // Anchored to a whole line: the usage heredoc is not a comment, and its target list says
+        // "Maven build -> docker compose build -> down/up", so a bare contains() was satisfied by
+        // help text. Deleting the actual build step would then leave the local target booting
+        // whatever stale images the daemon already holds — CLAUDE.md's `docker compose up -d never
+        // rebuilds` pitfall verbatim — with this guard still green.
+        assertThat(redeploy).as("vacuity guard: redeploy.sh must still build and deploy something")
+            .containsPattern("(?m)^\\s*docker compose build\\s*$").contains("kubectl apply");
 
         assertThat(redeploy)
             .as("redeploy.sh must derive the version from release-version.sh rather than deriving "
                 + "it again itself — the whole scheme rests on there being exactly one derivation")
             .contains("release-version.sh");
-
-        assertThat(matches(redeploy, "(?m)^TAG=.*$"))
-            .as("TAG must BE the derived version, with no environment override. An override made "
-                + "every guard below inspect a different string from the one the jar was stamped "
-                + "with, so `TAG=<a released version> ./redeploy.sh k8s` on a dirty tree wrapped a "
-                + "SNAPSHOT jar in release-labelled images and pushed them over the published ones, "
-                + "reporting success throughout")
-            .containsExactly("TAG=\"$VERSION\"");
 
         List<String> mvnwLines = matches(redeploy, "(?m)^\\s*\\./mvnw .*$");
         assertThat(mvnwLines).as("vacuity guard: redeploy.sh must invoke the Maven wrapper")
@@ -210,17 +234,6 @@ public class ReleaseImageTagPolicyTest {
                 + "pushed as a release — the jar and the image would disagree about what they are")
             .allMatch(line -> line.contains("-Drevision="));
 
-        // Assert the COMPARISON, not the filename. `contains("kustomization.yaml")` was satisfied
-        // by merely reading the file — the guard it claimed to pin could be deleted wholesale and
-        // this test stayed green, which is the exact shape of test this project keeps a rule about.
-        assertThat(redeploy)
-            .as("redeploy.sh must compare the version it derived from git against the tag pinned "
-                + "in the manifest, and exit non-zero when they differ. The manifest is a MIRROR of "
-                + "the git tag, never a second source of it: committing newTag 1.0.0 and then "
-                + "tagging 1.0.1 deploys a different release than the one that was built, and this "
-                + "comparison is the only thing in the system that would notice")
-            .containsPattern("\\$\\{TAG\\}\"\\s*!=\\s*\"\\$\\{MANIFEST_TAG\\}");
-
         assertThat(redeploy)
             .as("'kubectl rollout restart' must be gone. It existed only to force a re-pull of a "
                 + "moving tag; with a per-release tag the pod template itself changes, so the "
@@ -230,45 +243,63 @@ public class ReleaseImageTagPolicyTest {
             .doesNotContain("rollout restart");
     }
 
+    /**
+     * The deploy script cannot publish a release image, which is what replaced four guards.
+     *
+     * <p>
+     * It used to build and push all three images, and every safeguard around that existed to make
+     * the push safe: a refusal to push a {@code -SNAPSHOT}, a comparison of the derived version
+     * against the manifest, a {@code docker manifest inspect} probe against overwriting a published
+     * tag, and a registry-name check — plus {@code ALLOW_SNAPSHOT_PUSH} and
+     * {@code ALLOW_TAG_OVERWRITE} to soften two of them. Each was a rule a reader had to know.
+     *
+     * <p>
+     * Once CI published every image the path was already unreachable in normal operation — on a
+     * released version the overwrite probe refused, and on anything else the SNAPSHOT guard did —
+     * so it could only run under an override, which is exactly the situation the guards were
+     * protecting against. Deleting the push deletes the need for all of them: a script with no
+     * {@code docker
+     * push} cannot publish a wrong image, and an argument that does not exist cannot be misused.
+     *
+     * <p>
+     * This is the one assertion that keeps that true. Reintroducing a push here would silently
+     * reintroduce every one of those failure modes, because none of the guards remain to catch it.
+     */
     @Test
-    public void aSnapshotIsNeverPushedAndTheDeployOnlyPathIsBothParsedAndDocumented()
-        throws IOException {
+    public void theDeployScriptCannotPublishAnImage() throws IOException {
         String redeploy = read(REDEPLOY);
+        String body = executableBody(redeploy);
 
-        // The guard itself, not the word. `contains("SNAPSHOT")` was satisfied by the comments and
-        // the usage heredoc, so the whole refusal block could be deleted with the test still green.
-        assertThat(stripComments(redeploy))
-            .as("redeploy.sh must refuse to push a version that is not an exact clean tag, and the "
-                + "refusal must actually exit. Every non-release derivation ends in -SNAPSHOT, so "
-                + "this stays a substring test rather than a judgement")
-            .containsPattern("\\*SNAPSHOT\\*").contains("ALLOW_SNAPSHOT_PUSH");
+        // Ban the WORD, not one spelling of one command. The first version of this assertion was
+        // `doesNotContain("docker push")` plus `doesNotContainPattern("docker\\s+build\\b")`, and
+        // between them they missed `docker buildx build --push` (the modern form, and the one the
+        // sibling workflows use), `docker image push`, `docker compose push` and `crane push` —
+        // every publish route anyone would actually reach for today. A guard whose whole purpose is
+        // to stop a future edit is worth nothing if it only recognises the syntax that happened to
+        // be there when it was written.
+        assertThat(body)
+            .as("no executable line of redeploy.sh may push anything. Images are published by "
+                + "GitHub Actions from a tagged commit; a laptop that can push can publish a "
+                + "SNAPSHOT jar under a release tag, over bytes that nodes have already cached "
+                + "with IfNotPresent")
+            .doesNotContain("push");
 
-        assertThat(stripComments(redeploy))
-            .as("a published tag must never be overwritten — that is what lets the manifests pull "
-                + "with IfNotPresent. It was stated in four places and enforced in none, while the "
-                + "mirror guard made overwriting the only thing a local k8s push could do: TAG "
-                + "equals the version the manifest declares, which CI has normally published "
-                + "already. The registry must be probed rather than the rule trusted")
-            .contains("docker manifest inspect").contains("ALLOW_TAG_OVERWRITE");
+        assertThat(body)
+            .as("redeploy.sh must not build a release image either. Building without pushing looks "
+                + "harmless, but it is how a push comes back: the tags have to be named somewhere, "
+                + "and a named tag one line away from a push is not a boundary. ('docker compose "
+                + "build' for the local stack is untouched — it produces no registry image.)")
+            .doesNotContainPattern("docker\\s+(image\\s+|buildx\\s+)?build\\b")
+            .doesNotContain("buildx");
 
-        assertThat(redeploy)
-            .as("--deploy-only must be parsed AND documented in the usage text. A flag that is "
-                + "documented but unparsed (or parsed but undocumented) is the same silent no-op "
-                + "shape as a form field no controller binds")
-            .containsPattern("--deploy-only\\)").containsPattern("--deploy-only\\s+\\w");
-
-        // The usage text advertised `TAG=1.0.0 ./redeploy.sh k8s --deploy-only` as THE rollback
-        // command. On that path TAG is read nowhere: the deploy is `kustomize build k8s/app`, whose
-        // version comes from the tracked manifest — so following the built-in help re-applies the
-        // release you are trying to roll away from, and reports success. The version selector is
-        // the checkout, which is why the help must name it.
-        assertThat(usageText(redeploy)).as(
-            "the usage text must not suggest an environment variable selects what --deploy-only "
-                + "applies; the checked-out manifest does. A rollback that silently redeploys the "
-                + "version being rolled away from is the worst possible successful exit")
+        assertThat(usageText(redeploy))
+            .as("the rollback instruction must name the checkout as the version selector. The "
+                + "tracked manifest is what the apply reads, so nothing in the environment can "
+                + "select a release — and a rollback that silently redeploys the version being "
+                + "rolled away from is the worst possible successful exit")
             .doesNotContain("TAG=").contains("git checkout");
 
-        assertThat(stripComments(redeploy))
+        assertThat(body)
             .as("nothing may generate a kustomize overlay at deploy time. The manifest under "
                 + "version control IS the deployment declaration, so a generated one would be a "
                 + "second answer to 'what is deployed?' that no reviewer and no git history sees")
@@ -287,7 +318,7 @@ public class ReleaseImageTagPolicyTest {
      */
     @Test
     public void thePublishedImageNamesAreTheOnesTheClusterPulls() throws IOException {
-        String publish = read(Path.of(".github/workflows/docker-build-publish.yml"));
+        String publish = read(PUBLISH_WORKFLOW);
         String kustomization = stripComments(read(KUSTOMIZATION));
 
         List<String> pulled = matches(kustomization, "(?m)^\\s*newName:\\s*(\\S+)\\s*$").stream()
@@ -303,6 +334,46 @@ public class ReleaseImageTagPolicyTest {
                     + "deploy time, long after both workflows reported success", image)
                 .contains(image + ":");
         }
+    }
+
+    /**
+     * The manifest-versus-tag agreement is still enforced somewhere.
+     *
+     * <p>
+     * {@code redeploy.sh} used to compare its git-derived version against the manifest's
+     * {@code newTag} and refuse to push on a mismatch, and that comparison was pinned by a test.
+     * Deleting the push deleted the comparison — correctly, since the script can no longer publish
+     * anything — but it also deleted the only assertion covering the rule, leaving the class
+     * javadoc above asserting that {@code docker-build-publish.yml} carries it while nothing
+     * checked that it still does. Its manifest check could have been deleted with the whole suite
+     * green.
+     *
+     * <p>
+     * That workflow is the last gate before bytes reach the registry, and it fires on ANY published
+     * release including a hand-made one, so it cannot lean on the release workflow's guarantees.
+     */
+    @Test
+    public void thePublishWorkflowRefusesACommitThatDoesNotDeclareTheReleaseItPublishes()
+        throws IOException {
+        String publish = stripComments(read(PUBLISH_WORKFLOW));
+
+        assertThat(publish)
+            .as("vacuity guard: %s must still be the workflow that pushes the release images",
+                PUBLISH_WORKFLOW)
+            .contains("docker/build-push-action");
+
+        assertThat(publish)
+            .as("the publish workflow must read the tracked manifest at the commit it is "
+                + "publishing. Nothing else compares the release being pushed against the release "
+                + "the manifest declares — redeploy.sh gave that check up when it gave up pushing")
+            .contains(KUSTOMIZATION.toString());
+
+        assertThat(publish)
+            .as("...and it must require BOTH images to be pinned to the version it is publishing. "
+                + "Counting is the whole point: one pinned image and one stale one is precisely the "
+                + "code-and-schema skew that has no loud symptom, because Flyway ignores future "
+                + "migrations by default")
+            .containsPattern("newTag[^\\n]*RELEASE_VERSION").containsPattern("-ne\\s+2");
     }
 
     @Test
