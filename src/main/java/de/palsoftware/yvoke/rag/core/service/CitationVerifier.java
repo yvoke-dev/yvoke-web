@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.rag.core.service;
 
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import jakarta.annotation.Nullable;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -180,7 +181,75 @@ public class CitationVerifier {
         this.documentRepository = documentRepository;
     }
 
-    public ParsedCitation parseCitation(String raw) {
+    /**
+     * The corpus ids a piece of text cites, held as dash-free lower-case prefixes.
+     *
+     * <p>
+     * Deliberately not a {@code Set<UUID>}. A set of uuids invites {@code contains}, and equality
+     * is the wrong comparison here: a draft may cite {@code [chunk_id=8f7c1a2b]}, which every other
+     * part of this system resolves — {@code findByIdPrefix} needs only 8 hex chars,
+     * {@code citation-render.js} links exactly that form, and this class already refuses to call it
+     * fabricated. {@link #covers} is the only way to ask the question, so the mistake cannot be
+     * expressed.
+     */
+    public record CitedIds(Set<String> prefixes) {
+
+        /** Whether the answer cited this row — by full id, or by any resolvable prefix of it. */
+        public boolean covers(@Nullable UUID id) {
+            if (id == null || prefixes.isEmpty()) {
+                return false;
+            }
+            String full = id.toString().replace("-", "").toLowerCase();
+            for (String prefix : prefixes) {
+                if (full.startsWith(prefix)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public boolean isEmpty() {
+            return prefixes.isEmpty();
+        }
+    }
+
+    /**
+     * Every corpus id {@code text} cites. Scans the WHOLE text, not just a {@code ## References}
+     * section: playbooks mandate numbered refs in the prose and put the real ids in the reference
+     * list, but an answer that cites inline instead is not therefore uncited, and treating it that
+     * way would strip its evidence over a formatting difference.
+     */
+    public static CitedIds citedIds(String text) {
+        Set<String> prefixes = new LinkedHashSet<>();
+        for (ParsedCitation parsed : scanCitations(text)) {
+            if (isIdKind(parsed.kind) && parsed.value != null) {
+                String clean = parsed.value.trim().replace("-", "").toLowerCase();
+                if (isIdPrefix(clean) || isValidUuid(clean)) {
+                    prefixes.add(clean);
+                }
+            }
+        }
+        return new CitedIds(Set.copyOf(prefixes));
+    }
+
+    /**
+     * The one bracket scan. {@link #cleanFabricatedCitations} and {@link #citedIds} both go through
+     * it so {@link #BRACKET_PATTERN} has a single consumer shape and the two cannot drift into
+     * disagreeing about what counts as a citation.
+     */
+    private static List<ParsedCitation> scanCitations(String text) {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<ParsedCitation> parsed = new ArrayList<>();
+        Matcher scanner = BRACKET_PATTERN.matcher(text);
+        while (scanner.find()) {
+            parsed.add(parseCitation(scanner.group(0)));
+        }
+        return parsed;
+    }
+
+    public static ParsedCitation parseCitation(String raw) {
         String s = raw.trim();
         if (s.startsWith("[") && s.endsWith("]")) {
             s = s.substring(1, s.length() - 1).trim();
@@ -220,7 +289,8 @@ public class CitationVerifier {
             return Collections.emptyList();
         }
 
-        List<ParsedCitation> parsedList = citations.stream().map(this::parseCitation).toList();
+        List<ParsedCitation> parsedList =
+            citations.stream().map(CitationVerifier::parseCitation).toList();
         ResolvedIds resolved = resolveIds(parsedList);
 
         List<CitationCheckResult> results = new ArrayList<>();
@@ -319,11 +389,7 @@ public class CitationVerifier {
 
         // First pass: parse all bracketed citations so existence can be checked in one
         // query per table instead of one per citation.
-        List<ParsedCitation> parsedList = new ArrayList<>();
-        Matcher scanner = BRACKET_PATTERN.matcher(text);
-        while (scanner.find()) {
-            parsedList.add(parseCitation(scanner.group(0)));
-        }
+        List<ParsedCitation> parsedList = scanCitations(text);
         ResolvedIds resolved = resolveIds(parsedList);
 
         Matcher matcher = BRACKET_PATTERN.matcher(text);

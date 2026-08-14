@@ -26,6 +26,11 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaul
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
+import de.palsoftware.yvoke.rag.core.model.SeenChunks;
+import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
+import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
+import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
+import java.util.Map;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -67,6 +72,9 @@ public class OrchestrationServiceTest {
 
     // Tunables for the stubbed RagService behaviour.
     private int rejectFirstNReviews = 0; // reviewer rejects this many times, then approves
+
+    /** Extra JSON fields the scripted reviewer appends to its verdict, e.g. citation_fixes. */
+    private String rejectionExtras = "";
     private boolean orchestratorClarifies = false;
     private String specialistClarifyingQuestion = null; // when set, the specialist asks the user
     private final AtomicInteger reviewCount = new AtomicInteger(0);
@@ -77,6 +85,16 @@ public class OrchestrationServiceTest {
         new AtomicReference<>();
     private final AtomicReference<LlmCallContextHolder.Context> contextInsideOrchestratorAfterDelegation =
         new AtomicReference<>();
+
+    /** The chunk the orchestrator's draft cites — so it must reach the reviewer as text. */
+    private static final UUID CITED_CHUNK = UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071");
+
+    /** Retrieved by the same specialist and cited by nobody — the manifest's whole purpose. */
+    private static final UUID UNCITED_CHUNK =
+        UUID.fromString("2c3d4e5f-1122-4333-8444-666666666666");
+
+    private static final String CITED_BODY = "The Person table holds identities.";
+    private static final String UNCITED_BODY = "Install the kit before configuring anything.";
 
     private static final UUID CONV = UUID.randomUUID();
     private static final UUID MSG = UUID.randomUUID();
@@ -131,14 +149,17 @@ public class OrchestrationServiceTest {
             // The specialist frame has now returned. Whatever it did to the ThreadLocal must be
             // undone by the time the orchestrator resumes on this same thread.
             contextInsideOrchestratorAfterDelegation.set(LlmCallContextHolder.get());
-            return result("final orchestrated answer [chunk_id=" + UUID.randomUUID() + "]", null,
-                null);
+            // Cites a chunk the specialist actually retrieved. A random id here would make the
+            // draft cite nothing the evidence contains, so cite-scoping would withhold everything
+            // and the reviewer assertions would be testing the fallback rather than the feature.
+            return result("final orchestrated answer [chunk_id=" + CITED_CHUNK + "]", null, null);
         }
 
         if ("submit_review".equals(extraName)) {
             boolean approve = reviewCount.getAndIncrement() >= rejectFirstNReviews;
             for (ToolCallback tc : req.extraTools()) {
-                tc.call("{\"approved\":" + approve + ",\"feedback\":\"needs work\"}");
+                tc.call("{\"approved\":" + approve + ",\"feedback\":\"needs work\""
+                    + rejectionExtras + "}");
             }
             return result("review done", null, null);
         }
@@ -291,9 +312,15 @@ public class OrchestrationServiceTest {
         assertThat(reviewer.history())
             .as("the reviewer judges the answer against the evidence, never against the chat")
             .isNull();
+        // get_section is deliberately absent, and its absence is the contract rather than an
+        // economy. It resolves a chunk id to the whole enclosing SECTION, so a reviewer holding it
+        // judges claims against sibling text no specialist retrieved — the evidence base silently
+        // becomes wider than what the answer was built from. With the cited sources supplied in
+        // full there is nothing it is entitled to fetch: a claim those sources do not support is a
+        // citation defect for the review loop to correct, not something to go looking for.
         assertThat(reviewer.allowedTools())
-            .as("validate-only: no retrieval tool may widen the reviewer's evidence base")
-            .containsExactly("verify_citations", "get_section");
+            .as("validate-only: no tool may widen the reviewer's evidence base")
+            .containsExactly("verify_citations");
     }
 
     /**
@@ -469,12 +496,15 @@ public class OrchestrationServiceTest {
         assertThat(orchestratorTurns.get(0).query())
             .as("round 1 is asked the bare question — the header only exists after a rejection")
             .isEqualTo("cross-topic question");
+        // A synthesised rejection carries no structured lists at all, which is exactly the case
+        // isCitationOnly() must answer FALSE for: with nothing itemised, "every objection is a
+        // citation fix" is unknowable, and banning delegation on that basis would strand a run
+        // that genuinely needs a search.
         assertThat(orchestratorTurns.get(1).query())
             .as("a revision must be told WHAT to revise, or it reproduces the same answer")
             .isEqualTo("## Reviewer feedback to address\nReviewer did not submit a verdict."
                 + "\n\nRevise the answer you just gave. Keep everything the reviewer did not "
-                + "object to, and delegate again only for material that is genuinely missing "
-                + "above.");
+                + "object to. Delegate again only for material that is genuinely missing above.");
         assertThat(orchestratorTurns.get(1).priorMessages())
             .as("the question and the draft are in the conversation this turn continues")
             .isNotNull();
@@ -685,6 +715,166 @@ public class OrchestrationServiceTest {
         assertThat(reviews.get(1).query().split(Pattern.quote(block), -1).length - 1)
             .as("round 2 must still see round 1's evidence alongside its own, not instead of it")
             .isEqualTo(2);
+
+        // The same invariant for CHUNK evidence, where identity is the id rather than the text.
+        // Stating it as "the block appears literally twice" would pin the duplication itself as the
+        // contract — which is what de-duplication exists to remove — so the accumulation is
+        // asserted
+        // on the attribution and the ids, and the saving on the body.
+        String round2 = reviews.get(1).query();
+        assertThat(count(round2, "[spec-a · search_corpus]"))
+            .as("both rounds' search evidence is present and still attributed").isEqualTo(2);
+        // The two-space prefix is the chunk HEADER form. A bare "id=" would also match the draft's
+        // own "[chunk_id=…]" citation, which the reviewer's prompt quotes back under "## Candidate
+        // answer" — counting that as evidence would make this assertion pass for the wrong reason.
+        assertThat(count(round2, "  id=" + CITED_CHUNK))
+            .as("...each keeping its own header, so no attribution is lost to de-duplication")
+            .isEqualTo(2);
+        assertThat(count(round2, CITED_BODY)).as("...but the text itself travels once")
+            .isEqualTo(1);
+        assertThat(round2).contains(ChunkBlocks.SHOWN_ABOVE);
+    }
+
+    private static int count(String haystack, String needle) {
+        return haystack.split(Pattern.quote(needle), -1).length - 1;
+    }
+
+    /**
+     * The reviewer's prompt is the largest message this system sends — measured at 125,440 chars on
+     * average in production, where two of them outweighed all 31 specialist tool results that
+     * produced them. It now receives the sources the answer cites and nothing else, which is both
+     * the saving and the point: a citation asserts "this source supports this statement", and only
+     * a reviewer restricted to that source is actually testing the assertion.
+     */
+    @Test
+    public void theReviewerGetsTheCitedSourcesAndNothingElse() {
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        String review = capturedTurns("submit_review").get(0).query();
+
+        assertThat(review).as("the draft cites this chunk, so its text must be there")
+            .contains(CITED_BODY);
+        assertThat(review).as("nothing cites this one, so its text goes")
+            .doesNotContain(UNCITED_BODY);
+        assertThat(review)
+            .as("...and so does its name — a title the reviewer cannot read is not evidence, "
+                + "it is an invitation to approve on the strength of a plausible label")
+            .doesNotContain(UNCITED_CHUNK.toString());
+        assertThat(review).as("evidence that is not chunk text can never be cited or recovered")
+            .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
+    }
+
+    /**
+     * Without this the reviewer cannot tell "the corpus has nothing on this" from "you did not cite
+     * it", so it phrases its objection as the former — and the orchestrator answers by delegating a
+     * fresh search for material it is already holding, which is the expensive fix instead of the
+     * free one.
+     */
+    @Test
+    public void theReviewerIsToldUncitedSourcesExistWithoutBeingShownThem() {
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        String review = capturedTurns("submit_review").get(0).query();
+
+        assertThat(review).contains("Do NOT search for new information");
+        assertThat(review).as("it must know its evidence is scoped, not exhaustive")
+            .contains("those are not shown here");
+        assertThat(review).as("and be steered towards asking for a citation")
+            .contains("must cite what supports the claim");
+    }
+
+    /**
+     * The expensive failure this pair of fields exists to prevent, measured on a live run: the
+     * reviewer rejected a draft over a mis-citation and said so precisely — *"the correct name IS
+     * supported by [4], so either swap the citation to [4] or remove [5]"* — and the orchestrator
+     * answered by running another specialist costing 347,969 prompt tokens. The whole run went 4×
+     * over its baseline and still ended `delivered_flagged`.
+     *
+     * <p>
+     * Prose could not carry that instruction reliably, so the verdict carries the distinction
+     * instead: a citation fix is applied from evidence already in hand, and the revision prompt has
+     * to say so in a way the orchestrator cannot read as an invitation to research.
+     */
+    @Test
+    public void aCitationOnlyRejectionTellsTheOrchestratorNotToDelegate() {
+        rejectFirstNReviews = 1;
+        rejectionExtras = ",\"citation_fixes\":[\"swap [5] to [4] on the SAP HCM claim\"]";
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        String revision = capturedTurns("call_specialist").get(1).query();
+
+        assertThat(revision).contains("swap [5] to [4] on the SAP HCM claim");
+        assertThat(revision)
+            .as("the orchestrator must be told this needs no retrieval, in as many words")
+            .contains("already supplied").contains("do NOT call call_specialist");
+    }
+
+    /**
+     * The other half: a claim that genuinely has no evidence behind it cannot be fixed by
+     * renumbering, so delegation must stay available or the run cannot converge at all.
+     */
+    @Test
+    public void anUnsupportedClaimStillPermitsDelegation() {
+        rejectFirstNReviews = 1;
+        rejectionExtras = ",\"unsupported_claims\":[\"SAP BW versions are not covered anywhere\"]";
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        String revision = capturedTurns("call_specialist").get(1).query();
+
+        assertThat(revision).contains("SAP BW versions are not covered anywhere");
+        assertThat(revision).as("delegation is the correct remedy for genuinely missing material")
+            .contains("delegate");
+        assertThat(revision).doesNotContain("do NOT call call_specialist");
+    }
+
+    /**
+     * The reviser must never be cite-scoped. The draft is what is being changed, the reviewer's
+     * objection is normally that a claim is unsupported, and the fix therefore needs exactly the
+     * material the draft does not yet cite. Scoping it hands the orchestrator back only what it
+     * already used, and it delegates again to re-fetch evidence it was holding — the 216,667-token
+     * re-research this area exists to prevent.
+     */
+    @Test
+    public void theReviserIsNeverCiteScoped() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
+        assertThat(orchestratorTurns).hasSize(2);
+        String revision = orchestratorTurns.get(1).query();
+
+        assertThat(revision).contains("Reviewer feedback to address");
+        assertThat(revision).as("the cited body is still there").contains(CITED_BODY);
+        assertThat(revision)
+            .as("and so is the uncited one — re-citing it is the cheap fix for 'unsupported', "
+                + "and withholding it forces a fresh delegation instead")
+            .contains(UNCITED_BODY);
+    }
+
+    /**
+     * Where repeat suppression and cite-scoping meet. Suppression replaced a second sighting with a
+     * reference, so the only full copy of that chunk may sit in a different evidence entry; if
+     * cite-scoping removes that entry while keeping the reference, the reviewer is told to look
+     * further up its prompt for text that is no longer anywhere in it.
+     */
+    @Test
+    public void noReferenceInTheReviewersPromptPointsAtAMissingBody() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        for (AgenticRequest review : capturedTurns("submit_review")) {
+            String text = review.query();
+            if (text.contains(ChunkBlocks.SHOWN_ABOVE)) {
+                assertThat(text)
+                    .as("a reference is only honest while the body is in the same "
+                        + "message — the reviewer has no history and cannot search")
+                    .contains(CITED_BODY);
+            }
+        }
     }
 
     /**
@@ -1305,12 +1495,34 @@ public class OrchestrationServiceTest {
         }
     }
 
+    /**
+     * A specialist returns TWO kinds of tool output, and the pair is deliberate.
+     *
+     * <p>
+     * The {@code query_json_objects} message is chunk-free, so it exercises the pass-through half
+     * of {@link EvidenceDigest} — it is what the older tests in this class assert on, and their
+     * assertions stay literally true because that entry is never reduced. The {@code search_corpus}
+     * message is real {@code ChunkBlocks.format} output carrying one cited and one uncited chunk,
+     * which is what production evidence actually looks like and what makes the cite-scoping
+     * assertions mean anything. With only the JSON entry the whole reviewer path would render
+     * byte-identically and every test here would pass while pinning nothing.
+     */
     private RagResult specialistResult() {
         LlmMessage assistant = new LlmMessage("assistant", "specialist answer",
             List.of(new LlmPart("text", "specialist answer", null, null)), null, null, null);
-        LlmMessage toolMsg = new LlmMessage("tool", "query_json_objects rows: [from 9.2.2 to 9.3]",
+        LlmMessage jsonMsg = new LlmMessage("tool", "query_json_objects rows: [from 9.2.2 to 9.3]",
             null, null, "call-1", "query_json_objects");
-        return new RagResult(List.of(UUID.randomUUID()), List.of(assistant, toolMsg), null,
-            List.of(UUID.randomUUID()), 5, 10, 15, 0, 2, specialistClarifyingQuestion, null);
+        LlmMessage searchMsg = new LlmMessage("tool",
+            ChunkBlocks.format(List.of(fixtureChunk(CITED_CHUNK, CITED_BODY, "Person"),
+                fixtureChunk(UNCITED_CHUNK, UNCITED_BODY, "install-kit.md")), SeenChunks.NONE),
+            null, null, "call-2", "search_corpus");
+        return new RagResult(List.of(UUID.randomUUID()), List.of(assistant, jsonMsg, searchMsg),
+            null, List.of(UUID.randomUUID()), 5, 10, 15, 0, 2, specialistClarifyingQuestion, null);
+    }
+
+    private static HybridSearchResult fixtureChunk(UUID id, String body, String title) {
+        return new HybridSearchResult(id, UUID.randomUUID(), body, List.of("Columns"), "Columns", 2,
+            0, "10.0", title, "table", "OIM", Map.of(), 0.9,
+            new TelemetryInfo(true, false, 1, 0, 1));
     }
 }

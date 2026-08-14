@@ -115,7 +115,7 @@ public class OrchestrationService {
             String orchestratorSystemPrompt = orchestratorPlaybook.templateText()
                 + "\n\n## Available specialists\n" + renderRoster(specialists);
 
-            String reviewFeedback = null;
+            Verdict lastRejection = null;
             while (true) {
                 st.round = round;
                 // The orchestrator keeps ONE conversation for the whole run. Round 2 continues the
@@ -125,10 +125,12 @@ public class OrchestrationService {
                 // is the specialists' own tool output, which is harvested into st.evidence for the
                 // reviewer; that travels as text, and only the entries not already sent, since
                 // anything sent in an earlier round is still in the transcript.
-                boolean revising = reviewFeedback != null;
-                String orchestratorQuery = revising ? renderRevisionTask(
-                    st.evidence.subList(st.evidenceSent, st.evidence.size()), reviewFeedback)
-                    : question;
+                boolean revising = lastRejection != null;
+                String orchestratorQuery =
+                    revising
+                        ? renderRevisionTask(
+                            st.evidence.subList(st.evidenceSent, st.evidence.size()), lastRejection)
+                        : question;
                 st.evidenceSent = st.evidence.size();
 
                 // Orchestrator turn — may call specialists via call_specialist.
@@ -162,10 +164,18 @@ public class OrchestrationService {
                 // supplied evidence alone, and inheriting the orchestrator's transcript — including
                 // its own earlier drafts and the reviewer's previous notes — would stop it being a
                 // validate-only, independent check.
+                //
+                // No get_section either, and that is the point rather than an economy. It resolves
+                // a chunk id to the whole enclosing SECTION, so a reviewer using it judged claims
+                // against sibling text no specialist ever retrieved — widening "the evidence" past
+                // what the answer was built from. With the cited sources supplied in full there is
+                // nothing left for it to fetch that the reviewer is entitled to see: a claim the
+                // cited sources do not support is a citation defect, and the review loop is how
+                // that gets corrected.
                 runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
                     reviewerPlaybook.templateText(), reviewTask, reviewTask, profile.reviewer(),
-                    List.of("verify_citations", "get_section"), false,
-                    List.<ToolCallback>of(submitReview), null, null, holder);
+                    List.of("verify_citations"), false, List.<ToolCallback>of(submitReview), null,
+                    null, holder);
                 verdict = holder[0] != null ? holder[0]
                     : Verdict.reject("Reviewer did not submit a verdict.");
 
@@ -173,7 +183,7 @@ public class OrchestrationService {
                     break;
                 }
                 round++;
-                reviewFeedback = verdict.feedback();
+                lastRejection = verdict;
             }
 
             boolean approved = verdict != null && verdict.approved();
@@ -439,16 +449,55 @@ public class OrchestrationService {
      * draft and every specialist answer are already in that conversation, so this says only what is
      * new: the specialists' own tool output, which the orchestrator never saw because it lives
      * inside the specialists' nested runs, and what the reviewer wants changed.
+     *
+     * <p>
+     * De-duplicated but deliberately NOT cite-scoped. The draft is the thing being revised, and the
+     * reviewer's objection is usually that some claim is unsupported — so the material this turn
+     * needs is exactly what the draft does not yet cite. Scoping it would hand the orchestrator
+     * only what it already used and send it back to delegate for evidence it was holding.
      */
-    private static String renderRevisionTask(List<String> newEvidence, String feedback) {
+    private static String renderRevisionTask(List<String> newEvidence, Verdict verdict) {
         StringBuilder sb = new StringBuilder();
         if (!newEvidence.isEmpty()) {
             sb.append("## Source evidence behind the specialist answers above\n")
-                .append(String.join("\n\n", newEvidence)).append("\n\n");
+                .append(EvidenceDigest.deduped(newEvidence)).append("\n\n");
         }
-        sb.append("## Reviewer feedback to address\n").append(feedback).append(
-            "\n\nRevise the answer you just gave. Keep everything the reviewer did not object to, "
-                + "and delegate again only for material that is genuinely missing above.");
+        sb.append("## Reviewer feedback to address\n").append(verdict.feedback()).append("\n\n");
+
+        // Separated because the remedies differ, and conflating them is expensive. "Delegate only
+        // for material that is genuinely missing" was the previous wording and it did not hold: a
+        // reviewer that named the exact swap to make still drew a 347,969-token specialist call,
+        // because a rejection reads as a research failure unless something says otherwise.
+        if (!verdict.citationFixes().isEmpty()) {
+            sb.append("## Citation fixes — no research needed\n");
+            sb.append("Each of these is repairable from evidence **already supplied** above: the "
+                + "source was retrieved, the citation on it is wrong, missing or duplicated. Apply "
+                + "them by editing the answer's citations and `## References` — do NOT call "
+                + "call_specialist for any of them.\n");
+            for (String fix : verdict.citationFixes()) {
+                sb.append("- ").append(fix).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (!verdict.unsupportedClaims().isEmpty()) {
+            sb.append("## Unsupported claims\n");
+            sb.append("Nothing supplied supports these. Either remove the claim, or delegate to a "
+                + "specialist for the material — this is the only part of the feedback that may "
+                + "warrant a new specialist call.\n");
+            for (String claim : verdict.unsupportedClaims()) {
+                sb.append("- ").append(claim).append("\n");
+            }
+            sb.append("\n");
+        }
+
+        sb.append("Revise the answer you just gave. Keep everything the reviewer did not object "
+            + "to.");
+        if (verdict.isCitationOnly()) {
+            sb.append(" Every objection above is a citation fix, so this revision needs no new "
+                + "evidence at all — do NOT call call_specialist.");
+        } else {
+            sb.append(" Delegate again only for material that is genuinely missing above.");
+        }
         return sb.toString();
     }
 
@@ -467,18 +516,35 @@ public class OrchestrationService {
         return List.copyOf(all.subList(priorMessages.size(), all.size()));
     }
 
+    /**
+     * The reviewer is given the sources the answer cites and nothing else, and holds no tool that
+     * can reach anything else. That is what makes each citation testable as the claim it is — "this
+     * source supports this statement" — rather than a label the reviewer can excuse by finding the
+     * fact somewhere else in the pile.
+     *
+     * <p>
+     * It therefore has to be told that uncited sources exist but are not shown. Without that it
+     * cannot tell "the corpus has nothing on this" from "you did not cite it", phrases its feedback
+     * as the former, and the orchestrator answers by delegating a fresh search when re-citing
+     * material it already holds would have done.
+     */
     private static String renderReviewTask(String question, String answer, List<String> evidence) {
         StringBuilder sb = new StringBuilder();
-        sb.append(
-            "Validate the candidate answer below. Do NOT search for new information — check it "
-                + "ONLY against the supplied evidence, then call submit_review.\n\n");
+        sb.append("Validate the candidate answer below. Do NOT search for new information — check "
+            + "it ONLY against the supplied evidence, then call submit_review.\n\n");
         sb.append("## Original question\n").append(question).append("\n\n");
         sb.append("## Candidate answer\n").append(answer).append("\n\n");
         sb.append("## Evidence gathered by the specialists (the ONLY basis for validation)\n");
         if (evidence.isEmpty()) {
             sb.append("(no evidence was captured)\n");
         } else {
-            sb.append(String.join("\n\n", evidence)).append("\n");
+            sb.append("You are shown the sources this answer cites, and only those. The "
+                + "specialists retrieved others that the answer does not cite; those are not "
+                + "shown here. So when a claim is not supported by the evidence below, the fault "
+                + "may be a missing or wrong citation rather than a missing source — say the "
+                + "answer must cite what supports the claim, rather than concluding no source "
+                + "exists.\n\n");
+            sb.append(EvidenceDigest.citeScoped(evidence, answer)).append("\n");
         }
         return sb.toString();
     }

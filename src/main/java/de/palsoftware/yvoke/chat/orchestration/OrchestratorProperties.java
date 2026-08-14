@@ -20,7 +20,13 @@ public record RoleDefaults(RoleConfig orchestrator,RoleConfig reviewer,RoleConfi
 /** One knowledge base: its three playbooks + optional per-role model/thinking overrides. */
 public record Profile(String name,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,RoleConfig orchestrator,RoleConfig reviewer,RoleConfig specialist){}
 
-public int resolvedMaxReviewRounds(){return maxReviewRounds!=null?maxReviewRounds:2;}
+// 3 rather than 2 (zero-based, so four attempts). A reviewer restricted to the sources an answer
+// cites rejects mis-citations that a whole-evidence reviewer used to excuse by finding the fact
+// elsewhere, so rejections are more frequent AND more mechanical. A live run was still converging
+// when it ran out of rounds — 3 objections, then 3, then 2 — and was delivered flagged despite
+// being nearly correct. The extra round is cheap now that a citation-only revision is forbidden
+// from delegating; it was not cheap when every rejection triggered fresh research.
+public int resolvedMaxReviewRounds(){return maxReviewRounds!=null?maxReviewRounds:3;}
 
 public int resolvedMaxSpecialistCalls(){return maxSpecialistCalls!=null?maxSpecialistCalls:8;}
 

@@ -2,13 +2,11 @@ package de.palsoftware.yvoke.mcp;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.kg.core.model.KgEntity;
-import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import de.palsoftware.yvoke.document.core.HierarchyUtils;
 
 public class McpToolUtils {
 
@@ -90,42 +88,6 @@ public class McpToolUtils {
             sb.append("| ").append(String.join(" | ", vals)).append(" |\n");
         }
         return sb.toString().trim();
-    }
-
-    public static String formatChunks(List<HybridSearchResult> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
-            return "(no matching chunks)";
-        }
-        List<String> lines = new ArrayList<>();
-        for (HybridSearchResult c : chunks) {
-            double score = c.score();
-            String cid = (c.id() != null) ? c.id().toString() : "";
-            String text = (c.text() != null) ? HierarchyUtils.stripBreadcrumb(c.text()).trim() : "";
-
-            String title = c.documentTitle();
-            if (title == null) {
-                title = "?";
-            }
-
-            String kind = c.kind() != null ? c.kind() : "?";
-
-            String headPath = "";
-            if (c.headingPath() != null && !c.headingPath().isEmpty()) {
-                headPath = String.join(" > ", c.headingPath());
-            } else if (c.heading() != null) {
-                headPath = c.heading();
-            }
-
-            String docId = (c.documentId() != null) ? c.documentId().toString() : "";
-            lines.add(String.format(Locale.US, "### %s/%s  (score=%.3f  id=%s  doc_id=%s)", kind,
-                title, score, cid, docId));
-            if (!headPath.isEmpty()) {
-                lines.add("> " + headPath);
-            }
-            lines.add(text);
-            lines.add("");
-        }
-        return String.join("\n", lines).strip();
     }
 
 }

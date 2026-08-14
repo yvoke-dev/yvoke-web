@@ -14,6 +14,17 @@ import static org.mockito.Mockito.doAnswer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.tool.AskClarifyingQuestionToolCallback;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
+import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
+import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
+import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
+import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
+import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.UUID;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
@@ -107,6 +118,88 @@ public class RagServiceAgenticTest {
 
         // Verify that the tool was called exactly once with expected arguments
         verify(mockSearchTool, times(1)).call("{\"query\":\"Person\"}");
+    }
+
+    /**
+     * The only test that exercises the whole repeat-suppression path wired together: a REAL
+     * {@link SearchCorpusToolCallback} over a REAL {@code SearchCorpusTool}, dispatched by
+     * {@code RagService} through the {@code ContextAwareToolCallback} branch that supplies the
+     * conversation's ledger.
+     *
+     * <p>
+     * Two things can silently unwire it and neither shows up in the unit tests either side. If the
+     * dispatch stops recognising a context-aware callback, every call goes through the plain
+     * {@code call(json)} entry point with a null context and suppression quietly never happens. And
+     * if the {@code AgenticChatContext} were ever hoisted out of {@code generateAgenticAnswer} onto
+     * the service, one conversation's ledger would start eliding another's first search — which is
+     * why this asserts on a SECOND, independent call as well.
+     */
+    @Test
+    public void aChunkIsSentOncePerConversationAndInFullAgainInTheNext() {
+        UUID chunkId = UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071");
+        String body = "The Person table holds identities.";
+
+        HybridSearch search = mock(HybridSearch.class);
+        CollectionService collections = mock(CollectionService.class);
+        when(collections.listCollections()).thenReturn(List.of(new Collection(UUID.randomUUID(),
+            "OIM", "OIM Collection", List.of("9.3"), OffsetDateTime.now())));
+        when(search.searchWithId(anyString(), any(SearchOptions.class)))
+            .thenReturn(
+                new SearchWithId(
+                    List.of(new HybridSearchResult(chunkId, UUID.randomUUID(), body,
+                        List.of("Columns"), "Columns", 2, 0, "9.3", "Person", "table", "OIM",
+                        Map.of(), 0.9, new TelemetryInfo(true, true, 1, 1, 1))),
+                    UUID.randomUUID()));
+
+        RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
+            new ObjectMapper(), 6, 4096, 0);
+        service.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
+            new SearchCorpusTool(search, collections, 10, 20), new ObjectMapper(), 20));
+
+        String args = "{\"query\":\"Person\",\"collection\":\"OIM\",\"tag\":\"9.3\"}";
+        // Driven off the transcript rather than a call counter, so the second conversation starts
+        // over exactly as a real one does — a counter would carry the first run's progress into it
+        // and silently make the second assertion vacuous.
+        doAnswer(inv -> {
+            LlmRequest req = inv.getArgument(0);
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            long searchesSoFar =
+                req.messages().stream().filter(m -> "tool".equals(m.role())).count();
+            // Two identical searches, then the answer — the shape a specialist actually produces
+            // when it rephrases a query and lands on the same chunk again.
+            if (searchesSoFar < 2) {
+                cb.accept(new LlmResponseChunk(null, null,
+                    List.of(
+                        new LlmToolCallDelta(0, "call_" + searchesSoFar, "search_corpus", args)),
+                    new LlmUsage(10, 20, 30, 0, 0)));
+            } else {
+                cb.accept(
+                    new LlmResponseChunk("Done.", null, null, new LlmUsage(40, 50, 90, 0, 0)));
+            }
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> toolResults = toolResultsOf(service, args);
+
+        assertThat(toolResults).hasSize(2);
+        assertThat(toolResults.get(0)).as("the first sighting is the evidence").contains(body);
+        assertThat(toolResults.get(1)).contains("id=" + chunkId).contains("already shown above");
+        assertThat(toolResults.get(1)).as("the repeat costs a reference, not a body")
+            .doesNotContain(body);
+
+        // A separate conversation on the same service and the same tool instance.
+        assertThat(toolResultsOf(service, args).get(0))
+            .as("a new conversation has its own ledger and must get the full text").contains(body);
+    }
+
+    private static List<String> toolResultsOf(RagService service, String args) {
+        RagResult result = service.generateAgenticAnswer(AgenticRequest.builder()
+            .query("What is the Person table?").modelOverride("model-override")
+            .history(Collections.emptyList()).allowedTools(List.of("search_corpus")).build(),
+            token -> {
+            });
+        return result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .map(LlmMessage::content).toList();
     }
 
     /**

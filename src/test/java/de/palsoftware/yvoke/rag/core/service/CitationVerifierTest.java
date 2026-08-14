@@ -279,4 +279,73 @@ public class CitationVerifierTest {
             .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(verifier.isFabricated(cited)).isTrue();
     }
+
+    // -------------------------------------------------------------------------------------------
+    // citedIds — which sources an answer actually leans on. Used to decide what full text the
+    // reviewer receives, so a false negative here is not cosmetic: it manifests away the very
+    // evidence a claim rests on, and the reviewer then rejects a correctly grounded answer.
+    // -------------------------------------------------------------------------------------------
+
+    /**
+     * The single most dangerous way to get this wrong is to compare whole uuids. Drafts routinely
+     * cite a TRUNCATED id — it is what {@code findByIdPrefix} resolves, what {@code
+     * citation-render.js} links, and what this class already refuses to call fabricated. Matching
+     * on equality would classify every such citation as uncited, strip the evidence for all of
+     * them, and leave the reviewer rejecting an answer whose sources were right there.
+     */
+    @Test
+    void citedIdsCoversATruncatedCitationOfAFullId() {
+        CitationVerifier.CitedIds cited =
+            CitationVerifier.citedIds("As described in [chunk_id=8f7c1a2b].");
+
+        assertThat(cited.covers(REAL_CHUNK_ID))
+            .as("8f7c1a2b is a prefix of " + REAL_CHUNK_ID + " and resolves to it everywhere else")
+            .isTrue();
+        assertThat(cited.isEmpty()).isFalse();
+    }
+
+    @Test
+    void citedIdsAcceptsTheFullPrefixedBareAndHyphenlessForms() {
+        String answer = "One [chunk_id=" + REAL_CHUNK_ID + "], two [" + REAL_DOCUMENT_ID + "], "
+            + "three [document_id=" + REAL_DOCUMENT_ID.toString().replace("-", "") + "].";
+
+        CitationVerifier.CitedIds cited = CitationVerifier.citedIds(answer);
+
+        assertThat(cited.covers(REAL_CHUNK_ID)).isTrue();
+        assertThat(cited.covers(REAL_DOCUMENT_ID)).isTrue();
+    }
+
+    /**
+     * Playbooks mandate numbered references, so most of a draft's brackets are {@code [1]}, {@code
+     * [2]} — and a two-digit number is not a source. The real ids live in the {@code ## References}
+     * section, which is why the scan must cover the WHOLE answer rather than the prose above it.
+     */
+    @Test
+    void citedIdsIgnoresNumberedRefsAndOrdinaryBracketedProse() {
+        CitationVerifier.CitedIds cited = CitationVerifier
+            .citedIds("Per [1] and [2], see [the manual] and [facade] and [500123].");
+
+        assertThat(cited.isEmpty())
+            .as("none of these names a corpus row — treating any of them as one would scope "
+                + "the reviewer's evidence to a source the answer never cited")
+            .isTrue();
+        assertThat(cited.covers(REAL_CHUNK_ID)).isFalse();
+    }
+
+    @Test
+    void citedIdsFindsIdsInAReferencesSectionBelowTheProse() {
+        String answer = "The Person table holds identities [1].\n\n## References\n"
+            + "[1] [chunk_id=" + REAL_CHUNK_ID + "]\n";
+
+        assertThat(CitationVerifier.citedIds(answer).covers(REAL_CHUNK_ID)).isTrue();
+    }
+
+    @Test
+    void anEmptyCitedSetCoversNothingRatherThanEverything() {
+        CitationVerifier.CitedIds cited = CitationVerifier.citedIds("No citations at all.");
+
+        assertThat(cited.isEmpty()).isTrue();
+        assertThat(cited.covers(REAL_CHUNK_ID)).isFalse();
+        assertThat(cited.covers(null)).isFalse();
+    }
 }

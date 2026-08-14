@@ -4,6 +4,8 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.rag.core.model.SeenChunks;
+import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
@@ -108,7 +110,12 @@ public class SearchCorpusTool {
                 }
             }
 
-            String formatted = McpToolUtils.formatChunks(chunks);
+            // The ternary is the entire "an external MCP client is a no-op" rule: that caller holds
+            // its own history, which we cannot see, so there is nothing for a reference to point
+            // at. No ledger is cached on this bean — it is a singleton shared by the MCP transport
+            // and the in-app loop, so a field here would be one ledger spanning every user.
+            String formatted =
+                ChunkBlocks.format(chunks, context != null ? context : SeenChunks.NONE);
             String suffix = "";
             if (parsedTag != null) {
                 suffix += " (tag=" + parsedTag + ")";

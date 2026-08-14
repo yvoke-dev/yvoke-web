@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import de.palsoftware.yvoke.rag.core.model.SeenChunks;
+import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
 import java.util.UUID;
@@ -65,25 +67,26 @@ public class McpToolUtilsTruncationTest {
     }
 
     /**
-     * S4.17. {@code formatChunks} renders every {@code search_corpus} hit into the text the model
-     * reads, and it emits the chunk body UNTRUNCATED — deliberately unlike the table cells the rest
-     * of this class caps at {@link McpToolUtils#MAX_CELL_CHARS}. The asymmetry is the point: a
-     * table cell is one projected field among many on a row, while a chunk IS the evidence. Cutting
-     * it removes the part of the section the answer was supposed to rest on, and does it after
-     * retrieval has already decided that chunk was the best match.
+     * S4.17. {@link ChunkBlocks#format} renders every {@code search_corpus} hit into the text the
+     * model reads, and it emits the chunk body UNTRUNCATED — deliberately unlike the table cells
+     * the rest of this class caps at {@link McpToolUtils#MAX_CELL_CHARS}. The asymmetry is the
+     * point: a table cell is one projected field among many on a row, while a chunk IS the
+     * evidence. Cutting it removes the part of the section the answer was supposed to rest on, and
+     * does it after retrieval has already decided that chunk was the best match.
      *
      * <p>
      * The failure is completely silent. The answer still cites the chunk id, {@code verify_
      * citations} still resolves it (that tool loads no chunk text at all), and the model simply
      * writes a confident answer from the surviving prefix — so a truncation bug reads as the corpus
      * not containing the detail. And a cap here is the obvious, tempting symmetry: the budget
-     * constant is right there in the same class, one line above the loop.
+     * constant is right there in {@code McpToolUtils}, next to the table-cell loop.
      *
      * <p>
-     * {@code formatChunks} has no test at any tier — {@code McpToolUtilsTruncationTest} covers
-     * {@code formatTableRows} only — so today it can be capped, and the citation handle the whole
-     * answer stands on can be reshaped, with the entire suite green. The last assertion pins the
-     * asymmetry explicitly, so this cannot be "fixed" by removing the table-cell cap instead.
+     * This test stayed here when {@code formatChunks} moved to {@link ChunkBlocks}, because what it
+     * pins is the ASYMMETRY between the two renderers, and that only holds while it can see both:
+     * the last assertion checks a table cell of the same size is still capped, so this cannot be
+     * "fixed" by removing the table-cell cap instead. The chunk renderer's own contract — the round
+     * trip between {@code format} and {@code parse} — lives in {@code ChunkBlocksTest}.
      */
     @Test
     public void aChunkBodyReachesTheModelWholeWhileTableCellsStayCapped() {
@@ -95,7 +98,7 @@ public class McpToolUtilsTruncationTest {
             List.of("Install", "Prerequisites"), "Prerequisites", 2, 0, "10.0", "install-kit.md",
             "manual", "OIM", Map.of(), 0.87, new TelemetryInfo(true, false, 1, 0, 1));
 
-        String out = McpToolUtils.formatChunks(List.of(chunk));
+        String out = ChunkBlocks.format(List.of(chunk), SeenChunks.NONE);
 
         assertTrue(out.contains(body),
             "the chunk body must reach the model whole — it is the evidence, not a table cell");

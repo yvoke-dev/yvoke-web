@@ -240,8 +240,13 @@ in-depth profiles, and can inspect any search or trace.
   roles are given a fixed tool list when they run.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
-- **Review rounds are counted from zero**, so a limit of two allows three answers: the first draft plus
-  two revisions.
+- **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft
+  plus three revisions.
+- **A rejection says which kind of fix it needs.** The reviewer separates objections it can see the
+  answer to — a claim attached to the wrong source, an uncited claim a supplied source does support —
+  from claims nothing supplied backs at all. Only the second kind sends the lead agent back to
+  research; the first is repaired from material already in hand, without a specialist. A revision
+  whose objections are all of the first kind runs no specialists at all.
 - **The lead agent keeps one conversation for the whole investigation.** A rejected draft does not
   restart it: the lead still has its own working notes, what each specialist told it and the answer it
   wrote, and is given the reviewer's notes plus the source material behind those specialist answers. It
@@ -254,8 +259,19 @@ in-depth profiles, and can inspect any search or trace.
   that caused it.
 - **The specialist budget is per question, not per round.** Once spent, the lead agent is told to
   conclude with what it has rather than failing the answer.
-- **The reviewer cannot run a search.** It works from the evidence the specialists collected, and may
-  additionally open a named section of a document to check a claim against the source.
+- **The same passage is never sent to an agent twice.** When a search returns a passage that agent has
+  already been given in the same conversation, the passage keeps its place in the ranked results — with
+  its title, heading path, relevance score and id — but its text is replaced by a note saying the full
+  passage appears earlier. What it matched is still visible; only the repetition is gone. Passages a
+  specialist found are also carried once into the review, however many specialists found them.
+- **The reviewer sees the sources the answer cites, and only those.** It cannot search, and it can no
+  longer open a document either. That is what makes each citation testable as the claim it is — *this
+  source supports this statement* — instead of something the reviewer can excuse by finding the fact
+  elsewhere in the pile. It is told that uncited sources exist without being shown them, so an
+  unsupported claim comes back as "cite what supports this" rather than "no such source exists", and the
+  lead agent fixes it by citing material it already holds. Evidence with no passage id, such as a
+  version-history table, is always passed on in full: it can never be cited and could never be
+  recovered.
 - **A failing tool never fails the answer.** The assistant is told the step could not be completed and
   asked to continue and state the gap; the technical reason goes to the log only.
 - **Users only ever see one generic notice when something breaks.** A failure is never presented as
@@ -272,6 +288,15 @@ in-depth profiles, and can inspect any search or trace.
   specialist contributed.
 - **The citation check confirms a cited source exists. It never reads the source**, so "all citations
   resolve" does not mean the answer is supported by them.
+- **Repeat suppression is per agent, per conversation.** A specialist that finds a passage the lead agent
+  or another specialist already read is still given it in full, and reading a whole section never counts
+  as having seen the passages inside it. The rule only ever withholds text an agent demonstrably still
+  holds, so it errs towards sending too much rather than pointing at something that is not there.
+- **A claim the answer failed to cite is reported as unsupported, even when a retrieved source did
+  support it.** The reviewer cannot see uncited sources, so the correction runs through the review loop:
+  the answer is rejected, the lead agent adds the citation, and the next round checks it. That costs a
+  review round, and the limit is three attempts — so an answer with several missing citations can be
+  delivered carrying the "did not pass review" warning while being substantially correct.
 - **At most 20 research steps per question.** On reaching the limit the assistant must conclude, and the
   answer carries a visible warning that it may be incomplete.
 - **The history an answer sees is the first 100 messages**, not the most recent 100.

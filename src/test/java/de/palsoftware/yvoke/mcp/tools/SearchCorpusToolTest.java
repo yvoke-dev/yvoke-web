@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
@@ -323,5 +324,126 @@ public class SearchCorpusToolTest {
 
         assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", 100, null)
             .contains("the result is capped"));
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Repeat suppression. Every failure mode in this area is silent: the output stays well-formed
+    // markdown, every citation id still resolves, and verify_citations still passes — because it
+    // loads no chunk text at all. So each test below asserts on what reaches the model, never on
+    // whether the code took some branch.
+    // -------------------------------------------------------------------------------------------
+
+    private HybridSearchResult hit(UUID chunkId, UUID docId, String body) {
+        return new HybridSearchResult(chunkId, docId, body, List.of("Ch1", "SecA"), "SecA", 2, 10,
+            "9.3", "manual.md", "manual", "OIM", Collections.emptyMap(), 0.95,
+            new TelemetryInfo(true, true, 10, 10, 1));
+    }
+
+    /**
+     * The one that matters most. {@code searchCorpus} records every returned id into
+     * {@code retrievedChunkIds} BEFORE it renders, so an implementation that reads that list back
+     * as its ledger sees the entire current result set as already shown — and the very first search
+     * of a conversation comes back as nothing but headers pointing at text that exists nowhere.
+     *
+     * <p>
+     * Nothing about that failure looks wrong from the outside: the specialist answers from an empty
+     * evidence base, cites real ids, and the reviewer resolves every one of them.
+     */
+    @Test
+    public void theFirstSearchOfAConversationRendersEveryBodyInFull() {
+        AgenticChatContext conversation = new AgenticChatContext();
+        UUID chunkId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
+            new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
+                UUID.randomUUID()));
+
+        String output = searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, conversation);
+
+        assertTrue(output.contains("This is chunk text."),
+            "the first search of a conversation has nothing to point back at: " + output);
+        assertFalse(output.contains("already shown above"), output);
+    }
+
+    @Test
+    public void aSecondSearchInTheSameConversationMarksTheRepeatInsteadOfResendingIt() {
+        AgenticChatContext conversation = new AgenticChatContext();
+        UUID chunkId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
+            new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
+                UUID.randomUUID()));
+
+        searchCorpusTool.searchCorpus("first query", "OIM", "9.3", null, conversation);
+        String second =
+            searchCorpusTool.searchCorpus("second query", "OIM", "9.3", null, conversation);
+
+        assertTrue(second.contains("id=" + chunkId), "the ranked slot and its id must survive");
+        assertTrue(second.contains("already shown above"), second);
+        assertFalse(second.contains("This is chunk text."), second);
+    }
+
+    /**
+     * {@code retrievedChunkIds} is telemetry, not the ledger: it is persisted to
+     * {@code messages.retrieved_chunk_ids} and rendered per element in the admin log, so it keeps
+     * duplicates on purpose. Quietly turning it into a set to serve suppression would change stored
+     * data and an admin page, neither of which any test here would otherwise notice.
+     */
+    @Test
+    public void theTelemetryListStillRecordsEverySightingIncludingSuppressedOnes() {
+        AgenticChatContext conversation = new AgenticChatContext();
+        UUID chunkId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
+            new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
+                UUID.randomUUID()));
+
+        searchCorpusTool.searchCorpus("first query", "OIM", "9.3", null, conversation);
+        searchCorpusTool.searchCorpus("second query", "OIM", "9.3", null, conversation);
+
+        assertEquals(2,
+            conversation.getRetrievedChunkIds().stream().filter(chunkId::equals).count(),
+            "both retrievals happened and both must stay in the telemetry list");
+    }
+
+    /**
+     * {@code SearchCorpusTool} is a singleton {@code @Component}, and the callback wrapping it is a
+     * single instance serving both the MCP transport and the in-app loop. A ledger cached on either
+     * would suppress one user's chunk for a different user's first-ever search.
+     */
+    @Test
+    public void theToolHoldsNoLedgerOfItsOwn() {
+        UUID chunkId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
+            new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
+                UUID.randomUUID()));
+
+        // No conversation at all — the external MCP path, twice.
+        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, null)
+            .contains("This is chunk text."));
+        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, null)
+            .contains("This is chunk text."));
+
+        // Two different conversations on the one shared tool instance.
+        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+            .contains("This is chunk text."));
+        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+            .contains("This is chunk text."));
+    }
+
+    /**
+     * The capped notice is a statement about the SEARCH — how many ranked slots came back — not
+     * about how many bodies were rendered. Counting rendered bodies instead would unlabel a
+     * genuinely capped page as soon as any of its hits repeated, which is the direction that makes
+     * an agent enumerate a partial page as if it were everything.
+     */
+    @Test
+    public void theCappedNoticeCountsRankedSlotsNotFullyRenderedBodies() {
+        AgenticChatContext conversation = new AgenticChatContext();
+        HybridSearchResult repeated = hit(UUID.randomUUID(), UUID.randomUUID(), "text");
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class)))
+            .thenReturn(new SearchWithId(List.of(repeated, repeated), UUID.randomUUID()));
+
+        String output = searchCorpusTool.searchCorpus("q", "OIM", "9.3", 2, conversation);
+
+        assertTrue(output.contains("already shown above"), "the repeat should be suppressed");
+        assertTrue(output.contains("the result is capped"), output);
     }
 }

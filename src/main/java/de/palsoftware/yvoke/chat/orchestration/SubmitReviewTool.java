@@ -56,7 +56,12 @@ public class SubmitReviewTool implements ContextAwareToolCallback {
                         "unsupported_claims": {
                           "type": "array",
                           "items": { "type": "string" },
-                          "description": "Specific claims not supported by the evidence (if any)."
+                          "description": "Claims with NOTHING behind them in the supplied evidence. Use this only when no supplied source supports the claim — fixing one may require new research."
+                        },
+                        "citation_fixes": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Defects repairable from the evidence already supplied: a claim attached to the wrong source, an uncited claim a supplied source does support, or a duplicated reference entry. State the repair concretely, e.g. 'swap [5] to [4] on the SAP HCM structural profile claim'. These need no new research, so listing one here rather than under unsupported_claims is what stops the orchestrator re-running a search it does not need."
                         }
                       },
                       "required": ["approved", "feedback"]
@@ -85,8 +90,9 @@ public class SubmitReviewTool implements ContextAwareToolCallback {
             String feedback = (String) args.getOrDefault("feedback", "");
             List<String> unsupported =
                 (List<String>) args.getOrDefault("unsupported_claims", List.of());
-            onVerdict.accept(
-                new Verdict(approved, feedback, unsupported == null ? List.of() : unsupported));
+            List<String> citationFixes =
+                (List<String>) args.getOrDefault("citation_fixes", List.of());
+            onVerdict.accept(new Verdict(approved, feedback, unsupported, citationFixes));
             if (context != null) {
                 context.setHaltRequested(true);
             }
