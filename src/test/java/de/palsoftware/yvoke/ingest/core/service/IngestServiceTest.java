@@ -226,7 +226,7 @@ public class IngestServiceTest {
         MockMultipartFile file =
             new MockMultipartFile("file", "m.md", "text/markdown", "data".getBytes());
 
-        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null);
+        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null);
 
         InOrder inOrder = Mockito.inOrder(tagService, jobService);
         inOrder.verify(tagService).addTagToCollection(colId, "10.0");
@@ -292,7 +292,7 @@ public class IngestServiceTest {
         MockMultipartFile file =
             new MockMultipartFile("file", "../../../evil.md", "text/markdown", "data".getBytes());
 
-        UUID jobId = ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null);
+        UUID jobId = ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null);
 
         assertThat(jobId).isNotNull();
 
@@ -366,7 +366,8 @@ public class IngestServiceTest {
 
         for (String kind : new String[] {"confluence-import", "confluence-page-import", "custom",
             "kg-extract", "manual", ""}) {
-            assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null))
+            assertThatThrownBy(
+                () -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null))
                 .as("kind=%s", kind).isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                     .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -395,7 +396,7 @@ public class IngestServiceTest {
             new MockMultipartFile("file", "corpus.zip", "application/zip", new byte[0]);
 
         assertThatThrownBy(
-            () -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard", null))
+            () -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard", null, null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -424,7 +425,8 @@ public class IngestServiceTest {
         for (String kind : new String[] {"standard", "hierarchical", "json-import"}) {
             MockMultipartFile file =
                 new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
-            assertThat(ingestService.uploadAndEnqueue(file, "OIM", null, kind, null)).isNotNull();
+            assertThat(ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null))
+                .isNotNull();
         }
 
         assertThat(captor.getAllValues()).extracting(EnqueueRequest::kind)

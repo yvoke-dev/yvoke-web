@@ -55,6 +55,13 @@ public class DocumentIngestService {
 
     private static final String KIND_STANDARD = DocumentKind.STANDARD.getValue();
 
+    /**
+     * Job setting that turns section summarisation on for the standard ingest. The name is shared
+     * with the admin form input and the upload API param — a three-way contract that only this
+     * constant and a round-trip test keep aligned.
+     */
+    public static final String SETTING_BUILD_SECTION_SUMMARIES = "buildSectionSummaries";
+
     private final EmbeddingService embeddingService;
     private final DocumentRepository documentRepository;
     private final ChunkRepository chunkRepository;
@@ -108,7 +115,13 @@ public class DocumentIngestService {
         checkCancellation(jobId);
         ctx.report(JobStep.CHUNK, 5, "Parsing document Markdown structure: " + sourceFile);
         ParsedMarkdown parsed = MarkdownTree.parse(markdown);
-        List<Section> sections = MarkdownTree.buildOrderedSections(parsed);
+        // Both lists are kept on purpose. Chunks are built from the SPLIT sections, but section
+        // summaries must be generated from the UNSPLIT ones — a `(part n/m)` title changes the
+        // summary cache key of every ancestor node and writes the row at a heading_path
+        // TocService will never look up. See the unit test named for this rule.
+        List<Section> unsplitSections =
+            MarkdownTree.dropEmptyPlaceholders(MarkdownTree.filterSections(parsed.sections()));
+        List<Section> sections = MarkdownTree.splitOversized(unsplitSections);
         if (sections.isEmpty()) {
             throw new IllegalStateException("No chunks produced from document: " + sourceFile);
         }
@@ -130,10 +143,24 @@ public class DocumentIngestService {
         // 3. insert (atomic: replace any prior chunk set for the idempotency key)
         checkCancellation(jobId);
         ctx.report(JobStep.INSERT, 60, "Persisting document and chunks to Postgres");
-        persistDocument(collection, tags, sourceFile, sections, embeddings, parsed.titleH1());
+        UUID documentId =
+            persistDocument(collection, tags, sourceFile, sections, embeddings, parsed.titleH1());
+
+        // 4. summarize (opt-in). Off by default because it costs an LLM call per uncached
+        // section; in practice it is usually free, since GeneralSummarizer keys summary_cache on
+        // sha256 of the section body and a hierarchical ingest of the same manual has already
+        // populated every sha.
+        if (isSectionSummariesEnabled(settings)) {
+            checkCancellation(jobId);
+            ctx.report(JobStep.EXTRACT, 80,
+                "Generating section summaries (LLM, cached by content)");
+            sectionSummarizer.generateSummaries(documentId, unsplitSections, jobId, ctx,
+                resolveSummarizePrompt(settings));
+        }
         ctx.report(JobStep.INSERT, 100, "Ingestion completed successfully for " + sourceFile);
 
-        log.info("Document ingest complete: source={} chunks={}", sourceFile, sections.size());
+        log.info("Document ingest complete: source={} chunks={} summaries={}", sourceFile,
+            sections.size(), isSectionSummariesEnabled(settings));
         return new JobCounts(1, sections.size(), 0, 0, 0);
     }
 
@@ -205,6 +232,38 @@ public class DocumentIngestService {
             graphCounts.skippedEntities(), graphCounts.skippedEdges());
     }
 
+    /**
+     * Whether this job asked for section summaries. Absent means NO: summarising costs an LLM call
+     * per uncached section, so it may only ever happen when the operator opted in.
+     *
+     * <p>
+     * Accepts a boolean or its string form because the value reaches
+     * {@code ingestion_jobs.settings} as JSON from two different producers (the admin form and the
+     * upload API).
+     */
+    private boolean isSectionSummariesEnabled(@Nullable Map<String, Object> settings) {
+        if (settings == null) {
+            return false;
+        }
+        Object value = settings.get(SETTING_BUILD_SECTION_SUMMARIES);
+        if (value instanceof Boolean flag) {
+            return flag;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    /**
+     * The operator's chosen summarize prompt, or null to let SectionSummarizer pick the default.
+     */
+    @Nullable
+    private String resolveSummarizePrompt(@Nullable Map<String, Object> settings) {
+        String name = settings != null ? (String) settings.get("summarizePrompt") : null;
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return systemPromptService.getPrompt(name).map(SystemPrompt::systemPrompt).orElse(null);
+    }
+
     private void checkCancellation(UUID jobId) {
         if (jobId == null)
             return;
@@ -227,7 +286,7 @@ public class DocumentIngestService {
         return transactionTemplate.execute(status -> {
             UUID documentId = documentRepository.upsertManualDocument(collection, tags, sourceFile,
                 KIND_STANDARD, titleH1);
-            documentRepository.deleteChunksForDocument(documentId);
+            documentRepository.deleteContentForDocument(documentId);
             documentRepository.insertChunks(documentId, collection, tags, sourceFile, KIND_STANDARD,
                 inserts);
             documentRepository.updateIngestionStatus(documentId, "completed");
@@ -372,14 +431,8 @@ public class DocumentIngestService {
         // 4. Summarize (Bottom-Up recursive summaries + embeddings)
         checkCancellation(jobId);
         ctx.report(JobStep.EXTRACT, 76, "Generating hierarchical section summaries (LLM)");
-        String summarizePromptName =
-            settings != null ? (String) settings.get("summarizePrompt") : null;
-        String summarizePromptText = null;
-        if (summarizePromptName != null) {
-            summarizePromptText = systemPromptService.getPrompt(summarizePromptName)
-                .map(SystemPrompt::systemPrompt).orElse(null);
-        }
-        sectionSummarizer.generateSummaries(documentId, sections, jobId, ctx, summarizePromptText);
+        sectionSummarizer.generateSummaries(documentId, sections, jobId, ctx,
+            resolveSummarizePrompt(settings));
         ctx.report(JobStep.EXTRACT, 100, "Ingestion completed successfully for " + sourceFile);
         log.info("Hierarchical manual ingest complete: source={} sections={}", sourceFile,
             sections.size());
@@ -401,7 +454,7 @@ public class DocumentIngestService {
         return transactionTemplate.execute(status -> {
             UUID documentId = documentRepository.upsertManualDocument(collection, tags, sourceFile,
                 DocumentKind.HIERARCHICAL.getValue(), titleH1);
-            documentRepository.deleteChunksForDocument(documentId);
+            documentRepository.deleteContentForDocument(documentId);
             documentRepository.insertChunks(documentId, collection, tags, sourceFile,
                 DocumentKind.HIERARCHICAL.getValue(), inserts);
             documentRepository.updateIngestionStatus(documentId, "completed");

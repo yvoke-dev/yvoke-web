@@ -130,6 +130,52 @@ public class DocumentIngestServiceIT {
                 };
         }
 
+        /**
+         * A re-ingest replaces the chunk set, so any section summary that survives it describes
+         * content that no longer exists.
+         *
+         * <p>
+         * The document row is REUSED on re-ingest — {@code upsertManualDocument} matches on
+         * collection + kind + exact tag set + (source_file OR title) — and only its chunks were
+         * deleted, so summaries written by an earlier run stayed attached under the same
+         * {@code document_id}. {@code TocService} then joins them back onto the NEW chunks by
+         * normalised heading path and serves the previous revision's prose through {@code get_toc},
+         * while the admin detail page renders it as current. Nothing anywhere records that the
+         * summaries predate the text.
+         *
+         * <p>
+         * Deleting them costs nothing recoverable: {@code GeneralSummarizer} keys
+         * {@code summary_cache} on {@code sha256} of the section body and that table is never
+         * pruned, so re-generating an unchanged section is a cache hit and a changed one had to be
+         * re-summarised regardless.
+         */
+        @Test
+        public void aReIngestDoesNotLeaveSummariesDescribingDeletedChunks() {
+                documentIngestService.ingest(job(), ctxFor(job()));
+
+                UUID documentId = jdbcTemplate.queryForObject(
+                                "SELECT d.id FROM documents d JOIN collections c ON c.id = d.collection_id "
+                                                + "WHERE c.name = ?",
+                                UUID.class, COLLECTION);
+                jdbcTemplate.update(
+                                "INSERT INTO section_summaries (id, document_id, heading_path, summary) "
+                                                + "VALUES (?, ?, ARRAY[?]::text[], ?)",
+                                UUID.randomUUID(), documentId, "Introduction",
+                                "Summary of the PREVIOUS revision of this manual.");
+
+                // Re-ingest without asking for summaries - the ordinary path, since the checkbox is
+                // unchecked on every page load and an absent setting means off.
+                documentIngestService.ingest(job(), ctxFor(job()));
+
+                Integer left = jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM section_summaries WHERE document_id = ?", Integer.class,
+                                documentId);
+                assertThat(left)
+                                .as("a summary that outlives the chunks it describes is served by get_toc and "
+                                                + "rendered on the admin page as if it were current")
+                                .isZero();
+        }
+
         @Test
         public void ingestPersistsChunksWithContiguousSortOrderAndGraph() {
                 when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(

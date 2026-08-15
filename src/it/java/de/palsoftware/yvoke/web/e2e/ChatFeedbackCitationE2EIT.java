@@ -71,7 +71,7 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
     UUID docId =
         documentRepository.upsertManualDocument(
             collection, version, source, "manual", "OIM Admin Guide");
-    documentRepository.deleteChunksForDocument(docId);
+    documentRepository.deleteContentForDocument(docId);
     documentRepository.insertChunks(
         docId,
         collection,

@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.ingest.web.admin;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
@@ -94,6 +95,8 @@ public class IngestAdminController {
         @RequestParam(value = "relationshipsFile", required = false) String relationshipsFile,
         @RequestParam(value = "enableGraph", required = false) Boolean enableGraph,
         @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
+        @RequestParam(value = "buildSectionSummaries",
+            required = false) Boolean buildSectionSummaries,
         RedirectAttributes redirectAttributes) throws IOException {
 
         if (file.isEmpty()) {
@@ -140,6 +143,12 @@ public class IngestAdminController {
             settings.put("enableGraph", enableGraph);
         } else {
             settings.put("enableGraph", false);
+        }
+        // Opt-in only: summarising costs an LLM call per uncached section, so an unchecked box
+        // (which posts nothing at all) must leave the key absent rather than write an explicit
+        // false — DocumentIngestService treats absent as off.
+        if (Boolean.TRUE.equals(buildSectionSummaries)) {
+            settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
         }
 
         EnqueueResult result = jobService.enqueue(new EnqueueRequest(jobKind,

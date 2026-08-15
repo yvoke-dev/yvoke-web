@@ -119,14 +119,14 @@ public class DocumentRepositoryWriteIT {
         UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
 
         // First ingest
-        documentRepository.deleteChunksForDocument(docId);
+        documentRepository.deleteContentForDocument(docId);
         documentRepository.insertChunks(docId, COLLECTION, VERSION, SOURCE, "manual", twoChunks());
         assertThat(chunkCount(docId)).isEqualTo(2);
 
         // Re-ingest: same document id, replace chunk set
         UUID again = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
         assertThat(again).isEqualTo(docId);
-        int removed = documentRepository.deleteChunksForDocument(again);
+        int removed = documentRepository.deleteContentForDocument(again);
         assertThat(removed).isEqualTo(2);
         documentRepository.insertChunks(again, COLLECTION, VERSION, SOURCE, "manual", twoChunks());
 
@@ -137,7 +137,7 @@ public class DocumentRepositoryWriteIT {
      * Document identity includes the canonical TAG SET, so the same {@code source_file} under a
      * second tag is a SECOND document with its own chunks — that is what lets one collection hold
      * two product versions of the same file. If identity were tag-blind, ingesting 10.0 would
-     * resolve onto 9.3's row and {@code deleteChunksForDocument} would then destroy 9.3's chunk set
+     * resolve onto 9.3's row and {@code deleteContentForDocument} would then destroy 9.3's chunk set
      * and replace it with 10.0's, reporting success the whole way: the older version would simply
      * cease to exist with no error anywhere. (The same-tag duplicate stays rejected — see
      * {@link #aSecondDocumentForTheSameSourceFileIsRejected()}.)
@@ -161,7 +161,7 @@ public class DocumentRepositoryWriteIT {
         assertThat(chunkCount(v10)).isEqualTo(2);
 
         // And re-ingesting one version must not touch the other's chunks.
-        documentRepository.deleteChunksForDocument(v10);
+        documentRepository.deleteContentForDocument(v10);
         assertThat(chunkCount(v93)).as("re-ingesting 10.0 must not disturb 9.3").isEqualTo(2);
         assertThat(chunkCount(v10)).isZero();
     }
@@ -322,7 +322,7 @@ public class DocumentRepositoryWriteIT {
         // PRF-10: the chunk-count subqueries now include collection_id so the planner can prune to
         // the document's partition. This must not change the reported count.
         UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
-        documentRepository.deleteChunksForDocument(docId);
+        documentRepository.deleteContentForDocument(docId);
         documentRepository.insertChunks(docId, COLLECTION, VERSION, SOURCE, "manual", twoChunks());
 
         DocumentDetails details = documentRepository.listDocuments(COLLECTION, 100, 0, null).stream()

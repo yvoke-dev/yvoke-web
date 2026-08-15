@@ -2788,3 +2788,23 @@ body.hide-thinking-process .message-content p {
 .chat-header-btn:hover .custom-tooltip.tooltip-bottom {
     transform: translate(-50%, 0) scale(1);
 }
+
+/* Section Summaries disclosure (document detail).
+   Native <details>, so collapsing needs no JavaScript — see DocumentAdminRenderingIT
+   .theSectionSummariesPanelStartsCollapsed, which asserts the absence of `open`. */
+#section-summaries > summary::-webkit-details-marker {
+    display: none; /* Hide the default summary arrow; the chevron below replaces it */
+}
+
+#section-summaries > summary {
+    list-style: none; /* Same, for non-WebKit engines */
+    user-select: none;
+}
+
+#section-summaries > summary:hover {
+    color: var(--text-primary);
+}
+
+#section-summaries[open] > summary .section-summaries-chevron {
+    transform: rotate(180deg);
+}

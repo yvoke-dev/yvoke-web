@@ -63,15 +63,17 @@ public class IngestApiController {
         @RequestParam("file") MultipartFile file, @RequestParam("collection") String collectionName,
         @RequestParam(value = "tag", required = false) String tag,
         @RequestParam("kind") String kind,
-        @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField) {
+        @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
+        @RequestParam(value = "buildSectionSummaries",
+            required = false) Boolean buildSectionSummaries) {
 
         // Same gate as POST /api/jobs/v1: this endpoint names the job kind from a request param and
         // shares the ROLE_INGEST/USER/ADMIN chain, so without it a plain user could POST a 1-byte
         // file with kind=confluence-import and start a full space crawl on the stored admin token.
         // IngestService additionally allowlists the kinds this endpoint actually serves.
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(kind);
-        UUID jobId =
-            ingestService.uploadAndEnqueue(file, collectionName, tag, kind, jsonUniqueField);
+        UUID jobId = ingestService.uploadAndEnqueue(file, collectionName, tag, kind,
+            jsonUniqueField, buildSectionSummaries);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", jobId));
     }
 }

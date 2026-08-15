@@ -4,6 +4,7 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
@@ -167,7 +168,7 @@ public class IngestService {
      * kind must be rejected by default instead of by remembering to name it.
      */
     public UUID uploadAndEnqueue(MultipartFile file, String collectionName, String tag, String kind,
-        String jsonUniqueField) {
+        String jsonUniqueField, @Nullable Boolean buildSectionSummaries) {
 
         String normalizedKind = kind == null ? "" : kind.trim();
         if (!UPLOAD_KINDS.contains(normalizedKind)) {
@@ -215,6 +216,10 @@ public class IngestService {
             Map<String, Object> settings = new HashMap<>();
             if (jsonUniqueField != null && !jsonUniqueField.isBlank()) {
                 settings.put("jsonUniqueField", jsonUniqueField.trim());
+            }
+            // Opt-in only; absent means off (DocumentIngestService treats a missing key as false).
+            if (Boolean.TRUE.equals(buildSectionSummaries)) {
+                settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
             }
 
             // 4. Enqueue job

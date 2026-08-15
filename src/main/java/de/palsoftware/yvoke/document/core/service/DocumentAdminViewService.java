@@ -10,7 +10,6 @@ import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetai
 import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetailPage;
 import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentSummary;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
-import de.palsoftware.yvoke.document.core.model.DocumentKind;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
@@ -99,17 +98,21 @@ public class DocumentAdminViewService {
 
     /**
      * Orders the section summaries by the physical position of their heading path in the document's
-     * chunk sequence (ported verbatim from the controller). Returns an empty list for non-sectioned
-     * documents or on any failure.
+     * chunk sequence (ported verbatim from the controller). Returns an empty list when the document
+     * has no summaries, or on any failure.
+     *
+     * <p>
+     * Deliberately NOT gated on {@code document.kind()}. That test — hierarchical or confluence,
+     * everything else an unconditional empty list — was a correct proxy only while
+     * {@code SectionSummarizer} ran in the hierarchical ingest alone. Standard documents can now
+     * carry summaries (ingested with the opt-in setting, or copied from a hierarchical twin), and
+     * the proxy hid every one of them: a document with hundreds of rows in
+     * {@code section_summaries} rendered no panel at all, with nothing to indicate why. Asking the
+     * table is one indexed lookup by document id and cannot go stale the same way.
      */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> sectionSummaries(DocumentRow document,
         List<ChunkRow> chunks) {
-        boolean sectioned = DocumentKind.HIERARCHICAL.getValue().equals(document.kind())
-            || DocumentKind.CONFLUENCE.getValue().equals(document.kind());
-        if (!sectioned) {
-            return List.of();
-        }
         try {
             List<Map<String, Object>> fetched =
                 documentRepository.findSectionSummaries(document.id());

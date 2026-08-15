@@ -249,12 +249,16 @@ public class DocumentAdminRenderingIT {
      * is not document order at all.
      *
      * <p>
-     * Nothing in the suite executes a single line of it: the only other test that renders this page
-     * ({@link #documentDetailRendersWithDtoDocumentAndChunks()}) uses a {@code kind='standard'}
-     * document, and {@code sectionSummaries} short-circuits to {@code List.of()} before the call for
-     * anything that is not {@code hierarchical}/{@code confluence}. The two {@code section_summaries}
-     * rows here are inserted in REVERSE document order precisely so that "sorted correctly" and
-     * "returned in insert order" are distinguishable in the rendered HTML.
+     * The two {@code section_summaries} rows here are inserted in REVERSE document order precisely
+     * so that "sorted correctly" and "returned in insert order" are distinguishable in the rendered
+     * HTML.
+     *
+     * <p>
+     * This paragraph used to add that nothing else in the suite executed the sorter, because
+     * {@code sectionSummaries} short-circuited to {@code List.of()} for anything that was not
+     * {@code hierarchical}/{@code confluence}. That gate is gone — summaries are now fetched for
+     * every kind and {@link #sectionSummariesOnAStandardDocumentRenderToo()} covers the standard
+     * case — so this test is no longer the sorter's only witness, only its ordering one.
      *
      * <p>
      * Lives in this class because its {@code @BeforeEach} already provides the collection, the admin
@@ -294,7 +298,7 @@ public class DocumentAdminRenderingIT {
         int rollback = body.indexOf("Alpha summary: how to restore a backup.");
 
         assertThat(installation).as("the Section Summaries card renders at all for a hierarchical "
-            + "document - it is short-circuited away for kind='standard'").isNotNegative();
+            + "document").isNotNegative();
         assertThat(rollback).as("both summary rows reach the template under the 'summary' key")
             .isNotNegative();
         assertThat(installation).as(
@@ -311,6 +315,54 @@ public class DocumentAdminRenderingIT {
                 + " rem of indent - so a missing or non-numeric depth is a 500, not a blank badge")
             .contains("Depth 1").contains("Depth 2").contains("margin-left: 1.5rem");
     }
+
+    /**
+     * A standard document with summaries must render them. The panel used to be gated on
+     * {@code document.kind()}, which was a correct proxy only while summarisation ran in the
+     * hierarchical ingest alone — a standard manual ingested with the opt-in setting had hundreds
+     * of rows in {@code section_summaries} and showed nothing, with no indication why.
+     */
+    @Test
+    public void sectionSummariesOnAStandardDocumentRenderToo() throws Exception {
+        jdbcTemplate.update(
+            "INSERT INTO section_summaries (id, document_id, heading_path, summary) "
+                + "VALUES (?, ?, ARRAY[?]::text[], ?)",
+            UUID.randomUUID(), documentId, "Introduction",
+            "Standard-document summary that must be visible.");
+
+        String body = mockMvc.perform(get("/admin/documents/" + documentId).with(admin()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(body).as("a standard document's summaries are real data, not a kind to test for")
+            .contains("Standard-document summary that must be visible.");
+    }
+
+    /**
+     * The panel is collapsed on arrival. A real manual carries hundreds of summaries — the live
+     * corpus has one document with 485 — so an expanded panel buries the chunk list and the
+     * metadata under a page-length wall of prose.
+     *
+     * <p>
+     * Asserted on the markup rather than through a browser because {@code <details>} needs no
+     * JavaScript: closed IS the absence of the {@code open} attribute, so a regression would be a
+     * one-word edit that nothing else would catch.
+     */
+    @Test
+    public void theSectionSummariesPanelStartsCollapsed() throws Exception {
+        jdbcTemplate.update(
+            "INSERT INTO section_summaries (id, document_id, heading_path, summary) "
+                + "VALUES (?, ?, ARRAY[?]::text[], ?)",
+            UUID.randomUUID(), documentId, "Introduction", "Some summary text.");
+
+        String body = mockMvc.perform(get("/admin/documents/" + documentId).with(admin()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(body).as("the summaries must sit inside a native disclosure element")
+            .contains("<details id=\"section-summaries\"");
+        assertThat(body).as("default closed: `open` would restore the wall of text")
+            .doesNotContain("<details id=\"section-summaries\" open");
+    }
+
 
     /**
      * A link to a document or chunk that no longer exists must be a 404 — not a 500 and not a

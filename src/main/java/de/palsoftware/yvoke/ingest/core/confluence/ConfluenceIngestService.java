@@ -690,7 +690,7 @@ public class ConfluenceIngestService {
                     pageVersion);
             }
             // The delete always runs: a page whose content was removed must lose its old chunks.
-            documentRepository.deleteChunksForDocument(documentId);
+            documentRepository.deleteContentForDocument(documentId);
             if (!inserts.isEmpty()) {
                 documentRepository.insertChunks(documentId, collection, tag, sourceFile,
                     DocumentKind.CONFLUENCE.getValue(), inserts);

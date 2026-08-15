@@ -279,9 +279,14 @@ public class RagAdminWriteIT {
                 .param("systemPrompt", "You are terse."))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
 
-        // SystemPromptType.dbValue() lowercases, so the request's "CHAT" lands as "chat".
+        // dbValue() now stores the canonical UPPER CASE spelling. It used to lowercase, which was
+        // the whole defect: the corpus importer in yvoke-exports writes CHAT/KG/SUMMARIZE, and
+        // findByType compared with a case-sensitive '=' — so every imported prompt was invisible
+        // and the ingest page reported "No system prompts of type SUMMARIZE are configured" while
+        // one was plainly listed in the prompts tab. See SystemPromptRepositoryIT, which pins the
+        // read side against both spellings.
         assertThat(jdbcTemplate.queryForObject("SELECT type FROM system_prompts WHERE name = ?",
-            String.class, PROMPT)).isEqualTo("chat");
+            String.class, PROMPT)).isEqualTo("CHAT");
         assertThat(
             jdbcTemplate.queryForObject("SELECT system_prompt FROM system_prompts WHERE name = ?",
                 String.class, PROMPT)).isEqualTo("You are terse.");

@@ -215,7 +215,7 @@ public class CustomIngestServiceIT {
      * re-ingest under a new file name is recognised as the same document. Under a rename those two
      * rules point at different rows: the DELETE matches nothing (the stored row still holds the old
      * file name), the title match then adopts that very row, and {@code insertChunks} appends to it
-     * — this path calls no {@code deleteChunksForDocument}, because the DELETE was supposed to have
+     * — this path calls no {@code deleteContentForDocument}, because the DELETE was supposed to have
      * removed the document entirely.
      *
      * <p>

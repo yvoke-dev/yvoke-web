@@ -48,6 +48,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.ingest.core.model.MarkdownTree;
+import de.palsoftware.yvoke.ingest.core.model.Section;
 import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 
 /**
@@ -70,6 +71,7 @@ public class DocumentIngestServiceTest {
     private UploadPathGuard uploadPathGuard;
     private EmbeddingService embeddingService;
     private KgConsolidator kgConsolidator;
+    private SectionSummarizer sectionSummarizer;
 
     private final UUID documentId = UUID.randomUUID();
 
@@ -83,9 +85,10 @@ public class DocumentIngestServiceTest {
         uploadPathGuard = mock(UploadPathGuard.class);
         embeddingService = mock(EmbeddingService.class);
         kgConsolidator = mock(KgConsolidator.class);
+        sectionSummarizer = mock(SectionSummarizer.class);
         service = new DocumentIngestService(embeddingService, documentRepository, chunkRepository,
             kgRepository, kgExtractor, kgConsolidator, mock(JdbcClient.class),
-            mock(PlatformTransactionManager.class), mock(SectionSummarizer.class),
+            mock(PlatformTransactionManager.class), sectionSummarizer,
             mock(SystemPromptService.class), uploadPathGuard);
 
         when(chunkRepository.findChunksByDocumentId(eq(documentId), isNull()))
@@ -429,6 +432,105 @@ public class DocumentIngestServiceTest {
         assertThat(inserts.get(0).heading()).isEqualTo("Configuring the Connector");
         assertThat(inserts.get(0).text()).doesNotContain("(part 1/");
     }
+
+    /**
+     * The standard path chunks by splitting an oversized section into {@code (part n/m)} pieces,
+     * but the summarizer must be handed the sections as they were BEFORE that split — the same list
+     * the hierarchical path summarizes.
+     *
+     * <p>
+     * This is a correctness rule, not an optimisation, and it fails in two silent ways at once.
+     * {@code GeneralSummarizer} keys its cache on {@code sha256(content)}, and
+     * {@code SectionSummarizer.processNode} gives a PARENT node a roll-up built from
+     * {@code "> " + child.path + child.summary} — so a {@code (part n/m)} in one child title
+     * changes the content hash of every ANCESTOR too, turning a run that should be free (every
+     * section body is already in {@code summary_cache} from the hierarchical ingest) into a
+     * full-price LLM run over the whole spine. Worse, the rows it then writes carry
+     * {@code (part n/m)} inside {@code section_summaries.heading_path}, while {@code TocService}
+     * builds its lookup keys through {@code HierarchyUtils.stripPart} — so every summary paid for
+     * is written at a path nothing ever reads, and {@code get_toc} stays exactly as empty as
+     * before.
+     *
+     * <p>
+     * Nothing else can catch this: the job reports a normal count, the rows exist, and the only
+     * visible symptom is a bill plus a TOC that still has no summaries.
+     */
+    @Test
+    public void theStandardIngestSummarizesTheSectionsAsTheyWereBeforeTheOversizedSplit()
+        throws Exception {
+        String oversized =
+            "Body sentence for the configuration chapter that must exceed the cap. ".repeat(200);
+        Path tmp = Files.createTempDirectory("standard-summaries-unit");
+        Path md = tmp.resolve("manual.md");
+        Files.writeString(md, """
+            # Administration Guide
+
+            ## Configuring the Connector
+
+            """ + oversized + "\n");
+        when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
+        when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
+            List<String> texts = inv.getArgument(0);
+            return texts.stream().map(t -> new float[] {0.1f}).toList();
+        });
+        when(documentRepository.upsertManualDocument(anyString(), anyList(), anyString(),
+            anyString(), any())).thenReturn(documentId);
+
+        IngestionJob job =
+            new IngestionJob(null, "standard", md.toString(), TAGS, UUID.randomUUID(), COLLECTION,
+                JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null,
+                Map.<String, Object>of("buildSectionSummaries", true));
+        service.ingest(job, mock(JobContext.class));
+
+        ArgumentCaptor<List<Section>> summarized = ArgumentCaptor.forClass(List.class);
+        verify(sectionSummarizer).generateSummaries(eq(documentId), summarized.capture(), any(),
+            any(), any());
+
+        assertThat(summarized.getValue())
+            .as("a '(part n/m)' title poisons every ancestor's cache key AND writes the summary at"
+                + " a heading_path TocService will never look up")
+            .allSatisfy(s -> assertThat(s.title()).doesNotContain("(part"));
+
+        // The chunking itself must be unaffected: the split still happens for the stored chunks.
+        ArgumentCaptor<List<ChunkInsert>> stored = ArgumentCaptor.forClass(List.class);
+        verify(documentRepository).insertChunks(any(), anyString(), anyList(), anyString(),
+            anyString(), stored.capture());
+        assertThat(stored.getValue()).as("the standard path must still split oversized sections")
+            .hasSizeGreaterThan(summarized.getValue().size());
+        assertThat(stored.getValue()).anySatisfy(c -> assertThat(c.heading()).contains("(part 1/"));
+    }
+
+    /**
+     * Summarisation costs an LLM call per uncached section, so the standard path must not do it
+     * unless the operator asked. An absent setting is the ordinary case and must mean OFF.
+     */
+    @Test
+    public void theStandardIngestDoesNotSummarizeUnlessTheSettingAsksItTo() throws Exception {
+        Path tmp = Files.createTempDirectory("standard-summaries-off-unit");
+        Path md = tmp.resolve("manual.md");
+        Files.writeString(md, """
+            # Administration Guide
+
+            ## Configuring the Connector
+
+            A short body.
+            """);
+        when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
+        when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
+            List<String> texts = inv.getArgument(0);
+            return texts.stream().map(t -> new float[] {0.1f}).toList();
+        });
+        when(documentRepository.upsertManualDocument(anyString(), anyList(), anyString(),
+            anyString(), any())).thenReturn(documentId);
+
+        IngestionJob job = new IngestionJob(null, "standard", md.toString(), TAGS,
+            UUID.randomUUID(), COLLECTION, JobStatus.RUNNING, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null, Map.<String, Object>of());
+        service.ingest(job, mock(JobContext.class));
+
+        verify(sectionSummarizer, never()).generateSummaries(any(), anyList(), any(), any(), any());
+    }
+
 
     /**
      * Zip mode swallows EVERY per-file exception, so a zip in which nothing succeeds completes

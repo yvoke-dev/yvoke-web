@@ -153,20 +153,35 @@ describe('job status', () => {
 describe('ingest form', () => {
     test('hierarchical shows summarize and requires a prompt', () => {
         assert.deepEqual(panelsFor('hierarchical'),
-            { summarize: true, custom: false, jsonImport: false, summarizeRequired: true });
+            { summarize: true, custom: false, jsonImport: false, summarizeRequired: true,
+                sectionSummaries: false });
     });
 
     test('custom and json-import show one panel each and require nothing', () => {
         assert.deepEqual(panelsFor('custom'),
-            { summarize: false, custom: true, jsonImport: false, summarizeRequired: false });
+            { summarize: false, custom: true, jsonImport: false, summarizeRequired: false,
+                sectionSummaries: false });
         assert.deepEqual(panelsFor('json-import'),
-            { summarize: false, custom: false, jsonImport: true, summarizeRequired: false });
+            { summarize: false, custom: false, jsonImport: true, summarizeRequired: false,
+                sectionSummaries: false });
+    });
+
+    test('standard is the only kind offering section summaries', () => {
+        // Summaries are opt-in and cost an LLM call per uncached section, so the checkbox must
+        // not appear for a kind that would ignore it — a ticked box that does nothing is worse
+        // than no box, because the operator believes summaries were requested.
+        assert.equal(panelsFor('standard').sectionSummaries, true);
+        for (const kind of ['hierarchical', 'custom', 'json-import', 'nope']) {
+            assert.equal(panelsFor(kind).sectionSummaries, false,
+                `${kind} must not offer section summaries`);
+        }
     });
 
     test('an unknown kind hides everything and requires nothing', () => {
         // A hidden-but-required field blocks submission with no visible cause.
         assert.deepEqual(panelsFor('nope'),
-            { summarize: false, custom: false, jsonImport: false, summarizeRequired: false });
+            { summarize: false, custom: false, jsonImport: false, summarizeRequired: false,
+                sectionSummaries: false });
     });
 
     test('exactly one panel is ever visible', () => {

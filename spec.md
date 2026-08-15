@@ -357,6 +357,7 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 | **Create knowledge areas** | An administrator registers an area with a name and description; it then appears wherever content can be targeted. Names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
 | **Declare the versions an area holds** | Versions are declared on the area first, then chosen at import. One area holds several side by side; content, graph and records never mix between them. |
 | **Import documents and archives** | Upload a document or a zipped tree, pick the area, version and pipeline, and start. The upload returns immediately and the work runs in the background. Oversized sections are split into numbered parts automatically. |
+| **Ask the searchable pipeline for section summaries too** | *Standard* imports offer **Generate section summaries**, off by default. It writes the same per-section summaries the *Hierarchical* pipeline produces, so a searchable document can also be browsed by its table of contents. Summaries are reused across imports whenever a section's text is unchanged, so a manual already imported for browsing usually costs nothing to summarise again. |
 | **Import a manual for browsing** | The *Hierarchical* pipeline keeps a manual's heading structure intact and writes an AI summary for every section, built bottom-up so a parent's summary reflects its children. A section that cannot be summarised reads *Section summary unavailable* rather than failing the import. |
 | **Import a prepared export** | The *Custom* pipeline takes a zipped export of already-prepared documents plus optional entity and relationship files, so an install-kit extract arrives as documents and a knowledge graph in one job. Code-heavy sources are summarised during import. |
 | **Import structured records** | The *JSON Import* pipeline loads record-shaped data so the assistant can query facts directly instead of searching prose. Name a unique field to update matching records in place; leave it blank and every import adds new copies. |
@@ -381,7 +382,12 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 - **Re-importing a file updates that document instead of duplicating it.** For uploads and prepared exports
   a document is matched by its path in the source **and also by its title**, so a renamed file that keeps
   its title updates the existing one. Confluence pages are matched by path only, because two pages routinely
-  share a title.
+  share a title. A match is scoped to one area, one pipeline and one exact version set, so the same title
+  under a different area, pipeline or version is a different document and nothing is overwritten.
+- **Re-importing replaces a document's passages and its section summaries together.** Summaries never
+  outlive the text they describe, so a re-import without *Generate section summaries* leaves the document
+  with none rather than with the previous revision's. Re-generating them later is usually free — a section
+  whose text has not changed is reused rather than summarised again.
 - **Content, graph and records are always scoped to one area and one version**, so an answer about 9.3
   can never be built from 10.0 material.
 - **Imports never retry themselves.** A failed job stays failed until the work is submitted again, and a
@@ -408,6 +414,12 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   already stored. Fix the export and re-run; do not assume the failed job left nothing behind.
 - **Documents imported with the Hierarchical pipeline are not reachable by meaning-based search**, only by
   literal word matches. Use it for material meant to be browsed and summarised.
+- **Re-importing an uploaded document whose title changed creates a second document.** Uploads are matched
+  by title in practice, because each upload is stored under a fresh internal name that never matches the
+  previous one. Edit the heading a manual opens with and the re-import is treated as new material: the
+  earlier revision keeps its passages, stays searchable, and answers can cite it as current. Nothing warns,
+  and only the document count in the area reveals it. Change a title and the superseded document has to be
+  deleted by hand.
 - **A hand-written declaration of structured data is frozen permanently.** Later imports never update it,
   nothing warns, and it cannot be rebuilt from the data — the only way to change it is to write it again
   by hand. Until someone does, the assistant reports data that exists as missing.

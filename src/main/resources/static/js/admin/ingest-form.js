@@ -18,8 +18,15 @@ export const MAX_UPLOAD_BYTES = 200 * MB;
  * visible cause.
  */
 export function panelsFor(kind) {
-    const base = { summarize: false, custom: false, jsonImport: false, summarizeRequired: false };
+    const base = {
+        summarize: false, custom: false, jsonImport: false, summarizeRequired: false,
+        sectionSummaries: false,
+    };
     switch (kind) {
+        case 'standard':
+            // Opt-in section summaries: only this kind reads the setting, so only this kind may
+            // offer the checkbox. A ticked box on a kind that ignores it is worse than no box.
+            return { ...base, sectionSummaries: true };
         case 'hierarchical':
             return { ...base, summarize: true, summarizeRequired: true };
         case 'custom':

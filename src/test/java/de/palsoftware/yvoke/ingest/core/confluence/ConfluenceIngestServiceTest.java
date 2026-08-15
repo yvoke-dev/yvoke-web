@@ -996,7 +996,7 @@ class ConfluenceIngestServiceTest {
         // Nothing to embed, nothing to summarize — and no stale chunks left behind.
         verify(embeddingService, never()).embedBatch(any());
         verify(sectionSummarizer, never()).generateSummaries(any(), any(), any(), any(), any());
-        verify(documentRepository).deleteChunksForDocument(eq(docId));
+        verify(documentRepository).deleteContentForDocument(eq(docId));
         verify(documentRepository, never()).insertChunks(any(UUID.class), anyString(),
             nullable(String.class), anyString(), anyString(), any());
     }

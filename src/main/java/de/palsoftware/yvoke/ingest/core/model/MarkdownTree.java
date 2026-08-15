@@ -105,8 +105,19 @@ public final class MarkdownTree {
     }
 
     public static List<Section> buildOrderedSections(ParsedMarkdown parsed) {
-        List<Section> sections = filterSections(parsed.sections());
-        sections = dropEmptyPlaceholders(sections);
+        return splitOversized(dropEmptyPlaceholders(filterSections(parsed.sections())));
+    }
+
+    /**
+     * Expand every oversized section into its {@code (part n/m)} pieces.
+     *
+     * <p>
+     * Split out of {@link #buildOrderedSections(ParsedMarkdown)} so the standard ingest can keep
+     * the UNSPLIT list as well: section summaries must be generated from sections as they were
+     * before this step, which is the same list the hierarchical path summarizes. Sharing this
+     * method rather than repeating the loop keeps the two callers from drifting.
+     */
+    public static List<Section> splitOversized(List<Section> sections) {
         List<Section> expanded = new ArrayList<>();
         for (Section s : sections) {
             expanded.addAll(splitOversizedSection(s));

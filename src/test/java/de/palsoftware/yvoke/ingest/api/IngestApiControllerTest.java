@@ -96,10 +96,11 @@ public class IngestApiControllerTest {
         UUID jobId = UUID.randomUUID();
         MockMultipartFile file =
             new MockMultipartFile("file", "d.md", "text/markdown", "d".getBytes());
-        when(ingestService.uploadAndEnqueue(file, "OIM", "v1", "standard", null)).thenReturn(jobId);
+        when(ingestService.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null))
+            .thenReturn(jobId);
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null);
+            controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
@@ -132,9 +133,8 @@ public class IngestApiControllerTest {
         authenticateWith("ROLE_USER");
         MockMultipartFile file = tinyFile();
 
-        assertThatThrownBy(
-            () -> controller.uploadAndEnqueue(file, "anything", null, "confluence-import", null))
-            .isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
+            "confluence-import", null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
 
@@ -147,7 +147,7 @@ public class IngestApiControllerTest {
         MockMultipartFile file = tinyFile();
 
         assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-page-import:oim", null)).isInstanceOf(ResponseStatusException.class)
+            "confluence-page-import:oim", null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
 
@@ -159,9 +159,8 @@ public class IngestApiControllerTest {
         SecurityContextHolder.clearContext();
         MockMultipartFile file = tinyFile();
 
-        assertThatThrownBy(
-            () -> controller.uploadAndEnqueue(file, "anything", null, "confluence-import", null))
-            .isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
+            "confluence-import", null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
 

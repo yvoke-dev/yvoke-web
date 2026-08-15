@@ -31,8 +31,12 @@ public class SystemPromptRepository {
     }
 
     public List<SystemPrompt> findByType(SystemPromptType type) {
+        // upper(type), not type = :type. This column has two producers that disagree on case: the
+        // corpus importer in yvoke-exports writes CHAT/KG/SUMMARIZE, older builds of this class
+        // wrote lower case. A case-sensitive comparison silently returned nothing for whichever
+        // spelling it was not asking about, and an empty list reads as "none are configured".
         return jdbcClient.sql(
-            "SELECT name, type, system_prompt, description, created_at, updated_at FROM system_prompts WHERE type = :type ORDER BY name ASC")
+            "SELECT name, type, system_prompt, description, created_at, updated_at FROM system_prompts WHERE upper(type) = upper(:type) ORDER BY name ASC")
             .param("type", type.dbValue()).query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");

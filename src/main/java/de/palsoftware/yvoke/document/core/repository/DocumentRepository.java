@@ -510,7 +510,30 @@ public class DocumentRepository {
             .param("matchByTitle", matchByTitle).query(UUID.class).optional();
     }
 
-    public int deleteChunksForDocument(UUID documentId) {
+    /**
+     * Clears a document's derived content — its chunks AND its section summaries — before a
+     * re-ingest rewrites them.
+     *
+     * <p>
+     * The two are deleted together on purpose. A re-ingest reuses the {@code documents} row
+     * (identity is collection + kind + tag set + source_file/title), so anything not deleted here
+     * survives into the next revision. When only the chunks went, summaries from the previous run
+     * stayed attached under the same {@code document_id} and {@code TocService} joined them back
+     * onto the NEW chunks by normalised heading path — serving the old revision's prose through
+     * {@code get_toc} and rendering it on the admin page as current, with nothing recording that it
+     * predates the text. Deleting only chunks is now unrepresentable rather than merely
+     * discouraged.
+     *
+     * <p>
+     * Nothing recoverable is lost: {@code GeneralSummarizer} keys {@code summary_cache} on
+     * {@code sha256} of the section body and that table is never pruned, so re-summarising an
+     * unchanged section is a cache hit, and a changed one had to be re-summarised anyway.
+     *
+     * @return the number of chunks deleted (summaries are incidental to the caller)
+     */
+    public int deleteContentForDocument(UUID documentId) {
+        jdbcClient.sql("DELETE FROM section_summaries WHERE document_id = :documentId")
+            .param("documentId", documentId).update();
         return jdbcClient.sql("DELETE FROM chunks WHERE document_id = :documentId")
             .param("documentId", documentId).update();
     }

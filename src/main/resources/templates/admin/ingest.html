@@ -89,6 +89,19 @@
                             </p>
                         </div>
 
+                        <!-- Standard ingest: opt-in section summaries -->
+                        <div class="form-group" id="sectionSummariesContainer" style="display: none;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="buildSectionSummaries" name="buildSectionSummaries" value="true" style="width: auto;" />
+                                <span class="form-label" style="margin: 0;">Generate section summaries</span>
+                            </label>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                Builds the section summaries shown by <code>get_toc</code>. Usually free &mdash; summaries are
+                                cached by section content, so a manual already ingested hierarchically reuses them. Off by
+                                default because uncached sections each cost an LLM call.
+                            </p>
+                        </div>
+
                         <!-- Custom Export Containers -->
                         <div class="form-group" id="customExportContainer" style="display: none;">
                             <label class="form-label" for="documentGlobInput">Document Filter (Glob)</label>
@@ -176,6 +189,8 @@
             summarizeContainer.style.display = panels.summarize ? 'block' : 'none';
             customContainer.style.display = panels.custom ? 'block' : 'none';
             jsonImportContainer.style.display = panels.jsonImport ? 'block' : 'none';
+            document.getElementById('sectionSummariesContainer').style.display =
+                panels.sectionSummaries ? 'block' : 'none';
             summarizeSelect.required = panels.summarizeRequired;
 
             updateSelectTooltip(summarizeSelect);

@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
@@ -80,7 +81,7 @@ public class IngestAdminControllerTest {
         when(file.isEmpty()).thenReturn(true);
 
         String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            null, null, null, null, null, true, null, redirectAttributes);
+            null, null, null, null, null, true, null, null, redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/ingest");
         verify(redirectAttributes).addFlashAttribute(eq("error"), anyString());
@@ -99,7 +100,7 @@ public class IngestAdminControllerTest {
             .thenReturn(EnqueueResult.created(jobId));
 
         String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            null, null, null, null, null, true, null, redirectAttributes);
+            null, null, null, null, null, true, null, null, redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         verify(jobService).enqueue(any(EnqueueRequest.class));
@@ -142,7 +143,8 @@ public class IngestAdminControllerTest {
             .thenReturn(EnqueueResult.adopted(activeJob));
 
         String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            "kg-prompt", "summarize-prompt", null, null, null, true, null, redirectAttributes);
+            "kg-prompt", "summarize-prompt", null, null, null, true, null, null,
+            redirectAttributes);
 
         // The redirect goes to the job that already exists — "showing that job".
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + activeJob);
@@ -199,7 +201,7 @@ public class IngestAdminControllerTest {
         // A kind this form's upload path cannot serve: confluence-import's handler crawls a space
         // through a stored connector token and would be handed a staged FILE as its sourceRef.
         String view = controller.uploadIngest(file, "OIM", "9.3", "confluence-import", null, null,
-            null, null, null, false, null, redirectAttributes);
+            null, null, null, false, null, null, redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         EnqueueRequest enqueued = requestCaptor.getValue();
@@ -228,7 +230,7 @@ public class IngestAdminControllerTest {
         when(jobService.enqueue(requestCaptor.capture())).thenReturn(EnqueueResult.created(jobId));
 
         String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.CUSTOM.getValue(),
-            null, null, null, null, null, false, null, redirectAttributes);
+            null, null, null, null, null, false, null, null, redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         EnqueueRequest captured = requestCaptor.getValue();
@@ -262,6 +264,60 @@ public class IngestAdminControllerTest {
      * and {@code theJsonUniqueFieldChosenOnTheFormReachesTheJobSettings} passes {@code false}. The
      * unchecked-checkbox case — the ordinary one — has never been exercised.
      */
+    /**
+     * Section summarisation on the standard ingest is opt-in, and the operator's choice reaches the
+     * handler only through {@code ingestion_jobs.settings}. That makes it the same three-way
+     * contract that silently dropped {@code jsonUniqueField} for two releases: the form input's
+     * {@code name=}, this controller's {@code @RequestParam}, and
+     * {@code DocumentIngestService.isSectionSummariesEnabled}. Spring binds what you declare and
+     * drops the rest with no warning, so nothing would fail — the job would simply run without
+     * summaries while the page showed a ticked box.
+     *
+     * <p>
+     * The unchecked case is asserted alongside it because an absent checkbox posts no value at all,
+     * and the default must be OFF: summarising costs an LLM call per uncached section.
+     */
+    @Test
+    void theSectionSummaryCheckboxChosenOnTheFormReachesTheJobSettings() throws IOException {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("manual.md");
+        when(file.getInputStream()).thenReturn(new ByteArrayInputStream("# T".getBytes()));
+
+        ArgumentCaptor<EnqueueRequest> requestCaptor =
+            ArgumentCaptor.forClass(EnqueueRequest.class);
+        when(jobService.enqueue(requestCaptor.capture()))
+            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+
+        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(), null, null,
+            null, null, null, null, null, true, redirectAttributes);
+
+        assertThat(requestCaptor.getValue().settings())
+            .as("a ticked box that never reaches the job settings means the ingest silently "
+                + "produces no summaries and get_toc stays empty")
+            .containsEntry(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
+    }
+
+    @Test
+    void anAbsentSectionSummaryCheckboxLeavesSummarisationOff() throws IOException {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("manual.md");
+        when(file.getInputStream()).thenReturn(new ByteArrayInputStream("# T".getBytes()));
+
+        ArgumentCaptor<EnqueueRequest> requestCaptor =
+            ArgumentCaptor.forClass(EnqueueRequest.class);
+        when(jobService.enqueue(requestCaptor.capture()))
+            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+
+        // An unchecked checkbox posts no value at all.
+        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(), null, null,
+            null, null, null, null, null, null, redirectAttributes);
+
+        assertThat(requestCaptor.getValue().settings())
+            .doesNotContainKey(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES);
+    }
+
     @Test
     void anUncheckedGraphCheckboxIsRecordedAsAnExplicitFalse() throws IOException {
         MultipartFile file = mock(MultipartFile.class);
@@ -276,7 +332,7 @@ public class IngestAdminControllerTest {
 
         // enableGraph = null: an unchecked checkbox posts no value at all.
         controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.CUSTOM.getValue(), null, null,
-            null, null, null, null, null, redirectAttributes);
+            null, null, null, null, null, null, redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
             .as("an absent key means isGraphEnabled defaults to TRUE — graph injection would run on"
@@ -305,7 +361,7 @@ public class IngestAdminControllerTest {
             .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.JSON_IMPORT.getValue(), null,
-            null, null, null, null, false, "  customer.id  ", redirectAttributes);
+            null, null, null, null, false, "  customer.id  ", null, redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
             .as("without this the operator's unique field never reaches the handler")
