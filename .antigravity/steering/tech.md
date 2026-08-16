@@ -125,6 +125,23 @@
   `>= 4096` to avoid mid-element truncation), `temperature` (default `0.0`), and `system-prompt`.
   The extractor overrides only the model per call on the shared `LlmClient`, reusing
   the existing provider wiring (`app.ai.rag.*`).
+- Orchestrator run limits. Config keys (`application.yml`, prefix `app.ai.orchestrator`):
+  `max-review-rounds` (default **3**) and `max-specialist-calls` (default **8**). These are
+  *fallbacks and form pre-fills*, not the effective values: a run resolves its limits from the
+  `orchestrator_profiles` row (`OrchestratorProfileService`), and these apply only when the profile
+  does not set them. They live in yaml because the same two numbers were previously restated as
+  literals in `OrchestratorAdminController`, in the admin form and in **three** JS/HTML sites — five
+  copies that drifted the moment one was raised: the review limit went to 3 in
+  `OrchestratorProperties` and stayed 2 everywhere else, so a profile created through the admin UI
+  silently ran with the old limit, invisible because every existing row happened to carry 3.
+  **Do not reintroduce a literal in the controller or the template**; both read these via model
+  attributes, and `ApplicationYamlInvariantsTest` compares the yaml against `OrchestratorProperties`'
+  own fallback. Note `orchestrator_profiles.max_review_rounds`/`.max_specialist_calls` still carry a
+  column `DEFAULT 2`/`8` from `V1__init_schema.sql`. It is **unreachable** — every writer names the
+  column (`OrchestratorProfileRepository.upsert`, `yvoke-exports/lib/objects.py` `_profiles_upsert`,
+  and `pg_dump`'s column-qualified `COPY`) and nothing else inserts into the table — so it was
+  deliberately left alone rather than spent on a migration. If you ever add a writer that omits
+  either column, it will silently inherit those stale numbers: name the columns.
 
 ## Chat Configuration
 

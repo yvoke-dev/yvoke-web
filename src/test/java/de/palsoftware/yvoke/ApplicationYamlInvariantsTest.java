@@ -2,6 +2,7 @@ package de.palsoftware.yvoke;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -68,6 +69,35 @@ public class ApplicationYamlInvariantsTest {
      * signal is a warn line per lost chunk and a {@code skippedEntities} count on the job-detail
      * page that nobody reads when the job is green.
      */
+    /**
+     * The orchestrator's two limits had four definitions each and only a human kept them aligned —
+     * so when the review-round limit was raised from 2 to 3, one of the four moved. The other three
+     * (the DB column default, the admin POST endpoint's {@code defaultValue}, the admin form and
+     * its two JS prefill paths) went on writing 2, and a profile created through the admin UI
+     * silently ran with the old limit. Nothing failed; the local DB rows happened to carry 3, so
+     * there was nothing to notice.
+     *
+     * <p>
+     * The controller and the template now carry no number at all, which leaves exactly two: this
+     * yaml and the record's own fallback for when the key is absent. Two is the minimum — a
+     * {@code @ConfigurationProperties} record has to survive an empty environment — so the drift is
+     * closed by comparing them rather than by deleting one. Same shape and same remedy as the
+     * {@code DEFAULT_DEV_API_KEY} contract in {@code SecurityConfigMockAuthGuardTest}.
+     */
+    @Test
+    public void theOrchestratorLimitsInYamlAreTheOnesTheCodeFallsBackTo() {
+        OrchestratorProperties unconfigured = new OrchestratorProperties(null, null, null, null);
+
+        assertThat(Integer.parseInt(text("app", "ai", "orchestrator", "max-review-rounds")))
+            .as("application.yml and OrchestratorProperties must not disagree about the review"
+                + " limit — a profile created through the admin form is pre-filled from the former"
+                + " and a profile that omits it resolves through the latter")
+            .isEqualTo(unconfigured.resolvedMaxReviewRounds());
+
+        assertThat(Integer.parseInt(text("app", "ai", "orchestrator", "max-specialist-calls")))
+            .isEqualTo(unconfigured.resolvedMaxSpecialistCalls());
+    }
+
     @Test
     public void kgExtractionTokenBudgetStaysAtLeast4096() {
         int kgMaxTokens = Integer.parseInt(text("app", "ai", "kg", "max-tokens"));

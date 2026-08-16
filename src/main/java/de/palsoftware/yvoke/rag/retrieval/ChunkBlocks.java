@@ -4,6 +4,7 @@ import de.palsoftware.yvoke.document.core.HierarchyUtils;
 import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -41,6 +42,24 @@ public final class ChunkBlocks {
     private static final Pattern HEADER = Pattern
         .compile("^### (?<kind>[^/\\n]*)/(?<title>[^\\n]*?)  \\(score=(?<score>-?\\d+\\.\\d{3})"
             + "  id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)$", Pattern.MULTILINE);
+
+    /**
+     * The second block shape: what {@code get_section} writes above each passage it returns.
+     *
+     * <p>
+     * A section read has no relevance score and {@link #HEADER} requires one, so the two producers
+     * cannot share a pattern. Both are recognised here rather than in two parsers, for the reason
+     * this class exists at all: a format and its parser that live apart drift, and CLAUDE.md § 6
+     * records that happening three times.
+     *
+     * <p>
+     * It carries {@code doc_id} as well as {@code id} so an answer citing a section by its document
+     * still retains the passages. That matters while the specialist playbooks — which currently
+     * instruct exactly that — are being updated; without it, the transition would silently empty
+     * every section out of the reviewer's evidence.
+     */
+    private static final Pattern SECTION_MARKER = Pattern.compile(
+        "^_\\(id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)_$", Pattern.MULTILINE);
 
     /**
      * A trailing italic parenthetical on its own paragraph — what {@code search_corpus} appends to
@@ -173,11 +192,18 @@ public final class ChunkBlocks {
             return new Parsed(rendered == null ? "" : rendered, List.of(), "");
         }
 
+        // Both producers, in document order. A rendering only ever contains one shape, but
+        // merging rather than choosing means neither producer can be forgotten here.
         List<Integer> starts = new ArrayList<>();
         Matcher m = HEADER.matcher(rendered);
         while (m.find()) {
             starts.add(m.start());
         }
+        Matcher sm = SECTION_MARKER.matcher(rendered);
+        while (sm.find()) {
+            starts.add(sm.start());
+        }
+        Collections.sort(starts);
         if (starts.isEmpty()) {
             return new Parsed(rendered, List.of(), "");
         }
@@ -221,6 +247,14 @@ public final class ChunkBlocks {
             title = m.group("title");
             chunkId = toUuid(m.group("id"));
             documentId = toUuid(m.group("doc"));
+        } else {
+            Matcher sm = SECTION_MARKER.matcher(header);
+            if (sm.find()) {
+                // A section passage has no kind/title of its own: the section heading names it
+                // once, in the preamble, and the passage's own markdown heading follows in body.
+                chunkId = toUuid(sm.group("id"));
+                documentId = toUuid(sm.group("doc"));
+            }
         }
         return new Block(raw, header, kind, title, chunkId, documentId, headingPath, rest.strip());
     }

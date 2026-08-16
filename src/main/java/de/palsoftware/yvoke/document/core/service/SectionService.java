@@ -14,6 +14,8 @@ import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.model.DocumentKind;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.model.SectionChunks;
+import de.palsoftware.yvoke.document.core.model.SectionChunks.SectionChunk;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
@@ -93,7 +95,88 @@ public class SectionService {
             headingPathStr == null || headingPathStr.isBlank());
     }
 
+    /**
+     * The agent-facing view of {@link #getSectionByChunkId}: the same section, but with its
+     * passages kept apart so each can carry its id.
+     */
+    public SectionChunks getSectionChunksByChunkId(String chunkIdPrefix) {
+        if (chunkIdPrefix == null || chunkIdPrefix.isBlank()) {
+            throw new IllegalArgumentException("Chunk ID prefix cannot be null or empty.");
+        }
+
+        ChunkRow chunk = chunkRepository.findByIdPrefix(chunkIdPrefix)
+            .orElseThrow(() -> new NoSuchElementException(
+                "(no chunk with id starting '" + chunkIdPrefix + "')"));
+
+        DocumentRow doc = documentRepository.findById(chunk.documentId())
+            .orElseThrow(() -> new NoSuchElementException(
+                "(no document found for chunk '" + chunkIdPrefix + "')"));
+
+        return toSectionChunks(doc, HierarchyUtils.getChunkFullPath(chunk), false);
+    }
+
+    /**
+     * The agent-facing view of {@link #getSectionByDocumentId}: the same section, but with its
+     * passages kept apart so each can carry its id.
+     */
+    public SectionChunks getSectionChunksByDocumentId(String documentIdStr,
+        @Nullable String headingPathStr) {
+        DocumentRow doc = resolveDocument(documentIdStr);
+        boolean fullDocument = headingPathStr == null || headingPathStr.isBlank();
+        List<String> targetPath = fullDocument ? Collections.emptyList()
+            : HierarchyUtils.splitHeadingPath(headingPathStr);
+        return toSectionChunks(doc, targetPath, fullDocument);
+    }
+
+    private DocumentRow resolveDocument(String documentIdStr) {
+        if (documentIdStr == null || documentIdStr.isBlank()) {
+            throw new IllegalArgumentException("Document ID cannot be null or empty.");
+        }
+        UUID docId;
+        try {
+            docId = UUID.fromString(documentIdStr.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid UUID format: " + documentIdStr);
+        }
+        return documentRepository.findById(docId).orElseThrow(
+            () -> new NoSuchElementException("(no document found for id '" + docId + "')"));
+    }
+
+    /**
+     * Resolves through the SAME funnel the concatenated view uses, then keeps the passages apart
+     * instead of joining them. Sharing {@link #getSectionForDocument}'s resolution is the point:
+     * the passages an agent cites and the text a human is shown can never disagree about what the
+     * section contains.
+     */
+    private SectionChunks toSectionChunks(DocumentRow doc, List<String> targetPath,
+        boolean fetchFullDocument) {
+        Resolved resolved = resolveSection(doc, targetPath, fetchFullDocument);
+        List<SectionChunk> chunks = new ArrayList<>(resolved.matched().size());
+        for (ChunkRow chunk : resolved.matched()) {
+            chunks.add(new SectionChunk(chunk.id(), chunk.documentId(), chunk.heading(),
+                HierarchyUtils.stripBreadcrumb(chunk.text()).stripTrailing()));
+        }
+        return new SectionChunks(targetPath, resolved.documentTitle(), resolved.tag(),
+            resolved.scope(), chunks);
+    }
+
     private SectionResponse getSectionForDocument(DocumentRow doc, List<String> targetPath,
+        boolean fetchFullDocument) {
+        Resolved r = resolveSection(doc, targetPath, fetchFullDocument);
+        String sectionName = fetchFullDocument ? "Full Document" : String.join(" > ", targetPath);
+        String header = "# Section: " + sectionName + "\n" + "_(document: " + r.documentTitle()
+            + "  ·  tag: " + r.tag() + "  ·  " + r.matched().size() + " " + r.unit() + "  ·  "
+            + r.scope() + ")_\n";
+
+        StringBuilder sb = new StringBuilder(header).append("\n");
+        for (ChunkRow chunk : r.matched()) {
+            sb.append(HierarchyUtils.stripBreadcrumb(chunk.text()).stripTrailing()).append("\n");
+        }
+        return new SectionResponse(targetPath, r.documentTitle(), r.tag(), r.matched().size(),
+            r.scope(), sb.toString());
+    }
+
+    private Resolved resolveSection(DocumentRow doc, List<String> targetPath,
         boolean fetchFullDocument) {
         // 2+3. Resolve the matching chunks. For a section request, match the target path
         // against a hierarchy-only projection first (path normalization must stay in Java),
@@ -148,7 +231,6 @@ public class SectionService {
         matched.sort(
             Comparator.comparing(c -> c.sortOrder() != null ? c.sortOrder() : Integer.MAX_VALUE));
 
-        // 5. Build response and concatenate text
         String documentTitle = matched.get(0).documentTitle();
         if (documentTitle == null)
             documentTitle = "?";
@@ -157,19 +239,13 @@ public class SectionService {
             tag = "?";
 
         String scope = fetchFullDocument ? "full document" : "with sub-sections";
-        String sectionName = fetchFullDocument ? "Full Document" : String.join(" > ", targetPath);
         String docKind = matched.get(0).kind();
         String unit = (DocumentKind.HIERARCHICAL.getValue().equals(docKind)
             || DocumentKind.CONFLUENCE.getValue().equals(docKind)) ? "section(s)" : "chunk(s)";
-        String header = "# Section: " + sectionName + "\n" + "_(document: " + documentTitle
-            + "  ·  tag: " + tag + "  ·  " + matched.size() + " " + unit + "  ·  " + scope + ")_\n";
-
-        StringBuilder sb = new StringBuilder(header).append("\n");
-        for (ChunkRow chunk : matched) {
-            sb.append(HierarchyUtils.stripBreadcrumb(chunk.text()).stripTrailing()).append("\n");
-        }
-
-        return new SectionResponse(targetPath, documentTitle, tag, matched.size(), scope,
-            sb.toString());
+        return new Resolved(matched, documentTitle, tag, scope, unit);
     }
+
+    /** One resolved section, before either view decides how to render it. */
+    private record Resolved(List<ChunkRow> matched, String documentTitle, String tag, String scope,
+        String unit) {}
 }

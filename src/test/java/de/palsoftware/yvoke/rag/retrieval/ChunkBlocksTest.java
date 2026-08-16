@@ -271,4 +271,63 @@ public class ChunkBlocksTest {
         assertThat(line).contains("Install > Prerequisites");
         assertThat(line).doesNotContain("Some long body");
     }
+
+    /**
+     * {@code get_section} marks each passage with {@code _(id=…  doc_id=…)_} rather than the search
+     * header, because a section read has no relevance score and {@code HEADER} requires one.
+     * {@code parse} has to recognise BOTH, or a section reaches the reviewer unreduced: every
+     * passage of it, cited or not, at full length.
+     *
+     * <p>
+     * The marker carries {@code doc_id} as well as {@code id} so an answer that still cites a
+     * section by its document — which 25 playbooks currently instruct — keeps its passages while
+     * those playbooks are being updated.
+     */
+    @Test
+    void aSectionMarkerIsParsedAsABlockJustLikeASearchHeader() {
+        String rendered = """
+            # Section: Installing > Prerequisites
+            _(document: OIM Admin Guide  ·  tag: 10.0  ·  2 passage(s))_
+
+            _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+            ###### Prerequisites
+            First body.
+
+            _(id=1a2b3c4d-5e6f-4071-8899-aabbccddeeff  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+            ###### Next steps
+            Second body.
+            """;
+
+        ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
+
+        assertThat(parsed.blocks()).as("a section must reduce to one block per passage").hasSize(2);
+        assertThat(parsed.blocks().get(0).chunkId())
+            .isEqualTo(UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071"));
+        assertThat(parsed.blocks().get(0).documentId())
+            .as("without doc_id a document-level citation would drop every passage")
+            .isEqualTo(UUID.fromString("3d9a0000-1111-4222-8333-444455556666"));
+        assertThat(parsed.blocks().get(0).body()).contains("First body.");
+        assertThat(parsed.preamble())
+            .as("the section heading is preamble, not a block - it names what was read")
+            .contains("# Section:");
+    }
+
+    /** The section marker must round-trip like any other block. */
+    @Test
+    void aSectionRenderSurvivesParseAndReEmission() {
+        String rendered = """
+            # Section: A
+            _(document: D  ·  tag: 9.3)_
+
+            _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+            Body one.
+            """;
+
+        ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
+        String rebuilt = parsed.preamble()
+            + String.join("\n\n", parsed.blocks().stream().map(ChunkBlocks.Block::raw).toList())
+            + parsed.suffix();
+
+        assertThat(rebuilt).isEqualTo(rendered);
+    }
 }

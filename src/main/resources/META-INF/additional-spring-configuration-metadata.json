@@ -229,6 +229,18 @@
       "defaultValue": ""
     },
     {
+      "name": "app.ai.orchestrator.max-review-rounds",
+      "type": "java.lang.Integer",
+      "description": "Review rounds an orchestrated answer may take before it is delivered flagged. The effective value for a run comes from the orchestrator_profiles row; this applies when a profile does not set one, and is what the admin form is pre-filled with. It is defined here rather than as a literal in the controller or the template because those copies drifted: the limit was raised to 3 in one place and stayed 2 in five others.",
+      "defaultValue": 3
+    },
+    {
+      "name": "app.ai.orchestrator.max-specialist-calls",
+      "type": "java.lang.Integer",
+      "description": "Specialist delegations one orchestrated run may make. Same resolution order as app.ai.orchestrator.max-review-rounds: the profile row wins, this is the fallback and the admin form's pre-filled value.",
+      "defaultValue": 8
+    },
+    {
       "name": "app.ai.rag.max-iterations",
       "type": "java.lang.Integer",
       "description": "Maximum agentic tool invocation loop iterations during retrieval.",

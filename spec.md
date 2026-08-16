@@ -289,9 +289,11 @@ in-depth profiles, and can inspect any search or trace.
 - **The citation check confirms a cited source exists. It never reads the source**, so "all citations
   resolve" does not mean the answer is supported by them.
 - **Repeat suppression is per agent, per conversation.** A specialist that finds a passage the lead agent
-  or another specialist already read is still given it in full, and reading a whole section never counts
-  as having seen the passages inside it. The rule only ever withholds text an agent demonstrably still
-  holds, so it errs towards sending too much rather than pointing at something that is not there.
+  or another specialist already read is still given it in full. The rule only ever withholds text an
+  agent demonstrably still holds, so it errs towards sending too much rather than pointing at something
+  that is not there. Within one agent it now spans both ways of reading: opening a section counts as
+  having seen the passages in it, and a passage already shown is named but not repeated — so a section
+  opened after a search that already returned part of it arrives with that part as a reference.
 - **A claim the answer failed to cite is reported as unsupported, even when a retrieved source did
   support it.** The reviewer cannot see uncited sources, so the correction runs through the review loop:
   the answer is rejected, the lead agent adds the citation, and the next round checks it. That costs a

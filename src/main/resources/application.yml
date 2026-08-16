@@ -187,6 +187,21 @@ app:
       base-url: ${VOYAGE_API_BASE:https://api.voyageai.com/v1}
       api-key: ${VOYAGE_API_KEY:placeholder-voyage-api-key}
       model: ${RERANK_MODEL:rerank-2.5}
+    orchestrator:
+      # The effective limits for a run come from the orchestrator_profiles ROW; these apply when a
+      # profile does not set them, and they are what the admin form is pre-filled with. They live
+      # here rather than as literals in the controller and the template because that is exactly how
+      # they drifted: the limit was raised to 3 in OrchestratorProperties and stayed 2 in three
+      # other places, so a profile created through the form silently got the old value.
+      # ApplicationYamlInvariantsTest pins these against the record's own fallbacks.
+      #
+      # 3 rather than 2 (zero-based, so four attempts): a reviewer restricted to the sources an
+      # answer cites rejects mis-citations that a whole-evidence reviewer used to excuse by finding
+      # the fact elsewhere, so rejections became more frequent AND more mechanical. A live run was
+      # still converging when it ran out of rounds and was delivered flagged despite being nearly
+      # correct. The extra round is cheap now that a citation-only revision cannot delegate.
+      max-review-rounds: 3
+      max-specialist-calls: 8
   retrieval:
     default-limit: 10
     # Ceiling on rows returned by any search. Both candidate pools are derived from the

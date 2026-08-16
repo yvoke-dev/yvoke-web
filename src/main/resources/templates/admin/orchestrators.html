@@ -129,11 +129,12 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                             <div class="form-group">
                                 <label for="maxReviewRounds" class="form-label">Max Review Rounds</label>
-                                <input type="number" name="maxReviewRounds" id="maxReviewRounds" value="2" min="1" max="10" required class="form-input" />
+                                <!-- The rendered value is the ONLY copy of this limit in the page: both JS prefill paths below read it back as input.defaultValue, which is also what the New button's form.reset() restores. Previously it was the literal 2, in three places, while the system meant 3. -->
+                                <input type="number" name="maxReviewRounds" id="maxReviewRounds" th:value="${defaultMaxReviewRounds}" min="1" max="10" required class="form-input" />
                             </div>
                             <div class="form-group">
                                 <label for="maxSpecialistCalls" class="form-label">Max Specialist Calls</label>
-                                <input type="number" name="maxSpecialistCalls" id="maxSpecialistCalls" value="8" min="1" max="50" required class="form-input" />
+                                <input type="number" name="maxSpecialistCalls" id="maxSpecialistCalls" th:value="${defaultMaxSpecialistCalls}" min="1" max="50" required class="form-input" />
                             </div>
                         </div>
 
@@ -254,8 +255,8 @@
                     formTitle.textContent = 'Edit Profile: ' + this.dataset.name;
                     nameInput.value = this.dataset.name;
                     nameInput.readOnly = true;
-                    maxReviewInput.value = this.dataset.maxReview || 2;
-                    maxCallsInput.value = this.dataset.maxCalls || 8;
+                    maxReviewInput.value = this.dataset.maxReview || maxReviewInput.defaultValue;
+                    maxCallsInput.value = this.dataset.maxCalls || maxCallsInput.defaultValue;
                     orchPbInput.value = this.dataset.orchPb || '';
                     revPbInput.value = this.dataset.revPb || '';
 
@@ -304,8 +305,10 @@
                     document.getElementById('form-title').textContent = 'Edit Profile: ' + profile.name;
                     const nameInput = document.getElementById('name');
                     nameInput.value = profile.name;
-                    document.getElementById('maxReviewRounds').value = profile.maxReviewRounds || 2;
-                    document.getElementById('maxSpecialistCalls').value = profile.maxSpecialistCalls || 8;
+                    const reviewEl = document.getElementById('maxReviewRounds');
+                    const callsEl = document.getElementById('maxSpecialistCalls');
+                    reviewEl.value = profile.maxReviewRounds || reviewEl.defaultValue;
+                    callsEl.value = profile.maxSpecialistCalls || callsEl.defaultValue;
                     document.getElementById('orchestratorPlaybook').value = profile.orchestratorPlaybook || '';
                     document.getElementById('reviewerPlaybook').value = profile.reviewerPlaybook || '';
                     document.getElementById('orchestratorModel').value = profile.orchestratorModel || '';

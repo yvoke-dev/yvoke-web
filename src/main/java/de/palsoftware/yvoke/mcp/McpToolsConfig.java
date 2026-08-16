@@ -2,6 +2,8 @@ package de.palsoftware.yvoke.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.tool.AskClarifyingQuestionToolCallback;
+import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
+import de.palsoftware.yvoke.mcp.tools.GetSectionToolCallback;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import java.util.ArrayList;
@@ -52,6 +54,16 @@ public class McpToolsConfig {
             log.error("Failed to register custom AskClarifyingQuestionToolCallback", e);
         }
 
+        try {
+            GetSectionTool getSectionTool = applicationContext.getBean(GetSectionTool.class);
+            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
+            callbacksList.add(new GetSectionToolCallback(getSectionTool, objectMapper));
+            registeredNames.add("get_section");
+            log.info("Manually registered Context-Aware Tool callback: get_section");
+        } catch (Exception e) {
+            log.error("Failed to register custom GetSectionToolCallback", e);
+        }
+
         // Use classpath scanning to discover candidate beans in the tools package
         // This avoids calling getBeansWithAnnotation on the entire ApplicationContext,
         // which would eagerly instantiate other unrelated beans and cause circular reference
@@ -66,7 +78,12 @@ public class McpToolsConfig {
                 String className = bd.getBeanClassName();
                 if (className != null) {
                     Class<?> clazz = Class.forName(className);
-                    if (clazz.equals(SearchCorpusTool.class)) {
+                    // Both are registered by hand above with a context-aware callback. The
+                    // duplicate-name guard below would skip the scanned copy anyway, but that
+                    // leaves two sources of truth for one tool's schema; skipping the class keeps
+                    // exactly one.
+                    if (clazz.equals(SearchCorpusTool.class)
+                        || clazz.equals(GetSectionTool.class)) {
                         continue;
                     }
                     Object bean = applicationContext.getBean(clazz);

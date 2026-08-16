@@ -248,4 +248,26 @@ public class EvidenceDigestTest {
         assertThat(EvidenceDigest.deduped(List.of())).isEmpty();
         assertThat(EvidenceDigest.citeScoped(List.of(), citedBy(CITED))).isEmpty();
     }
+
+    /**
+     * A section the answer does not cite is reduced like any other evidence. Before
+     * {@code get_section} marked its passages this was impossible — a section had no parseable
+     * blocks, so it travelled to the reviewer whole however irrelevant it turned out to be.
+     */
+    @Test
+    void anUncitedSectionIsReducedRatherThanSentWhole() {
+        String section = """
+            # Section: Rollback > Restoring
+            _(document: OIM Admin Guide  ·  tag: 10.0  ·  1 passage(s))_
+
+            _(id=%s  doc_id=%s)_
+            A passage about restoring backups that the answer never used.""".formatted(UNCITED,
+            DOC_UNCITED);
+
+        String out = EvidenceDigest.citeScoped(List.of(section),
+            "The answer cites [chunk_id=%s] and nothing else.".formatted(CITED));
+
+        assertThat(out).as("an uncited passage's text is what the reviewer does not need")
+            .doesNotContain("A passage about restoring backups");
+    }
 }

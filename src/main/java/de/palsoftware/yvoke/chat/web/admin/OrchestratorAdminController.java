@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.io.IOException;
@@ -33,12 +34,15 @@ public class OrchestratorAdminController {
     private final OrchestratorProfileService profileService;
     private final PlaybookService playbookService;
     private final ChatConversationService chatConversationService;
+    private final OrchestratorProperties properties;
 
     public OrchestratorAdminController(OrchestratorProfileService profileService,
-        PlaybookService playbookService, ChatConversationService chatConversationService) {
+        PlaybookService playbookService, ChatConversationService chatConversationService,
+        OrchestratorProperties properties) {
         this.profileService = profileService;
         this.playbookService = playbookService;
         this.chatConversationService = chatConversationService;
+        this.properties = properties;
     }
 
     @GetMapping
@@ -62,14 +66,26 @@ public class OrchestratorAdminController {
             reviewerPlaybooks.isEmpty() ? allPlaybooks : reviewerPlaybooks);
         model.addAttribute("specialistPlaybooks", specialistPlaybooks);
         model.addAttribute("allowedModels", chatConversationService.getAllowedModels());
+        // The form and both of its JS prefill paths used to carry these numbers as literals, which
+        // is how three of them stayed at 2 after the limit was raised to 3. They render from here
+        // now, so the value exists once — in application.yml.
+        model.addAttribute("defaultMaxReviewRounds", properties.resolvedMaxReviewRounds());
+        model.addAttribute("defaultMaxSpecialistCalls", properties.resolvedMaxSpecialistCalls());
         model.addAttribute("activeTab", "orchestrators");
         return "admin/orchestrators";
     }
 
+    /**
+     * {@code maxReviewRounds} and {@code maxSpecialistCalls} are deliberately boxed and
+     * {@code required = false} rather than carrying a {@code defaultValue}: a literal here is a
+     * second definition of a limit that already has one, and that is exactly how this endpoint kept
+     * writing 2 after the limit became 3. An absent parameter resolves through
+     * {@code OrchestratorProperties}, which reads {@code application.yml}.
+     */
     @PostMapping
     public String createOrUpdateProfile(@RequestParam String name,
-        @RequestParam(defaultValue = "2") int maxReviewRounds,
-        @RequestParam(defaultValue = "8") int maxSpecialistCalls,
+        @RequestParam(required = false) Integer maxReviewRounds,
+        @RequestParam(required = false) Integer maxSpecialistCalls,
         @RequestParam String orchestratorPlaybook, @RequestParam String reviewerPlaybook,
         @RequestParam(required = false) List<String> specialistPlaybooks,
         @RequestParam(required = false) String orchestratorModel,
@@ -80,11 +96,16 @@ public class OrchestratorAdminController {
         @RequestParam(required = false) String specialistThinkingLevel,
         RedirectAttributes redirectAttributes) {
 
+        int rounds =
+            maxReviewRounds != null ? maxReviewRounds : properties.resolvedMaxReviewRounds();
+        int calls = maxSpecialistCalls != null ? maxSpecialistCalls
+            : properties.resolvedMaxSpecialistCalls();
+
         OrchestratorProfile profile =
-            new OrchestratorProfile(name, maxReviewRounds, maxSpecialistCalls, orchestratorPlaybook,
-                reviewerPlaybook, specialistPlaybooks != null ? specialistPlaybooks : List.of(),
-                orchestratorModel, orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel,
-                specialistModel, specialistThinkingLevel, null, null);
+            new OrchestratorProfile(name, rounds, calls, orchestratorPlaybook, reviewerPlaybook,
+                specialistPlaybooks != null ? specialistPlaybooks : List.of(), orchestratorModel,
+                orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel,
+                specialistThinkingLevel, null, null);
         profileService.saveProfile(profile);
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + name + "' saved successfully.");
