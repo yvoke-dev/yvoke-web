@@ -1,8 +1,5 @@
 package de.palsoftware.yvoke.llm.core;
 
-import com.azure.core.exception.HttpResponseException;
-import com.azure.core.http.HttpHeaderName;
-import com.azure.core.http.HttpHeaders;
 import java.util.Locale;
 
 /**
@@ -47,16 +44,7 @@ sb.append(" request-id=").append(requestId);}return sb.toString();}
  * Reads the rate-limit headers off the first provider HTTP failure in the cause chain. Never null;
  * {@link #isEmpty()} when there is nothing to report.
  */
-public static ProviderRateLimit from(Throwable t){for(Throwable c=t;c!=null;c=c.getCause()){if(c instanceof HttpResponseException http&&http.getResponse()!=null){return fromHeaders(http.getResponse().getHeaders());}if(c.getCause()==c){break;}}return EMPTY;}
-
-private static ProviderRateLimit fromHeaders(HttpHeaders headers){if(headers==null){return EMPTY;}return new ProviderRateLimit(parseSeconds(value(headers,"retry-after")),value(headers,"x-ratelimit-remaining-requests"),value(headers,"x-ratelimit-remaining-tokens"),value(headers,"apim-request-id"));}
-
-private static String value(HttpHeaders headers,String name){
-// HttpHeaderName matches case-insensitively by construction, which a hand-rolled scan over
-// getName() does not: azure-core preserves the sender's capitalisation, so HTTP/2's
-// lowercase and a mock server's "Retry-After" are the same header to the SDK and two
-// different ones to String.equals.
-String v=headers.getValue(HttpHeaderName.fromString(name));return v==null||v.isBlank()?null:v.strip();}
+public static ProviderRateLimit from(Throwable t){ProviderFault fault=ProviderFault.of(t);if(fault==null){return EMPTY;}return new ProviderRateLimit(parseSeconds(fault.header("retry-after")),fault.header("x-ratelimit-remaining-requests"),fault.header("x-ratelimit-remaining-tokens"),fault.header("apim-request-id"));}
 
 /**
  * {@code Retry-After} is either a count of seconds or an HTTP date. Only the numeric form is

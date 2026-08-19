@@ -98,6 +98,10 @@ yvoke/
 │   │   │   │   ├── audit/  # Audit log repository
 │   │   │   │   ├── config/ # App config, cache, JDBC mappers, RestClient beans
 │   │   │   │   ├── db/     # Shared DB helpers (pgvector formatting, collection-id resolution)
+│   │   │   │   ├── text/   # AssistantTranscript: the one rule for turning a rendered assistant
+│   │   │   │   │            # transcript into text a model may be replayed (strips <think> blocks
+│   │   │   │   │            # and tool banners). Shared by RagService and OrchestrationService,
+│   │   │   │   │            # which previously each had half the rule and disagreed.
 │   │   │   │   ├── jobengine/ # Postgres-backed background task queue + EnqueueValidator SPI
 │   │   │   │   │   ├── api/ # Job status REST API (/api/jobs/v1)
 │   │   │   │   │   ├── model/ # Job engine records (IngestionJob, EnqueueRequest, steps)

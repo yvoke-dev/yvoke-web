@@ -40,18 +40,12 @@ public class CloudflareGeminiLlmClient extends GeminiLlmClient {
     }
 
     private static ClientOptions buildClientOptions(ObjectMapper objectMapper) {
-        OkHttpClient.Builder httpBuilder = new OkHttpClient.Builder();
-
-        // The SDK configures timeouts only on the OkHttpClient it builds itself; when a custom
-        // client is supplied (ApiClient.createHttpClient) it just calls newBuilder(), so
-        // HttpOptions.timeout() is dropped and OkHttp's 10s connect/read/write defaults apply —
-        // which kills any thinking model that takes >10s to emit its first SSE token. Reproduce
-        // what the SDK would have configured: no per-socket timeouts, since SSE streams idle
-        // between tokens, bounded by one overall call timeout.
-        httpBuilder.connectTimeout(Duration.ZERO);
-        httpBuilder.readTimeout(Duration.ZERO);
-        httpBuilder.writeTimeout(Duration.ZERO);
-        httpBuilder.callTimeout(Duration.ofMillis(HTTP_TIMEOUT_MS));
+        // Timeouts come from the shared builder, not from HttpOptions: supplying a custom client
+        // makes the SDK skip its own transport configuration entirely, so this class is responsible
+        // for the whole shape and must not invent a second one. See
+        // GeminiLlmClient#httpClientBuilder
+        // for why the bound is a per-read timeout and never a call timeout.
+        OkHttpClient.Builder httpBuilder = httpClientBuilder(HTTP_TIMEOUT_MS);
 
         httpBuilder.addInterceptor(chain -> {
             Request originalRequest = chain.request();

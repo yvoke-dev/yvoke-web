@@ -144,6 +144,16 @@ a register of everyone's conversations.
   server refuses it too. In-depth mode is the only exception; it hides the playbook picker entirely.
 - **A playbook's instructions apply once**, the first time that playbook is used in a conversation — not on
   every question. Switching playbooks part-way applies the new one once, and both stay in force afterwards.
+- **A playbook adds to the base instructions; it does not replace them.** The administrator's base
+  instructions always apply, and the playbook is layered on top for the question that uses it. So rules that
+  hold for every answer — how sources are cited, never naming an unverified object, always naming a knowledge
+  area and version — are written once in the base instructions, and a playbook only says what is specific to
+  its own subject. The same layering applies to each specialist inside an in-depth investigation.
+  **The two exceptions are the in-depth lead and its reviewer**: those two run entirely on their own
+  instructions, because neither of them searches the knowledge base — the lead only delegates, and the
+  reviewer only checks a finished draft against the evidence, so the base instructions about searching and
+  citing do not describe their work. A rule that must reach them has to be written into their own
+  instructions; it is not inherited.
 - **Only the owner may change anything.** Administrators and viewers of a shared conversation can read a
   thread and its ratings, but cannot post, rate, tag, stop or delete it.
 - **Sharing is one tag away** — immediate, no confirmation step, no per-person control. Adding `public`
@@ -216,7 +226,7 @@ in-depth profiles, and can inspect any search or trace.
 | --- | --- |
 | **Every answer starts from a live search** | The assistant searches two ways at once — by meaning and by exact wording — merges both result lists, then re-orders them by relevance before reading anything. It answers from what it retrieved, not from the model's own memory. |
 | **Citations that open the source in place** | Clicking a source marker expands the cited passage inside the conversation, with document title, version, and how much of the document is shown. If the source has since been deleted, the panel says so rather than failing. |
-| **Citation self-check while writing** | The assistant can check its own citations before finishing, and a source reference that is provably invented is removed as the answer is written. Ordinary bracketed text and numbered references are always kept. |
+| **Citation self-check while writing** | The assistant can check its own citations before finishing, and a source reference that is provably invented is removed as the answer is written. Ordinary bracketed text and numbered references are always kept. This applies to in-depth answers as well as ordinary ones. |
 | **Playbooks — expert strategies users pick** | A named, reusable instruction set telling the assistant how to attack a class of question and which tools it may use. Its instructions stay invisible in the conversation. |
 | **Playbook recommendation** | Before the first message is sent, the system checks whether the chosen playbook fits. If not it offers a one-click switch and a **Send Anyway** button. |
 | **A toolbox, not just a search box** | While answering, the assistant can list a knowledge area's documents, open a document's table of contents, read a whole section, look up a thing and its connections in the knowledge graph, and query structured records. |
@@ -288,6 +298,12 @@ in-depth profiles, and can inspect any search or trace.
   specialist contributed.
 - **The citation check confirms a cited source exists. It never reads the source**, so "all citations
   resolve" does not mean the answer is supported by them.
+- **The assistant does not remember its own thinking, only its answers.** The reasoning shown under
+  "see how the answer was produced" belongs to the turn that produced it. On the next question the
+  assistant is given what it *said* — its answers and the sources it read — not how it got there, so a
+  follow-up may re-derive reasoning the user can still see on screen above it. This is deliberate:
+  reasoning is a draft, and replaying it invites the assistant to treat its own speculation as
+  something it had already established.
 - **Repeat suppression is per agent, per conversation.** A specialist that finds a passage the lead agent
   or another specialist already read is still given it in full. The rule only ever withholds text an
   agent demonstrably still holds, so it errs towards sending too much rather than pointing at something
@@ -734,7 +750,7 @@ running corpus scripts and the evaluation harness.
 | **Connect an AI client** | A user signs in with their company account from a client such as Claude Code, Claude Desktop or Cursor. The client discovers the available knowledge tools by itself. First-time users are created automatically, with no separate invitation. |
 | **Search the knowledge base** | Ask in plain language against one knowledge area and get the most relevant passages back, each with a relevance score, its document, and the heading path it sits under. Every passage carries an id the client can cite. |
 | **Browse the document catalogue** | List the documents in an area, optionally filtered by kind or approximate title. Each row shows id, kind, title and passage count, and the response states how many more exist. |
-| **Read a table of contents** | For structured documents, an indented outline with a one-line summary and passage count per section, so the client can navigate top-down instead of guessing search terms. |
+| **Read a table of contents** | For structured documents, an indented outline with a one-line summary per section and its size in both passages and characters, so the client can navigate top-down instead of guessing search terms. Two levels are shown at a time, and naming a section shows the two levels **below** it — so a client can walk down to the part it wants instead of reading a whole chapter to find it. Each entry states whether it is small enough to read whole. |
 | **Read a full section or whole document** | Given a document id and an optional section path, get the complete text of that section including everything nested beneath it. This is how a client moves from a search hit to the full source. |
 | **Look things up in the knowledge graph** | Search a knowledge area's graph for named things — tables, processes, forms, endpoints — and get each one's kind, version, description and owning document. |
 | **Follow connections** | Ask what a named thing connects to and get its connections back: the counterpart, the kind of connection and the direction. Optional filters narrow to one type or direction. |

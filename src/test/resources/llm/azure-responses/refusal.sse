@@ -1,0 +1,21 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_06f339645f964ef1006a82b2d493248195880d7a468cb21671","object":"response","created_at":1786950356,"status":"in_progress","background":false,"completed_at":null,"content_filters":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.6-luna","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"high","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+event: response.in_progress
+data: {"type":"response.in_progress","response":{"id":"resp_06f339645f964ef1006a82b2d493248195880d7a468cb21671","object":"response","created_at":1786950356,"status":"in_progress","background":false,"completed_at":null,"content_filters":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.6-luna","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"high","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 0, "sequence_number": 2, "item": {"id": "msg_refusal", "type": "message", "status": "in_progress", "role": "assistant", "content": []}}
+
+event: response.refusal.delta
+data: {"type": "response.refusal.delta", "item_id": "msg_refusal", "output_index": 0, "content_index": 0, "delta": "I'm sorry, ", "sequence_number": 3}
+
+event: response.refusal.delta
+data: {"type": "response.refusal.delta", "item_id": "msg_refusal", "output_index": 0, "content_index": 0, "delta": "I can't help ", "sequence_number": 4}
+
+event: response.refusal.delta
+data: {"type": "response.refusal.delta", "item_id": "msg_refusal", "output_index": 0, "content_index": 0, "delta": "with that.", "sequence_number": 5}
+
+event: response.completed
+data: {"type": "response.completed", "sequence_number": 10, "response": {"id": "resp_refusal", "object": "response", "status": "completed", "model": "gpt-5.6-luna", "output": [{"id": "msg_refusal", "type": "message", "status": "completed", "role": "assistant", "content": [{"type": "refusal", "refusal": "I'm sorry, I can't help with that."}]}], "usage": {"input_tokens": 90, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 12, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 102}}}
+

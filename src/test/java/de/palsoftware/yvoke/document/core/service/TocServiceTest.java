@@ -44,6 +44,70 @@ class TocServiceTest {
         tocService = new TocService(chunkRepository, documentRepository, jdbcClient);
     }
 
+    /** The five-chunk hierarchy the scoping tests below share. Depth 3 is the point of it. */
+    private DocumentRow seedHierarchy() {
+        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual", "Manual Title",
+            Map.of("tag", "9.3", "source_file", "manual1.md"), "completed", List.of(),
+            Instant.now());
+        ChunkPathRow c1 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 1", 10, 100);
+        ChunkPathRow c2 =
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section A", 20, 200);
+        ChunkPathRow c3 = new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1", "Section A"),
+            "Subsection 1", 30, 400);
+        ChunkPathRow c4 =
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section B", 40, 800);
+        ChunkPathRow c5 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 2", 50, 1600);
+        when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
+        when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))
+            .thenReturn(List.of(c1, c2, c3, c4, c5));
+        return doc;
+    }
+
+    /**
+     * The whole point of R7. The unscoped TOC is capped at absolute depth 2, so
+     * {@code Subsection 1} is invisible: an agent could see {@code Chapter 1 > Section A} and had
+     * no way to learn what was inside it short of {@code get_section} on the entire section — which
+     * is the expensive pull the scoped TOC exists to avoid. Scoping to a path returns the two
+     * levels BELOW it.
+     */
+    @Test
+    void aScopedTocReturnsTheLevelsBelowTheScopeNotTheTopOfTheDocument() {
+        seedHierarchy();
+
+        List<TocNode> toc = tocService.getToc(docId, List.of("Chapter 1", "Section A"));
+
+        assertEquals(1, toc.size(), "only Subsection 1 lies below Chapter 1 > Section A");
+        assertEquals(List.of("Chapter 1", "Section A", "Subsection 1"), toc.get(0).path(),
+            "the path must stay ABSOLUTE - the agent copies it straight into get_section, and a "
+                + "relative path would produce an unresolvable heading_path");
+    }
+
+    /** Scoping must not change what an unscoped call does. */
+    @Test
+    void anEmptyScopeIsTheWholeDocumentTocUnchanged() {
+        seedHierarchy();
+
+        List<TocNode> scoped = tocService.getToc(docId, List.of());
+        List<TocNode> plain = tocService.getToc(docId);
+
+        assertEquals(plain.stream().map(TocNode::path).toList(),
+            scoped.stream().map(TocNode::path).toList());
+        assertEquals(4, scoped.size());
+    }
+
+    /**
+     * A scope that matches nothing must fail loudly. Silently falling back to the whole-document
+     * TOC is the § 6 "validate leniently, query strictly" shape in reverse: the agent asked about
+     * one subtree, would be handed another, and nothing would report the substitution.
+     */
+    @Test
+    void aScopeThatMatchesNothingFailsRatherThanReturningTheWholeDocument() {
+        seedHierarchy();
+
+        assertThrows(NoSuchElementException.class,
+            () -> tocService.getToc(docId, List.of("Chapter 1", "No Such Section")));
+    }
+
     @Test
     void testGetTocSubtreeCountsAndSorting() {
         DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual", "Manual Title",
@@ -56,14 +120,14 @@ class TocServiceTest {
         // Subsection 1 (sort_order = 30)
         // Section B (sort_order = 40)
         // Chapter 2 (sort_order = 50)
-        ChunkPathRow c1 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 1", 10);
+        ChunkPathRow c1 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 1", 10, 100);
         ChunkPathRow c2 =
-            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section A", 20);
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section A", 20, 200);
         ChunkPathRow c3 = new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1", "Section A"),
-            "Subsection 1", 30);
+            "Subsection 1", 30, 400);
         ChunkPathRow c4 =
-            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section B", 40);
-        ChunkPathRow c5 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 2", 50);
+            new ChunkPathRow(UUID.randomUUID(), List.of("Chapter 1"), "Section B", 40, 800);
+        ChunkPathRow c5 = new ChunkPathRow(UUID.randomUUID(), List.of(), "Chapter 2", 50, 1600);
 
         when(documentRepository.findByManual(eq("manual1"), eq("OIM")))
             .thenReturn(Optional.of(doc));

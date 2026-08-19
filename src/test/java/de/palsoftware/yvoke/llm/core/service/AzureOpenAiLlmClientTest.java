@@ -32,6 +32,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
+import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.model.GatewayCacheStatus;
 import java.io.IOException;
 import java.io.InputStream;
@@ -45,10 +46,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
@@ -64,6 +68,19 @@ class AzureOpenAiLlmClientTest {
     private static final String CHAT_DEPLOYMENT = "gpt-4o";
     /** A deployment name the reasoning heuristic MUST classify as a reasoning model. */
     private static final String REASONING_DEPLOYMENT = "gpt-5.6-luna";
+
+    /**
+     * A turn that finishes cleanly having emitted neither content nor a tool call, with the token
+     * split observed live on 2026-08-17: the model spent 1,024 of 1,040 completion tokens reasoning
+     * and then stopped with nothing to say.
+     */
+    private static final String EMPTY_TURN_EVENT =
+        "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,\"delta\":{},"
+            + "\"finish_reason\":\"stop\"}]}";
+    private static final String EMPTY_TURN_USAGE_EVENT =
+        "{\"id\":\"c\",\"created\":1,\"choices\":[],\"usage\":{\"prompt_tokens\":68169,"
+            + "\"completion_tokens\":1040,\"total_tokens\":69209,"
+            + "\"completion_tokens_details\":{\"reasoning_tokens\":1024}}}";
 
     // ------------------------------------------------------------------------
     // buildOptions() unit tests
@@ -352,6 +369,26 @@ class AzureOpenAiLlmClientTest {
      * {@link de.palsoftware.yvoke.rag.core.service.ToolCallAccumulator} key by id instead —
      * collapse this to first-call-only handling and the second call's arguments land on the first.
      */
+    /**
+     * The flag must be on the wire, not inherited from a service default nobody can see.
+     *
+     * <p>
+     * azure-json omits a null {@code Boolean} entirely, so leaving {@code parallelToolCalls} unset
+     * sent no field at all and the service decided — to {@code true}, as this repo's own captured
+     * fixtures show. Whether parallel calls are allowed is the single input that decides whether
+     * the indexless reassembly in {@code ToolCallAccumulator} can be ambiguous at all, so it must
+     * be a visible decision in the code rather than a property of the deployment.
+     */
+    @Test
+    void parallelToolCallsIsSentExplicitlyRatherThanLeftToTheServiceDefault() {
+        LlmTool tool = new LlmTool("search", "d", Map.of("type", "object"));
+        ChatCompletionsOptions options = buildOptions(client(),
+            new LlmRequest(CHAT_DEPLOYMENT, List.of(user("hi")), 0.0, 100, List.of(tool)));
+
+        assertEquals(Boolean.TRUE, options.isParallelToolCalls(),
+            "the value must be stated, so that changing it is a one-line decision");
+    }
+
     @Test
     void twoParallelToolCallsAreKeptApartDespiteTheMissingIndex() throws Exception {
         withMockServer(exchange -> respondSse(exchange, List.of(
@@ -367,11 +404,27 @@ class AzureOpenAiLlmClientTest {
                     }
                 });
 
-                Map<String, StringBuilder> argumentsById = accumulate(deltas);
-                assertEquals(List.of("call_a", "call_b"), List.copyOf(argumentsById.keySet()),
-                    "both calls must survive as distinct entries");
-                assertEquals("{\"q\":1}", argumentsById.get("call_a").toString());
-                assertEquals("{\"id\":2}", argumentsById.get("call_b").toString());
+                // Asserted on the delta stream, which is what this client owns and what it hands
+                // to ToolCallAccumulator. The previous version of this test reassembled the deltas
+                // with a LOCAL helper keyed by id — a different rule from production's, which has
+                // no index and therefore appends an id-less fragment to the most recently OPENED
+                // call. The two agree only on a contiguous fixture like this one, so the test was
+                // green while proving nothing about the code that runs. Reassembly is now pinned
+                // where it lives, by ToolCallAccumulatorTest
+                // #theAzureParallelShapeReassemblesIntoTwoDistinctCalls, against this exact
+                // sequence.
+                assertEquals(4, deltas.size(), "one delta per streamed tool-call fragment");
+                assertTrue(deltas.stream().allMatch(d -> d.index() == -1),
+                    "the SDK discards the wire index, so every delta must say so explicitly");
+                assertEquals(List.of("call_a", "call_b"),
+                    deltas.stream().map(LlmToolCallDelta::id).filter(Objects::nonNull).toList(),
+                    "each call is opened by exactly one id-bearing fragment, in order");
+                assertEquals("search", deltas.get(0).name());
+                assertEquals("{\"q\":1}", deltas.get(1).argumentsDelta());
+                assertNull(deltas.get(1).id(),
+                    "the continuation carries no id — that is what makes attribution positional");
+                assertEquals("fetch", deltas.get(2).name());
+                assertEquals("{\"id\":2}", deltas.get(3).argumentsDelta());
             });
     }
 
@@ -512,8 +565,106 @@ class AzureOpenAiLlmClientTest {
                     "the reasoning/visible split is the evidence that explains an empty turn: "
                         + e.getMessage());
                 assertNotNull(e.usage(), "the provider charged for these tokens");
-                assertEquals(69209, e.usage().totalTokens());
+                // Both attempts were charged, so the failure carries what both burned. The
+                // property this has always protected — an empty turn is never free — is unchanged;
+                // only the number of attempts behind it is.
+                assertEquals(69209 * 2, e.usage().totalTokens());
             });
+    }
+
+    /**
+     * An empty turn is the one mid-stream failure that IS safe to retry, and the reason is exactly
+     * the rule {@link #aFailureAfterTheFirstChunkIsNotRetried()} states: retrying is safe while
+     * nothing has reached the consumer. "Empty" is defined as neither content nor a tool call, so
+     * by construction the consumer has been handed nothing to replay.
+     *
+     * <p>
+     * This cannot be done by marking the exception transient in {@code LlmRetry}: the throw happens
+     * while consuming the stream, outside the establishment call that {@code withRetry} wraps, so
+     * the classification would never be consulted. Widening the retry to cover the consume loop
+     * instead would retry genuine mid-stream faults — a truncated SSE event surfaces as a Jackson
+     * {@code IOException}, which {@code isTransient} already answers true for — and replay the
+     * answer from the start.
+     */
+    @Test
+    void anEmptyStreamIsRetriedBecauseNothingReachedTheConsumer() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            if (requests.incrementAndGet() == 1) {
+                respondSse(exchange, List.of(EMPTY_TURN_EVENT, EMPTY_TURN_USAGE_EVENT));
+            } else {
+                respondSse(exchange,
+                    List.of("{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,"
+                        + "\"delta\":{\"content\":\"recovered\"},\"finish_reason\":\"stop\"}]}"));
+            }
+        }, client -> {
+            List<String> seen = new ArrayList<>();
+            client.generateStream(userRequest("hi"), chunk -> {
+                if (chunk.content() != null) {
+                    seen.add(chunk.content());
+                }
+            });
+            assertEquals(List.of("recovered"), seen,
+                "the second attempt's answer must reach the consumer");
+            assertEquals(2, requests.get(), "an empty turn must be re-requested exactly once");
+        });
+    }
+
+    /**
+     * The retry is bounded at one. An empty turn that repeats is systematic rather than a glitch,
+     * and these prompts run to hundreds of thousands of tokens — re-sending one three times to
+     * discover the same nothing costs more than the round it was trying to save.
+     */
+    @Test
+    void anEmptyStreamThatRepeatsFailsRatherThanRetryingForever() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            requests.incrementAndGet();
+            respondSse(exchange, List.of(EMPTY_TURN_EVENT, EMPTY_TURN_USAGE_EVENT));
+        }, client -> {
+            assertThrows(LlmCallFailedException.class,
+                () -> client.generateStream(userRequest("hi"), chunk -> {
+                }));
+            assertEquals(2, requests.get(), "one retry, not an unbounded loop");
+        });
+    }
+
+    /**
+     * The abandoned attempt burned real tokens the provider billed for, and the accounting
+     * decorator above this client keeps only the LAST usage it observes (it calls {@code set}, not
+     * {@code add}, and publishes one row per {@code generateStream}). So a retry that reports only
+     * the winning attempt's usage would silently under-bill every recovery — the ledger would show
+     * a cheap successful call where two full prompts were charged.
+     */
+    @Test
+    void theRetryCarriesTheTokensTheAbandonedAttemptAlreadyBurned() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            if (requests.incrementAndGet() == 1) {
+                respondSse(exchange, List.of(EMPTY_TURN_EVENT, EMPTY_TURN_USAGE_EVENT));
+            } else {
+                respondSse(exchange, List.of(
+                    "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,"
+                        + "\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}",
+                    "{\"id\":\"c\",\"created\":1,\"choices\":[],\"usage\":{\"prompt_tokens\":100,"
+                        + "\"completion_tokens\":10,\"total_tokens\":110,"
+                        + "\"completion_tokens_details\":{\"reasoning_tokens\":4}}}"));
+            }
+        }, client -> {
+            AtomicReference<LlmUsage> last = new AtomicReference<>();
+            client.generateStream(userRequest("hi"), chunk -> {
+                if (chunk.usage() != null) {
+                    last.set(chunk.usage());
+                }
+            });
+            LlmUsage usage = last.get();
+            assertNotNull(usage, "the successful attempt still reports usage");
+            assertEquals(68169 + 100, usage.promptTokens(),
+                "the abandoned attempt's prompt was charged too");
+            assertEquals(1040 + 10, usage.completionTokens());
+            assertEquals(69209 + 110, usage.totalTokens());
+            assertEquals(1024 + 4, usage.thoughtTokens());
+        });
     }
 
     /** A refusal is output the model chose to send, not an empty turn. */
@@ -529,13 +680,79 @@ class AzureOpenAiLlmClientTest {
             });
     }
 
+    /**
+     * A content-filtered stream must fail AND still report what the provider billed.
+     *
+     * <p>
+     * The trap this pins is that the obvious fix does not work. Hoisting a usage read above the
+     * throw recovers nothing, because under {@code stream_options.include_usage} the counts do not
+     * ride the delta that carries the finish reason: {@code ChatCompletionStreamOptions}
+     * (azure-ai-openai 1.0.0-beta.16) documents that "an additional chunk will be streamed before
+     * {@code data: [DONE]}" whose {@code choices} is empty and that "all other chunks will also
+     * include a usage field, but with a null value". Throwing from inside the chunk parser
+     * cancelled iteration before that event was ever pulled, so the tokens were unreachable by
+     * construction — {@code AccountingLlmClient} published nothing and the call left no
+     * {@code llm_call_logs} row, the exact loss {@code generate()} was fixed for. The turn must
+     * therefore be allowed to drain and the verdict taken afterwards.
+     *
+     * <p>
+     * This test previously asserted only {@code IllegalStateException} against a single-event
+     * fixture with no usage at all, so it was satisfied by an exception carrying nothing.
+     */
     @Test
     void aContentFilteredStreamIsSurfacedRatherThanTruncatedSilently() throws Exception {
         withMockServer(exchange -> respondSse(exchange, List.of(
-            "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"content_filter\"}]}")),
-            client -> assertThrows(IllegalStateException.class,
-                () -> client.generateStream(userRequest("hi"), chunk -> {
-                })));
+            "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"content_filter\"}]}",
+            "{\"id\":\"c\",\"created\":1,\"choices\":[],\"usage\":{\"prompt_tokens\":180000,\"completion_tokens\":12,\"total_tokens\":180012}}")),
+            client -> {
+                LlmCallFailedException e = assertThrows(LlmCallFailedException.class,
+                    () -> client.generateStream(userRequest("hi"), chunk -> {
+                    }));
+
+                assertTrue(e.getMessage().contains("content_filter"),
+                    "the reason must be named: " + e.getMessage());
+                assertNotNull(e.usage(),
+                    "a filtered turn is fully billed; dropping the usage loses the whole "
+                        + "llm_call_logs row");
+                assertEquals(180000, e.usage().promptTokens(),
+                    "the counts arrive on a LATER choices-empty event, so the stream must be "
+                        + "drained before the verdict is taken");
+                assertEquals(180012, e.usage().totalTokens());
+            });
+    }
+
+    /**
+     * A finish reason this client does not recognise must deliver the answer, not destroy it.
+     *
+     * <p>
+     * {@code CompletionsFinishReason} is an {@code ExpandableStringEnum}: {@code fromString} mints
+     * and caches an instance for any wire value, so a vendor-specific or newly-introduced reason is
+     * an ordinary value that a closed {@code Set.of} of four constants simply does not contain. The
+     * guard was written as "not benign ⇒ fatal", which fails CLOSED — and destructively, because
+     * the parser ran before the chunk was handed on, so the content on that same delta went with
+     * it. An answer already on the user's screen was replaced by a system error on the strength of
+     * a string this client had never seen.
+     *
+     * <p>
+     * The classification is therefore three-way, not two: a closed FATAL set decides failure, the
+     * benign set is documentation of what is known-normal, and anything in neither is unknown —
+     * delivered, with a warning. Note the sibling {@link GeminiLlmClient} had the mirror-image bug,
+     * failing OPEN on an unknown reason; the two providers behaved oppositely on identical events
+     * by accident rather than by policy.
+     */
+    @Test
+    void anUnrecognisedFinishReasonDeliversTheAnswerInsteadOfDestroyingIt() throws Exception {
+        withMockServer(exchange -> respondSse(exchange, List.of(
+            "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"the answer\"},\"finish_reason\":\"some_future_reason\"}]}",
+            "{\"id\":\"c\",\"created\":1,\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}")),
+            client -> {
+                List<LlmResponseChunk> chunks = new ArrayList<>();
+                client.generateStream(userRequest("hi"), chunks::add);
+
+                assertTrue(chunks.stream().anyMatch(c -> "the answer".equals(c.content())),
+                    "an unknown finish reason is not evidence of a failure, and the text the model "
+                        + "already produced must reach the caller");
+            });
     }
 
     @Test
@@ -563,23 +780,6 @@ class AzureOpenAiLlmClientTest {
      * finds a call, an id-less one appends to the most recent. Deliberately re-implemented here so
      * this test stays a test of the client's delta shape rather than of the accumulator.
      */
-    private static Map<String, StringBuilder> accumulate(List<LlmToolCallDelta> deltas) {
-        Map<String, StringBuilder> byId = new LinkedHashMap<>();
-        String current = null;
-        for (LlmToolCallDelta delta : deltas) {
-            assertEquals(-1, delta.index(),
-                "the SDK cannot supply an index, so deltas must be keyed by id");
-            if (delta.id() != null) {
-                current = delta.id();
-                byId.computeIfAbsent(current, k -> new StringBuilder());
-            }
-            if (delta.argumentsDelta() != null && current != null) {
-                byId.get(current).append(delta.argumentsDelta());
-            }
-        }
-        return byId;
-    }
-
     private static AzureOpenAiLlmClient client() {
         return new AzureOpenAiLlmClient("http://127.0.0.1:1", "key", new ObjectMapper(), true,
             "medium", "");
@@ -602,8 +802,179 @@ class AzureOpenAiLlmClientTest {
         void accept(AzureOpenAiLlmClient client) throws Exception;
     }
 
+    /** Deadlines short enough that a timeout is proven in milliseconds, not minutes. */
+    private static final AzureOpenAiLlmClient.Deadlines FAST =
+        new AzureOpenAiLlmClient.Deadlines(Duration.ofMillis(300), Duration.ofMillis(300));
+
+    /**
+     * A handler that accepts the request and then never answers, counting arrivals. Released in a
+     * {@code finally} so {@code server.stop(0)} is not blocked by a parked handler thread.
+     */
+    private static HttpHandler neverAnswers(AtomicInteger requests, CountDownLatch release) {
+        return exchange -> {
+            requests.incrementAndGet();
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            // HttpHandler.handle declares only IOException, so the interrupt cannot escape.
+        };
+    }
+
+    /**
+     * The defect: nothing bounded the wait for response HEADERS, so a service that completed TLS,
+     * accepted the prompt and then went silent hung the calling thread forever.
+     *
+     * <p>
+     * None of the three configured timeouts could cover it. {@code connectionTimeout} ends at TCP/
+     * TLS; {@code readTimeout} is armed on the body Flux, which does not exist until headers
+     * arrive; {@code responseTimeout} is the JDK's {@code HttpRequest.timeout()}, which stays armed
+     * through body consumption and would therefore cap total generation — which is why it is
+     * disabled, and that reasoning is right. The bound has to come from a layer that sees
+     * headers-received as a distinct event, which is the transport wrapper.
+     *
+     * <p>
+     * Asserting the request COUNT is the point: it proves the failure surfaced inside
+     * {@code LlmRetry.withRetry}, i.e. as a retryable transport error, rather than merely escaping
+     * from somewhere. A bound that threw something {@code isTransient} rejected would show 1.
+     */
+    @Test
+    @Timeout(30)
+    void aServiceThatNeverSendsResponseHeadersFailsAndIsRetried() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            withMockServer(neverAnswers(requests, release), FAST,
+                client -> assertThrows(RuntimeException.class,
+                    () -> client.generateStream(userRequest("hi"), chunk -> {
+                    })));
+            assertEquals(3, requests.get(),
+                "the headers timeout must reach LlmRetry as a transient failure, so all three "
+                    + "attempts are made");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /** The same wait on the blocking path, which had a bare {@code .block()} with no duration. */
+    @Test
+    @Timeout(30)
+    void aNonStreamingCallThatNeverAnswersFailsInsteadOfBlockingForever() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            withMockServer(neverAnswers(requests, release), FAST,
+                client -> assertThrows(RuntimeException.class,
+                    () -> client.generate(userRequest("hi"))));
+            assertEquals(3, requests.get(),
+                "GeneralSummarizer and DocumentKgExtractor call this from a JobWorker thread; "
+                    + "unbounded, N stalls exhaust the ingest pool with nothing logged");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /**
+     * The guard rail, and the constraint that makes this hard: the deadline must bound the wait for
+     * headers and NOTHING after it. Answers legitimately run for minutes.
+     *
+     * <p>
+     * The first SSE event is written immediately on purpose. {@code sendResponseHeaders(200, 0)}
+     * only buffers the header block — it flushes when there is content to send — so a fixture that
+     * sends headers and then sleeps would keep the client waiting on headers and go red against a
+     * correct implementation. Writing one event immediately and then stalling for far longer than
+     * the deadline is what actually discriminates a headers bound from a per-element one.
+     */
+    @Test
+    @Timeout(30)
+    void headersThatArriveInTimeDoNotBoundTheGenerationThatFollows() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            requests.incrementAndGet();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream os = exchange.getResponseBody()) {
+                writeEvent(os,
+                    "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"a\"}}]}");
+                sleepQuietly(1200);
+                writeEvent(os, "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,"
+                    + "\"delta\":{\"content\":\"b\"},\"finish_reason\":\"stop\"}]}");
+            }
+        }, new AzureOpenAiLlmClient.Deadlines(Duration.ofMillis(300), Duration.ofSeconds(30)),
+            client -> {
+                StringBuilder seen = new StringBuilder();
+                client.generateStream(userRequest("hi"), chunk -> {
+                    if (chunk.content() != null) {
+                        seen.append(chunk.content());
+                    }
+                });
+                assertEquals("ab", seen.toString(),
+                    "a gap four times the deadline, after headers, must not fail the call");
+            });
+        assertEquals(1, requests.get(), "a healthy generation must not be retried");
+    }
+
+    /**
+     * The two waits are different in kind and must not share a number. A buffered completion sends
+     * no headers until the answer is finished, so on that path time-to-headers IS time-to-whole-
+     * answer: giving it the streaming establishment budget would fail legitimate slow work — a KG
+     * extraction at 4096 output tokens — and then retry it three times.
+     */
+    @Test
+    @Timeout(30)
+    void aNonStreamingCallGetsTheWholeAnswerBudgetNotTheEstablishmentOne() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            requests.incrementAndGet();
+            sleepQuietly(900);
+            respondJson(exchange, 200,
+                "{\"id\":\"c\",\"created\":1,\"choices\":[{\"index\":0,"
+                    + "\"message\":{\"role\":\"assistant\",\"content\":\"slow but fine\"},"
+                    + "\"finish_reason\":\"stop\"}]}");
+        }, new AzureOpenAiLlmClient.Deadlines(Duration.ofMillis(300), Duration.ofSeconds(20)),
+            client -> assertEquals("slow but fine", client.generate(userRequest("hi")).content()));
+        assertEquals(1, requests.get(),
+            "the whole-answer budget applies, not the 300ms establishment one");
+    }
+
+    /** There must be no way to express "wait forever". */
+    @Test
+    void aDeadlineOfZeroOrLessIsRejected() {
+        for (Duration bad : new Duration[] {null, Duration.ZERO, Duration.ofSeconds(-1)}) {
+            assertThrows(IllegalArgumentException.class,
+                () -> new AzureOpenAiLlmClient.Deadlines(bad, Duration.ofSeconds(1)));
+            assertThrows(IllegalArgumentException.class,
+                () -> new AzureOpenAiLlmClient.Deadlines(Duration.ofSeconds(1), bad));
+        }
+    }
+
+    private static void writeEvent(OutputStream os, String json) throws IOException {
+        os.write(("data: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));
+        os.flush();
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private static void withMockServer(HttpHandler handler, ClientCallback test) throws Exception {
+        withMockServer(handler, AzureOpenAiLlmClient.Deadlines.DEFAULT, test);
+    }
+
+    /** As above, with injected deadlines so a timeout can be proven without waiting for one. */
+    private static void withMockServer(HttpHandler handler,
+        AzureOpenAiLlmClient.Deadlines deadlines, ClientCallback test) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        // A real executor, not the default caller-runs one: a handler that deliberately parks (the
+        // never-answers tests) would otherwise block the dispatcher thread, so retry #2 is never
+        // even accepted and the request count reads 1 whether the deadline works or not — a false
+        // red pointing at LlmRetry rather than at the transport.
+        server.setExecutor(Executors.newCachedThreadPool());
         server.createContext("/", exchange -> {
             try {
                 byte[] bodyBytes;
@@ -630,7 +1001,7 @@ class AzureOpenAiLlmClientTest {
             // mock server, keeping the guard intact rather than testing around it.
             String endpoint = "https://127.0.0.1:" + server.getAddress().getPort();
             test.accept(new AzureOpenAiLlmClient(endpoint, "mock-api-key", new ObjectMapper(), true,
-                "medium", "", downgradingTransport()));
+                "medium", "", downgradingTransport(), deadlines));
         } finally {
             server.stop(0);
         }
@@ -654,8 +1025,10 @@ class AzureOpenAiLlmClientTest {
     private static final HttpClient DOWNGRADING_TRANSPORT = buildDowngradingTransport();
 
     private static HttpClient buildDowngradingTransport() {
-        HttpClient delegate = AzureOpenAiLlmClient.arrayBacked(new JdkHttpClientBuilder()
-            .responseTimeout(Duration.ZERO).readTimeout(Duration.ofSeconds(45)).build());
+        // No arrayBacked() here any more: the client's constructor wraps whatever transport it is
+        // given, so wrapping again would double the copy and hide the fact that it is mandatory.
+        HttpClient delegate = new JdkHttpClientBuilder().responseTimeout(Duration.ZERO)
+            .readTimeout(Duration.ofSeconds(45)).build();
         return new HttpClient() {
             @Override
             public Mono<HttpResponse> send(HttpRequest request) {
@@ -704,11 +1077,6 @@ class AzureOpenAiLlmClientTest {
             os.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
             os.flush();
         }
-    }
-
-    private static void writeEvent(OutputStream os, String json) throws IOException {
-        os.write(("data: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));
-        os.flush();
     }
 
     private static String readBody(HttpExchange exchange) throws IOException {

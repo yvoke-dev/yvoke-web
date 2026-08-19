@@ -20,6 +20,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,55 @@ class AccountingLlmClientTest {
 
     private static LlmResponseChunk chunk(String text, LlmUsage usage) {
         return new LlmResponseChunk(text, null, null, usage);
+    }
+
+    /**
+     * The listener behind {@link #publish} is a plain synchronous {@code @EventListener} —
+     * {@code LlmCallLoggingService.onLlmCall}, with no {@code @Async} and no {@code @EnableAsync}
+     * anywhere in the application — so it runs a {@code SELECT model_pricing} and an
+     * {@code INSERT llm_call_logs} on whatever thread published the event.
+     *
+     * <p>
+     * When the user presses Stop that thread's interrupt flag is still set: the provider clients
+     * detect cancellation with {@code isInterrupted()}, a read that never clears, and nothing
+     * between there and here clears it either. JDBC on an interrupted thread is the hazard this
+     * codebase already mitigates at both sibling write sites — {@code OrchestrationService} and
+     * {@code ChatMessageService} both call {@code Thread.interrupted()} before their DB work — and
+     * the damage is silent twice over, because the resulting {@code SQLException} is swallowed to a
+     * {@code log.warn} by the listener AND by {@link AccountingLlmClient#publish}. The lost row is
+     * the in-flight, largest call of the turn.
+     *
+     * <p>
+     * The flag must be restored afterwards, or clearing it here would convert the caller's
+     * cancellation into an apparently normal return — trading a lost ledger row for a lost Stop.
+     */
+    @Test
+    void theAccountingWriteDoesNotRunOnAnInterruptedThread() {
+        List<Boolean> interruptedDuringPublish = new ArrayList<>();
+        AccountingLlmClient client = new AccountingLlmClient(
+            streamingChunks(List.of(chunk("partial", new LlmUsage(9, 1, 10, 0, 0))),
+                new CancellationException("user pressed stop")),
+            event -> {
+                interruptedDuringPublish.add(Thread.currentThread().isInterrupted());
+                published.add((LlmCallLoggedEvent) event);
+            });
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(CancellationException.class, () -> client.generateStream(REQUEST, c -> {
+            }));
+
+            assertEquals(List.of(false), interruptedDuringPublish,
+                "the accounting listener runs JDBC; reaching it with the interrupt flag set is how "
+                    + "the row is lost");
+            assertEquals(1, published.size(), "a cancelled stream still burned tokens");
+            assertEquals(9, published.get(0).promptTokens());
+            assertTrue(Thread.currentThread().isInterrupted(),
+                "the flag must be restored, or a deliberate cancellation is swallowed");
+        } finally {
+            // Never leak an interrupt into the next test on this thread.
+            Thread.interrupted();
+        }
     }
 
     @Test

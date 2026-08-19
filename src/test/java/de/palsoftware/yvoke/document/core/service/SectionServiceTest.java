@@ -79,11 +79,11 @@ class SectionServiceTest {
         // "Section A" exists under TWO different chapters — the shape that makes an unrooted match
         // ambiguous rather than merely lenient.
         ChunkPathRow underChapterOne =
-            new ChunkPathRow(chunkId1, List.of("Chapter 1"), "Section A", 10);
+            new ChunkPathRow(chunkId1, List.of("Chapter 1"), "Section A", 10, 0);
         ChunkPathRow deeper =
-            new ChunkPathRow(chunkId2, List.of("Chapter 1", "Section A"), "Details", 20);
+            new ChunkPathRow(chunkId2, List.of("Chapter 1", "Section A"), "Details", 20, 0);
         ChunkPathRow underChapterTwo =
-            new ChunkPathRow(chunkId3, List.of("Chapter 2"), "Section A", 30);
+            new ChunkPathRow(chunkId3, List.of("Chapter 2"), "Section A", 30, 0);
 
         when(documentRepository.findByManual("install", "OIM")).thenReturn(Optional.of(docRow));
         when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))
@@ -142,9 +142,9 @@ class SectionServiceTest {
             "Introduction (part 2/2)", 1, 20, "9.3", "manual1.md", "manual", "OIM", null, 0.0);
 
         ChunkPathRow path1 =
-            new ChunkPathRow(chunkId1, Collections.emptyList(), "Introduction (part 1/2)", 10);
+            new ChunkPathRow(chunkId1, Collections.emptyList(), "Introduction (part 1/2)", 10, 0);
         ChunkPathRow path2 =
-            new ChunkPathRow(chunkId2, Collections.emptyList(), "Introduction (part 2/2)", 20);
+            new ChunkPathRow(chunkId2, Collections.emptyList(), "Introduction (part 2/2)", 20, 0);
 
         when(documentRepository.findByManual("manual1", "OIM")).thenReturn(Optional.of(docRow));
         when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))

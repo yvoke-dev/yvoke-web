@@ -39,13 +39,13 @@ public class GetTocToolTest {
             Collections.emptyList(), Instant.now());
         when(documentRepository.findById(eq(mockDocId))).thenReturn(Optional.of(mockDoc));
 
-        TocNode node = new TocNode(List.of("Ch1", "SecA"), 10, 5, null);
-        when(tocService.getToc(eq(mockDocId))).thenReturn(List.of(node));
+        TocNode node = new TocNode(List.of("Ch1", "SecA"), 10, 5, 4200, null);
+        when(tocService.getToc(eq(mockDocId), any())).thenReturn(List.of(node));
 
         // Test new direct UUID method
-        String outputDirect = getTocTool.getToc(mockDocId.toString());
+        String outputDirect = getTocTool.getToc(mockDocId.toString(), null);
         assertTrue(outputDirect.contains("# Table of contents:"));
-        assertTrue(outputDirect.contains("- SecA  _(5 chunks)_"));
+        assertTrue(outputDirect.contains("- SecA  _(5 chunks \u00b7 4,200 chars)_"));
     }
 
     /**
@@ -77,13 +77,13 @@ public class GetTocToolTest {
         // by 50 — the number the note has to report.
         List<TocNode> many = new ArrayList<>();
         for (int i = 1; i <= 450; i++) {
-            many.add(new TocNode(List.of("Manual", "Section " + i), i, 1, null));
+            many.add(new TocNode(List.of("Manual", "Section " + i), i, 1, 900, null));
         }
-        when(tocService.getToc(eq(bigDocId))).thenReturn(many);
+        when(tocService.getToc(eq(bigDocId), any())).thenReturn(many);
 
-        String output = getTocTool.getToc(bigDocId.toString());
+        String output = getTocTool.getToc(bigDocId.toString(), null);
 
-        assertTrue(output.contains("- Section 400  _(1 chunk)_"),
+        assertTrue(output.contains("- Section 400  _(1 chunk \u00b7 900 chars)_"),
             "the 400th entry is the last one that fits the cap, got:\n" + output);
         assertFalse(output.contains("Section 450"),
             "the cap must actually bite, otherwise this test proves nothing:\n" + output);
@@ -97,29 +97,78 @@ public class GetTocToolTest {
         when(documentRepository.findById(eq(smallDocId))).thenReturn(Optional.of(smallDoc));
         List<TocNode> few = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
-            few.add(new TocNode(List.of("Manual", "Section " + i), i, 1, null));
+            few.add(new TocNode(List.of("Manual", "Section " + i), i, 1, 900, null));
         }
-        when(tocService.getToc(eq(smallDocId))).thenReturn(few);
+        when(tocService.getToc(eq(smallDocId), any())).thenReturn(few);
 
-        String complete = getTocTool.getToc(smallDocId.toString());
+        String complete = getTocTool.getToc(smallDocId.toString(), null);
 
-        assertTrue(complete.contains("- Section 5  _(1 chunk)_"),
+        assertTrue(complete.contains("- Section 5  _(1 chunk \u00b7 900 chars)_"),
             "the short TOC must render in full, got:\n" + complete);
         assertFalse(complete.contains("more entr"),
             "a complete TOC must not carry a truncation note, got:\n" + complete);
     }
 
+    /**
+     * The navigation step R7 exists for. A heading_path must reach the service as a parsed path, so
+     * the TOC returned is the two levels below that section rather than the top of the document —
+     * and the header has to say which, or an agent cannot tell a scoped table of contents from a
+     * whole-document one and will read the wrong path back out of it.
+     */
+    @Test
+    public void aScopedCallForwardsTheParsedPathAndSaysWhatItIsScopedTo() {
+        UUID docId = UUID.randomUUID();
+        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM - Manuals", "manual",
+            "Manual Title", Map.of("tag", "9.3", "source_file", "m.md"), "completed",
+            Collections.emptyList(), Instant.now());
+        when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
+        when(tocService.getToc(eq(docId), eq(List.of("Ch1", "SecA"))))
+            .thenReturn(List.of(new TocNode(List.of("Ch1", "SecA", "Deep"), 10, 2, 1234, null)));
+
+        String out = getTocTool.getToc(docId.toString(), "Ch1 > SecA");
+
+        verify(tocService).getToc(eq(docId), eq(List.of("Ch1", "SecA")));
+        assertTrue(out.contains("under: Ch1 > SecA"),
+            "a scoped TOC that reads like a full one sends the agent back to the top:\n" + out);
+        assertTrue(out.contains("- Deep  _(2 chunks · 1,234 chars)_"), out);
+    }
+
+    /**
+     * The character counts are only useful if the agent is told what to do with them. Without the
+     * two closing lines it has a number and no rule, and the default behaviour — read the whole
+     * section — is exactly the expense this tool exists to avoid.
+     */
+    @Test
+    public void theOutputTellsTheAgentWhenToReadAndWhenToDescend() {
+        UUID docId = UUID.randomUUID();
+        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM - Manuals", "manual",
+            "Manual Title", Map.of("tag", "9.3", "source_file", "m.md"), "completed",
+            Collections.emptyList(), Instant.now());
+        when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
+        when(tocService.getToc(eq(docId), any()))
+            .thenReturn(List.of(new TocNode(List.of("Ch1"), 10, 1, 500, null)));
+
+        String out = getTocTool.getToc(docId.toString(), null);
+
+        assertTrue(out.contains("30,000 chars: read it"),
+            "no size budget means no decision rule:\n" + out);
+        assertTrue(out.contains("go one level deeper first"),
+            "the agent must be told the descend call exists:\n" + out);
+        assertTrue(out.contains("get_toc(document_id=\"" + docId + "\""),
+            "the descend hint must carry the id, or it cannot be acted on:\n" + out);
+    }
+
     @Test
     public void testGetTocDirectValidationAndNotFound() {
-        String out1 = getTocTool.getToc("");
+        String out1 = getTocTool.getToc("", null);
         assertTrue(out1.contains("Error: 'document_id' parameter is required"));
 
-        String out2 = getTocTool.getToc("invalid-uuid");
+        String out2 = getTocTool.getToc("invalid-uuid", null);
         assertTrue(out2.contains("Error: Invalid UUID format"));
 
         UUID missingId = UUID.randomUUID();
         when(documentRepository.findById(eq(missingId))).thenReturn(Optional.empty());
-        String out3 = getTocTool.getToc(missingId.toString());
+        String out3 = getTocTool.getToc(missingId.toString(), null);
         assertTrue(out3.contains("not found"));
     }
 }

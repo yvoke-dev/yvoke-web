@@ -102,12 +102,29 @@ public class AccountingLlmClient implements LlmClient {
     /**
      * A null usage means the provider reported nothing to bill, so no row is invented. Failures
      * here are swallowed: accounting must never break the call it is accounting for.
+     *
+     * <p>
+     * The interrupt flag is cleared for the duration and restored afterwards. The listener behind
+     * this publish is a synchronous {@code @EventListener} that runs JDBC — there is no
+     * {@code @EnableAsync} in this application — and the streaming catch above reaches here with
+     * the flag still set, because the provider clients detect cancellation with
+     * {@code isInterrupted()}, a read that never clears. Hikari's connection acquisition parks,
+     * sees the pre-set flag, and fails; the resulting {@code SQLException} is swallowed to a
+     * {@code log.warn} both by the listener and by this method, so the in-flight — largest — call
+     * of a cancelled turn silently leaves no {@code llm_call_logs} row. Sibling write sites
+     * ({@code OrchestrationService}, {@code ChatMessageService}) already do this; doing it INSIDE
+     * publish rather than at either call site is what makes forgetting it unrepresentable.
+     *
+     * <p>
+     * Restoring is not optional: swallowing the interrupt would turn the user's Stop into an
+     * apparently normal return, trading a lost ledger row for a lost cancellation.
      */
     private void publish(LlmRequest request, LlmUsage usage, LlmGatewayInfo gateway,
         long startNanos) {
         if (usage == null) {
             return;
         }
+        boolean wasInterrupted = Thread.interrupted();
         try {
             LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
             eventPublisher
@@ -121,6 +138,10 @@ public class AccountingLlmClient implements LlmClient {
         } catch (Exception e) {
             log.warn("Failed to publish LLM accounting event for model {}: {}", request.model(),
                 e.getMessage());
+        } finally {
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

@@ -9,11 +9,14 @@ import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
 import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
@@ -23,6 +26,7 @@ import org.springframework.ai.tool.ToolCallback;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.shared.text.AssistantTranscript;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.lang.Nullable;
@@ -113,7 +117,8 @@ public class OrchestrationService {
 
         try {
             String orchestratorSystemPrompt = orchestratorPlaybook.templateText()
-                + "\n\n## Available specialists\n" + renderRoster(specialists);
+                + "\n\n## Available specialists\n" + renderRoster(specialists)
+                + "\n\n## Output contract\n" + ANSWER_MARKER_CONTRACT;
 
             Verdict lastRejection = null;
             while (true) {
@@ -126,20 +131,25 @@ public class OrchestrationService {
                 // reviewer; that travels as text, and only the entries not already sent, since
                 // anything sent in an earlier round is still in the transcript.
                 boolean revising = lastRejection != null;
-                String orchestratorQuery =
-                    revising
-                        ? renderRevisionTask(
-                            st.evidence.subList(st.evidenceSent, st.evidence.size()), lastRejection)
-                        : question;
+                String orchestratorQuery = revising
+                    ? renderRevisionTask(st.evidence.subList(st.evidenceSent, st.evidence.size()),
+                        st.evidence, answer, lastRejection)
+                    : question;
                 st.evidenceSent = st.evidence.size();
 
                 // Orchestrator turn — may call specialists via call_specialist.
                 ToolCallback callSpecialist = new CallSpecialistTool(objectMapper, specialistNames,
                     (pbName, subQuestion) -> runSpecialist(st, specialists, pbName, subQuestion));
+                // verify_citations is the orchestrator's own pre-flight check. A fabricated id is
+                // the one citation defect a machine can settle — CitationVerifier resolves it
+                // against the corpus — so leaving it to the reviewer spends a whole round (~50k
+                // tokens) learning what one tool call answers. It does NOT check that a real id
+                // supports the claim it sits on: that loads no chunk text, and stays the reviewer's
+                // job.
                 AgentOutcome orch = runAgent(st, ROLE_ORCHESTRATOR, orchestratorPlaybook.name(),
                     orchestratorSystemPrompt, orchestratorQuery, orchestratorQuery,
-                    profile.orchestrator(), List.of("ask_clarifying_question"), false,
-                    List.<ToolCallback>of(callSpecialist), revising ? null : history,
+                    profile.orchestrator(), List.of("ask_clarifying_question", "verify_citations"),
+                    false, List.<ToolCallback>of(callSpecialist), revising ? null : history,
                     st.orchestratorMessages, null);
                 // Everything this turn said and was told, carried into the next round. The prior
                 // conversation is already inside it, so the chat history is passed only on the
@@ -159,11 +169,21 @@ public class OrchestrationService {
                 // Reviewer turn — validate-only, ends by calling submit_review.
                 Verdict[] holder = new Verdict[1];
                 ToolCallback submitReview = new SubmitReviewTool(objectMapper, v -> holder[0] = v);
-                String reviewTask = renderReviewTask(question, answer, st.evidence);
-                // No history and no prior messages: the reviewer judges the answer against the
-                // supplied evidence alone, and inheriting the orchestrator's transcript — including
-                // its own earlier drafts and the reviewer's previous notes — would stop it being a
-                // validate-only, independent check.
+                boolean resumingReview =
+                    st.reviewerMessages != null && !st.reviewerMessages.isEmpty();
+                String reviewTask =
+                    resumingReview ? renderReviewFollowUp(answer, st.evidence, st.reviewerSent)
+                        : renderReviewTask(question, answer, st.evidence, st.reviewerSent);
+                // Never any history, and never the ORCHESTRATOR's transcript: the reviewer judges
+                // an answer against sources, and holding the deliberation that produced the draft
+                // would make it a participant in the negotiation rather than a check on it.
+                //
+                // It does keep its OWN conversation across rounds, which is a different thing that
+                // used to be discarded along with it. A reviewer that cannot read its previous
+                // objection can contradict it — run 049d7a97 demanded a claim be anchored to an id
+                // in round 1 and objected to that same id in round 2 — and each contradiction costs
+                // a full orchestrator turn. Resuming also makes this prompt append-only, which is
+                // what lets it be cached like the agentic roles instead of re-billed in full.
                 //
                 // No get_section either, and that is the point rather than an economy. It resolves
                 // a chunk id to the whole enclosing SECTION, so a reviewer using it judged claims
@@ -172,10 +192,44 @@ public class OrchestrationService {
                 // nothing left for it to fetch that the reviewer is entitled to see: a claim the
                 // cited sources do not support is a citation defect, and the review loop is how
                 // that gets corrected.
-                runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
-                    reviewerPlaybook.templateText(), reviewTask, reviewTask, profile.reviewer(),
-                    List.of("verify_citations"), false, List.<ToolCallback>of(submitReview), null,
-                    null, holder);
+                try {
+                    // systemPromptOverride is passed unconditionally: RagService.seedMessages
+                    // ignores it whenever priorMessages is non-empty, precisely so a resumed turn
+                    // cannot have index 0 rewritten under the answers already given to it.
+                    AgentOutcome rev = runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
+                        reviewerPlaybook.templateText(), reviewTask, reviewTask, profile.reviewer(),
+                        List.of("verify_citations"), false, List.<ToolCallback>of(submitReview),
+                        null, st.reviewerMessages, holder);
+                    if (rev.result().messages() != null && !rev.result().messages().isEmpty()) {
+                        st.reviewerMessages = rev.result().messages();
+                    }
+                } catch (CancellationException ce) {
+                    throw ce;
+                } catch (Exception reviewerDied) {
+                    // A broken CHECK must not destroy the thing being checked. Observed live: the
+                    // reviewer returned four tokens and stopped without calling submit_review, so a
+                    // run whose other nine steps had all succeeded ended as a system error and
+                    // threw
+                    // away a finished answer — and 222,887 tokens with it.
+                    //
+                    // The asymmetry is the argument. A reviewer that REJECTS through the final
+                    // round
+                    // already delivers the answer flagged; one that ERRORS has said nothing about
+                    // the
+                    // answer at all, which is strictly less damning, yet was punished far harder.
+                    if (answer.isBlank()) {
+                        // Nothing to rescue. Swallowing here would turn a broken run into a silent
+                        // empty answer, which is worse than the failure it hides.
+                        throw reviewerDied;
+                    }
+                    log.error("Reviewer failed on round {} of run {}; delivering the unreviewed "
+                        + "draft rather than discarding it", round, agentRunId, reviewerDied);
+                    status = "delivered_flagged";
+                    content = answer + unreviewedNote();
+                    finishOffInterrupt(agentRunId, messageId, status, round, verdict, st,
+                        composeRunError(st, reviewerDied));
+                    return result(st, content, status);
+                }
                 verdict = holder[0] != null ? holder[0]
                     : Verdict.reject("Reviewer did not submit a verdict.");
 
@@ -281,7 +335,12 @@ public class OrchestrationService {
             specialists.stream().filter(p -> p.name().equals(playbookName)).findFirst().orElseThrow(
                 () -> new IllegalArgumentException("Specialist not in profile: " + playbookName));
 
-        String query = (pb.templateText() != null && !pb.templateText().isBlank())
+        // The playbook is prepended to the QUERY on a first call (this is the same composition
+        // regular chat uses: default-chat is the system prompt, the playbook opens the user turn).
+        // On a resumed call it is already in the conversation, so re-prepending would duplicate it.
+        List<LlmMessage> priorSpecialistMessages = st.specialistMessages.get(pb.name());
+        boolean resuming = priorSpecialistMessages != null && !priorSpecialistMessages.isEmpty();
+        String query = (!resuming && pb.templateText() != null && !pb.templateText().isBlank())
             ? pb.templateText() + "\n\n---\n\n" + subQuestion
             : subQuestion;
         List<String> allowed = new ArrayList<>(pb.tools() != null ? pb.tools() : List.of());
@@ -291,7 +350,11 @@ public class OrchestrationService {
 
         AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), null, query, subQuestion,
             profileSpecialistCfg(st), allowed, pb.codeExecution(), List.<ToolCallback>of(), null,
-            null, null);
+            priorSpecialistMessages, null);
+
+        if (outcome.result().messages() != null && !outcome.result().messages().isEmpty()) {
+            st.specialistMessages.put(pb.name(), outcome.result().messages());
+        }
 
         collectEvidence(outcome.result(), st.evidence, pb.name());
 
@@ -456,11 +519,43 @@ public class OrchestrationService {
      * needs is exactly what the draft does not yet cite. Scoping it would hand the orchestrator
      * only what it already used and send it back to delegate for evidence it was holding.
      */
-    private static String renderRevisionTask(List<String> newEvidence, Verdict verdict) {
+    private static String renderRevisionTask(List<String> newEvidence, List<String> allEvidence,
+        String draft, Verdict verdict) {
         StringBuilder sb = new StringBuilder();
         if (!newEvidence.isEmpty()) {
             sb.append("## Source evidence behind the specialist answers above\n")
                 .append(EvidenceDigest.deduped(newEvidence)).append("\n\n");
+        } else if (allEvidence != null && !allEvidence.isEmpty() && draft != null) {
+            // Evidence travels as a DELTA, because the orchestrator's message list is cumulative
+            // and re-sending it would duplicate the largest block in the prompt every round. From
+            // round 2 on, a citation-only revision delegates to nobody, so the delta is empty and
+            // the turn arrives carrying the reviewer's objection and no source text at all —
+            // measured live at 2,923 chars against round 1's 155,805. Asked to move a citation with
+            // the evidence 150k tokens back in its transcript, the orchestrator guessed, and its
+            // mis-citation count rose 4 → 4 → 5.
+            //
+            // So the CITED sources come back, next to the objection about them — the same material
+            // the reviewer judged. This is not the reviser becoming cite-scoped in general, which
+            // is
+            // deliberately rejected: an unsupported claim needs text the draft does NOT yet cite,
+            // and that arrives in the delta above, untouched. This branch only runs when there is
+            // no delta to carry it.
+            //
+            // A FRESH ledger every time, deliberately. The reviewer's ledger exists to stop it
+            // re-reading what is already in its prompt; here the re-reading IS the fix. The
+            // orchestrator's transcript does still hold this text, hundreds of thousands of tokens
+            // back, and asking it to move a citation from there is exactly the guessing that made
+            // the mis-citation count climb. Suppressing a body because it was sent once would
+            // reinstate that, so this render always stands alone.
+            String cited =
+                EvidenceDigest.citeScoped(allEvidence, idsUnderReview(verdict, draft), null);
+            if (!cited.isBlank()) {
+                sb.append("## The sources your answer currently cites\n")
+                    .append("Re-read these before moving any citation: they are what the reviewer "
+                        + "judged, and a claim is mis-cited only if the text below does not say "
+                        + "it.\n\n")
+                    .append(cited).append("\n\n");
+            }
         }
         sb.append("## Reviewer feedback to address\n").append(verdict.feedback()).append("\n\n");
 
@@ -498,6 +593,13 @@ public class OrchestrationService {
         } else {
             sb.append(" Delegate again only for material that is genuinely missing above.");
         }
+        // Without this the task reads as a request to a collaborator, and the model replies like
+        // one — "Simple fix — the visibility note belongs to chunk [9], not [8]." — before the
+        // answer. That reply IS the answer as far as extractAnswerText is concerned: it takes the
+        // final assistant message's text parts verbatim, and nothing downstream strips prose. So
+        // the preamble reached users as the first line of two of two live runs, and the reviewer
+        // then (correctly) refused an answer carrying a leftover instruction, burning further
+        // rounds on a defect the next revision reintroduced.
         return sb.toString();
     }
 
@@ -528,7 +630,8 @@ public class OrchestrationService {
      * as the former, and the orchestrator answers by delegating a fresh search when re-citing
      * material it already holds would have done.
      */
-    private static String renderReviewTask(String question, String answer, List<String> evidence) {
+    private static String renderReviewTask(String question, String answer, List<String> evidence,
+        EvidenceDigest.SentLedger sent) {
         StringBuilder sb = new StringBuilder();
         sb.append("Validate the candidate answer below. Do NOT search for new information — check "
             + "it ONLY against the supplied evidence, then call submit_review.\n\n");
@@ -544,9 +647,91 @@ public class OrchestrationService {
                 + "may be a missing or wrong citation rather than a missing source — say the "
                 + "answer must cite what supports the claim, rather than concluding no source "
                 + "exists.\n\n");
-            sb.append(EvidenceDigest.citeScoped(evidence, answer)).append("\n");
+            sb.append(EvidenceDigest.citeScoped(evidence, answer, sent)).append("\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * The follow-up turn of a review the reviewer is already having.
+     *
+     * <p>
+     * Everything it said before, and every source it was shown, is still in this conversation, so
+     * this turn carries only what changed: the revised answer, and the bodies of sources the
+     * revision cites that have not been sent yet. That second half is not an economy — a revision
+     * may cite a source the first draft did not, and judging a citation against text the reviewer
+     * cannot see is precisely the failure cite-scoping exists to prevent.
+     *
+     * <p>
+     * It also deliberately does not restate the framing paragraph from {@link #renderReviewTask}:
+     * that is already above, and repeating instructions the model has already been given is how a
+     * transcript grows without saying anything.
+     */
+    private static String renderReviewFollowUp(String answer, List<String> evidence,
+        EvidenceDigest.SentLedger sent) {
+        String fresh = evidence.isEmpty() ? "" : EvidenceDigest.citeScoped(evidence, answer, sent);
+        StringBuilder sb = new StringBuilder();
+        sb.append("The answer has been revised in response to your review. Re-validate it, then "
+            + "call submit_review. Your earlier notes and every source you were already shown are "
+            + "above in this conversation.\n\n");
+        sb.append("## Revised candidate answer\n").append(answer).append("\n\n");
+        sb.append("## Sources this revision cites that you have not been shown yet\n");
+        sb.append(fresh.isBlank() ? "(none — every source this revision cites is already above)\n"
+            : fresh + "\n");
+        return sb.toString();
+    }
+
+    /**
+     * Said differently from {@link #flagNote} on purpose. A rejected answer was examined and found
+     * wanting; this one was never examined at all, and wording it as though review merely "did not
+     * pass" would tell the reader less than the truth about how much to trust it.
+     *
+     * <p>
+     * It deliberately takes no cause: the diagnosis belongs in the log and {@code agent_runs}, both
+     * of which receive it, and provider text has no business in a user-facing message.
+     */
+    /**
+     * The ids the reviewer's objection actually names, as a bracketed list {@code citeScoped} can
+     * scope to — falling back to the whole draft when it names none.
+     *
+     * <p>
+     * Bounding this matters: scoping to everything the ANSWER cites sent 18 full chunk bodies back
+     * on every empty-delta round, and measured at 217,041 and 134,984 prompt tokens for two
+     * orchestrator turns that had previously cost ~50,000 each. The objection names the handful of
+     * ids in dispute, and those are the only ones the turn has to re-read.
+     *
+     * <p>
+     * The scan is a plain uuid match rather than {@code CitationVerifier.citedIds}, because a
+     * reviewer writes an id however it likes — {@code [f485f143-…]} in one verdict and
+     * {@code `f485f143-…`} in the next — and a bracket-only scan silently misses the second. Over-
+     * matching is safe here and under-matching is not: this only SELECTS which evidence to include,
+     * so a spurious hit costs one extra chunk while a miss costs the turn its source text.
+     */
+    private static String idsUnderReview(Verdict verdict, String draft) {
+        StringBuilder objection = new StringBuilder();
+        if (verdict != null) {
+            if (verdict.feedback() != null) {
+                objection.append(verdict.feedback()).append('\n');
+            }
+            verdict.citationFixes().forEach(f -> objection.append(f).append('\n'));
+            verdict.unsupportedClaims().forEach(c -> objection.append(c).append('\n'));
+        }
+        Matcher m = UUID_ANYWHERE.matcher(objection);
+        StringBuilder ids = new StringBuilder();
+        while (m.find()) {
+            ids.append('[').append(m.group()).append("]\n");
+        }
+        // No id named — the objection is about prose, so fall back to what the draft cites rather
+        // than sending nothing at all.
+        return ids.length() == 0 ? draft : ids.toString();
+    }
+
+    private static final Pattern UUID_ANYWHERE = Pattern
+        .compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
+    private static String unreviewedNote() {
+        return "\n\n---\n⚠️ *This answer could not be checked — the automated review failed to "
+            + "run, so nothing has validated its claims or citations. Treat it as unverified.*";
     }
 
     private static String flagNote(int round, Verdict verdict) {
@@ -554,6 +739,64 @@ public class OrchestrationService {
             : "unspecified concerns";
         return "\n\n---\n⚠️ *This answer did not pass automated review after " + (round + 1)
             + " attempt(s). Reviewer notes: " + reason + "*";
+    }
+
+    /**
+     * The boundary the orchestrator marks between anything it says about the work and the answer.
+     *
+     * <p>
+     * It exists because the preamble arrives by two routes and only one of them is a choice the
+     * model makes. Gemini separates reasoning properly — 45,508 thought tokens over 630 production
+     * calls, delivered as {@code LlmPart("thought")} which {@link #extractAnswerText} already
+     * ignores — and still writes a deliberate lead-in into the answer itself (<i>"The reviewer
+     * approved. Here is the final answer."</i>, live in production). Azure chat completions emits
+     * <b>no reasoning text at all</b> (see {@code AzureOpenAiLlmClient}'s own javadoc; this
+     * deployment reports 0 reasoning tokens at {@code thinking_level: high}), so a reasoning model
+     * there streams its chain-of-thought AS content. A prompt can address the first and cannot
+     * address the second, so the split has to be one the model marks rather than one we infer.
+     *
+     * <p>
+     * Deliberately not a stripper: "drop everything before the first heading" would also delete a
+     * legitimate opening sentence, and CLAUDE.md § 6 records three separate incidents here where a
+     * deletion heuristic destroyed real content. Absent the marker, nothing is removed.
+     */
+    static final String ANSWER_MARKER = "<<<FINAL_ANSWER>>>";
+
+    /**
+     * Stated once, in the system prompt every orchestrator turn receives — the role's output
+     * contract, not a step's. The first draft is reachable no other way: its query is the user's
+     * bare question, so no code-side task string wraps it.
+     *
+     * <p>
+     * It lives here rather than in the {@code oim-orchestrator} playbook because
+     * {@link #afterAnswerMarker} depends on it and fails OPEN — no marker means the text passes
+     * through untouched. A playbook is a database row edited through the admin UI and imported from
+     * a separate repo, so were that row the only thing asking for the marker, editing it would
+     * silently restore the leak with nothing to notice.
+     */
+    static final String ANSWER_MARKER_CONTRACT = "Your reply to a question is delivered to the "
+        + "user verbatim as the answer. Write the line " + ANSWER_MARKER + " on its own "
+        + "immediately before the answer begins, and put nothing after that line except the "
+        + "answer itself. Anything before it — planning, notes on what you changed, sign-offs — "
+        + "is discarded, so it is the place for that, not the answer.";
+
+    /**
+     * Everything after the LAST marker, or the whole text when there is none.
+     *
+     * <p>
+     * Last rather than first: a model that narrates before complying mentions the token and then
+     * emits it, and taking the last occurrence is what survives that. The cost of being wrong is
+     * bounded in the other direction — a blank tail falls back to the full text, so the one failure
+     * this mechanism could cause (delivering nothing) cannot happen.
+     */
+    private static String afterAnswerMarker(String text) {
+        int at = text.lastIndexOf(ANSWER_MARKER);
+        if (at < 0) {
+            return text;
+        }
+        String tail = text.substring(at + ANSWER_MARKER.length()).strip();
+        // The marker is a control token; it must not reach the reader on either branch.
+        return tail.isEmpty() ? text.replace(ANSWER_MARKER, "").strip() : tail;
     }
 
     private static String extractAnswerText(RagResult result, String emittedFallback) {
@@ -573,10 +816,10 @@ public class OrchestrationService {
                 }
             }
             if (sb.length() > 0) {
-                return sb.toString().trim();
+                return afterAnswerMarker(sb.toString().trim());
             }
         }
-        return stripThinkAndTools(emittedFallback).trim();
+        return afterAnswerMarker(stripThinkAndTools(emittedFallback).trim());
     }
 
     private static void collectEvidence(RagResult result, List<String> evidence,
@@ -593,17 +836,26 @@ public class OrchestrationService {
         }
     }
 
+    /**
+     * The shared transcript rule, plus the one thing only this caller wants removed.
+     *
+     * <p>
+     * Clarifying-question markup is stripped <b>here and not in
+     * {@link AssistantTranscript#toModelText}</b>: this text is an answer being extracted, so the
+     * question is chrome. On the history-replay path it is not — the user's follow-up is the bare
+     * answer ("Option A") with no restatement, so removing the question there would leave the model
+     * an answer to a question it can no longer see.
+     */
     private static String stripThinkAndTools(String content) {
-        if (content == null || content.isEmpty()) {
+        String withoutThinkOrBanners = AssistantTranscript.toModelText(content);
+        if (withoutThinkOrBanners.isEmpty()) {
             return "";
         }
-        String withoutThink = content.replaceAll("(?s)<think>.*?</think>", "");
         StringBuilder sb = new StringBuilder();
-        for (String line : withoutThink.split("\\r?\\n")) {
+        for (String line : withoutThinkOrBanners.split("\\r?\\n")) {
             String trimmed = line.trim();
-            if (trimmed.startsWith("🔧") || trimmed.startsWith("<clarifying-question")
-                || trimmed.startsWith("<question>") || trimmed.startsWith("<option>")
-                || trimmed.startsWith("</clarifying-question")) {
+            if (trimmed.startsWith("<clarifying-question") || trimmed.startsWith("<question>")
+                || trimmed.startsWith("<option>") || trimmed.startsWith("</clarifying-question")) {
                 continue;
             }
             sb.append(line).append("\n");
@@ -683,6 +935,44 @@ public class OrchestrationService {
          * rather than starting a new one that remembers nothing. Null until its first turn returns.
          */
         List<LlmMessage> orchestratorMessages;
+
+        /**
+         * One conversation per specialist playbook, kept for the life of the run.
+         *
+         * <p>
+         * A specialist is the only agent that holds the retrieved chunk TEXT — its tool results
+         * stay in its own nested run and the orchestrator sees only its prose. So discarding the
+         * session meant a follow-up could be answered only by searching the corpus again from
+         * nothing, paying for a fresh agentic loop to recover what was already in a transcript we
+         * dropped.
+         */
+        final Map<String, List<LlmMessage>> specialistMessages = new HashMap<>();
+
+        /**
+         * The reviewer's conversation, carried across rounds for the same reason the orchestrator's
+         * is — and for one the orchestrator does not have.
+         *
+         * <p>
+         * A reviewer rebuilt from scratch cannot read what it asked for last round, and measured on
+         * run {@code 049d7a97} it contradicted itself: round 1 required a claim be "anchored
+         * directly to [689234f4]", round 2 objected that [689234f4] must "not be used to support"
+         * it. The orchestrator complied with the first and was rejected for it, and the run then
+         * exhausted its rounds. Continuing the conversation is also what makes the reviewer's
+         * prompt append-only, which is why the agentic roles cache at ~71% where this one managed
+         * 8-16%.
+         *
+         * <p>
+         * It stays independent of the ORCHESTRATOR either way: what it inherits is its own
+         * transcript, never the drafts, tool calls and deliberation of the agent it is checking.
+         */
+        List<LlmMessage> reviewerMessages;
+
+        /**
+         * What the reviewer has already been sent, so a follow-up carries only what is new. Scoped
+         * to {@link #reviewerMessages} and to nothing else — a ledger must not outlive the message
+         * list it points into, and the reviser deliberately has none.
+         */
+        final EvidenceDigest.SentLedger reviewerSent = new EvidenceDigest.SentLedger();
 
         /**
          * How much of {@link #evidence} the orchestrator has already been sent. Entries beyond this

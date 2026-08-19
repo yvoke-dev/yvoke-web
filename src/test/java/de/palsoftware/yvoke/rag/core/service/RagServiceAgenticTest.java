@@ -4,6 +4,7 @@ import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
+import de.palsoftware.yvoke.llm.core.model.LlmPart;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
@@ -75,6 +77,7 @@ public class RagServiceAgenticTest {
         ToolCallback mockSearchTool = mock(ToolCallback.class);
         ToolDefinition toolDef = mock(ToolDefinition.class);
         when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
         when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
         when(mockSearchTool.call(anyString())).thenReturn("mock search chunk response text");
 
@@ -102,12 +105,10 @@ public class RagServiceAgenticTest {
 
         // 4. Run the method
         List<String> tokens = new ArrayList<>();
-        RagResult result =
-            ragService
-                .generateAgenticAnswer(
-                    AgenticRequest.builder().query("Find Person table")
-                        .modelOverride("model-override").history(Collections.emptyList()).build(),
-                    tokens::add);
+        RagResult result = ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("Find Person table").modelOverride("model-override")
+                .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+            tokens::add);
 
         String answer = String.join("", tokens);
 
@@ -306,6 +307,7 @@ public class RagServiceAgenticTest {
         ToolCallback failing = mock(ToolCallback.class);
         ToolDefinition toolDef = mock(ToolDefinition.class);
         when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
         when(failing.getToolDefinition()).thenReturn(toolDef);
         when(failing.call(anyString())).thenThrow(new IllegalStateException(
             "com.google.genai.errors.ApiException: 429 RESOURCE_EXHAUSTED quota project oim-prod"));
@@ -333,8 +335,10 @@ public class RagServiceAgenticTest {
         }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
         List<String> tokens = new ArrayList<>();
-        ragService.generateAgenticAnswer(AgenticRequest.builder().query("Find Person table")
-            .modelOverride("m").history(Collections.emptyList()).build(), tokens::add);
+        ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("Find Person table").modelOverride("m")
+                .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+            tokens::add);
 
         // The loop continued to a second turn and produced an answer.
         assertThat(requests).hasSize(2);
@@ -509,6 +513,111 @@ public class RagServiceAgenticTest {
     }
 
     /**
+     * The allow-list must govern what is EXECUTED, not merely what is offered.
+     *
+     * <p>
+     * {@code allowedTools} had exactly one reader in the whole main source tree —
+     * {@code buildLlmTools} — and {@code executeToolCalls} did not even receive it, resolving every
+     * call against the unfiltered run registry instead. So a name the list denied was dispatched
+     * anyway, with no denial logged, and the {@code callback == null} branch was unreachable for
+     * any registered tool.
+     *
+     * <p>
+     * The case that matters is the reviewer. {@code OrchestrationService} restricts it to
+     * {@code verify_citations} under a comment arguing that {@code get_section} must be unreachable
+     * "and that is the point rather than an economy — a reviewer using it judged claims against
+     * sibling text no specialist ever retrieved". {@code get_section} is registered globally, so it
+     * sat in every run's registry; a reviewer emitting it — off a stale playbook, which this
+     * project's notes record as a recurring condition — silently got the whole enclosing section.
+     *
+     * <p>
+     * Asserted on the OUTCOME, not on the input: the denied callback is never invoked, and the
+     * model is told the same thing an unregistered name yields, so the loop's existing recovery
+     * path carries it. That wording is deliberately identical — a distinct "denied" message would
+     * tell the model something about the run's configuration that it can neither see nor fix.
+     */
+    @Test
+    public void aToolTheAllowListDeniedIsNotExecutedEvenThoughItIsRegistered() {
+        ToolCallback allowed = namedTool("oim_search");
+        ToolCallback denied = namedTool("get_section");
+        when(denied.call(anyString())).thenReturn("THE WHOLE ENCLOSING SECTION");
+        ragService.getToolRegistry().put("oim_search", allowed);
+        ragService.getToolRegistry().put("get_section", denied);
+
+        List<LlmRequest> requests = new ArrayList<>();
+        int[] turnNo = {0};
+        doAnswer(inv -> {
+            requests.add(inv.getArgument(0));
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            if (turnNo[0]++ == 0) {
+                cb.accept(new LlmResponseChunk(null, null, List.of(new LlmToolCallDelta(0, "call_1",
+                    "get_section", "{\"chunk_id\":\"8f7c1a2b\"}")),
+                    new LlmUsage(10, 20, 30, 0, 0)));
+            } else {
+                cb.accept(
+                    new LlmResponseChunk("Reviewed.", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+            }
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("review this").modelOverride("m")
+                .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+            tok -> {
+            });
+
+        verify(denied, never()).call(anyString());
+
+        String toolSeen = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .map(LlmMessage::content).reduce("", (a, b) -> a + b);
+        assertThat(toolSeen)
+            .as("a denied tool must be refused at dispatch, not executed and handed back")
+            .isEqualTo("Error: Tool get_section not found.");
+        assertThat(toolSeen).doesNotContain("THE WHOLE ENCLOSING SECTION");
+    }
+
+    /**
+     * The forced post-cap turn offers no tools, so it must execute none either.
+     *
+     * <p>
+     * The sibling {@link #theForcedFinalTurnAfterTheCapOffersNoToolsAtAll} pins only the offer.
+     * With dispatch resolved from the unfiltered registry, a model that called a tool on the cap
+     * turn anyway — having just seen the whole catalogue on the previous turn — was served, and the
+     * loop that exists to stop runaway tool use took one more round of it.
+     */
+    @Test
+    public void theForcedFinalTurnAfterTheCapExecutesNoToolsEither() {
+        ToolCallback search = namedTool("oim_search");
+        when(search.call(anyString())).thenReturn("mock response");
+
+        RagService capped = new RagService(hybridSearch, llmClient, citationVerifier,
+            new ObjectMapper(), 1, 4096, 0);
+        capped.getToolRegistry().put("oim_search", search);
+
+        int[] turnNo = {0};
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            // Every turn calls the tool, including the forced final one that was offered nothing.
+            cb.accept(new LlmResponseChunk(null, null,
+                List.of(new LlmToolCallDelta(0, "call_" + turnNo[0]++, "oim_search", "{}")),
+                new LlmUsage(10, 20, 30, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result =
+            capped.generateAgenticAnswer(
+                AgenticRequest.builder().query("q").modelOverride("m")
+                    .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+                tok -> {
+                });
+
+        verify(search, times(1)).call(anyString());
+        assertThat(result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .map(LlmMessage::content).filter(c -> c.contains("not found")).count())
+            .as("the cap turn offers nothing, so a tool call on it must be refused").isEqualTo(1);
+    }
+
+    /**
      * S5.11. Models emit tool names that do not exist — a typo, a name from another deployment's
      * catalogue, a tool the allow-list denied this run. That is an ordinary, frequent event, and
      * the loop's contract is that it is recoverable: the unknown name comes back as a plain tool
@@ -579,6 +688,7 @@ public class RagServiceAgenticTest {
         ToolCallback mockSearchTool = mock(ToolCallback.class);
         ToolDefinition toolDef = mock(ToolDefinition.class);
         when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
         when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
         when(mockSearchTool.call(anyString())).thenReturn("mock response");
 
@@ -611,12 +721,10 @@ public class RagServiceAgenticTest {
 
         // 4. Run the method
         List<String> tokens = new ArrayList<>();
-        RagResult result =
-            customRagService
-                .generateAgenticAnswer(
-                    AgenticRequest.builder().query("Find Person table")
-                        .modelOverride("model-override").history(Collections.emptyList()).build(),
-                    tokens::add);
+        RagResult result = customRagService.generateAgenticAnswer(
+            AgenticRequest.builder().query("Find Person table").modelOverride("model-override")
+                .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+            tokens::add);
 
         String answer = String.join("", tokens);
 
@@ -683,6 +791,7 @@ public class RagServiceAgenticTest {
         ToolCallback mockSearchTool = mock(ToolCallback.class);
         ToolDefinition toolDef = mock(ToolDefinition.class);
         when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
         when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
         when(mockSearchTool.call(anyString())).thenReturn("mock search chunk response text");
 
@@ -828,6 +937,132 @@ public class RagServiceAgenticTest {
      * rather than a tool call alone.
      */
     @Test
+    public void theThinkMarkersReachTheSinkButNotTheAssistantTurnTheModelIsReplayed() {
+        // The defect this change exists for: turn.emitted served as BOTH the rendered transcript
+        // and the replayed assistant turn, so the model was handed its own reasoning back as prose
+        // it supposedly said aloud, wrapped in markup it may then imitate.
+        ToolCallback search = namedTool("oim_search");
+        when(search.call(anyString())).thenReturn("mock search chunk response text");
+        ragService.getToolRegistry().put("oim_search", search);
+
+        List<LlmRequest> requests = new ArrayList<>();
+        int[] turnNo = {0};
+        doAnswer(inv -> {
+            requests.add(inv.getArgument(0));
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            if (turnNo[0]++ == 0) {
+                cb.accept(new LlmResponseChunk("Here is the plan.", "weighing options",
+                    List.of(new LlmToolCallDelta(0, "call_1", "oim_search", "{}")),
+                    new LlmUsage(10, 20, 30, 0, 0)));
+            } else {
+                cb.accept(new LlmResponseChunk("Done.", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+            }
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        ragService
+            .generateAgenticAnswer(
+                AgenticRequest.builder().query("q").modelOverride("m")
+                    .history(Collections.emptyList()).allowedTools(List.of("oim_search")).build(),
+                tokens::add);
+
+        assertThat(String.join("", tokens)).as("the user still sees the thinking block")
+            .contains("<think>").contains("weighing options").contains("</think>");
+
+        String assistantSeen =
+            requests.get(1).messages().stream().filter(m -> "assistant".equals(m.role()))
+                .map(LlmMessage::content).reduce("", (a, b) -> a + b);
+        assertThat(assistantSeen).as("the model is replayed answer text only")
+            .doesNotContain("<think>").doesNotContain("</think>").doesNotContain("weighing options")
+            .isEqualTo("Here is the plan.");
+    }
+
+    @Test
+    public void theAssistantContentIsExactlyTheConcatenationOfItsTextParts() {
+        // content() and the text parts are two representations of one thing; when they came from
+        // two different buffers they diverged the moment a citation was stripped.
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("The answer.", "some reasoning", null,
+                new LlmUsage(1, 1, 2, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = ragService.generateAgenticAnswer(AgenticRequest.builder().query("q")
+            .modelOverride("m").history(Collections.emptyList()).build(), t -> {
+            });
+
+        LlmMessage assistant = result.messages().stream().filter(m -> "assistant".equals(m.role()))
+            .reduce((a, b) -> b).orElseThrow();
+        String fromParts = assistant.parts().stream().filter(p -> "text".equals(p.type()))
+            .map(LlmPart::text).reduce("", (a, b) -> a + b);
+        assertThat(assistant.content()).isEqualTo(fromParts);
+    }
+
+    @Test
+    public void aReasoningOnlyTurnWithNoToolCallDoesNotThrow() {
+        // The empty-turn guard keys on the PARTS, not on the answer text: a turn that produced only
+        // reasoning still produced something, and throwing there would report a working provider as
+        // a malformed-function-call failure. No existing test covers this — the nearest one carries
+        // a tool call and so never reaches the guard.
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(
+                new LlmResponseChunk(null, "just thinking", null, new LlmUsage(1, 1, 2, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        assertThatCode(() -> ragService.generateAgenticAnswer(AgenticRequest.builder().query("q")
+            .modelOverride("m").history(Collections.emptyList()).build(), t -> {
+            })).doesNotThrowAnyException();
+    }
+
+    @Test
+    public void theCitationFilterResidueSurvivesIntoTheAssistantTurnNotJustTheSink() {
+        // The flush at end of turn emits whatever the filter was still holding. Routing it away
+        // from the replayed turn would truncate its tail while the sink kept it — invisible.
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(
+                new LlmResponseChunk("Answer text [8f7c", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = ragService.generateAgenticAnswer(AgenticRequest.builder().query("q")
+            .modelOverride("m").history(Collections.emptyList()).build(), t -> {
+            });
+
+        LlmMessage assistant = result.messages().stream().filter(m -> "assistant".equals(m.role()))
+            .reduce((a, b) -> b).orElseThrow();
+        assertThat(assistant.content()).isEqualTo("Answer text [8f7c");
+    }
+
+    @Test
+    public void aThinkBlockInReplayedHistoryIsNotSentBackToTheModel() {
+        // The second, independent leak: stored transcripts reach every provider through the history
+        // path, where cleanAssistantContent used to strip tool banners and leave <think> alone.
+        List<LlmRequest> requests = new ArrayList<>();
+        doAnswer(inv -> {
+            requests.add(inv.getArgument(0));
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("ok", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("q").modelOverride("m")
+                .history(List.of(new LlmMessage("user", "earlier question"),
+                    new LlmMessage("assistant", "<think>internal</think>\nreal text")))
+                .build(),
+            t -> {
+            });
+
+        assertThat(requests.get(0).messages()).filteredOn(m -> "assistant".equals(m.role()))
+            .extracting(LlmMessage::content).containsExactly("real text");
+    }
+
+    @Test
     public void theToolCallBannerReachesTheUserSinkButNotTheAssistantMessageTheModelSees() {
         ToolCallback search = namedTool("oim_search");
         when(search.call(anyString())).thenReturn("mock search chunk response text");
@@ -878,6 +1113,76 @@ public class RagServiceAgenticTest {
             .as("and the persisted turn carries no chrome either").doesNotContain("🔧");
     }
 
+    /**
+     * The clarifying-question markup is built by string concatenation from MODEL-authored text, and
+     * nothing between here and the browser escapes it: {@code CitationStreamingFilter} touches only
+     * bracketed tokens, and {@code markdown-render.js} lifts the whole block out before
+     * {@code marked} runs, so the one component that would escape raw HTML never sees it.
+     *
+     * <p>
+     * This is not XSS — DOMPurify runs last and {@code thread-markup.js} escapes on insert. It is
+     * content loss with a feedback loop, and on a corpus where {@code <Person>} and {@code 
+     * 
+    <table>
+     * } are ordinary identifiers it is routine rather than adversarial. The HTML parser turns
+     * {@code <Person>} into an element; DOMPurify (KEEP_CONTENT defaults true) drops the unknown
+     * tag and hoists its children; {@code thread.js} then reads {@code textContent}, so the user is
+     * asked a question with a word missing while {@code AgenticChatContext.clarifyingQuestion} —
+     * rendered verbatim to the orchestrator — still holds the full text. One run, two different
+     * questions.
+     *
+     * <p>
+     * The option is worse than the question: its text becomes a chip's {@code data-answer}, which
+     * {@code thread.js} writes straight into the composer and submits. So a mangled option is
+     * submitted as the USER'S NEXT MESSAGE — the corruption is fed back to the model as the answer
+     * it asked for.
+     *
+     * <p>
+     * Escaping the three XML text characters closes the round trip: DOMPurify keeps
+     * {@code &lt;Person&gt;} as text, {@code textContent} decodes it, and {@code escapeHtml}
+     * re-escapes it on insert. Quotes are deliberately NOT escaped here — these are text nodes, and
+     * the frontend escapes quotes itself when it builds the attribute.
+     *
+     * <p>
+     * The sibling {@link #testAgenticToolCallingLoopHaltsOnClarifyingQuestion} uses markup-free
+     * strings and passes identically with or without the escaper, so it pins nothing about this.
+     */
+    @Test
+    public void clarifyingQuestionMarkupIsEscapedSoModelTextSurvivesTheRoundTrip() {
+        ragService.getToolRegistry().put("ask_clarifying_question",
+            new AskClarifyingQuestionToolCallback(new ObjectMapper()));
+
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk(null, null,
+                List.of(new LlmToolCallDelta(0, "call_clarify", "ask_clarifying_question",
+                    "{\"question\":\"Which OIM 10.0 <Person> table do you mean?\","
+                        + "\"options\":[\"the <table> kind\",\"a & b\"]}")),
+                new LlmUsage(10, 20, 30, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        ragService.generateAgenticAnswer(AgenticRequest.builder().query("Search docs")
+            .modelOverride("m").history(Collections.emptyList())
+            .allowedTools(List.of("ask_clarifying_question")).build(), tokens::add);
+
+        String answer = String.join("", tokens);
+
+        assertThat(answer).as("the identifier must survive as text, not become an element")
+            .contains("<question>Which OIM 10.0 &lt;Person&gt; table do you mean?</question>");
+        assertThat(answer)
+            .as("an option is submitted as the user's next message, so it must survive verbatim")
+            .contains("<option>the &lt;table&gt; kind</option>");
+        assertThat(answer).as("& must be escaped first, or the escaping is not idempotent")
+            .contains("<option>a &amp; b</option>");
+
+        // The structural elements are ours and must remain exactly one pair.
+        assertThat(answer.split("<clarifying-question>", -1).length - 1).isEqualTo(1);
+        assertThat(answer.split("</question>", -1).length - 1)
+            .as("model text must not be able to close our elements early").isEqualTo(1);
+    }
+
     @Test
     public void testAgenticToolCallingLoopHaltsOnClarifyingQuestion() {
         // Register the real AskClarifyingQuestionToolCallback
@@ -908,10 +1213,9 @@ public class RagServiceAgenticTest {
         }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
         List<String> tokens = new ArrayList<>();
-        RagResult result = ragService.generateAgenticAnswer(
-            AgenticRequest.builder().query("Search docs").modelOverride("model-override")
-                .history(Collections.emptyList()).build(),
-            tokens::add);
+        RagResult result = ragService.generateAgenticAnswer(AgenticRequest.builder()
+            .query("Search docs").modelOverride("model-override").history(Collections.emptyList())
+            .allowedTools(List.of("ask_clarifying_question")).build(), tokens::add);
 
         String answer = String.join("", tokens);
 

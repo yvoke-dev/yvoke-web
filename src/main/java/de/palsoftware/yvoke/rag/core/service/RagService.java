@@ -20,6 +20,7 @@ import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
+import de.palsoftware.yvoke.shared.text.AssistantTranscript;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,9 +96,16 @@ public class RagService {
 
     /** Per-turn streaming state, accumulated on the (single) calling thread. */
     private static final class TurnState {
-        final StringBuilder emitted = new StringBuilder();
+        /**
+         * The answer text, and ONLY the answer text — what the model may be replayed. Chrome (the
+         * {@code <think>} markers, tool banners, the loop-cap warning) reaches the sink without
+         * passing through here, which is what makes replaying it unrepresentable rather than merely
+         * discouraged.
+         */
+        final StringBuilder answerText = new StringBuilder();
         final StringBuilder reasoning = new StringBuilder();
-        final StringBuilder textContent = new StringBuilder();
+        /** Raw content length before citation filtering, to detect that the filter removed some. */
+        int rawAnswerLength;
         final ToolCallAccumulator toolCallAccumulator = new ToolCallAccumulator();
         final CitationStreamingFilter citationFilter;
         String thoughtPartSignature;
@@ -168,8 +176,8 @@ public class RagService {
             }
             log.info("Agentic turn {}/{}", iterations + 1, maxIterations);
 
-            List<LlmTool> llmTools = hitCap ? new ArrayList<>()
-                : buildLlmTools(request.allowedTools(), runRegistry, alwaysInclude);
+            TurnTools tools = hitCap ? TurnTools.none()
+                : buildTurnTools(request.allowedTools(), runRegistry, alwaysInclude);
 
             TurnState turn = new TurnState(new CitationStreamingFilter(citationVerifier));
             String resolvedThinkingLevel = request.thinkingLevel();
@@ -179,16 +187,16 @@ public class RagService {
 
             llmClient.generateStream(
                 new LlmRequest(resolvedModel, new ArrayList<>(messages), temperature, maxTokens,
-                    llmTools, resolvedThinkingLevel, request.codeExecution()),
+                    tools.declarations(), resolvedThinkingLevel, request.codeExecution()),
                 chunk -> handleChunk(chunk, turn, sink));
 
             // Close a dangling <think> block and flush any buffered citation content.
             if (turn.inReasoning) {
-                emit(turn, sink, "\n</think>\n\n");
+                render(sink, "\n</think>\n\n");
                 turn.inReasoning = false;
             }
             for (String token : turn.citationFilter.flush()) {
-                emit(turn, sink, token);
+                answer(turn, sink, token);
             }
 
             log.info("Agentic turn {}/{} LLM streaming finished", iterations + 1, maxIterations);
@@ -199,16 +207,31 @@ public class RagService {
             cachedTokensAcc += turn.cachedTokens;
             thoughtTokensAcc += turn.thoughtTokens;
 
-            String assistantContent = turn.emitted.toString();
+            String assistantContent = turn.answerText.toString();
 
             List<LlmPart> assistantParts = new ArrayList<>();
             if (turn.reasoning.length() > 0) {
                 assistantParts.add(new LlmPart("thought", turn.reasoning.toString(), null,
                     turn.thoughtPartSignature));
             }
-            if (turn.textContent.length() > 0) {
-                assistantParts.add(
-                    new LlmPart("text", turn.textContent.toString(), null, turn.textPartSignature));
+            if (turn.answerText.length() > 0) {
+                // Same buffer as assistantContent, so content() == concat(text parts) holds by
+                // construction rather than by two places agreeing.
+                //
+                // The signature is dropped when the citation filter removed something: it was
+                // produced over the text the model emitted, and these bytes are no longer that
+                // text. Gemini re-sends it verbatim, and a signature that does not cover its part
+                // would fail on the FOLLOW-UP turn — intermittently, only on runs that contained a
+                // fabricated citation, and attributed to something else.
+                boolean filtered = turn.rawAnswerLength != turn.answerText.length();
+                if (filtered) {
+                    log.debug(
+                        "Citation filter altered the answer ({} raw chars -> {}); dropping the"
+                            + " text-part signature for this turn",
+                        turn.rawAnswerLength, turn.answerText.length());
+                }
+                assistantParts.add(new LlmPart("text", turn.answerText.toString(), null,
+                    filtered ? null : turn.textPartSignature));
             }
 
             List<LlmToolCall> toolCalls = Collections.emptyList();
@@ -225,13 +248,17 @@ public class RagService {
             messages.add(new LlmMessage("assistant", assistantContent, assistantParts, toolCalls,
                 null, null));
 
-            if (assistantContent.isEmpty() && toolCalls.isEmpty()) {
+            // Keyed on the PARTS, not on the answer text. A turn that produced only reasoning has
+            // produced something; before the split its <think> markers happened to make
+            // assistantContent non-empty, so this guard never saw that case. Reporting it as an
+            // empty response would blame a malformed function call for a working provider.
+            if (assistantParts.isEmpty() && toolCalls.isEmpty()) {
                 throw new IllegalStateException("The LLM generated an empty response (possible "
                     + "MALFORMED_FUNCTION_CALL or safety block).");
             }
 
             if (!toolCalls.isEmpty()) {
-                executeToolCalls(toolCalls, messages, sink, ctx, runRegistry);
+                executeToolCalls(toolCalls, messages, sink, ctx, tools);
                 iterations++;
                 if (ctx.isHaltRequested()) {
                     log.info("Halt requested by a tool (clarifying question / review verdict). "
@@ -308,31 +335,50 @@ public class RagService {
         if (reasoningToken != null && !reasoningToken.isEmpty()) {
             turn.reasoning.append(reasoningToken);
             if (!turn.reasoningStarted) {
-                emit(turn, sink, "<think>\n");
+                render(sink, "<think>\n");
                 turn.reasoningStarted = true;
                 turn.inReasoning = true;
             }
-            emit(turn, sink, reasoningToken);
+            render(sink, reasoningToken);
         }
 
         if (contentToken != null && !contentToken.isEmpty()) {
-            turn.textContent.append(contentToken);
+            turn.rawAnswerLength += contentToken.length();
             if (turn.inReasoning) {
-                emit(turn, sink, "\n</think>\n\n");
+                render(sink, "\n</think>\n\n");
                 turn.inReasoning = false;
             }
             for (String token : turn.citationFilter.processToken(contentToken)) {
-                emit(turn, sink, token);
+                answer(turn, sink, token);
             }
         }
     }
 
-    /** Emits a non-empty token to the sink and records it as part of the assistant turn content. */
-    private static void emit(TurnState turn, Consumer<String> sink, String token) {
+    /**
+     * Renders a token to the user and nowhere else.
+     *
+     * <p>
+     * Takes no {@link TurnState} on purpose: chrome physically cannot reach the replayed assistant
+     * turn through this method, so the defect it replaces cannot be re-introduced by a careless
+     * call site. Do not add an overload that accepts a turn.
+     */
+    private static void render(Consumer<String> sink, String token) {
         if (token == null || token.isEmpty()) {
             return;
         }
-        turn.emitted.append(token);
+        sink.accept(token);
+    }
+
+    /**
+     * Renders a token AND records it as answer text. Only citation-filtered content may come here;
+     * the filter is the boundary between what the model produced and what we are willing to repeat
+     * back to it.
+     */
+    private static void answer(TurnState turn, Consumer<String> sink, String token) {
+        if (token == null || token.isEmpty()) {
+            return;
+        }
+        turn.answerText.append(token);
         sink.accept(token);
     }
 
@@ -385,10 +431,40 @@ public class RagService {
         return messages;
     }
 
+    /**
+     * The tools for one turn: what the model is told it may call, and what may actually be
+     * dispatched.
+     *
+     * <p>
+     * The two travel as one value, and {@code executeToolCalls} is given nothing else, because the
+     * defect this replaces was precisely that they were two separate things. {@code allowedTools}
+     * filtered only the declarations while dispatch resolved against the whole run registry, so the
+     * allow-list governed what was offered and nothing at all governed what was executed — and the
+     * one caller that depends on the restriction being real is the reviewer, which
+     * {@code OrchestrationService} bars from {@code get_section} on the argument that a reviewer
+     * using it judges claims against sibling text no specialist ever retrieved. Handing the
+     * unfiltered registry to the dispatch site again is the only way to reintroduce that, and there
+     * is no longer a parameter through which to do it.
+     *
+     * @param denied names present in the registry that this run's allow-list refused. Carried for
+     *        diagnosis only — a String cannot be invoked — so a stale playbook advertising a tool a
+     *        role no longer has is distinguishable in the log from a model inventing a name.
+     */
+    private record TurnTools(List<LlmTool> declarations, Map<String, ToolCallback> dispatch,
+        Set<String> denied) {
+
+        /** The forced post-cap turn: offered nothing, so it may execute nothing. */
+        static TurnTools none() {
+            return new TurnTools(List.of(), Map.of(), Set.of());
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private List<LlmTool> buildLlmTools(List<String> allowedTools,
+    private TurnTools buildTurnTools(List<String> allowedTools,
         Map<String, ToolCallback> runRegistry, Set<String> alwaysInclude) {
-        List<LlmTool> llmTools = new ArrayList<>();
+        List<LlmTool> declarations = new ArrayList<>();
+        Map<String, ToolCallback> dispatch = new HashMap<>();
+        Set<String> denied = new HashSet<>();
         for (ToolCallback callback : runRegistry.values()) {
             String toolName = callback.getToolDefinition().name();
             // Deny by default: null is treated exactly like an empty list. Skipping the filter when
@@ -399,29 +475,35 @@ public class RagService {
             // list.
             if (!alwaysInclude.contains(toolName)
                 && (allowedTools == null || !allowedTools.contains(toolName))) {
+                denied.add(toolName);
                 continue;
             }
             try {
                 Map<String, Object> inputSchema =
                     objectMapper.readValue(callback.getToolDefinition().inputSchema(), Map.class);
-                llmTools.add(new LlmTool(callback.getToolDefinition().name(),
-                    callback.getToolDefinition().description(), inputSchema));
+                declarations.add(
+                    new LlmTool(toolName, callback.getToolDefinition().description(), inputSchema));
+                // Populated in the same branch as the declaration, so "offered" and "dispatchable"
+                // are the same set by construction rather than by two places agreeing. A tool whose
+                // schema will not parse is therefore not dispatchable either — it was never
+                // offered, so the model has no legitimate way to name it.
+                dispatch.put(toolName, callback);
             } catch (Exception e) {
-                log.error("Failed to parse schema for tool {}", callback.getToolDefinition().name(),
-                    e);
+                log.error("Failed to parse schema for tool {}", toolName, e);
             }
         }
-        return llmTools;
+        return new TurnTools(declarations, dispatch, denied);
     }
 
     private void executeToolCalls(List<LlmToolCall> toolCalls, List<LlmMessage> messages,
-        Consumer<String> sink, AgenticChatContext ctx, Map<String, ToolCallback> runRegistry) {
+        Consumer<String> sink, AgenticChatContext ctx, TurnTools tools) {
         for (LlmToolCall tc : toolCalls) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new CancellationException("Chat generation cancelled");
             }
             log.info("Executing agentic tool: {} with args: {}", tc.name(), tc.arguments());
-            ToolCallback callback = runRegistry.get(tc.name());
+            // Only what this turn actually offered. There is no unfiltered registry in scope.
+            ToolCallback callback = tools.dispatch().get(tc.name());
 
             if ("ask_clarifying_question".equals(tc.name())) {
                 try {
@@ -433,10 +515,10 @@ public class RagService {
 
                     StringBuilder xml = new StringBuilder();
                     xml.append("\n<clarifying-question>\n");
-                    xml.append("  <question>").append(question).append("</question>\n");
+                    xml.append("  <question>").append(xmlText(question)).append("</question>\n");
                     if (options != null) {
                         for (String opt : options) {
-                            xml.append("  <option>").append(opt).append("</option>\n");
+                            xml.append("  <option>").append(xmlText(opt)).append("</option>\n");
                         }
                     }
                     xml.append("</clarifying-question>\n\n");
@@ -482,6 +564,16 @@ public class RagService {
                         + " tool could not be completed. Continue with the evidence you already"
                         + " have and state the gap in your answer.";
                 }
+            } else if (tools.denied().contains(tc.name())) {
+                // Registered, but not permitted this run — a stale playbook advertising a tool the
+                // role no longer has, which costs a turn every time it happens. Worth telling apart
+                // from an invented name in the LOG; the model-facing string stays identical,
+                // because the run's configuration is something it can neither see nor fix.
+                log.warn(
+                    "Tool {} was denied by this run's allow-list; it is registered but was not "
+                        + "offered this turn (check the playbook's tool list)",
+                    tc.name());
+                responseData = "Error: Tool " + tc.name() + " not found.";
             } else {
                 log.warn("Tool {} not found", tc.name());
                 responseData = "Error: Tool " + tc.name() + " not found.";
@@ -490,6 +582,38 @@ public class RagService {
                 List.of(new LlmPart("function_response", responseData, null, null));
             messages.add(new LlmMessage("tool", responseData, toolParts, null, tc.id(), tc.name()));
         }
+    }
+
+    /**
+     * Escapes model-authored text for an XML text node.
+     *
+     * <p>
+     * The clarifying-question block is the one place this service builds markup by concatenation
+     * from text the model wrote, and nothing downstream escapes it: the citation filter touches
+     * only bracketed tokens, and {@code markdown-render.js} lifts the whole block out before
+     * {@code marked} runs, so the component that would have escaped raw HTML never sees it. On a
+     * corpus where {@code <Person>} and {@code 
+     * 
+    <table>
+     * } are ordinary identifiers this is routine.
+     *
+     * <p>
+     * The cost is not cosmetic. An unescaped identifier is parsed as an element, DOMPurify drops it
+     * and hoists its children, and the browser reads back {@code textContent} — so the user sees a
+     * question with a word missing while the orchestrator is shown the original, and an option
+     * mangled the same way is written into the composer and submitted as the user's next message.
+     * The corruption is fed back to the model as the answer it asked for.
+     *
+     * <p>
+     * Ampersand first, or the escaping would re-escape its own output. Quotes are deliberately left
+     * alone: these are text nodes, and the frontend escapes quotes itself when it lifts the text
+     * into an attribute.
+     */
+    private static String xmlText(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private String loadAgenticSystemPrompt() {
@@ -507,21 +631,16 @@ public class RagService {
         }
     }
 
+    /**
+     * Turns a stored assistant transcript into text the model may be replayed.
+     *
+     * <p>
+     * This used to strip tool banners and leave {@code <think>} blocks untouched, so every
+     * follow-up turn replayed the model's own reasoning back to it as prose. The rule now lives in
+     * {@link AssistantTranscript}, shared with the orchestrator's stripper, which had the opposite
+     * half of the same job.
+     */
     private String cleanAssistantContent(String content) {
-        if (content == null || content.isEmpty()) {
-            return content;
-        }
-        String[] lines = content.split("\\r?\\n");
-        StringBuilder sb = new StringBuilder();
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("🔧 *Calling tool:*") || trimmed.startsWith("🔧 Calling tool:")
-                || trimmed.startsWith("?? *Calling tool:*")
-                || trimmed.startsWith("?? Calling tool:")) {
-                continue;
-            }
-            sb.append(line).append("\n");
-        }
-        return sb.toString().trim();
+        return AssistantTranscript.toModelText(content);
     }
 }

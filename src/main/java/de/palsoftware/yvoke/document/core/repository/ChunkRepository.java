@@ -187,7 +187,8 @@ public class ChunkRepository {
      */
     public List<ChunkPathRow> findChunkPathsByDocumentId(UUID documentId) {
         String sql = """
-            SELECT ch.id, ch.heading_path, ch.heading, ch.sort_order
+            SELECT ch.id, ch.heading_path, ch.heading, ch.sort_order,
+                   coalesce(length(ch.text), 0) AS text_len
             FROM chunks ch
             WHERE ch.document_id = :documentId
             ORDER BY ch.sort_order ASC
@@ -195,7 +196,8 @@ public class ChunkRepository {
         return jdbcClient.sql(sql).param("documentId", documentId).query((rs, rowNum) -> {
             List<String> headingPath = JdbcMappers.arrayToStringList(rs, "heading_path");
             return new ChunkPathRow(rs.getObject("id", UUID.class), headingPath,
-                rs.getString("heading"), rs.getObject("sort_order", Integer.class));
+                rs.getString("heading"), rs.getObject("sort_order", Integer.class),
+                rs.getInt("text_len"));
         }).list();
     }
 

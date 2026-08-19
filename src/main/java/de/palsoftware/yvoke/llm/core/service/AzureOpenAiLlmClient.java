@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import jakarta.annotation.Nullable;
 
 
 import com.azure.ai.openai.OpenAIAsyncClient;
@@ -55,6 +56,7 @@ import com.azure.core.util.BinaryData;
 import com.azure.core.util.Context;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.ByteBuffer;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -64,10 +66,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -122,10 +126,41 @@ public class AzureOpenAiLlmClient implements LlmClient {
      */
     static final int HTTP_TIMEOUT_MS = 300_000;
 
-    /** Finish reasons that end a stream normally; anything else is surfaced as a failure. */
+    /**
+     * How many times a turn that produces neither content nor a tool call is attempted. Bounded at
+     * two because an empty turn that repeats is systematic rather than a glitch, and these prompts
+     * run to hundreds of thousands of tokens — re-sending one three times to discover the same
+     * nothing costs more than the round the retry exists to save.
+     */
+    private static final int EMPTY_TURN_ATTEMPTS = 2;
+
+    /**
+     * Finish reasons known to end a stream normally.
+     *
+     * <p>
+     * Documentation of what is recognised, NOT the failure test — see {@link #FATAL_FINISH_REASONS}
+     * for that. The two sets are deliberately not complements: {@link CompletionsFinishReason} is
+     * an {@code ExpandableStringEnum}, so {@code fromString} mints an instance for any wire value
+     * and a reason outside both sets is simply one this client has not learned.
+     */
     private static final Set<CompletionsFinishReason> BENIGN_FINISH_REASONS =
         Set.of(CompletionsFinishReason.STOPPED, CompletionsFinishReason.TOKEN_LIMIT_REACHED,
             CompletionsFinishReason.TOOL_CALLS, CompletionsFinishReason.FUNCTION_CALL);
+
+    /**
+     * Finish reasons that fail the call. A CLOSED set, tested positively.
+     *
+     * <p>
+     * Asking "not benign?" instead failed closed over an open enum: a vendor-specific or
+     * newly-introduced value destroyed an answer already on the user's screen, and destructively,
+     * since the parser ran before the chunk was handed on so the content on that same delta went
+     * with it. Only a reason this client positively recognises as fatal may end a turn; anything
+     * unrecognised is delivered with a warning. The sibling {@code GeminiLlmClient} had the
+     * mirror-image bug — failing OPEN — so the two providers behaved oppositely on identical events
+     * by accident rather than by policy.
+     */
+    private static final Set<CompletionsFinishReason> FATAL_FINISH_REASONS =
+        Set.of(CompletionsFinishReason.CONTENT_FILTERED);
 
     /**
      * Recognises a reasoning model by deployment name, used only when no explicit list is
@@ -141,11 +176,51 @@ public class AzureOpenAiLlmClient implements LlmClient {
     private static final Pattern REASONING_MODEL_PATTERN =
         Pattern.compile("(?:^|[^a-z0-9])o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning");
 
+    /**
+     * Every deadline this client applies.
+     *
+     * <p>
+     * There is deliberately no value meaning "wait forever" — the constructor rejects null, zero and
+     * negative. That is the exact opposite of {@link JdkHttpClientBuilder}, where {@code ZERO} is
+     * normalised to "no timeout", and the inversion is the point: the defect this type exists to
+     * prevent is an unbounded wait, so it must not be expressible.
+     *
+     * @param establish how long the service has to produce RESPONSE HEADERS on a streamed call,
+     *        measured from the moment the request is issued — so it covers connect, the whole
+     *        request upload (which {@code writeTimeout(ZERO)} leaves unbounded) and time-to-first-
+     *        byte, and nothing after it. Three {@link LlmRetry} attempts plus backoff fit inside
+     *        {@code ChatSseController}'s 600s emitter for the first call of an answer.
+     * @param wholeAnswer the same wait for a NON-streaming call. Azure sends no headers for a
+     *        buffered completion until the answer is finished, so there this necessarily caps total
+     *        generation: it is a policy budget, not a liveness signal, and must be generous.
+     */
+    record Deadlines(Duration establish, Duration wholeAnswer) {
+
+        static final Deadlines DEFAULT =
+            new Deadlines(Duration.ofSeconds(180), Duration.ofSeconds(600));
+
+        Deadlines {
+            requirePositive(establish, "establish");
+            requirePositive(wholeAnswer, "wholeAnswer");
+        }
+
+        private static void requirePositive(Duration value, String name) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(name + " must be positive; there is no value "
+                    + "meaning 'wait forever', because that is the defect this type prevents");
+            }
+        }
+    }
+
+    /** Per-call override of the transport's default deadline, carried on the azure-core Context. */
+    private static final String DEADLINE_KEY = "yvoke.response-headers-deadline";
+
     private final OpenAIAsyncClient client;
     private final ObjectMapper objectMapper;
     private final boolean enableThinking;
     private final String thinkingLevel;
     private final Set<String> reasoningModels;
+    private final Deadlines deadlines;
 
     public AzureOpenAiLlmClient(String endpoint, String apiKey, ObjectMapper objectMapper,
         boolean enableThinking, String thinkingLevel, String reasoningModelsCsv) {
@@ -162,6 +237,13 @@ public class AzureOpenAiLlmClient implements LlmClient {
     AzureOpenAiLlmClient(String endpoint, String apiKey, ObjectMapper objectMapper,
         boolean enableThinking, String thinkingLevel, String reasoningModelsCsv,
         HttpClient transport) {
+        this(endpoint, apiKey, objectMapper, enableThinking, thinkingLevel, reasoningModelsCsv,
+            transport, Deadlines.DEFAULT);
+    }
+
+    AzureOpenAiLlmClient(String endpoint, String apiKey, ObjectMapper objectMapper,
+        boolean enableThinking, String thinkingLevel, String reasoningModelsCsv,
+        HttpClient transport, Deadlines deadlines) {
         if (endpoint == null || endpoint.isBlank()) {
             // OpenAIClientBuilder decides Azure-vs-public-OpenAI purely from the endpoint: with
             // none
@@ -175,58 +257,114 @@ public class AzureOpenAiLlmClient implements LlmClient {
         this.enableThinking = enableThinking;
         this.thinkingLevel = thinkingLevel;
         this.reasoningModels = parseReasoningModels(reasoningModelsCsv);
+        this.deadlines = deadlines;
         log.info(
             "Initializing AzureOpenAiLlmClient with endpoint={}, thinkingLevel={}, reasoningModels={}",
             endpoint, thinkingLevel, reasoningModels.isEmpty() ? "auto-detect" : reasoningModels);
 
-        this.client = new OpenAIClientBuilder().endpoint(endpoint)
-            .credential(new AzureKeyCredential(apiKey)).httpClient(transport)
-            // LlmRetry is the single retry authority. Leaving the SDK's own exponential policy in
-            // place would multiply the two layers, re-uploading a large prompt into the very quota
-            // that just returned 429 — the mistake already recorded for google-genai.
-            .retryOptions(new RetryOptions(new FixedDelayOptions(0, Duration.ZERO)))
-            // The ASYNC client, deliberately. azure-core's SyncRestProxy has no text/event-stream
-            // branch and hands the body to BinaryData whole, while AsyncRestProxy detects the
-            // content type and keeps the body an un-buffered Flux — so only the async client can
-            // deliver an answer token by token.
-            .buildAsyncClient();
+        this.client =
+            new OpenAIClientBuilder().endpoint(endpoint).credential(new AzureKeyCredential(apiKey))
+                // Wrapped HERE rather than in defaultTransport(): this is the only path from an
+                // HttpClient to the SDK, so a transport without a headers deadline cannot be handed
+                // to
+                // this client by production code, by a test, or by a call site added later.
+                .httpClient(boundedTransport(transport, deadlines.establish()))
+                // LlmRetry is the single retry authority. Leaving the SDK's own exponential policy
+                // in
+                // place would multiply the two layers, re-uploading a large prompt into the very
+                // quota
+                // that just returned 429 — the mistake already recorded for google-genai.
+                .retryOptions(new RetryOptions(new FixedDelayOptions(0, Duration.ZERO)))
+                // The ASYNC client, deliberately. azure-core's SyncRestProxy has no
+                // text/event-stream
+                // branch and hands the body to BinaryData whole, while AsyncRestProxy detects the
+                // content type and keeps the body an un-buffered Flux — so only the async client
+                // can
+                // deliver an answer token by token.
+                .buildAsyncClient();
     }
 
     static HttpClient defaultTransport() {
-        return arrayBacked(new JdkHttpClientBuilder().connectionTimeout(Duration.ofSeconds(10))
+        return new JdkHttpClientBuilder().connectionTimeout(Duration.ofSeconds(10))
+            // Unbounded upload, deliberately: azure-core's 60s default is an inter-chunk idle timer
+            // over 8 KiB slices and a ~600k-token prompt trips it. The upload strictly precedes
+            // response headers, so boundedTransport's deadline already covers it.
             .writeTimeout(Duration.ZERO)
-            // Not a cap on how long an answer may take: this is per read, so it fires only when the
-            // stream has produced nothing at all for the whole window.
+            // Per read, and armed only once the body Flux is subscribed — which happens strictly
+            // AFTER the headers Mono has emitted. That is precisely why it could never bound
+            // time-to-first-byte, and why boundedTransport exists.
             .readTimeout(Duration.ofMillis(HTTP_TIMEOUT_MS))
-            // Would otherwise default to 60s and cancel the call outright mid-generation.
-            .responseTimeout(Duration.ZERO).build());
+            // java.net.http.HttpRequest.timeout(), which the JDK keeps armed until the response
+            // BODY is consumed — so any value here is a hard cap on total generation time, not a
+            // liveness check. Left disabled; the bound we need is in boundedTransport.
+            .responseTimeout(Duration.ZERO).build();
     }
 
     /**
-     * Adapts a transport whose response buffers are read-only.
+     * The one transport decorator: it bounds the wait for response headers, and makes the SDK's
+     * read-only response buffers array-backed.
      *
      * <p>
-     * {@code OpenAIServerSentEvents} parses the stream with {@code byteBuffer.array()}, which
-     * throws {@link java.nio.ReadOnlyBufferException} on the read-only buffers the JDK transport
-     * hands out — so without this the SDK's own SSE parser cannot consume its own JDK transport at
-     * all. The copy is per network chunk, not per token, and is the price of the only transport
-     * that delivers those chunks as they arrive.
+     * Both must apply to every transport this client uses, and two separate wrappers are two
+     * chances to apply one and forget the other — so they are one function, applied at the single
+     * constructor chokepoint.
+     *
+     * <p>
+     * <b>Why the bound lives here and nowhere higher.</b> The Mono returned by {@code send}
+     * completes at response-headers-received, carrying a body Flux nobody has subscribed to yet, so
+     * a timeout at this layer is a pure time-to-first-byte deadline — disarmed the instant headers
+     * arrive, and structurally unable to touch body consumption. It is also the only layer at which
+     * a cancel reaches the wire: {@code OpenAIServerSentEvents} ends its pipeline in
+     * {@code .cache()}, whose downstream cancel is not propagated upstream, so a timeout placed at
+     * or above {@code establish()} would free the calling thread and leak the in-flight exchange
+     * forever. (The same {@code .cache()} is why the {@code establish()} javadoc's claim that
+     * closing the Stream releases the connection only becomes true with this wrapper in place.)
+     *
+     * <p>
+     * {@code sendSync} is deliberately NOT overridden: the interface default is
+     * {@code send(request, context).block()}, so it inherits both the bound and the array-backing.
+     * Overriding it would create a second, unbounded route; deleting the override removes the
+     * ability to express one.
      */
-    static HttpClient arrayBacked(HttpClient delegate) {
+    static HttpClient boundedTransport(HttpClient delegate, Duration defaultDeadline) {
+        Objects.requireNonNull(delegate, "delegate");
+        Deadlines.requirePositive(defaultDeadline, "defaultDeadline");
         return new HttpClient() {
             @Override
             public Mono<HttpResponse> send(HttpRequest request) {
-                return delegate.send(request).map(ArrayBackedResponse::new);
+                return bound(delegate.send(request), defaultDeadline);
             }
 
             @Override
             public Mono<HttpResponse> send(HttpRequest request, Context context) {
-                return delegate.send(request, context).map(ArrayBackedResponse::new);
+                return bound(delegate.send(request, context), deadlineOf(context));
             }
 
-            @Override
-            public HttpResponse sendSync(HttpRequest request, Context context) {
-                return new ArrayBackedResponse(delegate.sendSync(request, context));
+            private Duration deadlineOf(Context context) {
+                if (context == null) {
+                    return defaultDeadline;
+                }
+                return context.getData(DEADLINE_KEY).filter(Duration.class::isInstance)
+                    .map(Duration.class::cast).orElse(defaultDeadline);
+            }
+
+            private Mono<HttpResponse> bound(Mono<HttpResponse> response, Duration deadline) {
+                // No fallback publisher on purpose: only the no-fallback branch of reactor's
+                // timeout
+                // cancels upstream, and that cancel is what aborts the JDK exchange instead of
+                // merely abandoning it.
+                return response.timeout(deadline).onErrorMap(TimeoutException.class, e -> {
+                    // HttpTimeoutException for two reasons: it is what this transport already
+                    // raises
+                    // for the sibling read timeout, so both silence failures are one type; and it
+                    // extends IOException, which is how LlmRetry classifies it from a TYPE rather
+                    // than from a message substring.
+                    HttpTimeoutException timeout =
+                        new HttpTimeoutException("Azure OpenAI sent no response headers within "
+                            + deadline.toMillis() + " ms (connection established, request sent)");
+                    timeout.addSuppressed(e);
+                    return timeout;
+                }).map(ArrayBackedResponse::new);
             }
         };
     }
@@ -301,9 +439,20 @@ public class AzureOpenAiLlmClient implements LlmClient {
         log.info("Sending non-streaming request to Azure OpenAI: deployment={}", request.model());
         ChatCompletionsOptions options = buildOptions(request);
         return LlmRetry.withRetry("AzureOpenAI.generate", 3, () -> {
-            Response<ChatCompletions> response = client
-                .getChatCompletionsWithResponse(request.model(), options, new RequestOptions())
-                .block();
+            // A buffered completion is not answered until it is finished, so at the transport
+            // time-to-headers IS time-to-whole-answer: the streaming establishment budget would be
+            // a
+            // generation cap here, and would fail a legitimate KG extraction. The .block() stays
+            // duration-less deliberately — a blocking-read timeout surfaces as
+            // IllegalStateException,
+            // which LlmRetry can only classify by message text, where the transport's
+            // HttpTimeoutException is classified by type.
+            Response<ChatCompletions> response =
+                client
+                    .getChatCompletionsWithResponse(request.model(), options,
+                        new RequestOptions()
+                            .setContext(new Context(DEADLINE_KEY, deadlines.wholeAnswer())))
+                    .block();
             ChatCompletions completions = response == null ? null : response.getValue();
 
             // Usage is read BEFORE the content check and carried on the exception: a filtered or
@@ -342,55 +491,113 @@ public class AzureOpenAiLlmClient implements LlmClient {
         // alone retried nothing at all, and the request was issued afterwards by the subscription,
         // outside the loop. Awaiting the first element here is what makes establishment a real,
         // retryable operation; on the blocking path .block() already does this.
-        StreamOutcome outcome = new StreamOutcome();
-        EstablishedStream established =
-            LlmRetry.withRetry("AzureOpenAI.generateStream", 3, () -> establish(request, options));
+        // An EMPTY turn is the one mid-stream outcome that is safe to re-request, and it is safe
+        // for
+        // exactly the reason the paragraph above gives: "empty" means neither content nor a tool
+        // call was seen, so by construction the consumer has been handed nothing that a second
+        // attempt could replay. It cannot be expressed as an LlmRetry classification — the throw
+        // happens here, while consuming, not inside the establish() call withRetry wraps — and
+        // widening withRetry to cover this loop would retry genuine mid-stream faults too, since a
+        // truncated SSE event surfaces as a Jackson IOException that isTransient already accepts.
+        LlmUsage abandoned = null;
+        for (int attempt = 1;; attempt++) {
+            StreamOutcome outcome = new StreamOutcome();
+            EstablishedStream established = LlmRetry.withRetry("AzureOpenAI.generateStream", 3,
+                () -> establish(request, options));
 
-        // try-with-resources on the Stream is what actually cancels the subscription and releases
-        // the connection; abandoning the Iterator alone would leave the response open.
-        try (Stream<Response<ChatCompletions>> stream = established.stream()) {
-            Iterator<Response<ChatCompletions>> iterator = established.iterator();
-            LlmGatewayInfo gateway = null;
-            boolean first = true;
-            while (iterator.hasNext()) {
-                if (Thread.currentThread().isInterrupted()) {
-                    log.info(
-                        "Azure OpenAI stream interrupted, stopping chunk processing (streamId={})",
-                        streamId);
+            // try-with-resources on the Stream is what actually cancels the subscription and
+            // releases the connection; abandoning the Iterator alone would leave the response open.
+            try (Stream<Response<ChatCompletions>> stream = established.stream()) {
+                Iterator<Response<ChatCompletions>> iterator = established.iterator();
+                LlmGatewayInfo gateway = null;
+                boolean first = true;
+                while (iterator.hasNext()) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        log.info("Azure OpenAI stream interrupted, stopping chunk processing "
+                            + "(streamId={})", streamId);
+                        throw new CancellationException("Azure OpenAI stream interrupted");
+                    }
+                    Response<ChatCompletions> event = iterator.next();
+                    if (first) {
+                        gateway = gatewayInfo(event);
+                        first = false;
+                    }
+                    onChunk.accept(
+                        carry(parseChunk(event.getValue(), gateway, streamId, outcome), abandoned));
+                }
+            } catch (RuntimeException e) {
+                if (Thread.currentThread().isInterrupted() || e instanceof CancellationException
+                    || e.getCause() instanceof InterruptedException
+                    || e.getCause() instanceof CancellationException) {
+                    log.info("Azure OpenAI stream cancelled/interrupted (streamId={})", streamId);
                     throw new CancellationException("Azure OpenAI stream interrupted");
                 }
-                Response<ChatCompletions> event = iterator.next();
-                if (first) {
-                    gateway = gatewayInfo(event);
-                    first = false;
-                }
-                onChunk.accept(parseChunk(event.getValue(), gateway, streamId, outcome));
+                log.error("Azure OpenAI stream error for deployment={}, streamId={}",
+                    request.model(), streamId, e);
+                throw e;
             }
+
+            // Taken here rather than mid-parse so the trailing usage-only event has already been
+            // read: those tokens were billed, and throwing before pulling it left the call with no
+            // llm_call_logs row at all — the same loss generate() carries its usage on the
+            // exception to avoid. Not re-requested: a filtered turn repeats.
+            if (outcome.fatalFinishReason != null) {
+                throw new LlmCallFailedException(
+                    "Azure OpenAI stream finished abnormally: finishReason="
+                        + outcome.fatalFinishReason + " (" + outcome.describe() + ")",
+                    null, plus(abandoned, outcome.usage));
+            }
+
+            if (!outcome.isEmpty()) {
+                log.info("Azure OpenAI stream completed successfully for deployment={}, "
+                    + "streamId={}", request.model(), streamId);
+                return;
+            }
+
             // A stream that ends having produced neither text nor a tool call is a failure, not a
             // quiet success. Reporting it as success pushed the diagnosis downstream, where the
             // caller could only guess at a cause it has no evidence for — an orchestrated run died
             // as "possible MALFORMED_FUNCTION_CALL or safety block" when the finish reason and the
-            // token split were sitting right here. Usage rides on the exception so the tokens the
-            // provider already charged for are still recorded.
-            if (outcome.isEmpty()) {
-                throw new LlmCallFailedException(
-                    "Azure OpenAI produced no content and no tool calls (" + outcome.describe()
-                        + ")",
-                    null, outcome.usage);
+            // token split were sitting right here. Usage rides on the exception, and accumulates
+            // across attempts, so every token the provider charged for is still recorded.
+            LlmUsage burned = plus(abandoned, outcome.usage);
+            if (attempt >= EMPTY_TURN_ATTEMPTS) {
+                throw new LlmCallFailedException("Azure OpenAI produced no content and no tool "
+                    + "calls after " + attempt + " attempt(s) (" + outcome.describe() + ")", null,
+                    burned);
             }
-            log.info("Azure OpenAI stream completed successfully for deployment={}, streamId={}",
-                request.model(), streamId);
-        } catch (RuntimeException e) {
-            if (Thread.currentThread().isInterrupted() || e instanceof CancellationException
-                || e.getCause() instanceof InterruptedException
-                || e.getCause() instanceof CancellationException) {
-                log.info("Azure OpenAI stream cancelled/interrupted (streamId={})", streamId);
-                throw new CancellationException("Azure OpenAI stream interrupted");
-            }
-            log.error("Azure OpenAI stream error for deployment={}, streamId={}", request.model(),
-                streamId, e);
-            throw e;
+            log.warn(
+                "Azure OpenAI produced an empty turn for deployment={}, streamId={} ({}); "
+                    + "nothing reached the caller, so re-requesting once",
+                request.model(), streamId, outcome.describe());
+            abandoned = burned;
         }
+    }
+
+    /**
+     * Adds an abandoned attempt's usage onto a chunk that carries usage of its own, so the winning
+     * attempt reports what the whole operation cost. The accounting decorator above this client
+     * keeps only the LAST usage it observes and publishes one row per call, so without this a
+     * recovered turn would be billed as though the abandoned attempt had never run.
+     */
+    private static LlmResponseChunk carry(LlmResponseChunk chunk, @Nullable LlmUsage abandoned) {
+        if (abandoned == null || chunk.usage() == null) {
+            return chunk;
+        }
+        return new LlmResponseChunk(chunk.content(), chunk.reasoning(), chunk.toolCallDeltas(),
+            plus(abandoned, chunk.usage()), chunk.parts(), chunk.gateway());
+    }
+
+    private static LlmUsage plus(@Nullable LlmUsage a, @Nullable LlmUsage b) {
+        if (a == null) {
+            return b;
+        }
+        if (b == null) {
+            return a;
+        }
+        return new LlmUsage(a.promptTokens() + b.promptTokens(),
+            a.completionTokens() + b.completionTokens(), a.totalTokens() + b.totalTokens(),
+            a.cachedTokens() + b.cachedTokens(), a.thoughtTokens() + b.thoughtTokens());
     }
 
     /**
@@ -441,6 +648,11 @@ public class AzureOpenAiLlmClient implements LlmClient {
         private boolean sawContent;
         private boolean sawToolCall;
         private CompletionsFinishReason finishReason;
+        /**
+         * Set when a {@link #FATAL_FINISH_REASONS} value was seen; the verdict is taken after the
+         * stream drains, so the usage-only trailing event is still read.
+         */
+        private CompletionsFinishReason fatalFinishReason;
         private int events;
         private LlmUsage usage;
 
@@ -493,12 +705,23 @@ public class AzureOpenAiLlmClient implements LlmClient {
             CompletionsFinishReason finishReason = choice.getFinishReason();
             if (finishReason != null) {
                 outcome.finishReason = finishReason;
-                if (!BENIGN_FINISH_REASONS.contains(finishReason)) {
+                // Recorded, never thrown from here. The token counts arrive on a LATER
+                // choices-empty event — stream_options.include_usage sends usage on exactly one
+                // additional chunk and null on every other — so throwing mid-parse cancelled
+                // iteration before that event was pulled and made the usage unreachable by
+                // construction. parseChunk is total; generateStream owns every verdict, after the
+                // stream has drained.
+                if (FATAL_FINISH_REASONS.contains(finishReason)) {
                     log.warn(
                         "Azure OpenAI stream finished abnormally: finishReason={}, streamId={}",
                         finishReason, streamId);
-                    throw new IllegalStateException(
-                        "Azure OpenAI stream finished abnormally: finishReason=" + finishReason);
+                    outcome.fatalFinishReason = finishReason;
+                } else if (!BENIGN_FINISH_REASONS.contains(finishReason)) {
+                    log.warn(
+                        "Azure OpenAI reported a finishReason this client does not recognise: {} "
+                            + "(streamId={}). Delivering the answer — an unknown reason is not "
+                            + "evidence of a failure.",
+                        finishReason, streamId);
                 }
             }
         }
@@ -718,6 +941,14 @@ public class AzureOpenAiLlmClient implements LlmClient {
             definitions.add(new ChatCompletionsFunctionToolDefinition(function));
         }
         options.setTools(definitions);
+        // Stated rather than inherited. Left unset, azure-json omits the null Boolean entirely and
+        // the SERVICE default applies — which is true, as this app's own captured wire fixtures
+        // show. That matters here more than usual: parallel calls are exactly the case the streamed
+        // reassembly cannot verify, because ChatCompletionsToolCall's deserializer discards the
+        // wire-level index used to tell them apart (see toolCallDeltas). Keeping the current
+        // behaviour, but visible in the code and pinned by a test, so that turning it off is a
+        // one-line decision rather than an archaeology exercise.
+        options.setParallelToolCalls(true);
     }
 
     private BinaryData toBinaryData(Map<String, Object> value, String what) {

@@ -1,11 +1,10 @@
 package de.palsoftware.yvoke.llm.core;
 
-import com.azure.core.exception.HttpResponseException;
-import com.google.genai.errors.ApiException;
 import com.google.genai.errors.GenAiIOException;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,16 +108,23 @@ public final class LlmRetry {
      * it is what keeps a 429 on the quota-scale backoff instead of the half-second blip schedule.
      */
     private static Integer providerStatus(Throwable c) {
-        if (c instanceof ApiException apiException) {
-            return apiException.code();
-        }
-        if (c instanceof HttpResponseException httpResponseException
-            && httpResponseException.getResponse() != null) {
-            return httpResponseException.getResponse().getStatusCode();
-        }
-        return null;
+        ProviderFault fault = ProviderFault.at(c);
+        return fault == null ? null : fault.code();
     }
 
+    /**
+     * Two passes, deliberately: every TYPED signal in the whole cause chain is examined before any
+     * message text is guessed from.
+     *
+     * <p>
+     * Interleaving them let an incidental substring in an outer wrapper's {@code toString()} decide
+     * the answer before the typed branch below was ever reached — and reactor's wrapper message is
+     * {@code cause.toString()}, which for a transport timeout literally contains the class name
+     * {@code HttpTimeoutException}. The {@code IOException} branch was therefore dead code on every
+     * reactor-wrapped timeout: no wording could avoid it, and no mutation could prove the branch
+     * load-bearing. Ordering the passes makes the typed rule authoritative and leaves the substring
+     * list as the fallback it was always meant to be.
+     */
     static boolean isTransient(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
             // Prefer the SDK's typed HTTP status over brittle message-substring matching:
@@ -129,10 +135,18 @@ public final class LlmRetry {
                 return status == 408 || status == 429 || status == 500 || status == 502
                     || status == 503 || status == 504;
             }
+            // TimeoutException extends Exception, not IOException, and reactor's default message
+            // carries none of the needles below — so without this branch a timeout raised anywhere
+            // in the reactive plumbing is classified PERMANENT and retries nothing at all.
             if (c instanceof GenAiIOException || c instanceof SocketTimeoutException
-                || c instanceof IOException) {
+                || c instanceof IOException || c instanceof TimeoutException) {
                 return true;
             }
+            if (c.getCause() == c) {
+                break;
+            }
+        }
+        for (Throwable c = t; c != null; c = c.getCause()) {
             String msg = c.getMessage();
             if (msg != null) {
                 String m = msg.toLowerCase();
@@ -142,6 +156,9 @@ public final class LlmRetry {
                     || m.contains(" 503") || m.contains(" 504")) {
                     return true;
                 }
+            }
+            if (c.getCause() == c) {
+                break;
             }
         }
         return false;

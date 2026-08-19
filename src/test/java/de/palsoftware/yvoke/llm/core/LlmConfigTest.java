@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.llm.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +13,9 @@ import de.palsoftware.yvoke.llm.core.service.OpenRouterLlmClient;
 import org.junit.jupiter.api.Test;
 import com.google.genai.ApiClient;
 import java.lang.reflect.Field;
+import java.util.function.UnaryOperator;
+import org.springframework.core.env.Environment;
+import org.springframework.mock.env.MockEnvironment;
 
 /**
  * Pins how {@code app.ai.provider} selects the provider bean. The property is set from an
@@ -80,7 +84,7 @@ public class LlmConfigTest {
      */
     @Test
     public void aMissingAzureEndpointFailsStartupInsteadOfTargetingPublicOpenAi() {
-        assertThatThrownBy(() -> new LlmConfig().llmProviderClient("azure-openai",
+        assertThatThrownBy(() -> config().llmProviderClient(deployment(), "azure-openai",
             new ObjectMapper(), "https://openrouter.example/api/v1", "test-openrouter-key",
             "test-gemini-key", false, "low", "https://gemini.example", "test-cf-account",
             "test-cf-gateway", "test-cf-gateway-token", "test-cf-gemini-key", false, "low",
@@ -120,30 +124,100 @@ public class LlmConfigTest {
      * The API key is deliberately supplied as a usable dummy rather than as a placeholder:
      * asserting on it would compare — and on failure print — whatever real {@code GEMINI_API_KEY}
      * the developer has exported. The base URL carries the account and gateway ids, which are not
-     * secret, and is enough to pin the rule. The assertion also holds when
-     * {@code CLOUDFLARE_ACCOUNT_ID} happens to be set in the environment, because then the real id
-     * is used; the mutation is still caught, since a configured value that {@code isUsable} accepts
-     * short-circuits the environment lookup entirely.
+     * secret, and is enough to pin the rule.
+     *
+     * <p>
+     * The environment is supplied by {@link #config()} rather than read from the process, because
+     * {@code resolveKey} falls through to {@code CLOUDFLARE_ACCOUNT_ID} for exactly the value this
+     * test must pass. Reading the real one made the assertion depend on the developer's shell: a
+     * machine exporting the deployment's own variables saw "nothing was thrown", and a machine
+     * exporting only some of them saw the throw name a different setting.
      */
     @Test
-    public void aConfiguredPlaceholderValueIsNeverForwardedAsACredential() throws Exception {
-        LlmClient client = new LlmConfig().llmProviderClient("cloudflare-gemini",
+    public void aConfiguredPlaceholderValueIsNeverForwardedAsACredential() {
+        // Behaviour change: a placeholder account/gateway id used to be silently treated as absent
+        // and formatted into the URL as an empty segment, giving ".../v1///google-ai-studio" — a
+        // 404 on every call, from the first message, with nothing at startup pointing at it. The
+        // placeholder must still never be FORWARDED (that is what this test has always guarded);
+        // it now fails closed instead of producing a client that cannot work.
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+            () -> config().llmProviderClient(deployment(), "cloudflare-gemini", new ObjectMapper(),
+                "https://openrouter.example/api/v1", "test-openrouter-key", "test-gemini-key",
+                false, "low", "https://gemini.example", "placeholder-cf-account-id",
+                "placeholder-cf-gateway-id", "test-cf-gateway-token", "test-cf-gemini-key", false,
+                "low", "https://azure.example", "test-azure-key", false, "low", ""));
+
+        assertThat(e).hasMessageContaining("account id")
+            .as("the failure must name which setting is missing, not merely that one is");
+        assertThat(e.getMessage()).doesNotContain("placeholder-cf-account-id")
+            .doesNotContain("test-cf-gateway-token");
+    }
+
+    /**
+     * A blank gateway TOKEN is the quiet case: the URL is right and the request is unauthenticated.
+     */
+    @Test
+    public void aBlankGatewayTokenFailsStartupRatherThanSendingAnUnauthenticatedRequest() {
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+            () -> config().llmProviderClient(deployment(), "cloudflare-gemini", new ObjectMapper(),
+                "https://openrouter.example/api/v1", "test-openrouter-key", "test-gemini-key",
+                false, "low", "https://gemini.example", "real-account", "real-gateway", "  ",
+                "test-cf-gemini-key", false, "low", "https://azure.example", "test-azure-key",
+                false, "low", ""));
+
+        assertThat(e).hasMessageContaining("gateway token");
+    }
+
+    /**
+     * The regression the fail-closed check above caused, and the case its own tests could not see.
+     *
+     * <p>
+     * {@code app.ai.provider} defaults to {@code cloudflare-gemini} and the three gateway values
+     * default to {@code placeholder-…} literals that {@code isUsable} treats as absent — so the
+     * configuration this repository <b>ships</b> is precisely the one the check rejects. Throwing
+     * unconditionally aborted context refresh for all 70 {@code @SpringBootTest} classes bar the
+     * six that replace {@code llmProviderClient}, and for CI, which sets no {@code CLOUDFLARE_*}.
+     * Nothing in the unit tier noticed, because every assertion pointed at the throw and none at
+     * startup surviving; the whole failure lived one tier away, in
+     * {@code ./mvnw verify -Pit-tests}.
+     *
+     * <p>
+     * The {@code test} profile is what every IT context runs under
+     * ({@code PostgresTestContainerInitializer} adds it for all of them) and {@code local} is what
+     * {@code docker-compose} sets, so gating on {@link DevProfiles} is the same seam
+     * {@code SecretCipher} and {@code SecurityConfig} already use to stay strict in production
+     * while remaining startable on a dev box.
+     */
+    @Test
+    public void theShippedDefaultsStillStartUnderADevelopmentProfile() {
+        MockEnvironment devBox = new MockEnvironment();
+        devBox.setActiveProfiles("test");
+
+        LlmClient client = config().llmProviderClient(devBox, "cloudflare-gemini",
             new ObjectMapper(), "https://openrouter.example/api/v1", "test-openrouter-key",
             "test-gemini-key", false, "low", "https://gemini.example", "placeholder-cf-account-id",
-            "placeholder-cf-gateway-id", "test-cf-gateway-token", "test-cf-gemini-key", false,
-            "low", "https://azure.example", "test-azure-key", false, "low", "");
+            "placeholder-cf-gateway-id", "placeholder-cf-gateway-token", "test-cf-gemini-key",
+            false, "low", "https://azure.example", "test-azure-key", false, "low", "");
         try {
-            assertThat(client).isExactlyInstanceOf(CloudflareGeminiLlmClient.class);
-
-            String baseUrl = baseUrlOf(client);
-            assertThat(baseUrl).as("the gateway base URL must have reached the SDK client at all")
-                .startsWith("https://gateway.ai.cloudflare.com/");
-            assertThat(baseUrl)
-                .as("a placeholder account/gateway id must be treated as absent, never forwarded")
-                .doesNotContain("placeholder");
+            assertThat(client).as("an unconfigured dev box must still build a context")
+                .isExactlyInstanceOf(CloudflareGeminiLlmClient.class);
         } finally {
             close(client);
         }
+    }
+
+    /**
+     * A {@link LlmConfig} whose environment lookup finds nothing, so a test asserting on the
+     * fail-closed rules pins the code rather than the machine it runs on.
+     */
+    private static LlmConfig config() {
+        UnaryOperator<String> nothingExported = name -> null;
+        return new LlmConfig(nothingExported);
+    }
+
+    /** An environment with no development profile active — i.e. a real deployment. */
+    private static Environment deployment() {
+        return new MockEnvironment();
     }
 
     /**
@@ -172,7 +246,7 @@ public class LlmConfigTest {
      * network I/O — they only build an SDK client and its connection pool.
      */
     private static LlmClient providerFor(String provider) {
-        return new LlmConfig().llmProviderClient(provider, new ObjectMapper(),
+        return config().llmProviderClient(deployment(), provider, new ObjectMapper(),
             "https://openrouter.example/api/v1", "test-openrouter-key", "test-gemini-key", false,
             "low", "https://gemini.example", "test-cf-account", "test-cf-gateway",
             "test-cf-gateway-token", "test-cf-gemini-key", false, "low", "https://azure.example",

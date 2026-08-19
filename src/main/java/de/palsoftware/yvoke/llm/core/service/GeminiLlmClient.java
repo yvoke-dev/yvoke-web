@@ -21,6 +21,8 @@ import com.google.genai.types.HttpResponse;
 import com.google.genai.ResponseStream;
 import com.google.genai.types.*;
 import jakarta.annotation.PreDestroy;
+import okhttp3.OkHttpClient;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
@@ -33,12 +35,46 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(GeminiLlmClient.class);
 
     /**
-     * Overall timeout for a single Gemini call. Subclasses that supply their own
-     * {@link okhttp3.OkHttpClient} via {@link ClientOptions} must apply this themselves: the SDK
-     * only configures timeouts on the client it builds itself, and silently keeps OkHttp's defaults
-     * for a custom one. See {@code CloudflareGeminiLlmClient#buildClientOptions}.
+     * How long a single socket read may block: the wait for response headers, and thereafter the
+     * gap between SSE tokens. NOT a budget for the whole answer — see {@link #httpClientBuilder}.
      */
     static final int HTTP_TIMEOUT_MS = 300_000;
+
+    /** TCP/TLS only, matching {@code AzureOpenAiLlmClient}. */
+    static final int CONNECT_TIMEOUT_MS = 10_000;
+
+    /**
+     * The one place the HTTP timeouts for this client family are decided.
+     *
+     * <p>
+     * The shape matters more than the numbers. A <b>read</b> timeout in OkHttp is the socket
+     * {@code SO_TIMEOUT}: it bounds each individual read, which covers both the wait for the
+     * response headers and every later gap between SSE tokens. That is exactly the pair of bounds
+     * an LLM call needs — "the service never answered" and "the stream went silent" — and it is
+     * expressible here in one setting because, unlike azure-core's read timeout, OkHttp's applies
+     * before the body exists.
+     *
+     * <p>
+     * A <b>call</b> timeout is the one bound that must NOT be set. It spans the entire call
+     * including draining the body, so for SSE it is a hard wall-clock cap on how long an answer may
+     * take: a perfectly healthy generation emitting a token every second died at 300s with
+     * {@code InterruptedIOException: timeout}, and since {@code RagService} does not catch there,
+     * the whole agentic run died with it and every prior turn's tool results were discarded. It is
+     * left at zero deliberately — the liveness question is "has anything arrived recently?", never
+     * "has this taken too long?".
+     *
+     * <p>
+     * This is also why {@code HttpOptions.timeout()} is no longer set: the SDK turns that value
+     * into precisely the {@code callTimeout} above, but only on the client it builds itself — so it
+     * produced the wrong bound on the plain path and silently no bound at all on the Cloudflare
+     * one, two different wrong answers from one setting. Supplying the client here makes both paths
+     * take the same configuration by construction.
+     */
+    static OkHttpClient.Builder httpClientBuilder(int readTimeoutMs) {
+        return new OkHttpClient.Builder().connectTimeout(Duration.ofMillis(CONNECT_TIMEOUT_MS))
+            .readTimeout(Duration.ofMillis(readTimeoutMs)).writeTimeout(Duration.ZERO)
+            .callTimeout(Duration.ZERO);
+    }
 
     /**
      * How many HTTP attempts the SDK itself may make per call.
@@ -53,6 +89,20 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
      * Pinning this to 1 leaves {@code LlmRetry} the single retry authority.
      */
     static final int SDK_HTTP_ATTEMPTS = 1;
+
+    /**
+     * Finish reasons that end a stream normally, held as RAW wire strings.
+     *
+     * <p>
+     * Deliberately not {@code FinishReason.Known} constants. {@code FinishReason(String)} maps
+     * every value it does not recognise onto {@code Known.FINISH_REASON_UNSPECIFIED}, which is
+     * itself benign — so a comparison against the enum cannot distinguish "the model stopped for a
+     * reason this SDK version has not learned" from "unspecified", and answers the question wrongly
+     * in the direction that hides the failure. The raw string is the only form that survives an SDK
+     * that is older than the service.
+     */
+    private static final Set<String> BENIGN_FINISH_REASONS =
+        Set.of("STOP", "MAX_TOKENS", "FINISH_REASON_UNSPECIFIED");
 
     private final Client client;
     private final ObjectMapper objectMapper;
@@ -84,7 +134,10 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             "Initializing GeminiLlmClient (Google AI Studio / Developer API) with thinkingLevel={}, baseUrl={}, headers={}",
             thinkingLevel, baseUrl, headers != null ? headers.keySet() : "none");
 
-        HttpOptions.Builder httpOptionsBuilder = HttpOptions.builder().timeout(HTTP_TIMEOUT_MS)
+        // No timeout() here: see httpClientBuilder. The SDK would convert it into a callTimeout —
+        // a cap on total generation — and only on a client it builds itself, so the same setting
+        // meant two different wrong things on the two paths.
+        HttpOptions.Builder httpOptionsBuilder = HttpOptions.builder()
             .retryOptions(HttpRetryOptions.builder().attempts(SDK_HTTP_ATTEMPTS).build());
         if (baseUrl != null && !baseUrl.isBlank()) {
             httpOptionsBuilder.baseUrl(baseUrl);
@@ -93,12 +146,14 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             httpOptionsBuilder.headers(headers);
         }
 
-        Client.Builder builder =
-            Client.builder().apiKey(apiKey).httpOptions(httpOptionsBuilder.build());
-        if (clientOptions != null) {
-            builder.clientOptions(clientOptions);
-        }
-        this.client = builder.build();
+        // A ClientOptions is ALWAYS supplied, so the SDK's own transport branch — the one that
+        // applies a callTimeout — is never taken. Both this client and CloudflareGeminiLlmClient
+        // therefore get their timeouts from httpClientBuilder and cannot diverge.
+        ClientOptions resolvedOptions = clientOptions != null ? clientOptions
+            : ClientOptions.builder().customHttpClient(httpClientBuilder(HTTP_TIMEOUT_MS).build())
+                .build();
+        this.client = Client.builder().apiKey(apiKey).httpOptions(httpOptionsBuilder.build())
+            .clientOptions(resolvedOptions).build();
 
         this.objectMapper = objectMapper.copy().registerModule(new Jdk8Module())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -153,7 +208,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
 
             if (response.usageMetadata().isPresent()) {
                 GenerateContentResponseUsageMetadata usageMetadata = response.usageMetadata().get();
-                promptTokens = usageMetadata.promptTokenCount().orElse(0);
+                promptTokens = promptTokensOf(usageMetadata);
                 completionTokens = usageMetadata.candidatesTokenCount().orElse(0);
                 totalTokens = usageMetadata.totalTokenCount().orElse(0);
                 cachedTokens = usageMetadata.cachedContentTokenCount().orElse(0);
@@ -175,6 +230,47 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
 
             return new LlmResponse(text, usage, gatewayInfo(response));
         });
+    }
+
+    /**
+     * Prompt tokens, INCLUDING what server-side tool results fed back into the model.
+     *
+     * <p>
+     * {@code toolUsePromptTokenCount} is documented as "the number of tokens in the results from
+     * tool executions, which are provided back to the model as input", and {@code totalTokenCount}
+     * as the sum of prompt + candidates + toolUse + thoughts — so it is disjoint from
+     * {@code promptTokenCount}, not contained in it. Dropping it left the four components unable to
+     * sum to the total, and since {@code CostCalculationService} re-derives the total from those
+     * components at current rates, the difference was priced at zero on exactly the runs that use
+     * it: code execution, where a result can run to thousands of tokens.
+     *
+     * <p>
+     * Folded in here rather than carried as a sixth {@link LlmUsage} field because that is how the
+     * provider bills it — it is prompt input — so it needs no column, no migration and no pricing
+     * rule, and both the persisted ledger and the dashboard become correct in one place. Read by
+     * BOTH the blocking and streaming paths, which are otherwise two independent mappings of one
+     * contract.
+     */
+    private static int promptTokensOf(GenerateContentResponseUsageMetadata metadata) {
+        return metadata.promptTokenCount().orElse(0) + metadata.toolUsePromptTokenCount().orElse(0);
+    }
+
+    /**
+     * Whether a streamed finish reason ends the turn normally.
+     *
+     * <p>
+     * Reads {@link FinishReason#toString()}, which the SDK defines as the raw wire value, and never
+     * {@code knownEnum()}. This is the single place that decision is made, so the enum-vs-string
+     * mistake cannot be reintroduced at a second call site. Case-insensitive, matching the SDK's
+     * own {@code Ascii.equalsIgnoreCase} lookup. A blank value is treated as benign: an absent
+     * reason already means "still generating" and never reaches here.
+     */
+    private static boolean isBenignFinishReason(FinishReason finishReason) {
+        String raw = finishReason.toString();
+        if (raw == null || raw.isBlank()) {
+            return true;
+        }
+        return BENIGN_FINISH_REASONS.contains(raw.trim().toUpperCase(Locale.ROOT));
     }
 
     /** Builds a human-readable explanation for a response that carries no text. */
@@ -205,6 +301,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // intentionally NOT retried (they cannot be safely resumed). Blocks on the calling thread.
         ResponseStream<GenerateContentResponse> stream = LlmRetry.withRetry("Gemini.generateStream",
             3, () -> client.models.generateContentStream(request.model(), contents, config));
+        StreamOutcome outcome = new StreamOutcome();
         try {
             for (GenerateContentResponse res : stream) {
                 if (Thread.currentThread().isInterrupted()) {
@@ -212,10 +309,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                         streamId);
                     throw new CancellationException("Gemini stream interrupted");
                 }
-                onChunk.accept(parseChunk(res, streamId));
+                onChunk.accept(parseChunk(res, streamId, outcome));
             }
-            log.info("Gemini stream completed successfully for model={}, streamId={}",
-                request.model(), streamId);
         } catch (RuntimeException e) {
             if (Thread.currentThread().isInterrupted() || e instanceof CancellationException
                 || e.getCause() instanceof InterruptedException
@@ -232,6 +327,67 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             } catch (Exception e) {
                 log.warn("Failed to close response stream (streamId={})", streamId, e);
             }
+        }
+
+        // A stream that ends having produced neither text nor a tool call is a failure, not a quiet
+        // success. Only this client can tell: by the time the turn reaches RagService the evidence
+        // is a `thought` part like any other, its parts-keyed guard passes, the loop ends, the
+        // message is persisted `done`, and the UI hides <think> — so the user is shown a blank
+        // message with no error at all. Usage rides the exception because those tokens were billed;
+        // AccountingLlmClient has already observed the same snapshot off the chunks.
+        //
+        // Deliberately NOT re-requested, unlike AzureOpenAiLlmClient. That client's bounded
+        // retry is safe for one precise reason: "empty" there means nothing whatsoever
+        // reached the consumer. That reason does not hold here. Gemini streams its reasoning,
+        // so the <think> block is already on the user's screen, and a second attempt would
+        // replay one underneath it. Recovery, if it is ever wanted, belongs in RagService,
+        // which can re-prompt with the reasoning suppressed.
+        if (outcome.isEmpty()) {
+            log.warn("Gemini produced an empty turn for model={}, streamId={} ({})",
+                request.model(), streamId, outcome.describe());
+            throw new LlmCallFailedException(
+                "Gemini produced no content and no tool calls (" + outcome.describe() + ")", null,
+                outcome.usage);
+        }
+        log.info("Gemini stream completed successfully for model={}, streamId={}", request.model(),
+            streamId);
+    }
+
+    /**
+     * What a stream actually produced, so an empty one can say why instead of being reported as a
+     * success the caller then has to guess about. Mirrors
+     * {@code AzureOpenAiLlmClient.StreamOutcome} — the two clients answer the same question and
+     * must answer it the same way.
+     */
+    private static final class StreamOutcome {
+        private boolean sawContent;
+        private boolean sawToolCall;
+        private String finishReason;
+        private int events;
+        private LlmUsage usage;
+
+        /**
+         * A thought part is deliberately not content. A turn that only thought produced nothing the
+         * caller can use, and that is precisely the condition being detected — counting reasoning
+         * here would make the check unable to fire on the one case it exists for.
+         */
+        boolean isEmpty() {
+            return !sawContent && !sawToolCall;
+        }
+
+        String describe() {
+            StringBuilder out = new StringBuilder();
+            out.append("finishReason=").append(finishReason == null ? "none" : finishReason);
+            out.append(", events=").append(events);
+            if (usage != null) {
+                out.append(", completionTokens=").append(usage.completionTokens())
+                    .append(" of which reasoning=").append(usage.thoughtTokens());
+            }
+            if (finishReason == null) {
+                out.append(" — the stream ended without a finish reason, which means it was cut "
+                    + "short rather than completed");
+            }
+            return out.toString();
         }
     }
 
@@ -252,12 +408,41 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             .map(LlmGatewayInfo::fromHeaders).orElse(null);
     }
 
-    private LlmResponseChunk parseChunk(GenerateContentResponse res, String streamId) {
+    private LlmResponseChunk parseChunk(GenerateContentResponse res, String streamId,
+        StreamOutcome outcome) {
+        outcome.events++;
         StringBuilder contentBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
         List<LlmToolCallDelta> toolDeltas = null;
         LlmUsage usage = null;
         List<LlmPart> chunkParts = new ArrayList<>();
+
+        // Read FIRST, before anything below can throw. A blocked or otherwise abnormal turn still
+        // burned the whole prompt, and the finish-reason check further down is a throw site — with
+        // the read left at the bottom those tokens reached neither a chunk nor the exception, so
+        // AccountingLlmClient's null guard skipped the write and the call left no llm_call_logs
+        // row.
+        // Gemini reports an absolute whole-request snapshot on every event that carries usage,
+        // never a per-event delta, so the last one seen is the total for the call.
+        if (res.usageMetadata().isPresent()) {
+            GenerateContentResponseUsageMetadata metadata = res.usageMetadata().get();
+            usage = new LlmUsage(promptTokensOf(metadata),
+                metadata.candidatesTokenCount().orElse(0), metadata.totalTokenCount().orElse(0),
+                metadata.cachedContentTokenCount().orElse(0),
+                metadata.thoughtsTokenCount().orElse(0));
+            outcome.usage = usage;
+        }
+
+        // A prompt-side block arrives with promptFeedback and NO candidates, so the branch below
+        // skips it entirely and the blockReason — the only thing that says why — is discarded.
+        // RagService still fails the turn descriptively, so this is diagnosis, not correctness:
+        // without it a safety block and a malformed function call are indistinguishable in the log.
+        if (res.candidates().isEmpty() || res.candidates().get().isEmpty()) {
+            res.promptFeedback()
+                .ifPresent(feedback -> log.warn(
+                    "Gemini returned no candidates for streamId={}; promptFeedback={}", streamId,
+                    feedback));
+        }
 
         if (res.candidates().isPresent() && !res.candidates().get().isEmpty()) {
             Candidate candidate = res.candidates().get().get(0);
@@ -340,27 +525,34 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             }
 
             candidate.finishReason().ifPresent(finishReason -> {
-                FinishReason.Known known = finishReason.knownEnum();
-                if (known != FinishReason.Known.STOP && known != FinishReason.Known.MAX_TOKENS
-                    && known != FinishReason.Known.FINISH_REASON_UNSPECIFIED) {
+                // Recorded before the abnormality check so an empty turn can name the reason that
+                // made it look like a success.
+                outcome.finishReason = finishReason.toString();
+                if (!isBenignFinishReason(finishReason)) {
                     log.warn("Gemini stream finished abnormally: finishReason={}, streamId={}",
                         finishReason, streamId);
-                    throw new RuntimeException(
-                        "Gemini stream finished abnormally: finishReason=" + finishReason);
+                    // LlmCallFailedException, not a bare RuntimeException: this turn was billed and
+                    // the usage read above is the only thing that can still report it. A bare
+                    // RuntimeException has nowhere to put the tokens, which is how the ordering
+                    // defect stayed invisible — the type made the loss unrepairable at the throw.
+                    throw new LlmCallFailedException(
+                        "Gemini stream finished abnormally: finishReason=" + finishReason, null,
+                        outcome.usage);
                 }
             });
         }
 
-        if (res.usageMetadata().isPresent()) {
-            GenerateContentResponseUsageMetadata metadata = res.usageMetadata().get();
-            usage = new LlmUsage(metadata.promptTokenCount().orElse(0),
-                metadata.candidatesTokenCount().orElse(0), metadata.totalTokenCount().orElse(0),
-                metadata.cachedContentTokenCount().orElse(0),
-                metadata.thoughtsTokenCount().orElse(0));
-        }
-
         String content = contentBuilder.length() > 0 ? contentBuilder.toString() : null;
         String reasoning = reasoningBuilder.length() > 0 ? reasoningBuilder.toString() : null;
+
+        // Read off the finished values rather than flagged inside the part loop, so executable code
+        // and its result — which append to contentBuilder — count as content by construction.
+        if (content != null) {
+            outcome.sawContent = true;
+        }
+        if (toolDeltas != null && !toolDeltas.isEmpty()) {
+            outcome.sawToolCall = true;
+        }
         return new LlmResponseChunk(content, reasoning, toolDeltas, usage, chunkParts,
             gatewayInfo(res));
     }
@@ -481,9 +673,16 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     }
 
     /**
-     * Resolves the function name for a function-response turn. Gemini matches responses to calls by
-     * NAME (there are no OpenAI-style call ids), so the declared tool name must be used; falling
-     * back to the synthetic tool-call id would never match a declaration.
+     * Resolves the function name for a function-response turn.
+     *
+     * <p>
+     * Gemini pairs a response to its call by NAME and ORDER. {@code FunctionCall.id} does exist in
+     * the SDK — an earlier version of this comment claimed it did not — but the SDK's own round
+     * trip is name-based, its core never reads the field, and only the Live API requires the id. It
+     * is deliberately not propagated: {@code parseChunk} mints a synthetic
+     * {@code call_<name>_<uuid>} when the model supplies none, so forwarding it would assert a
+     * match to a call id the model never issued. The invariant this rests on is that
+     * {@code RagService.executeToolCalls} emits exactly one response per call, in order.
      */
     private String resolveFunctionName(LlmMessage msg) {
         if (msg.toolName() != null && !msg.toolName().isBlank()) {
@@ -537,16 +736,29 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             }
         }
 
-        if (enableThinking && modelSupportsThinking(request.model())) {
-            ThinkingConfig.Builder thinkingBuilder = ThinkingConfig.builder().includeThoughts(true);
-            // Prefer the per-request thinking level; fall back to the client-wide default.
-            String requestedLevel =
-                (request.thinkingLevel() != null && !request.thinkingLevel().isBlank())
-                    ? request.thinkingLevel()
-                    : this.thinkingLevel;
-            ThinkingLevel.Known level = parseThinkingLevel(requestedLevel);
-            if (level != null) {
-                thinkingBuilder.thinkingLevel(level);
+        if (modelSupportsThinking(request.model())) {
+            // A thinkingConfig is sent either way, because "send nothing" does not mean "do not
+            // think" — it means "use the model's own default", which on a thinking model is to
+            // think. The three fields are independent: includeThoughts governs whether the thoughts
+            // come BACK, thinkingBudget is the only lever that actually turns thinking off, and
+            // thinkingLevel sets how hard. Gating the whole object on the flag therefore made
+            // enable-thinking=false a no-op that ALSO discarded the configured level, so a
+            // summarize
+            // or KG-extract call asking for `low` could end up reasoning harder, not less.
+            ThinkingConfig.Builder thinkingBuilder =
+                ThinkingConfig.builder().includeThoughts(enableThinking);
+            if (enableThinking) {
+                // Prefer the per-request thinking level; fall back to the client-wide default.
+                String requestedLevel =
+                    (request.thinkingLevel() != null && !request.thinkingLevel().isBlank())
+                        ? request.thinkingLevel()
+                        : this.thinkingLevel;
+                ThinkingLevel.Known level = parseThinkingLevel(requestedLevel);
+                if (level != null) {
+                    thinkingBuilder.thinkingLevel(level);
+                }
+            } else {
+                thinkingBuilder.thinkingBudget(0);
             }
             builder.thinkingConfig(thinkingBuilder.build());
         }

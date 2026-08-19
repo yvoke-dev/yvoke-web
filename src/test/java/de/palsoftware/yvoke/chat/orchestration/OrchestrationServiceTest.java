@@ -75,6 +75,21 @@ public class OrchestrationServiceTest {
 
     /** Extra JSON fields the scripted reviewer appends to its verdict, e.g. citation_fixes. */
     private String rejectionExtras = "";
+
+    /** Verbatim text the stubbed orchestrator "emits", so a test can include a preamble. */
+    private String orchestratorRawAnswer = null;
+    /** What the orchestrator answers on a REVISING turn, when the first draft is not enough. */
+    private String orchestratorRevisedAnswer = null;
+
+    /**
+     * When true the stubbed orchestrator delegates only on its FIRST turn, so a revision round adds
+     * no evidence and the delta is empty — which is what live citation-only revisions do (the
+     * playbook forbids delegating for them) and what makes rounds 2+ carry no source text.
+     */
+    private boolean specialistOnlyOnFirstTurn = false;
+
+    /** When set, the reviewer turn throws this instead of returning a verdict. */
+    private RuntimeException reviewerFailure = null;
     private boolean orchestratorClarifies = false;
     private String specialistClarifyingQuestion = null; // when set, the specialist asks the user
     private final AtomicInteger reviewCount = new AtomicInteger(0);
@@ -141,8 +156,11 @@ public class OrchestrationServiceTest {
                 return result("", "Which version?", List.of("9.3.1", "10.0"));
             }
             // Delegate to one specialist, then synthesise.
+            boolean revising =
+                req.query() != null && req.query().contains("Revise the answer you just gave");
             contextInsideOrchestratorBeforeDelegation.set(LlmCallContextHolder.get());
-            for (ToolCallback tc : req.extraTools()) {
+            for (ToolCallback tc : (specialistOnlyOnFirstTurn && revising) ? List.<ToolCallback>of()
+                : req.extraTools()) {
                 specialistToolResults
                     .add(tc.call("{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}"));
             }
@@ -152,7 +170,15 @@ public class OrchestrationServiceTest {
             // Cites a chunk the specialist actually retrieved. A random id here would make the
             // draft cite nothing the evidence contains, so cite-scoping would withhold everything
             // and the reviewer assertions would be testing the fallback rather than the feature.
-            return result("final orchestrated answer [chunk_id=" + CITED_CHUNK + "]", null, null);
+            if (revising && orchestratorRevisedAnswer != null) {
+                return result(orchestratorRevisedAnswer, null, null);
+            }
+            return result(orchestratorRawAnswer != null ? orchestratorRawAnswer
+                : "final orchestrated answer [chunk_id=" + CITED_CHUNK + "]", null, null);
+        }
+
+        if ("submit_review".equals(extraName) && reviewerFailure != null) {
+            throw reviewerFailure;
         }
 
         if ("submit_review".equals(extraName)) {
@@ -579,10 +605,80 @@ public class OrchestrationServiceTest {
 
         service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
 
-        assertThat(capturedTurns("submit_review")).hasSize(2).allSatisfy(r -> {
-            assertThat(r.priorMessages()).as("no seeded transcript").isNull();
-            assertThat(r.history()).as("and no chat history either").isNull();
-        });
+        List<AgenticRequest> reviews = capturedTurns("submit_review");
+        assertThat(reviews).hasSize(2)
+            .allSatisfy(r -> assertThat(r.history())
+                .as("never any chat history — the reviewer judges an answer, not a conversation")
+                .isNull());
+        assertThat(reviews.get(0).priorMessages()).as("the first review starts the conversation")
+            .isNull();
+        // The discriminating check. The reviewer now DOES carry a transcript across rounds, so
+        // "priorMessages is null" no longer expresses the property — whose transcript it is does.
+        // The orchestrator's chain ends with its draft; the reviewer's ends with its own verdict
+        // turn, and seeding the wrong one is exactly what this test exists to catch.
+        assertThat(reviews.get(1).priorMessages()).isNotNull().last(as(type(LlmMessage.class)))
+            .satisfies(m -> assertThat(m.content())
+                .as("the reviewer continues ITS OWN conversation, not the orchestrator's")
+                .isEqualTo("review done"));
+    }
+
+    /**
+     * The reviewer keeps one conversation for the whole run, for the same reason the orchestrator
+     * does — and for one more the orchestrator does not have.
+     *
+     * <p>
+     * Measured on run {@code 049d7a97}: round 1 asked for the supervisor/approver distinction to be
+     * "anchored directly to [689234f4] and [ac0248a2]"; round 2, having no memory of saying so,
+     * objected that [689234f4] must "not be used to support the exception-approver role
+     * distinction". The orchestrator did exactly what it was told and was rejected for it, and the
+     * run then ran out of rounds and delivered flagged. A reviewer that can read its own previous
+     * objection cannot issue that pair.
+     */
+    @Test
+    public void theReviewerContinuesItsOwnConversationAcrossRounds() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        List<AgenticRequest> reviews = capturedTurns("submit_review");
+        assertThat(reviews).hasSize(2);
+        assertThat(reviews.get(1).priorMessages())
+            .as("round 2 must continue the transcript that produced round 1's verdict").isNotNull()
+            .isNotEmpty();
+        assertThat(reviews.get(1).query())
+            .as("and the new turn carries only what is new — the revised answer")
+            .contains("Revised candidate answer");
+    }
+
+    /**
+     * The evidence a follow-up carries is a DELTA, and the citation set is what moves it.
+     *
+     * <p>
+     * A revision may cite a source the first draft did not, and that body has never been sent — so
+     * withholding it would leave the reviewer judging a citation against text it cannot see, which
+     * is the failure cite-scoping exists to prevent. A source already sent must NOT be repeated: it
+     * is still in this conversation, and re-sending it is what makes the whole prompt uncacheable
+     * (measured: the reviewer cached at 8-16% where the append-only agentic roles reach 71%).
+     */
+    @Test
+    public void aReviewerFollowUpSendsOnlyTheSourcesItHasNotSeenYet() {
+        rejectFirstNReviews = 1;
+        // The revision keeps its original citation and adds one the first draft never cited.
+        orchestratorRevisedAnswer = "revised answer [chunk_id=" + CITED_CHUNK + "] and now also "
+            + "[chunk_id=" + UNCITED_CHUNK + "]";
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        List<AgenticRequest> reviews = capturedTurns("submit_review");
+        assertThat(reviews.get(0).query()).as("round 1 shows the body of the source it cites")
+            .contains(CITED_BODY).doesNotContain(UNCITED_BODY);
+
+        String followUp = reviews.get(1).query();
+        assertThat(followUp).as("the newly cited source has never been sent, so it must travel now")
+            .contains(UNCITED_BODY);
+        assertThat(followUp)
+            .as("the already-sent body is still in this conversation; repeating it is the cost")
+            .doesNotContain(CITED_BODY);
     }
 
     /**
@@ -641,6 +737,360 @@ public class OrchestrationServiceTest {
      * in an earlier round is already in the transcript, so re-sending it would duplicate the
      * largest block in the prompt once per round.
      */
+    /**
+     * The revision prompt must state that the whole response IS the answer.
+     *
+     * <p>
+     * Without it the task reads as a request to a collaborator — "revise the answer you just gave"
+     * — and a collaborator replies like one before producing the artifact. Observed in 2 of 2 live
+     * orchestrated runs, as the FIRST characters the user received: <em>"Simple fix — the
+     * visibility note belongs to chunk [9], not [8]. I'll add [9] to that sentence."</em> and
+     * <em>"Now I have the correct chunk_ids. Let me also verify…"</em>, each followed by
+     * {@code ---} and then the real answer. Nothing downstream removes it:
+     * {@code extractAnswerText} concatenates every text part of the final assistant message
+     * verbatim, and the {@code stripThinkAndTools} beside it runs only on the fallback path and
+     * only strips think/tool markup.
+     *
+     * <p>
+     * The cost is not only cosmetic. One run was approved with a preamble in place while the other
+     * was rejected for it, and the rejected one then spent rounds 2 and 3 — orchestrator +
+     * reviewer, no specialist, ~120,000 tokens each — failing to converge because the reviewer
+     * correctly refuses an answer carrying a leftover instruction and the orchestrator kept
+     * re-emitting one.
+     *
+     * <p>
+     * This is pinned in the PROMPT rather than fixed by stripping the preamble out of the answer.
+     * An answer may legitimately open with a sentence before its first heading, and CLAUDE.md § 6
+     * records three separate incidents here where a deletion heuristic destroyed real content
+     * ({@code CitationVerifier} removing ordinary words, {@code normalizeSpacing} shredding a
+     * table, {@code wrapToolCalls} hiding an answer). Deletion must be conservative.
+     */
+    /**
+     * Re-calling a specialist continues its conversation instead of starting a new one.
+     *
+     * <p>
+     * The specialist is the only agent that ever holds the retrieved chunk TEXT — its tool results
+     * live in its own nested run, and the orchestrator receives only its prose. Discarding that
+     * session after every call meant a follow-up ("which of your sources actually says X?") could
+     * only be answered by searching the corpus again from nothing, at the price of a fresh agentic
+     * loop, when the answer was already sitting in a transcript we threw away.
+     *
+     * <p>
+     * Two things this must get right, both from § 6. The playbook is prepended to the QUERY on a
+     * first call, so a resumed call must send the sub-question alone or the playbook is duplicated
+     * inside the conversation. And {@code priorMessages} is taken verbatim and is cumulative, so
+     * the step trace stores only the delta ({@code messagesAddedBy}) or it grows quadratically.
+     */
+    @Test
+    public void reCallingASpecialistContinuesItsSessionRatherThanStartingOver() {
+        rejectFirstNReviews = 1; // forces a second orchestrator turn, hence a second specialist
+                                 // call
+
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        List<AgenticRequest> specialistTurns = requests.getAllValues().stream()
+            .filter(q -> q.extraTools() == null || q.extraTools().isEmpty())
+            .filter(q -> q.query() != null && q.query().contains("sub-question")).toList();
+
+        assertThat(specialistTurns).as("the fixture calls spec-a on every orchestrator turn")
+            .hasSizeGreaterThan(1);
+        assertThat(specialistTurns.get(0).priorMessages())
+            .as("the first call has no session to continue").isNull();
+        assertThat(specialistTurns.get(1).priorMessages())
+            .as("the second call must continue the first, or the chunk text it retrieved is lost")
+            .isNotEmpty();
+        assertThat(specialistTurns.get(1).query())
+            .as("the playbook is already in that conversation — re-prepending it duplicates it")
+            .doesNotContain("TEMPLATE for spec-a").isEqualTo("sub-question");
+    }
+
+    /**
+     * ...and only the sources the objection names.
+     *
+     * <p>
+     * Scoping to everything the ANSWER cites was the first version, and it was too expensive to
+     * keep: 18 full chunk bodies went back on every empty-delta round, measured at 217,041 and
+     * 134,984 prompt tokens for two orchestrator turns that had cost ~50,000 each before. The
+     * reviewer names the handful of ids in dispute; those are the only ones the turn has to
+     * re-read.
+     *
+     * <p>
+     * The discriminator here is an id the answer does NOT cite: scoped-to-the-answer would withhold
+     * it, scoped-to-the-objection must include it.
+     */
+    @Test
+    public void theRevisionCarriesOnlyTheSourcesTheObjectionNames() {
+        rejectFirstNReviews = 2;
+        specialistOnlyOnFirstTurn = true;
+        rejectionExtras = ",\"citation_fixes\":[\"the claim should cite " + UNCITED_CHUNK + "\"]";
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        List<String> revisions = requests.getAllValues().stream().map(AgenticRequest::query)
+            .filter(q -> q != null && q.contains("Revise the answer you just gave")).toList();
+
+        assertThat(revisions.get(1))
+            .as("the objection names this id, so its text must travel with the objection")
+            .contains(UNCITED_BODY);
+    }
+
+    /**
+     * A later revision round must still be able to SEE the sources it is being asked to re-cite.
+     *
+     * <p>
+     * Measured on a live run: round 1's prompt was 155,805 chars carrying 181 chunk blocks, while
+     * rounds 2 and 3 were 2,923 and 2,702 chars — the reviewer's complaint and nothing else.
+     * Evidence travels as a delta (§ 6: the orchestrator's message list is cumulative, so
+     * re-sending it would duplicate the largest block in the prompt every round), and by round 2
+     * the delta is empty. So the orchestrator was asked "this id does not support that claim" with
+     * the text ~150k tokens back in its transcript, and its mis-citation count went UP: 4 → 4 → 5.
+     * It was guessing.
+     *
+     * <p>
+     * The cited sources are therefore re-sent when the delta is empty — the same material the
+     * reviewer judged, next to the objection about it. This does NOT cite-scope the reviser in
+     * general, which § 6 rejects for a good reason: an unsupported claim needs text the draft does
+     * not yet cite, and that arrives in the delta, which is left exactly as it was.
+     */
+    @Test
+    public void aLaterRevisionRoundIsShownTheSourcesItIsBeingAskedToReCite() {
+        rejectFirstNReviews = 2;
+        specialistOnlyOnFirstTurn = true;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        List<String> revisions = requests.getAllValues().stream().map(AgenticRequest::query)
+            .filter(q -> q != null && q.contains("Revise the answer you just gave")).toList();
+
+        assertThat(revisions).as("two rejections means two revisions").hasSize(2);
+        assertThat(revisions.get(1))
+            .as("the second revision's evidence delta is empty, so without this it is asked to "
+                + "repair a citation with no source text in front of it")
+            .contains(CITED_BODY);
+    }
+
+    /**
+     * The orchestrator must be able to check its own ids before submitting.
+     *
+     * <p>
+     * Measured: a run delivered `[6287477f-6821-4744-afe4-126b2691bf19]`, which resolves to zero
+     * rows in {@code chunks}. The reviewer caught it — a full round later, at ~50k tokens — because
+     * {@code verify_citations} was held only by the reviewer and the orchestrator had no way to
+     * ask. A fabricated id is the one citation defect that is mechanically checkable, so paying a
+     * review round to find it is the expensive way to learn it.
+     *
+     * <p>
+     * Note what this does NOT fix: {@code verify_citations} loads no chunk text (§ 6), so it proves
+     * an id EXISTS and says nothing about whether it supports the claim it sits on.
+     * Citation-to-claim mismatch stays the reviewer's job.
+     */
+    @Test
+    public void theOrchestratorCanVerifyItsOwnCitationsBeforeSubmitting() {
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        AgenticRequest orchestratorTurn = requests.getAllValues().stream()
+            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
+                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
+            .findFirst().orElseThrow();
+
+        assertThat(orchestratorTurn.allowedTools()).as(
+            "without it a hallucinated id survives until the reviewer finds it, costing a round")
+            .contains("verify_citations");
+    }
+
+    /**
+     * A reviewer that FAILS must not destroy an answer that already exists.
+     *
+     * <p>
+     * Seen live: {@code gpt-5.4-mini} returned four tokens and stopped without calling
+     * {@code submit_review} on the last round, so the run ended {@code status=error} and the user
+     * received <i>"[System Error: the assistant could not complete this response.]"</i> — while the
+     * orchestrator's round-3 output held the finished answer in full. Nine of ten steps had
+     * succeeded and 222,887 tokens had been spent.
+     *
+     * <p>
+     * The asymmetry is the argument: a reviewer that REJECTS through the final round already
+     * delivers the answer flagged, and a reviewer that errors is strictly <em>less</em> informative
+     * than one that rejects — it has said nothing about the answer at all — yet was treated far
+     * more harshly. The failure is still recorded on the run, so the admin trace does not lose it.
+     */
+    @Test
+    public void aReviewerThatFailsStillDeliversTheAnswerItNeverJudged() {
+        reviewerFailure = new IllegalStateException("Azure produced no content and no tool calls");
+
+        OrchestrationService.OrchestrationResult r =
+            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        assertThat(r.content()).as("the answer existed; a broken check must not delete it")
+            .contains("final orchestrated answer");
+        assertThat(r.content())
+            .as("and the user must be told it was never checked — weaker wording than a rejection "
+                + "would understate the risk, since nothing validated this at all")
+            .contains("could not be checked");
+        assertThat(r.status()).isEqualTo("delivered_flagged");
+
+        ArgumentCaptor<String> err = ArgumentCaptor.forClass(String.class);
+        verify(runRepository).finish(any(), any(), eq("delivered_flagged"), anyInt(), any(),
+            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), err.capture());
+        assertThat(err.getValue()).as("the trace must still show what broke, or this hides a fault")
+            .contains("Azure produced no content");
+    }
+
+    /**
+     * The other half: with no draft yet there is nothing to rescue, so the failure must still
+     * surface. Swallowing it would turn a broken run into a silent empty answer.
+     */
+    @Test
+    public void aReviewerFailureWithNoDraftYetStillFailsTheRun() {
+        reviewerFailure = new IllegalStateException("reviewer died");
+        orchestratorRawAnswer = "";
+
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM"))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
+    /**
+     * The marker contract belongs to the ORCHESTRATOR ROLE, not to the revision step, so it is
+     * stated once in the system prompt every orchestrator turn receives — including the first
+     * draft, which no code-side task string reaches (its query is the user's bare question).
+     *
+     * <p>
+     * It is deliberately here rather than in the {@code oim-orchestrator} playbook. The extraction
+     * that consumes the marker lives in this class, and a playbook is a database row edited through
+     * the admin UI and imported from a separate repo: if the only thing asking for the marker were
+     * that row, editing it would silently disable the extraction — which fails OPEN, passing the
+     * preamble straight through, with nothing to notice. CLAUDE.md § 6 already records this
+     * reasoning for the reviewer instruction: the binding version of a rule the code depends on
+     * goes in the rendered text, where a test can pin it.
+     */
+    @Test
+    public void everyOrchestratorTurnIncludingTheFirstDraftIsGivenTheMarkerContract() {
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        List<AgenticRequest> orchestratorTurns = requests.getAllValues().stream()
+            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
+                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
+            .toList();
+
+        assertThat(orchestratorTurns).isNotEmpty();
+        assertThat(orchestratorTurns.get(0).systemPromptOverride())
+            .as("the FIRST draft must carry it too — an unrevised answer leaks otherwise, which is "
+                + "exactly the shape seen in production")
+            .contains(OrchestrationService.ANSWER_MARKER);
+    }
+
+    /**
+     * ...and it is stated exactly once. The revision task used to repeat it, which is two copies of
+     * one rule kept in step by hand — the failure mode R5 had just finished removing from the
+     * review-round limit.
+     */
+    @Test
+    public void theMarkerContractIsNotRepeatedInTheRevisionTask() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        String revision = requests.getAllValues().stream().map(AgenticRequest::query)
+            .filter(q -> q != null && q.contains("Revise the answer you just gave")).findFirst()
+            .orElseThrow(() -> new AssertionError("no revision turn was issued"));
+
+        assertThat(revision).as("the role-level contract already covers this turn")
+            .doesNotContain(OrchestrationService.ANSWER_MARKER);
+    }
+
+    /**
+     * The marker contract. A prompt alone cannot solve this: measured on the two providers, the
+     * preamble arrives by two different routes. Gemini separates reasoning properly (45,508 thought
+     * tokens over 630 prod calls) and still writes a chosen lead-in — *"The reviewer approved. Here
+     * is the final answer."* — into the answer itself. Azure chat completions emits no reasoning
+     * text at all (its own client javadoc says so, and this deployment reports 0 reasoning tokens),
+     * so the model's chain-of-thought arrives AS content and is not something it is choosing to
+     * write. Only the second is beyond a prompt's reach, so extraction needs a boundary the model
+     * marks rather than one we infer.
+     */
+    @Test
+    public void aPreambleBeforeTheAnswerMarkerNeverReachesTheUser() {
+        orchestratorRawAnswer = "I need to fix the unsupported claims. Let me re-check the "
+            + "evidence.\n\n" + OrchestrationService.ANSWER_MARKER
+            + "\n\n## The real answer [chunk_id=" + CITED_CHUNK + "]";
+
+        OrchestrationService.OrchestrationResult r =
+            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        assertThat(r.content()).as("the model's own commentary must not be delivered as the answer")
+            .doesNotContain("I need to fix the unsupported claims")
+            .doesNotContain(OrchestrationService.ANSWER_MARKER).startsWith("## The real answer");
+    }
+
+    /**
+     * The safety property, and the reason this is a marker rather than a stripper: a model that
+     * ignores the marker must cost a leak, never a truncated answer. CLAUDE.md § 6 records three
+     * separate incidents in this codebase where a deletion heuristic destroyed real content, so the
+     * absent-marker path returns the text untouched — including any leading prose, which may be a
+     * legitimate opening sentence rather than a preamble. We cannot tell those apart, so we do not
+     * try.
+     */
+    @Test
+    public void withNoMarkerTheAnswerIsPassedThroughUntouched() {
+        orchestratorRawAnswer =
+            "A legitimate opening sentence before any heading.\n\n## Body [chunk_id=" + CITED_CHUNK
+                + "]";
+
+        OrchestrationService.OrchestrationResult r =
+            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        assertThat(r.content()).as("no marker means no judgement call — nothing may be removed")
+            .startsWith("A legitimate opening sentence before any heading.");
+    }
+
+    /**
+     * A marker with nothing after it would otherwise deliver an empty answer — the one way this
+     * mechanism could lose the entire response. It falls back to the full text, with the marker
+     * itself removed so the control token never reaches the reader either way.
+     */
+    @Test
+    public void aTrailingMarkerFallsBackToTheWholeTextRatherThanDeliveringNothing() {
+        orchestratorRawAnswer = "## Everything worth saying [chunk_id=" + CITED_CHUNK + "]\n\n"
+            + OrchestrationService.ANSWER_MARKER + "\n  ";
+
+        OrchestrationService.OrchestrationResult r =
+            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+
+        assertThat(r.content()).as("an empty tail must never win over a real answer")
+            .contains("## Everything worth saying")
+            .doesNotContain(OrchestrationService.ANSWER_MARKER);
+    }
+
+    @Test
+    public void aRevisionIsToldItsWholeResponseIsTheAnswerNotAReplyAboutIt() {
+        rejectFirstNReviews = 1;
+
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+
+        ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
+        verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
+        AgenticRequest revisionTurn = requests.getAllValues().stream()
+            .filter(q -> q.query() != null && q.query().contains("Revise the answer you just gave"))
+            .findFirst().orElseThrow(() -> new AssertionError("no revision turn was issued"));
+
+        assertThat(revisionTurn.systemPromptOverride())
+            .as("a REVISING turn must carry the contract too — it is the turn that leaked in "
+                + "every observed run, so excluding it would restore the bug")
+            .contains(OrchestrationService.ANSWER_MARKER);
+    }
+
     @Test
     public void aRevisionCarriesTheEvidenceSoItNeedNotDelegateAgain() {
         rejectFirstNReviews = 1;
@@ -681,6 +1131,15 @@ public class OrchestrationServiceTest {
      * blocks make an attribution error unnoticeable. Nothing else asserts on the reviewer's task
      * text at all — the existing rejection test checks only the status, the round count and the
      * number of reviewer steps, all of which stay exactly the same when the evidence is dropped.
+     *
+     * <p>
+     * <b>Where round 1's evidence LIVES changed, and the invariant did not.</b> The reviewer now
+     * resumes its own conversation instead of being rebuilt, so round 1's evidence reaches round 2
+     * through the transcript rather than by being re-rendered into round 2's message. This test
+     * therefore asserts the same property against the new mechanism — round 2 still has everything
+     * round 1 had — and additionally that the message itself does NOT repeat it, because repeating
+     * it is what used to make this prompt uncacheable. Dropping the evidence entirely still fails
+     * here: round 2 would have neither a transcript to inherit nor text to read.
      */
     @Test
     public void evidenceAccumulatesAcrossReviewRoundsWithPerSpecialistAttribution() {
@@ -710,29 +1169,27 @@ public class OrchestrationServiceTest {
         String block =
             "[spec-a · query_json_objects]\n" + "query_json_objects rows: [from 9.2.2 to 9.3]";
 
-        assertThat(reviews.get(0).query().split(Pattern.quote(block), -1).length - 1)
+        String round1 = reviews.get(0).query();
+        assertThat(round1.split(Pattern.quote(block), -1).length - 1)
             .as("round 1 harvested one attributed specialist tool result").isEqualTo(1);
-        assertThat(reviews.get(1).query().split(Pattern.quote(block), -1).length - 1)
-            .as("round 2 must still see round 1's evidence alongside its own, not instead of it")
-            .isEqualTo(2);
-
-        // The same invariant for CHUNK evidence, where identity is the id rather than the text.
-        // Stating it as "the block appears literally twice" would pin the duplication itself as the
-        // contract — which is what de-duplication exists to remove — so the accumulation is
-        // asserted
-        // on the attribution and the ids, and the saving on the body.
-        String round2 = reviews.get(1).query();
-        assertThat(count(round2, "[spec-a · search_corpus]"))
-            .as("both rounds' search evidence is present and still attributed").isEqualTo(2);
         // The two-space prefix is the chunk HEADER form. A bare "id=" would also match the draft's
         // own "[chunk_id=…]" citation, which the reviewer's prompt quotes back under "## Candidate
         // answer" — counting that as evidence would make this assertion pass for the wrong reason.
-        assertThat(count(round2, "  id=" + CITED_CHUNK))
-            .as("...each keeping its own header, so no attribution is lost to de-duplication")
-            .isEqualTo(2);
-        assertThat(count(round2, CITED_BODY)).as("...but the text itself travels once")
+        assertThat(count(round1, "  id=" + CITED_CHUNK)).as("with the cited chunk's header")
             .isEqualTo(1);
-        assertThat(round2).contains(ChunkBlocks.SHOWN_ABOVE);
+        assertThat(count(round1, CITED_BODY)).as("and its text").isEqualTo(1);
+
+        // Round 2 INHERITS round 1 rather than repeating it. The transcript is the carrier, so the
+        // accumulation is asserted there; re-rendering the same evidence into the message is the
+        // cost this change removes, and asserting its absence is what stops it coming back.
+        String round2 = reviews.get(1).query();
+        assertThat(reviews.get(1).priorMessages())
+            .as("round 2 continues the conversation that already holds round 1's evidence")
+            .isNotNull().isNotEmpty();
+        assertThat(round2.split(Pattern.quote(block), -1).length - 1)
+            .as("the json projection was already sent; re-sending it is pure duplication").isZero();
+        assertThat(count(round2, CITED_BODY))
+            .as("and so was this body — it is above, in the same conversation").isZero();
     }
 
     private static int count(String haystack, String needle) {

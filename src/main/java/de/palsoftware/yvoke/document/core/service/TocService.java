@@ -58,36 +58,59 @@ public class TocService {
             : documentRepository.findByManual(manualSubstring, collection, tags))
             .orElseThrow(() -> new NoSuchElementException("(no manual matching '" + manualSubstring
                 + "'" + " in collection " + collection + ")"));
-        return getTocForDocument(doc);
+        return getTocForDocument(doc, null);
     }
 
     public List<TocNode> getToc(UUID docId) {
+        return getToc(docId, null);
+    }
+
+    /**
+     * The table of contents for the two levels below {@code scope}, or for the top two levels of
+     * the document when {@code scope} is null or empty.
+     *
+     * <p>
+     * Without a scope the depth cap is absolute, so a section at depth 3 is simply invisible and
+     * the only way to see inside a depth-2 section is to read the whole thing. Scoping moves the
+     * two-level window down the tree instead, which is what lets an agent navigate to the passage
+     * it wants rather than paying for the chapter that contains it.
+     */
+    public List<TocNode> getToc(UUID docId, @Nullable List<String> scope) {
         if (docId == null) {
             throw new IllegalArgumentException("Document ID cannot be null.");
         }
         DocumentRow doc = documentRepository.findById(docId).orElseThrow(
             () -> new NoSuchElementException("(no document found for id '" + docId + "')"));
-        return getTocForDocument(doc);
+        return getTocForDocument(doc, scope);
     }
 
-    private List<TocNode> getTocForDocument(DocumentRow doc) {
+    private List<TocNode> getTocForDocument(DocumentRow doc, @Nullable List<String> scope) {
         UUID docId = doc.id();
 
         // 2. Fetch the hierarchy columns of all chunks (the TOC never needs chunk text)
         List<ChunkPathRow> chunks = chunkRepository.findChunkPathsByDocumentId(docId);
 
+        // The depth-2 window is relative to the scope: unscoped it is the document's top two
+        // levels, scoped it is the two levels below the given path. Segments are compared with
+        // HierarchyUtils.normalizeSegment, the same comparator SectionService resolves a
+        // heading_path with, so a path copied out of one tool resolves in the other.
+        List<String> scopeNormalized = (scope == null) ? List.of()
+            : scope.stream().map(HierarchyUtils::normalizeSegment).toList();
+        int base = scopeNormalized.size();
+
         // 3. Build TOC tree of nodes
         Map<List<String>, TocNodeBuilder> nodes = new HashMap<>();
         for (ChunkPathRow chunk : chunks) {
             List<String> full = HierarchyUtils.getChunkFullPath(chunk);
-            if (full.isEmpty()) {
+            if (full.size() <= base) {
+                // Nothing below the scope on this branch (and, unscoped, an empty path).
                 continue;
             }
 
             int so = chunk.sortOrder() != null ? chunk.sortOrder() : Integer.MAX_VALUE;
 
-            // Pre-normalize path segments up to depth 2 to avoid O(D^2) normalizations
-            int limit = Math.min(2, full.size());
+            // Pre-normalize only as far as the window reaches, to avoid O(D^2) normalizations.
+            int limit = Math.min(base + 2, full.size());
             List<String> fullNormalized = new ArrayList<>(limit);
             List<String> fullDisplay = new ArrayList<>(limit);
             for (int i = 0; i < limit; i++) {
@@ -96,7 +119,13 @@ public class TocService {
                 fullDisplay.add(Normalizer.normalize(seg, Normalizer.Form.NFKC).trim());
             }
 
-            for (int i = 1; i <= limit; i++) {
+            if (!fullNormalized.subList(0, base).equals(scopeNormalized)) {
+                continue;
+            }
+
+            // Paths stay ABSOLUTE below the scope: the agent copies one straight into
+            // get_section(heading_path=...), and a relative path would not resolve there.
+            for (int i = base + 1; i <= limit; i++) {
                 List<String> key = new ArrayList<>(fullNormalized.subList(0, i));
                 List<String> displayPath = new ArrayList<>(fullDisplay.subList(0, i));
 
@@ -104,11 +133,17 @@ public class TocService {
                     nodes.computeIfAbsent(key, k -> new TocNodeBuilder(displayPath, so));
                 builder.minSortOrder = Math.min(builder.minSortOrder, so);
                 builder.subtreeChunkCount++;
+                builder.subtreeCharCount += chunk.textLength();
             }
         }
 
         if (nodes.isEmpty()) {
-            throw new NoSuchElementException("(no sections found for this manual)");
+            // Naming the scope matters: an agent that mistyped a heading_path must not be able to
+            // read this as "the document is empty", and must never be handed the whole-document
+            // TOC as a consolation, which would answer a question it did not ask.
+            throw new NoSuchElementException(base == 0 ? "(no sections found for this manual)"
+                : "(no sections found under '" + String.join(" > ", scope)
+                    + "' — check the path against the parent table of contents)");
         }
 
         // 4. Sort selected nodes by minSortOrder ascending
@@ -142,7 +177,8 @@ public class TocService {
             List<String> nodeNorm =
                 nd.path.stream().map(HierarchyUtils::normalizeSegment).collect(Collectors.toList());
             String summary = summaryByNormalizedPath.get(nodeNorm);
-            result.add(new TocNode(nd.path, nd.minSortOrder, nd.subtreeChunkCount, summary));
+            result.add(new TocNode(nd.path, nd.minSortOrder, nd.subtreeChunkCount,
+                nd.subtreeCharCount, summary));
         }
         return result;
     }
@@ -151,11 +187,13 @@ public class TocService {
         final List<String> path;
         int minSortOrder;
         int subtreeChunkCount;
+        int subtreeCharCount;
 
         TocNodeBuilder(List<String> path, int minSortOrder) {
             this.path = path;
             this.minSortOrder = minSortOrder;
             this.subtreeChunkCount = 0;
+            this.subtreeCharCount = 0;
         }
     }
 }

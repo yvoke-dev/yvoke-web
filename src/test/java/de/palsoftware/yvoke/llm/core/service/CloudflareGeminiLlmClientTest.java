@@ -194,21 +194,29 @@ class CloudflareGeminiLlmClientTest {
 
             OkHttpClient httpClient = httpClientOf(client);
 
-            assertEquals(300_000, httpClient.callTimeoutMillis(),
-                "callTimeout must match HttpOptions.timeout(300_000)");
-            assertEquals(0, httpClient.connectTimeoutMillis(),
-                "connectTimeout must be unbounded, as the SDK configures it");
-            assertEquals(0, httpClient.readTimeoutMillis(),
-                "readTimeout must be unbounded — SSE streams have long gaps between tokens");
+            assertEquals(0, httpClient.callTimeoutMillis(),
+                "a callTimeout spans the whole call INCLUDING draining the SSE body, so any value "
+                    + "here is a hard cap on how long an answer may take — the one bound an LLM "
+                    + "stream must not have");
+            assertEquals(10_000, httpClient.connectTimeoutMillis(),
+                "TCP/TLS only; a hung connect must not wait for the read budget");
+            assertEquals(300_000, httpClient.readTimeoutMillis(),
+                "the socket read timeout is the liveness bound: it covers the wait for response "
+                    + "headers AND every later gap between tokens, which is exactly the pair an "
+                    + "LLM call needs");
             assertEquals(0, httpClient.writeTimeoutMillis(),
-                "writeTimeout must be unbounded, as the SDK configures it");
+                "a ~600k-token prompt must not trip a per-chunk upload timer");
         }
     }
 
     /**
-     * Control for {@link #testCloudflareCustomHttpClientPreservesSdkTimeouts()}: without a custom
-     * HTTP client the SDK applies the timeouts itself. Pins the behaviour the Cloudflare path has
-     * to reproduce, and fails loudly if an SDK upgrade changes it.
+     * The plain path must land on the SAME shape as the Cloudflare one.
+     *
+     * <p>
+     * It previously did not, and could not: {@code HttpOptions.timeout()} is applied only on the
+     * transport the SDK builds itself, so one setting produced a wall-clock generation cap here and
+     * nothing at all on the Cloudflare path. Both now take their configuration from
+     * {@code GeminiLlmClient#httpClientBuilder}, so a divergence is not expressible.
      */
     @Test
     void testPlainGeminiClientGetsSdkTimeouts() throws Exception {
@@ -217,9 +225,9 @@ class CloudflareGeminiLlmClientTest {
 
             OkHttpClient httpClient = httpClientOf(client);
 
-            assertEquals(300_000, httpClient.callTimeoutMillis());
-            assertEquals(0, httpClient.connectTimeoutMillis());
-            assertEquals(0, httpClient.readTimeoutMillis());
+            assertEquals(0, httpClient.callTimeoutMillis());
+            assertEquals(10_000, httpClient.connectTimeoutMillis());
+            assertEquals(300_000, httpClient.readTimeoutMillis());
             assertEquals(0, httpClient.writeTimeoutMillis());
         }
     }

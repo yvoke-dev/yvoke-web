@@ -14,16 +14,23 @@ import com.azure.core.http.HttpRequest;
 import com.azure.core.http.HttpResponse;
 import com.google.genai.errors.ApiException;
 import com.google.genai.errors.GenAiIOException;
+import com.openai.core.JsonValue;
+import com.openai.core.http.Headers;
+import com.openai.errors.OpenAIServiceException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.net.http.HttpTimeoutException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,6 +56,56 @@ class LlmRetryTest {
         assertFalse(LlmRetry.isTransient(new ApiException(403, "PERMISSION_DENIED", "Forbidden")));
         assertFalse(LlmRetry.isTransient(new ApiException(404, "NOT_FOUND", "Not Found")));
         assertFalse(LlmRetry.isTransient(new ApiException(409, "ALREADY_EXISTS", "Conflict")));
+    }
+
+    @Test
+    void anOpenAiSdkStatusIsClassifiedByCodeRatherThanByItsMessage() {
+        // openai-java backs OpenRouterLlmClient and AzureOpenAiResponsesLlmClient, and its
+        // exceptions were understood by neither branch of providerStatus: the message reads
+        // "503: ..." with no leading space, so the " 503" substring fallback missed it too and
+        // every retryable failure on those two clients was classified permanent.
+        assertTrue(LlmRetry.isTransient(openAiError(429)));
+        assertTrue(LlmRetry.isTransient(openAiError(500)));
+        assertTrue(LlmRetry.isTransient(openAiError(503)));
+
+        assertFalse(LlmRetry.isTransient(openAiError(400)));
+        assertFalse(LlmRetry.isTransient(openAiError(404)));
+    }
+
+    private static OpenAIServiceException openAiError(int status) {
+        // The concrete subclasses are final with private constructors; the abstract status contract
+        // is what providerStatus reads.
+        return new OpenAIServiceException("boom", null) {
+            @Override
+            public int statusCode() {
+                return status;
+            }
+
+            @Override
+            public Headers headers() {
+                return Headers.builder().build();
+            }
+
+            @Override
+            public JsonValue body() {
+                return JsonValue.from(null);
+            }
+
+            @Override
+            public Optional<String> code() {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<String> param() {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<String> type() {
+                return Optional.empty();
+            }
+        };
     }
 
     @Test
@@ -381,5 +438,59 @@ class LlmRetryTest {
         public Mono<String> getBodyAsString(Charset charset) {
             return Mono.empty();
         }
+    }
+
+    /**
+     * A typed provider status anywhere in the chain outranks any wrapper's prose.
+     *
+     * <p>
+     * The old classifier interleaved the two: it examined message text at each depth BEFORE looking
+     * for a typed signal deeper down, so an outer wrapper whose message happened to contain a
+     * needle decided the answer first. Here the wrapper says "service unavailable" while the
+     * provider actually returned 400 — a permanent, unretryable rejection. Classifying it transient
+     * re-sends a rejected prompt three times, with the quota-scale backoff, for a request that can
+     * never succeed. Splitting the passes makes the typed rule authoritative and leaves the
+     * substring list as the fallback it was always meant to be.
+     */
+    @Test
+    void aTypedProviderStatusOutranksAWrapperMessageThatLooksTransient() {
+        Throwable wrapped = new IllegalStateException("service unavailable, giving up",
+            new ApiException(400, "INVALID_ARGUMENT", "Bad Request"));
+
+        assertFalse(LlmRetry.isTransient(wrapped),
+            "a provider 400 is permanent no matter what an outer wrapper's message says");
+    }
+
+    /**
+     * A self-referencing cause must not spin forever. {@code isRateLimit} has always guarded this;
+     * {@code isTransient} walked the same chains with no guard at all, so one malformed throwable
+     * from any SDK would hang the calling thread inside the classifier itself. Run on a separate
+     * thread so a regression is reported as a failing test rather than as a hung build — an
+     * infinite loop cannot be interrupted, so the default same-thread timeout would never fire.
+     */
+    @Test
+    @Timeout(value = 5, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aSelfReferencingCauseTerminates() {
+        Throwable loop = new IllegalStateException("round and round") {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public synchronized Throwable getCause() {
+                return this;
+            }
+        };
+
+        assertFalse(LlmRetry.isTransient(loop), "no needle, no typed signal — and it must return");
+    }
+
+    /**
+     * {@code TimeoutException} extends {@code Exception}, not {@code IOException}, and reactor's
+     * default message contains none of the substring needles — so it was classified PERMANENT and a
+     * timeout raised anywhere in the reactive plumbing retried nothing at all.
+     */
+    @Test
+    void aBareTimeoutExceptionIsRetryable() {
+        assertTrue(LlmRetry.isTransient(new TimeoutException("gave up")),
+            "a reactive timeout is a transient failure, not a permanent one");
     }
 }

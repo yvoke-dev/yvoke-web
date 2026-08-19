@@ -7,8 +7,10 @@ import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -76,7 +78,7 @@ public class EvidenceDigestTest {
             evidence("spec-b", new AgenticChatContext(),
                 List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
-        String out = EvidenceDigest.citeScoped(ev, citedBy(CITED));
+        String out = citeScoped(ev, citedBy(CITED));
 
         assertThat(countOf(out, "id=" + CITED)).as("both attributions survive").isEqualTo(2);
         assertThat(countOf(out, CITED_BODY)).as("the body travels once").isEqualTo(1);
@@ -100,7 +102,7 @@ public class EvidenceDigestTest {
             List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
                 hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
 
-        String out = EvidenceDigest.citeScoped(ev, citedBy(CITED));
+        String out = citeScoped(ev, citedBy(CITED));
 
         assertThat(out).contains(CITED_BODY);
         assertThat(out).as("not its text").doesNotContain(UNCITED_BODY);
@@ -119,7 +121,7 @@ public class EvidenceDigestTest {
         List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
             List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
-        String out = EvidenceDigest.citeScoped(ev, "As described in [chunk_id=8f7c1a2b].");
+        String out = citeScoped(ev, "As described in [chunk_id=8f7c1a2b].");
 
         assertThat(out).contains(CITED_BODY);
     }
@@ -136,7 +138,7 @@ public class EvidenceDigestTest {
         String toolError = "[spec-b · get_toc]\nERROR: the 'get_toc' tool failed to complete.";
         List<String> ev = List.of(JSON_EVIDENCE, toolError);
 
-        String out = EvidenceDigest.citeScoped(ev, citedBy(CITED));
+        String out = citeScoped(ev, citedBy(CITED));
 
         assertThat(out).contains(JSON_EVIDENCE).contains(toolError);
     }
@@ -150,7 +152,7 @@ public class EvidenceDigestTest {
         List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
             List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
-        String out = EvidenceDigest.citeScoped(ev, "See [document_id=" + DOC_CITED + "].");
+        String out = citeScoped(ev, "See [document_id=" + DOC_CITED + "].");
 
         assertThat(out).contains(CITED_BODY);
     }
@@ -170,7 +172,7 @@ public class EvidenceDigestTest {
                 List.of(hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "k"))));
 
         // Nothing here is cited, so both entries go.
-        String out = EvidenceDigest.citeScoped(ev, citedBy(CITED));
+        String out = citeScoped(ev, citedBy(CITED));
 
         assertThat(out).doesNotContain(UNCITED_BODY);
         assertThat(out).as("a reference whose body has been removed points at nothing")
@@ -191,7 +193,7 @@ public class EvidenceDigestTest {
         List<String> ev = List
             .of(evidence("spec-a", ledger, List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
-        String out = EvidenceDigest.citeScoped(ev, citedBy(CITED));
+        String out = citeScoped(ev, citedBy(CITED));
 
         assertThat(out).as("a reference to a body that is not in this prompt is useless")
             .doesNotContain(ChunkBlocks.SHOWN_ABOVE);
@@ -208,7 +210,7 @@ public class EvidenceDigestTest {
             List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
                 hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
 
-        String out = EvidenceDigest.citeScoped(ev, "An answer citing only [1].");
+        String out = citeScoped(ev, "An answer citing only [1].");
 
         assertThat(out).contains(CITED_BODY).contains(UNCITED_BODY);
     }
@@ -246,7 +248,7 @@ public class EvidenceDigestTest {
     @Test
     public void emptyEvidenceProducesEmptyText() {
         assertThat(EvidenceDigest.deduped(List.of())).isEmpty();
-        assertThat(EvidenceDigest.citeScoped(List.of(), citedBy(CITED))).isEmpty();
+        assertThat(citeScoped(List.of(), citedBy(CITED))).isEmpty();
     }
 
     /**
@@ -264,10 +266,79 @@ public class EvidenceDigestTest {
             A passage about restoring backups that the answer never used.""".formatted(UNCITED,
             DOC_UNCITED);
 
-        String out = EvidenceDigest.citeScoped(List.of(section),
+        String out = citeScoped(List.of(section),
             "The answer cites [chunk_id=%s] and nothing else.".formatted(CITED));
 
         assertThat(out).as("an uncited passage's text is what the reviewer does not need")
             .doesNotContain("A passage about restoring backups");
+    }
+
+    /**
+     * Round 0 of a review, where the reviewer has been sent nothing yet. Every assertion above is
+     * written against this case, and a fresh ledger is exactly what makes it the old behaviour —
+     * which is why they were adapted rather than rewritten.
+     */
+    private static String citeScoped(List<String> evidence, String answer) {
+        return EvidenceDigest.citeScoped(evidence, answer, new EvidenceDigest.SentLedger());
+    }
+
+    /**
+     * The ledger is what turns a rebuilt prompt into an append-only one: a body already sent stays
+     * in the conversation it was sent to, and a body newly cited has never been seen, so it must
+     * travel. Both halves are load-bearing — withholding the new one leaves the reviewer judging a
+     * citation against text it cannot read, which is the exact failure cite-scoping prevents.
+     */
+    @Test
+    void aFollowUpCarriesTheNewlyCitedBodyAndNotTheOneAlreadySent() {
+        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
+            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
+
+        String first = EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
+        assertThat(first).contains(CITED_BODY).doesNotContain(UNCITED_BODY);
+        assertThat(sent.alreadySent(CITED)).as("rendering a body IS the record that it was sent")
+            .isTrue();
+
+        String followUp = EvidenceDigest.citeScoped(ev,
+            "Now citing [chunk_id=%s] and [chunk_id=%s].".formatted(CITED, UNCITED), sent);
+
+        assertThat(followUp).as("newly cited, never sent — the reviewer cannot judge it otherwise")
+            .contains(UNCITED_BODY);
+        assertThat(followUp).as("already in the conversation; repeating it is what breaks caching")
+            .doesNotContain(CITED_BODY);
+        assertThat(sent.alreadySent(UNCITED)).as("and the new one is recorded too").isTrue();
+    }
+
+    /** A second follow-up citing nothing new renders nothing — the caller says "(none)". */
+    @Test
+    void aFollowUpThatCitesOnlySourcesAlreadySentRendersEmpty() {
+        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
+            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
+
+        EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
+
+        assertThat(EvidenceDigest.citeScoped(ev, citedBy(CITED), sent))
+            .as("nothing new to say, so nothing is said").isBlank();
+    }
+
+    /**
+     * The reviser must never acquire a ledger. It is handed the whole evidence base precisely
+     * because it needs what the draft does NOT cite, and a "sent already" rule would hide exactly
+     * the material a revision exists to reach.
+     */
+    @Test
+    void theReviserIsUnaffectedByWhateverTheReviewerHasBeenSent() {
+        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
+            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
+        EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
+
+        assertThat(EvidenceDigest.deduped(ev))
+            .as("both bodies, regardless of the reviewer's ledger").contains(CITED_BODY)
+            .contains(UNCITED_BODY);
     }
 }
