@@ -12,8 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import java.nio.charset.StandardCharsets;
@@ -86,13 +84,12 @@ public class DocumentKgExtractor {
     private final int concurrency;
     private final int maxAttempts;
     private final String thinkingLevel;
-    private final SystemPromptService systemPromptService;
 
     public DocumentKgExtractor(LlmClient llmClient, ObjectMapper objectMapper,
         JdbcClient jdbcClient, String model, int maxTokens, double temperature, int concurrency,
         int maxAttempts) {
         this(llmClient, objectMapper, jdbcClient, model, maxTokens, temperature, concurrency,
-            maxAttempts, null, null);
+            maxAttempts, null);
     }
 
     @Autowired
@@ -102,8 +99,7 @@ public class DocumentKgExtractor {
         @Value("${app.ai.kg.temperature}") double temperature,
         @Value("${app.ai.kg.concurrency}") int concurrency,
         @Value("${app.ai.kg.max-attempts}") int maxAttempts,
-        @Value("${app.ai.kg.thinking-level}") String thinkingLevel,
-        SystemPromptService systemPromptService) {
+        @Value("${app.ai.kg.thinking-level}") String thinkingLevel) {
         this.llmClient = llmClient;
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
@@ -113,22 +109,32 @@ public class DocumentKgExtractor {
         this.concurrency = Math.max(1, concurrency);
         this.maxAttempts = Math.max(1, maxAttempts);
         this.thinkingLevel = thinkingLevel;
-        this.systemPromptService = systemPromptService;
     }
 
-    public KgExtractionResult extract(List<String> chunkTexts) {
-        return extract(chunkTexts, null, null, null);
-    }
-
-    public KgExtractionResult extract(List<String> chunkTexts, UUID jobId, JobContext ctx) {
-        return extract(chunkTexts, jobId, ctx, null);
-    }
-
+    /**
+     * @param systemPrompt the KG prompt to run with — required, and validated here rather than per
+     *        chunk. It used to be an optional "override" resolved inside {@link #callModel}: once
+     *        per chunk AND once per retry attempt, falling back to
+     *        {@code getPrompt("default-kg").orElse("")} — a prompt name registered in no
+     *        deployment. So the fallback always missed and extraction ran with an EMPTY system
+     *        prompt. That prompt is what specifies the strict-JSON response shape, so the model was
+     *        asked for a graph with no schema; the resulting parse failures were counted as chunks
+     *        with nothing in them, which is indistinguishable from a genuinely empty corpus.
+     *        <p>
+     *        The two null-passing overloads are gone deliberately. One of them was reached whenever
+     *        no {@code kgPrompt} was selected, which is how the empty-prompt path was entered in
+     *        practice; making the parameter required turns that into a compile error.
+     */
     public KgExtractionResult extract(List<String> chunkTexts, UUID jobId, JobContext ctx,
-        String systemPromptOverride) {
+        String systemPrompt) {
         int total = chunkTexts.size();
         if (total == 0) {
             return new KgExtractionResult(List.of(), List.of(), 0);
+        }
+        if (systemPrompt == null || systemPrompt.isBlank()) {
+            throw new IllegalArgumentException("A KG system prompt is required to extract a"
+                + " knowledge graph; none was supplied. It defines the strict-JSON response shape,"
+                + " so extracting without it yields unparseable output, not a smaller graph.");
         }
 
         // Bound the fan-out: each chunk is mined on its own virtual thread, but at most
@@ -147,7 +153,7 @@ public class DocumentKgExtractor {
                 final int index = i;
                 final String chunkText = chunkTexts.get(i);
                 futures.add(executor.submit(() -> processChunk(index, total, chunkText, jobId, ctx,
-                    gate, cancelled, completed, systemPromptOverride)));
+                    gate, cancelled, completed, systemPrompt)));
             }
             // Collect in submission order so the aggregated graph is deterministic.
             for (Future<ChunkOutcome> future : futures) {
@@ -188,7 +194,7 @@ public class DocumentKgExtractor {
 
     private ChunkOutcome processChunk(int index, int total, String chunkText, UUID jobId,
         JobContext ctx, Semaphore gate, AtomicBoolean cancelled, AtomicInteger completed,
-        String systemPromptOverride) throws InterruptedException {
+        String systemPrompt) throws InterruptedException {
         gate.acquire();
         try {
             if (cancelled.get()) {
@@ -202,7 +208,7 @@ public class DocumentKgExtractor {
             log.info("KG extraction: processing chunk {}/{} ({} chars) for job {}", index + 1,
                 total, chunkText.length(), jobId != null ? jobId : "null");
 
-            return extractChunkWithRetry(index, total, chunkText, systemPromptOverride);
+            return extractChunkWithRetry(index, total, chunkText, systemPrompt);
         } finally {
             gate.release();
             int done = completed.incrementAndGet();
@@ -215,7 +221,7 @@ public class DocumentKgExtractor {
     }
 
     private ChunkOutcome extractChunkWithRetry(int index, int total, String chunkText,
-        String systemPromptOverride) {
+        String systemPrompt) {
         String sha = computeSha256(chunkText);
         Optional<String> cached = getCachedExtraction(sha);
         if (cached.isPresent()) {
@@ -236,7 +242,7 @@ public class DocumentKgExtractor {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             String raw;
             try {
-                raw = callModel(chunkText, correctiveRetry, systemPromptOverride);
+                raw = callModel(chunkText, correctiveRetry, systemPrompt);
             } catch (RuntimeException e) {
                 correctiveRetry = false;
                 if (attempt < maxAttempts) {
@@ -321,23 +327,12 @@ public class DocumentKgExtractor {
         return !"running".equals(status);
     }
 
-    private String callModel(String chunkText, boolean appendCorrective,
-        String systemPromptOverride) {
+    private String callModel(String chunkText, boolean appendCorrective, String systemPrompt) {
         log.info(
             "LLM Request (KG extraction): model={}, temperature={}, maxTokens={}, promptLength={}, corrective={}",
             model, temperature, maxTokens, chunkText.length(), appendCorrective);
         List<LlmMessage> messages = new ArrayList<>(3);
-        String activePrompt;
-        if (systemPromptOverride != null && !systemPromptOverride.isBlank()) {
-            activePrompt = systemPromptOverride;
-        } else {
-            activePrompt =
-                (systemPromptService != null)
-                    ? systemPromptService.getPrompt("default-kg").map(SystemPrompt::systemPrompt)
-                        .orElse("")
-                    : "";
-        }
-        messages.add(new LlmMessage("system", activePrompt));
+        messages.add(new LlmMessage("system", systemPrompt));
         messages.add(new LlmMessage("user", chunkText));
         if (appendCorrective) {
             messages.add(new LlmMessage("user", RETRY_INSTRUCTION));

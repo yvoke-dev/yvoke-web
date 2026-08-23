@@ -7,6 +7,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import de.palsoftware.yvoke.llm.core.service.AccountingLlmClient;
+import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.llm.core.service.ModelRoutingLlmClient;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -255,11 +258,34 @@ class ArchitectureTest {
     @Test
     void providerClientsMustOnlyBeReachedThroughTheAccountingSeam() {
         noClasses().that().resideOutsideOfPackage("de.palsoftware.yvoke.llm..").should()
-            .dependOnClassesThat()
-            .haveNameMatching("de\\.palsoftware\\.yvoke\\.llm\\.core\\.service\\."
-                + "(Gemini|CloudflareGemini|OpenRouter|AzureOpenAi)LlmClient")
+            .dependOnClassesThat(PROVIDER_CLIENT)
             .because("every call must go through the @Primary AccountingLlmClient; bypassing it "
                 + "produces LLM calls that are never logged, priced or shown on the cost dashboard")
             .check(classes);
     }
+
+    /**
+     * Every concrete {@link LlmClient} in the provider package except the two seams themselves.
+     *
+     * <p>
+     * Derived rather than listed, because the listed form had already failed silently. It named the
+     * clients with the regex {@code (Gemini|CloudflareGemini|OpenRouter|AzureOpenAi)LlmClient}, and
+     * {@code haveNameMatching} is a FULL match — so an alternative had to be followed immediately
+     * by {@code LlmClient}, and {@code AzureOpenAiResponsesLlmClient} matched none of them. That
+     * was the one client actually wired for Azure, so the rule guarding the billing seam covered
+     * every client except the one in use, and a bypass compiled green. Naming classes is what made
+     * the omission possible; a predicate over the type hierarchy cannot omit a client that does not
+     * exist yet.
+     */
+    private static final DescribedPredicate<JavaClass> PROVIDER_CLIENT =
+        new DescribedPredicate<>("a provider LlmClient outside the accounting seam") {
+            @Override
+            public boolean test(JavaClass candidate) {
+                return candidate.getPackageName().equals("de.palsoftware.yvoke.llm.core.service")
+                    && candidate.isAssignableTo(LlmClient.class)
+                    && !candidate.getName().equals(LlmClient.class.getName())
+                    && !candidate.getName().equals(AccountingLlmClient.class.getName())
+                    && !candidate.getName().equals(ModelRoutingLlmClient.class.getName());
+            }
+        };
 }

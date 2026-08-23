@@ -44,7 +44,9 @@ public class CitationController {
         }
 
         try {
-            SectionResponse section = hasChunkId ? sectionService.getSectionByChunkId(chunkId)
+            // A chunk id names one passage and returns exactly that; a document id has no passage
+            // to name, so it still returns the document.
+            SectionResponse section = hasChunkId ? sectionService.getChunkContent(chunkId)
                 : sectionService.getSectionByDocumentId(documentId, null);
 
             model.addAttribute("section", section);

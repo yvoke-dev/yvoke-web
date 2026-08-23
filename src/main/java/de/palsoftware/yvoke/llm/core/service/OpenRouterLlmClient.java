@@ -26,6 +26,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.openai.core.http.StreamResponse;
 
+/**
+ * <b>Not wired.</b> {@code app.ai.provider=openrouter} is rejected at startup by {@code LlmConfig}.
+ * The class and its tests are kept deliberately — re-enabling it is one branch there — but note two
+ * gaps before doing so: {@link #generateStream} carries no {@code LlmRetry} (only {@link #generate}
+ * does), so a transient failure ends the answer outright, and it reads none of
+ * {@code thinkingLevel}, {@code codeExecution}, {@code responseSchema} or {@code seed}.
+ */
 public class OpenRouterLlmClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(OpenRouterLlmClient.class);
     private final OpenAIClient client;

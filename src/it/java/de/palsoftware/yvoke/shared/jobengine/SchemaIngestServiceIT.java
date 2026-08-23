@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import java.util.Map;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -75,6 +77,10 @@ public class SchemaIngestServiceIT {
         jdbcTemplate.update(
             "INSERT INTO collections (id, name, description, tags) VALUES (?, ?, ?, ?)", collId,
             COLLECTION, "Test collection", new String[] {VERSION});
+        // A custom job summarizes matched sections, so the prompt it names must be registered.
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
+            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-summarize", "SUMMARIZE",
+            "Write a concise summary.");
 
         // Setup mock Voyage embeddings
         when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
@@ -245,7 +251,8 @@ public class SchemaIngestServiceIT {
     public void testSchemaIngestionFlowE2E() {
         // Enqueue the schema ingestion job
         UUID id = jobService.enqueue(new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
-            zipPath.toString(), VERSION, COLLECTION)).jobId();
+            zipPath.toString(), VERSION, COLLECTION,
+            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
 
         // Await job completion
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -301,7 +308,8 @@ public class SchemaIngestServiceIT {
         // Test idempotency: re-running on same collection and version should result in same counts,
         // no duplicates
         UUID secondId = jobService.enqueue(new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
-            zipPath.toString(), VERSION, COLLECTION)).jobId();
+            zipPath.toString(), VERSION, COLLECTION,
+            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(secondId).orElseThrow();

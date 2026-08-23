@@ -325,7 +325,12 @@ public class SecurityGatingIT {
         mockMvc
             .perform(get("/api/document/v1").session(session).header("X-API-Key", API_KEY)
                 .param("collection", "no-such-collection").param("tag", "no-such-tag"))
-            .andExpect(status().isOk());
+            // A 404 is the handler answering, so the chain authorised the request; an auth failure
+            // on this chain is 401 or 403, never 404. The endpoint now refuses an unknown area
+            // instead of returning an empty list, so 404 is the positive proof this test wants.
+            .andExpect(result -> assertThat(result.getResponse().getStatus())
+                .as("reached the handler: authenticated, then refused the unknown area")
+                .isEqualTo(404));
 
         assertThat(
             session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY))
@@ -438,7 +443,12 @@ public class SecurityGatingIT {
                 .perform(get("/api/document/v1").header("X-API-Key", blank)
                     .param("collection", "no-such-collection").param("tag", "no-such-tag")
                     .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                .andExpect(status().isOk());
+                // A 404 is the handler answering, so the chain authorised the request; an auth failure
+                // on this chain is 401 or 403, never 404. The endpoint now refuses an unknown area
+                // instead of returning an empty list, so 404 is the positive proof this test wants.
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                    .as("reached the handler: authenticated, then refused the unknown area")
+                    .isEqualTo(404));
         }
     }
 
@@ -628,7 +638,12 @@ public class SecurityGatingIT {
         mockMvc
             .perform(get("/api/document/v1").session(session)
                 .param("collection", "no-such-collection").param("tag", "no-such-tag"))
-            .andExpect(status().isOk());
+            // A 404 is the handler answering, so the chain authorised the request; an auth failure
+            // on this chain is 401 or 403, never 404. The endpoint now refuses an unknown area
+            // instead of returning an empty list, so 404 is the positive proof this test wants.
+            .andExpect(result -> assertThat(result.getResponse().getStatus())
+                .as("reached the handler: authenticated, then refused the unknown area")
+                .isEqualTo(404));
     }
 
     /**

@@ -111,13 +111,14 @@ public class CustomIngestService {
     private final int concurrency;
     private final ObjectMapper objectMapper;
     private final SystemPromptService systemPromptService;
+    private final IngestPrompts ingestPrompts;
 
     public CustomIngestService(EmbeddingService embeddingService,
         DocumentRepository documentRepository, GeneralSummarizer generalSummarizer,
         KgWriteRepository kgRepository, JdbcClient jdbcClient,
         PlatformTransactionManager transactionManager, UploadPathGuard uploadPathGuard,
         @Value("${app.ai.summarize.concurrency}") int concurrency,
-        SystemPromptService systemPromptService) {
+        SystemPromptService systemPromptService, IngestPrompts ingestPrompts) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.generalSummarizer = generalSummarizer;
@@ -128,6 +129,7 @@ public class CustomIngestService {
         this.concurrency = Math.max(1, concurrency);
         this.objectMapper = new ObjectMapper();
         this.systemPromptService = systemPromptService;
+        this.ingestPrompts = ingestPrompts;
     }
 
     private record DocPayload(String sourceFile, String kind, String name, String title,
@@ -157,7 +159,11 @@ public class CustomIngestService {
             List<Path> markdownFiles = discoverMatchingFiles(tempDir, job.settings());
             log.info("Discovered {} matching files in ZIP to parse", markdownFiles.size());
 
-            String resolvedPrompt = resolveSummarizePrompt(job.settings());
+            // Resolved BEFORE parseAndChunk, which is where the LLM calls happen: a custom
+            // extract summarizes every matched section, so a missing prompt has to stop the job
+            // here rather than after N sections have been summarized with nothing.
+            String resolvedPrompt = ingestPrompts.requireSummarizePromptText(job.settings(),
+                "content summaries for this custom extract");
             ParseResult parsed = parseAndChunk(markdownFiles, tempDir, job, ctx, resolvedPrompt);
 
             // Populated by the persist phase, read by the KG-injection phase.
@@ -201,17 +207,6 @@ public class CustomIngestService {
         return markdownFiles;
     }
 
-    /**
-     * Resolves the configured (or default) summarize system prompt; null when none is registered.
-     */
-    private String resolveSummarizePrompt(Map<String, Object> settings) {
-        String summarizePrompt = settings != null ? (String) settings.get("summarizePrompt") : null;
-        if (summarizePrompt == null || summarizePrompt.isBlank()) {
-            summarizePrompt = "default-summarize";
-        }
-        return systemPromptService.getPrompt(summarizePrompt).map(SystemPrompt::systemPrompt)
-            .orElse(null);
-    }
 
     /**
      * Parses/summarizes/chunks the matched files concurrently on a security-context-propagating

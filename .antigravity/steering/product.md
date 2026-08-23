@@ -24,7 +24,7 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **Knowledge Graph (KG)**: Combined conceptual graph (extracted from manuals/Confluence) and structural database graph (tables, FKs, procedures, scripts).
 - **Core Models**:
   - `voyage-4-large` (1024-d) via Voyage AI for embeddings.
-  - `gemini-3.1-flash-lite` (via Google Vertex/AI Studio) or OpenRouter models (e.g., DeepSeek) for Q&A, RAG, and summarization.
+  - `gemini-3.7-flash` (stamped on every new conversation), `gemini-3.6-flash` and `gemini-3.5-flash-lite` on Gemini, plus the Azure OpenAI deployments `gpt-5.4-mini`, `DeepSeek-V4-Flash` and `gpt-5.6-luna`, for Q&A and RAG; `gemini-3.1-flash-lite` for KG extraction and summarization. Which provider client answers which model is deployment configuration — see [`tech.md`](tech.md); Gemini is the default route and OpenRouter is retired.
   - Voyage `rerank-2.5` for cross-encoder reranking.
 
 ## User Personas & Permissions
@@ -38,8 +38,8 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **Document**: The top-level knowledge container (e.g., a Confluence page, a Markdown file, or a database SQL script).
 - **Chunk**: A smaller, semantically partitioned segment of a Document. Vector embeddings and BM25 indexing are applied at this level for granular retrieval.
 - **Entity & Relationship (KG)**: Nodes and edges extracted from text or database structures. They form the Knowledge Graph, providing structured conceptual context alongside unstructured text.
-- **Session & Message**: Represents the user's conversational state and chat history.
-- **Feedback**: A user-submitted rating (e.g., 1 or -1) attached to a specific `Message` to train or audit system accuracy.
+- **Conversation & Message**: A **conversation** is one chat thread — owner, title, settings, source (`web` or `desktop`) and tags; its **messages** are the individual questions and answers, each carrying its role, status, model, token counts, citations and retrieved chunk ids. There is no `sessions` table and no session concept in the domain: the vocabulary is `conversations` + `messages` throughout the schema, the repositories and the UI.
+- **Feedback**: A user-submitted rating (`1` or `-1`) with an optional comment, at most one per `Message` (`message_feedback` is unique on `message_id`; a new thumb replaces the previous one). It exists for **human** review only — the feedback dashboard, the reviewed flag and reviewer notes. Nothing is trained on it: a rating changes neither retrieval ranking nor future answers, which [`spec.md` ch. 2](../../spec.md#2-how-answers-are-produced) records under *Not supported*.
 - **JSON Object & Schema**: Structured JSON data ingested into collections, stored in a GIN-indexed JSONB column. Schemas are inferred automatically or managed manually.
 
 ## Product Tenets & Guardrails

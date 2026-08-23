@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -92,7 +93,7 @@ public class DocumentKgExtractorTest {
         });
 
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 1, 1);
-        extractor.extract(List.of("some chunk text"));
+        extractor.extract(List.of("some chunk text"), null, null, "KG_PROMPT");
 
         ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
         verify(llmClient).generate(captor.capture());
@@ -168,8 +169,8 @@ public class DocumentKgExtractorTest {
             .of("{\"entities\":[{\"name\":\"Cached\",\"kind\":\"table\"}],\"relationships\":[]}"));
 
         // No job id: the only statement this run may issue is the cache read itself.
-        KgExtractionResult result =
-            extractor(llmClient, jdbcClient, 1, 2).extract(List.of(chunkText));
+        KgExtractionResult result = extractor(llmClient, jdbcClient, 1, 2)
+            .extract(List.of(chunkText), null, null, "KG_PROMPT");
 
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
             .as("a cache hit must be USED, not merely read").containsExactly("Cached");
@@ -246,7 +247,7 @@ public class DocumentKgExtractorTest {
             "{\"entities\":[{\"name\":\"OAuth\",\"kind\":\"module\",\"description\":\"auth\"}],"
                 + "\"relationships\":[{\"subject\":\"OAuth\",\"predicate\":\"part_of\",\"object\":\"OIM\",\"description\":\"\"}]}");
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).singleElement().satisfies(e -> {
@@ -265,7 +266,7 @@ public class DocumentKgExtractorTest {
         DocumentKgExtractor extractor = extractorReturning(
             "```json\n{\"entities\":[{\"name\":\"SAML\",\"kind\":\"\",\"description\":\"\"}],\"relationships\":[]}\n```");
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).singleElement()
@@ -279,7 +280,8 @@ public class DocumentKgExtractorTest {
                 "this is not json at all {truncated", "c",
                 "{\"entities\":[{\"name\":\"AlsoGood\"}],\"relationships\":[]}"));
 
-        KgExtractionResult result = extractor.extract(List.of("a", "b", "c"));
+        KgExtractionResult result =
+            extractor.extract(List.of("a", "b", "c"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -293,7 +295,7 @@ public class DocumentKgExtractorTest {
                 + "\"relationships\":[{\"subject\":\"A\",\"predicate\":\"\",\"object\":\"B\"},"
                 + "{\"subject\":\"A\",\"predicate\":\"rel\",\"object\":\"B\"}]}");
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -319,7 +321,7 @@ public class DocumentKgExtractorTest {
         LlmClient llmClient = mock(LlmClient.class);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of());
+        KgExtractionResult result = extractor.extract(List.of(), null, null, "KG_PROMPT");
 
         assertThat(result.entities()).isEmpty();
         assertThat(result.relationships()).isEmpty();
@@ -345,7 +347,7 @@ public class DocumentKgExtractorTest {
         }
         DocumentKgExtractor extractor = extractorMapping(responses);
 
-        KgExtractionResult result = extractor.extract(chunks);
+        KgExtractionResult result = extractor.extract(chunks, null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         List<String> expected = new ArrayList<>();
@@ -384,7 +386,8 @@ public class DocumentKgExtractorTest {
 
         ExecutorService runner = Executors.newSingleThreadExecutor();
         try {
-            Future<KgExtractionResult> future = runner.submit(() -> extractor.extract(chunks));
+            Future<KgExtractionResult> future =
+                runner.submit(() -> extractor.extract(chunks, null, null, "KG_PROMPT"));
 
             // Exactly `concurrency` calls should enter; the rest are blocked on the semaphore.
             assertThat(reachedCap.await(5, TimeUnit.SECONDS)).isTrue();
@@ -416,7 +419,7 @@ public class DocumentKgExtractorTest {
         });
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 1, 2);
 
-        KgExtractionResult result = extractor.extract(List.of("a", "b"));
+        KgExtractionResult result = extractor.extract(List.of("a", "b"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -436,7 +439,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad, good);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -452,7 +455,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad, good);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        extractor.extract(List.of("the chunk"));
+        extractor.extract(List.of("the chunk"), null, null, "KG_PROMPT");
 
         ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
         verify(llmClient, times(2)).generate(captor.capture());
@@ -472,7 +475,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 3);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.entities()).isEmpty();
@@ -488,7 +491,7 @@ public class DocumentKgExtractorTest {
             .thenThrow(new RuntimeException("503 upstream unavailable")).thenReturn(good);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isZero();
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -504,7 +507,7 @@ public class DocumentKgExtractorTest {
             .thenReturn(good);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        extractor.extract(List.of("only chunk"));
+        extractor.extract(List.of("only chunk"), null, null, "KG_PROMPT");
 
         ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
         verify(llmClient, times(2)).generate(captor.capture());
@@ -519,7 +522,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 1);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isEqualTo(1);
         verify(llmClient, times(1)).generate(any(LlmRequest.class));
@@ -532,7 +535,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 0);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isEqualTo(1);
         verify(llmClient, times(1)).generate(any(LlmRequest.class));
@@ -544,7 +547,8 @@ public class DocumentKgExtractorTest {
             "{\"entities\":[{\"name\":\"G1\"}],\"relationships\":[]}", "bad", "totally broken",
             "good2", "{\"entities\":[{\"name\":\"G2\"}],\"relationships\":[]}"));
 
-        KgExtractionResult result = extractor.extract(List.of("good1", "bad", "good2"));
+        KgExtractionResult result =
+            extractor.extract(List.of("good1", "bad", "good2"), null, null, "KG_PROMPT");
 
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.entities()).extracting(KgExtractionResult.ExtractedEntity::name)
@@ -561,7 +565,8 @@ public class DocumentKgExtractorTest {
             Map.of("c0", "{\"entities\":[{\"name\":\"G0\"}],\"relationships\":[]}", "c1",
                 "totally broken", "c2", "{\"entities\":[{\"name\":\"G2\"}],\"relationships\":[]}"));
 
-        KgExtractionResult result = extractor.extract(List.of("c0", "c1", "c2"));
+        KgExtractionResult result =
+            extractor.extract(List.of("c0", "c1", "c2"), null, null, "KG_PROMPT");
 
         // One status per chunk, ordered by input index, regardless of concurrent completion order.
         assertThat(result.chunkStatuses()).hasSize(3);
@@ -582,7 +587,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad, good);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         // A chunk that succeeds only after a retry is recorded as ok.
         assertThat(result.chunkStatuses()).singleElement().satisfies(s -> {
@@ -598,7 +603,7 @@ public class DocumentKgExtractorTest {
         when(llmClient.generate(any(LlmRequest.class))).thenReturn(bad);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of("chunk"));
+        KgExtractionResult result = extractor.extract(List.of("chunk"), null, null, "KG_PROMPT");
 
         assertThat(result.chunkStatuses()).singleElement()
             .satisfies(s -> assertThat(s.ok()).isFalse());
@@ -609,7 +614,7 @@ public class DocumentKgExtractorTest {
         LlmClient llmClient = mock(LlmClient.class);
         DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
 
-        KgExtractionResult result = extractor.extract(List.of());
+        KgExtractionResult result = extractor.extract(List.of(), null, null, "KG_PROMPT");
 
         assertThat(result.chunkStatuses()).isEmpty();
     }
@@ -625,9 +630,27 @@ public class DocumentKgExtractorTest {
             "c", "{\"entities\":[],\"relationships\":[]}"));
         JobContext ctx = mock(JobContext.class);
 
-        extractor.extract(List.of("a", "b", "c"), JOB_ID, ctx);
+        extractor.extract(List.of("a", "b", "c"), JOB_ID, ctx, "KG_PROMPT");
 
         verify(ctx, times(3)).report(any(), anyInt(), anyString());
+    }
+
+    @Test
+    public void refusesToExtractWithoutAPrompt() {
+        // Replaces the implicit contract of the old no-prompt overload, which resolved
+        // "default-kg" -- registered nowhere -- and fell back to "". The prompt defines the
+        // strict-JSON response shape, so running without it produces unparseable output that
+        // looks exactly like an empty corpus.
+        LlmClient llmClient = mock(LlmClient.class);
+        DocumentKgExtractor extractor = extractor(llmClient, runningJdbc(), 4, 2);
+
+        assertThatThrownBy(() -> extractor.extract(List.of("a"), null, null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("KG system prompt is required");
+        assertThatThrownBy(() -> extractor.extract(List.of("a"), null, null, "  "))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(llmClient);
     }
 
     @Test
@@ -637,7 +660,7 @@ public class DocumentKgExtractorTest {
             extractor(llmClient, jdbcReturningStatus("cancelled"), 4, 2);
         JobContext ctx = mock(JobContext.class);
 
-        assertThatThrownBy(() -> extractor.extract(List.of("a", "b"), JOB_ID, ctx))
+        assertThatThrownBy(() -> extractor.extract(List.of("a", "b"), JOB_ID, ctx, "KG_PROMPT"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("cancelled");
 
         verify(llmClient, never()).generate(any(LlmRequest.class));

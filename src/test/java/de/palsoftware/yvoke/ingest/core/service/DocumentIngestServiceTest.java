@@ -24,6 +24,8 @@ import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository.EntityUpsert;
 import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository.RelationshipUpsert;
 import de.palsoftware.yvoke.kg.core.service.DocumentKgExtractor;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -75,6 +77,23 @@ public class DocumentIngestServiceTest {
 
     private final UUID documentId = UUID.randomUUID();
 
+    /**
+     * An {@link IngestPrompts} that resolves {@link #SUMMARIZE_PROMPT} to a body. The prompt is a
+     * required job setting now, so a test that exercises summarization has to supply one — the same
+     * contract a real job is held to.
+     */
+    private static IngestPrompts resolvingPrompts() {
+        SystemPromptService prompts = mock(SystemPromptService.class);
+        when(prompts.requirePrompt(any(), eq(SystemPromptType.SUMMARIZE))).thenReturn(
+            new SystemPrompt(SUMMARIZE_PROMPT, SystemPromptType.SUMMARIZE, "SUMMARIZE.", ""));
+        when(prompts.requirePrompt(any(), eq(SystemPromptType.KG)))
+            .thenReturn(new SystemPrompt(KG_PROMPT, SystemPromptType.KG, "STRICT JSON.", ""));
+        return new IngestPrompts(prompts);
+    }
+
+    private static final String SUMMARIZE_PROMPT = "oim-summarize";
+    private static final String KG_PROMPT = "oim-kg";
+
     @BeforeEach
     public void setUp() {
         kgRepository = mock(KgWriteRepository.class);
@@ -89,7 +108,7 @@ public class DocumentIngestServiceTest {
         service = new DocumentIngestService(embeddingService, documentRepository, chunkRepository,
             kgRepository, kgExtractor, kgConsolidator, mock(JdbcClient.class),
             mock(PlatformTransactionManager.class), sectionSummarizer,
-            mock(SystemPromptService.class), uploadPathGuard);
+            mock(SystemPromptService.class), uploadPathGuard, resolvingPrompts());
 
         when(chunkRepository.findChunksByDocumentId(eq(documentId), isNull()))
             .thenReturn(List.of(new ChunkRow(UUID.randomUUID(), documentId, "chunk text", List.of(),
@@ -109,14 +128,18 @@ public class DocumentIngestServiceTest {
 
     /** A KG job for the seeded document; a null job id short-circuits the cancellation probe. */
     private IngestionJob kgJob() {
-        return new IngestionJob(null, "kg", documentId.toString(), TAGS, COLLECTION,
-            JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+        // A kg-extract job carries its prompt: the kind's existence is the request, so the prompt
+        // is unconditionally required rather than gated on a flag.
+        return new IngestionJob(null, "kg", documentId.toString(), TAGS, UUID.randomUUID(),
+            COLLECTION, JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null,
+            Map.<String, Object>of(IngestPrompts.SETTING_KG_PROMPT, KG_PROMPT));
     }
 
     /** The same KG job as {@link #kgJob()}, with an explicit tag set. */
     private IngestionJob kgJobWithTags(List<String> tags) {
-        return new IngestionJob(null, "kg", documentId.toString(), tags, COLLECTION,
-            JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+        return new IngestionJob(null, "kg", documentId.toString(), tags, UUID.randomUUID(),
+            COLLECTION, JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null,
+            Map.<String, Object>of(IngestPrompts.SETTING_KG_PROMPT, KG_PROMPT));
     }
 
     /**
@@ -207,7 +230,7 @@ public class DocumentIngestServiceTest {
                 null, COLLECTION, null, 0.0),
             new ChunkRow(chunk1, documentId, "second chunk", List.of(), null, null, 1, null, null,
                 null, COLLECTION, null, 0.0)));
-        when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+        when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(new KgExtractionResult(
             List.of(new ExtractedEntity("Person", "table", "the table")), List.of(), 0,
             List.of(new KgExtractionResult.ChunkStatus(0, true, "kg-model"),
                 new KgExtractionResult.ChunkStatus(7, true, "kg-model"),
@@ -228,7 +251,7 @@ public class DocumentIngestServiceTest {
     }
 
     private JobCounts runKg(KgExtractionResult extraction) {
-        when(kgExtractor.extract(anyList(), any(), any())).thenReturn(extraction);
+        when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(extraction);
         return service.processDocumentKg(kgJob(), mock(JobContext.class));
     }
 
@@ -350,7 +373,7 @@ public class DocumentIngestServiceTest {
      */
     @Test
     public void aTwoTagKgExtractConsolidatesEachTagScopeSeparately() {
-        when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+        when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(new KgExtractionResult(
             List.of(new ExtractedEntity("Person", "table", "the table")), List.of(), 0));
 
         service.processDocumentKg(kgJobWithTags(List.of("9.3", "10.0")), mock(JobContext.class));
@@ -414,8 +437,11 @@ public class DocumentIngestServiceTest {
             """ + oversized + "\n");
         when(uploadPathGuard.resolve(md.toString())).thenReturn(md);
 
-        IngestionJob job = new IngestionJob(null, "hierarchical", md.toString(), TAGS, COLLECTION,
-            JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null);
+        // Hierarchical summarizes unconditionally, so the prompt setting is not optional here.
+        IngestionJob job = new IngestionJob(null, "hierarchical", md.toString(), TAGS,
+            UUID.randomUUID(), COLLECTION, JobStatus.RUNNING, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null,
+            Map.<String, Object>of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT));
         JobCounts counts = service.ingestHierarchical(job, mock(JobContext.class));
 
         ArgumentCaptor<List<ChunkInsert>> stored = ArgumentCaptor.forClass(List.class);
@@ -476,10 +502,10 @@ public class DocumentIngestServiceTest {
         when(documentRepository.upsertManualDocument(anyString(), anyList(), anyString(),
             anyString(), any())).thenReturn(documentId);
 
-        IngestionJob job =
-            new IngestionJob(null, "standard", md.toString(), TAGS, UUID.randomUUID(), COLLECTION,
-                JobStatus.RUNNING, null, 0, 0, null, null, OffsetDateTime.now(), null, null,
-                Map.<String, Object>of("buildSectionSummaries", true));
+        IngestionJob job = new IngestionJob(null, "standard", md.toString(), TAGS,
+            UUID.randomUUID(), COLLECTION, JobStatus.RUNNING, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null, Map.<String, Object>of("buildSectionSummaries", true,
+                IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT));
         service.ingest(job, mock(JobContext.class));
 
         ArgumentCaptor<List<Section>> summarized = ArgumentCaptor.forClass(List.class);

@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.llm.core.service;
 
+import de.palsoftware.yvoke.llm.core.EmptyTurnRetry;
 import de.palsoftware.yvoke.llm.core.LlmRetry;
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -228,17 +229,11 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         log.info("Sending streaming Responses request: model={}", request.model());
         ResponseCreateParams params = buildParams(request);
 
-        // An EMPTY turn is the one mid-stream outcome that is safe to re-request, and it is safe
-        // for exactly one reason: "empty" means neither content nor a tool call was seen, so by
-        // construction the consumer has been handed nothing a second attempt could replay. It
-        // cannot be expressed as an LlmRetry classification, because the verdict is taken here
-        // while consuming, outside the withRetry that wraps establishment. Same shape, same bound
-        // and same usage carry-over as AzureOpenAiLlmClient; reasoning models make an all-thinking
-        // turn ordinary rather than exotic, since reasoning tokens spend the same output budget.
-        LlmUsage abandoned = null;
-        for (int attempt = 1;; attempt++) {
+        // Whether a turn that produced nothing is worth re-requesting is decided by EmptyTurnRetry,
+        // shared with GeminiLlmClient. It cannot be expressed as an LlmRetry classification: the
+        // verdict is taken here while consuming, outside the withRetry that wraps establishment.
+        EmptyTurnRetry.run("Azure OpenAI Responses", request.model(), attempt -> {
             StreamOutcome outcome = new StreamOutcome();
-            LlmUsage carried = abandoned;
 
             // Responses numbers every output item — a reasoning item is typically 0 and the first
             // tool call 1 — while ToolCallAccumulator treats the index as a list position and pads
@@ -266,7 +261,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
                         if (chunk.usage() != null) {
                             outcome.usage = chunk.usage();
                         }
-                        onChunk.accept(carry(chunk, carried));
+                        onChunk.accept(chunk);
                     }
                 });
             } catch (RuntimeException e) {
@@ -280,56 +275,20 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
                 throw e;
             }
 
-            // Taken after the stream drains so the terminal event's usage has already been read:
-            // those tokens were billed, and failing earlier would leave the call with no
-            // llm_call_logs row. Not re-requested — a refused or errored turn repeats.
+            // Closes this HTTP call for accounting BEFORE any verdict is taken: an abandoned
+            // attempt was billed just as a winning one is, and gets its own llm_call_logs row
+            // rather than being summed onto whichever attempt happened to succeed. Emitted after
+            // the stream drains, so the terminal event's usage has already been read.
+            onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
+
+            // Not re-requested — a refused or errored turn repeats.
             if (outcome.failure != null) {
-                throw new LlmCallFailedException(outcome.failure, null,
-                    plus(abandoned, outcome.usage));
+                throw new LlmCallFailedException(outcome.failure, null, outcome.usage);
             }
 
-            if (!outcome.completedEmpty()) {
-                return;
-            }
-
-            LlmUsage burned = plus(abandoned, outcome.usage);
-            if (attempt >= EMPTY_TURN_ATTEMPTS) {
-                throw new LlmCallFailedException("Azure OpenAI Responses produced no content and "
-                    + "no tool calls after " + attempt + " attempt(s) (" + outcome.describe() + ")",
-                    null, burned);
-            }
-            log.warn(
-                "Azure OpenAI Responses produced an empty turn for model={} ({}); nothing "
-                    + "reached the caller, so re-requesting once",
-                request.model(), outcome.describe());
-            abandoned = burned;
-        }
-    }
-
-    /**
-     * Adds an abandoned attempt's usage onto a chunk that carries usage of its own, so the winning
-     * attempt reports what the whole operation cost. {@link AccountingLlmClient} keeps only the
-     * LAST usage it observes and publishes one row per call, so without this a recovered turn would
-     * be billed as though the abandoned attempt had never run.
-     */
-    private static LlmResponseChunk carry(LlmResponseChunk chunk, LlmUsage abandoned) {
-        if (abandoned == null || chunk.usage() == null) {
-            return chunk;
-        }
-        return new LlmResponseChunk(chunk.content(), chunk.reasoning(), chunk.toolCallDeltas(),
-            plus(abandoned, chunk.usage()), chunk.parts(), chunk.gateway());
-    }
-
-    private static LlmUsage plus(LlmUsage a, LlmUsage b) {
-        if (a == null) {
-            return b;
-        }
-        if (b == null) {
-            return a;
-        }
-        return new LlmUsage(a.promptTokens() + b.promptTokens(),
-            a.completionTokens() + b.completionTokens(), a.totalTokens() + b.totalTokens(),
-            a.cachedTokens() + b.cachedTokens(), a.thoughtTokens() + b.thoughtTokens());
+            return new EmptyTurnRetry.Turn(!outcome.isEmpty(), outcome.cleanlyCompleted(),
+                outcome.usage, outcome.describe());
+        });
     }
 
     /**
@@ -361,8 +320,12 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
          * the user a blank answer; what must never be duplicated is answer content, and by
          * construction there was none.
          */
-        boolean completedEmpty() {
-            return "completed".equals(status) && !sawContent && !sawToolCall;
+        boolean isEmpty() {
+            return !sawContent && !sawToolCall;
+        }
+
+        boolean cleanlyCompleted() {
+            return "completed".equals(status);
         }
 
         String describe() {

@@ -26,7 +26,8 @@ public class ConfluenceInstanceRepository {
         return jdbcClient.sql("""
             SELECT id, name, slug, domain, email, api_token_enc, token_key_id, space, root_page_id,
                    include_labels, exclude_labels, target_collection, target_tag,
-                   process_attachments, enabled, created_at, updated_at
+                   process_attachments, build_section_summaries, summarize_prompt,
+                   enabled, created_at, updated_at
             FROM confluence_instances
             ORDER BY name ASC
             """).query((rs, rowNum) -> mapRow(rs)).list();
@@ -36,7 +37,8 @@ public class ConfluenceInstanceRepository {
         return jdbcClient.sql("""
             SELECT id, name, slug, domain, email, api_token_enc, token_key_id, space, root_page_id,
                    include_labels, exclude_labels, target_collection, target_tag,
-                   process_attachments, enabled, created_at, updated_at
+                   process_attachments, build_section_summaries, summarize_prompt,
+                   enabled, created_at, updated_at
             FROM confluence_instances
             WHERE id = :id
             """).param("id", id).query((rs, rowNum) -> mapRow(rs)).optional();
@@ -60,7 +62,8 @@ public class ConfluenceInstanceRepository {
         return jdbcClient.sql("""
             SELECT id, name, slug, domain, email, api_token_enc, token_key_id, space, root_page_id,
                    include_labels, exclude_labels, target_collection, target_tag,
-                   process_attachments, enabled, created_at, updated_at
+                   process_attachments, build_section_summaries, summarize_prompt,
+                   enabled, created_at, updated_at
             FROM confluence_instances
             WHERE slug = :slug
             """).param("slug", slug).query((rs, rowNum) -> mapRow(rs)).optional();
@@ -76,7 +79,8 @@ public class ConfluenceInstanceRepository {
         return jdbcClient.sql("""
             SELECT id, name, slug, domain, email, api_token_enc, token_key_id, space, root_page_id,
                    include_labels, exclude_labels, target_collection, target_tag,
-                   process_attachments, enabled, created_at, updated_at
+                   process_attachments, build_section_summaries, summarize_prompt,
+                   enabled, created_at, updated_at
             FROM confluence_instances
             WHERE name = :name
             """).param("name", name).query((rs, rowNum) -> mapRow(rs)).optional();
@@ -116,40 +120,48 @@ public class ConfluenceInstanceRepository {
         // source_file identity depends on it.
         String domain = ConfluenceDomains.canonicalize(instance.domain());
         UUID id = instance.id() != null ? instance.id() : UUID.randomUUID();
-        return jdbcClient.sql("""
-            INSERT INTO confluence_instances (id, name, slug, domain, email, api_token_enc,
-                                              token_key_id, space, root_page_id, include_labels,
-                                              exclude_labels, target_collection, target_tag,
-                                              process_attachments, enabled, created_at, updated_at)
-            VALUES (:id, :name, :slug, :domain, :email, :apiTokenEnc, :tokenKeyId, :space,
-                    :rootPageId, :includeLabels, :excludeLabels, :targetCollection, :targetTag,
-                    :processAttachments, :enabled, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name,
-                slug = EXCLUDED.slug,
-                domain = EXCLUDED.domain,
-                email = EXCLUDED.email,
-                -- Null token == "keep the current credential". The fingerprint follows the
-                -- ciphertext rather than COALESCE'ing on its own, so a resupplied token can never
-                -- be left wearing the previous key's fingerprint (which reads as UNDECRYPTABLE).
-                api_token_enc = COALESCE(EXCLUDED.api_token_enc,
-                                         confluence_instances.api_token_enc),
-                token_key_id = CASE WHEN EXCLUDED.api_token_enc IS NULL
-                                    THEN confluence_instances.token_key_id
-                                    ELSE EXCLUDED.token_key_id END,
-                space = EXCLUDED.space,
-                root_page_id = EXCLUDED.root_page_id,
-                include_labels = EXCLUDED.include_labels,
-                exclude_labels = EXCLUDED.exclude_labels,
-                target_collection = EXCLUDED.target_collection,
-                target_tag = EXCLUDED.target_tag,
-                process_attachments = EXCLUDED.process_attachments,
-                enabled = EXCLUDED.enabled,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING id, name, slug, domain, email, api_token_enc, token_key_id, space,
-                      root_page_id, include_labels, exclude_labels, target_collection, target_tag,
-                      process_attachments, enabled, created_at, updated_at
-            """).param("id", id).param("name", instance.name()).param("slug", instance.slug())
+        return jdbcClient
+            .sql(
+                """
+                    INSERT INTO confluence_instances (id, name, slug, domain, email, api_token_enc,
+                                                      token_key_id, space, root_page_id, include_labels,
+                                                      exclude_labels, target_collection, target_tag,
+                                                      process_attachments, build_section_summaries, summarize_prompt,
+                           enabled, created_at, updated_at)
+                    VALUES (:id, :name, :slug, :domain, :email, :apiTokenEnc, :tokenKeyId, :space,
+                            :rootPageId, :includeLabels, :excludeLabels, :targetCollection, :targetTag,
+                            :processAttachments, :buildSectionSummaries, :summarizePrompt, :enabled,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        slug = EXCLUDED.slug,
+                        domain = EXCLUDED.domain,
+                        email = EXCLUDED.email,
+                        -- Null token == "keep the current credential". The fingerprint follows the
+                        -- ciphertext rather than COALESCE'ing on its own, so a resupplied token can never
+                        -- be left wearing the previous key's fingerprint (which reads as UNDECRYPTABLE).
+                        api_token_enc = COALESCE(EXCLUDED.api_token_enc,
+                                                 confluence_instances.api_token_enc),
+                        token_key_id = CASE WHEN EXCLUDED.api_token_enc IS NULL
+                                            THEN confluence_instances.token_key_id
+                                            ELSE EXCLUDED.token_key_id END,
+                        space = EXCLUDED.space,
+                        root_page_id = EXCLUDED.root_page_id,
+                        include_labels = EXCLUDED.include_labels,
+                        exclude_labels = EXCLUDED.exclude_labels,
+                        target_collection = EXCLUDED.target_collection,
+                        target_tag = EXCLUDED.target_tag,
+                        process_attachments = EXCLUDED.process_attachments,
+                        build_section_summaries = EXCLUDED.build_section_summaries,
+                        summarize_prompt = EXCLUDED.summarize_prompt,
+                        enabled = EXCLUDED.enabled,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id, name, slug, domain, email, api_token_enc, token_key_id, space,
+                              root_page_id, include_labels, exclude_labels, target_collection, target_tag,
+                              process_attachments, build_section_summaries, summarize_prompt,
+                           enabled, created_at, updated_at
+                    """)
+            .param("id", id).param("name", instance.name()).param("slug", instance.slug())
             .param("domain", domain).param("email", instance.email())
             .param("apiTokenEnc", instance.apiTokenEnc()).param("tokenKeyId", instance.tokenKeyId())
             .param("space", instance.space()).param("rootPageId", instance.rootPageId())
@@ -158,6 +170,8 @@ public class ConfluenceInstanceRepository {
             .param("targetCollection", instance.targetCollection())
             .param("targetTag", instance.targetTag())
             .param("processAttachments", instance.processAttachments())
+            .param("buildSectionSummaries", instance.buildSectionSummaries())
+            .param("summarizePrompt", instance.summarizePrompt())
             .param("enabled", instance.enabled()).query((rs, rowNum) -> mapRow(rs)).single();
     }
 
@@ -193,6 +207,7 @@ public class ConfluenceInstanceRepository {
             rs.getString("root_page_id"), rs.getString("include_labels"),
             rs.getString("exclude_labels"), rs.getString("target_collection"),
             rs.getString("target_tag"), rs.getBoolean("process_attachments"),
+            rs.getBoolean("build_section_summaries"), rs.getString("summarize_prompt"),
             rs.getBoolean("enabled"), rs.getObject("created_at", OffsetDateTime.class),
             rs.getObject("updated_at", OffsetDateTime.class));
     }

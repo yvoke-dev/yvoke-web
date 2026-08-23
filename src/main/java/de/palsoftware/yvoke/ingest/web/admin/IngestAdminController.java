@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.ingest.web.admin;
 
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
@@ -119,10 +120,10 @@ public class IngestAdminController {
 
         Map<String, Object> settings = new HashMap<>();
         if (kgPromptName != null && !kgPromptName.isBlank()) {
-            settings.put("kgPrompt", kgPromptName.trim());
+            settings.put(IngestPrompts.SETTING_KG_PROMPT, kgPromptName.trim());
         }
         if (summarizePromptName != null && !summarizePromptName.isBlank()) {
-            settings.put("summarizePrompt", summarizePromptName.trim());
+            settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, summarizePromptName.trim());
         }
         if (documentGlob != null && !documentGlob.isBlank()) {
             settings.put("documentGlob", documentGlob.trim());

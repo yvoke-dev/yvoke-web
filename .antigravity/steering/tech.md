@@ -3,7 +3,7 @@
 ## Language & Runtime
 
 - **Java 25**: Primary language.
-- **Spring Boot 4.0.x**: Core framework. (Uses modern idioms like @ServiceConnection and @JdbcClient).
+- **Spring Boot 4.1.0**: Core framework — the version is pinned by the `spring-boot-starter-parent` in `pom.xml`. Data access is `JdbcClient`, a constructor-injected class rather than an annotation; Testcontainers is wired by a hand-written `ApplicationContextInitializer` (`PostgresTestContainerInitializer`, registered for the whole IT suite via `src/it/resources/META-INF/spring.factories`), **not** `@ServiceConnection`, which appears nowhere in this repository.
 - **Maven**: Dependency management and build tool.
 
 ## Core Dependencies
@@ -12,7 +12,7 @@
 - **Spring Boot Starter Web**: Web server and REST endpoints.
 - **Spring Boot Starter Thymeleaf**: HTML views.
 - **Spring AI**: Used for embeddings (`voyage-4-large`) and the MCP server implementation.
-- **Custom LLM Abstraction**: Custom abstraction layer (`de.palsoftware.yvoke.llm`) selected by `AI_PROVIDER` in `LlmConfig`, with clients for Gemini (`google-genai`, direct or via the Cloudflare AI Gateway), OpenRouter (`openai-java`) and Azure OpenAI (`com.azure:azure-ai-openai`). All are wrapped by the `@Primary` `AccountingLlmClient`. The Azure client uses the **async** SDK client over the JDK HTTP transport; that pairing is load-bearing for token-by-token streaming — see § 6 of `AGENTS.md` before changing it.
+- **Custom LLM Abstraction**: Custom abstraction layer (`de.palsoftware.yvoke.llm`). `AI_PROVIDER` names the **default route** and `AI_MODEL_ROUTES` maps individual models to a route as a JSON object (`{"gpt-5.6-luna": "azure-openai-responses"}`; one string, because the deployment delivers config as flat env vars via `envFrom`, where a nested map cannot be set at all), resolved in `LlmConfig` into a `ModelRoutingLlmClient` — always the `llmProviderClient` bean, even when nothing is mapped, i.e. below the `@Primary` `AccountingLlmClient`, so a routed call is still accounted for and the bean's type never depends on configuration. Routing keys on the MODEL, never the caller's role: `..llm..` is a domain package and `chat → llm` already exists, so reading `chat`'s orchestrator roles here would be the cycle `ArchitectureTest` forbids. Only the routes actually named are constructed. Wired providers: Gemini (`google-genai`, direct) and Azure OpenAI Responses (`com.openai:openai-java` against the resource root + `/openai/v1`). `cloudflare-gemini`, `openrouter` and `azure-openai` (chat completions, `com.azure:azure-ai-openai`) are **retired** — `LlmConfig` rejects all three at startup rather than letting them reach the unknown-value Gemini fallback; their classes, tests and `app.ai.*` settings are deliberately kept, so re-enabling any of them is one branch there plus an entry in `LlmRouteId`. Retiring `cloudflare-gemini` gave up the AI Gateway's response cache, `cf-aig-metadata` attribution and the `cost_avoided` figures derived from cache hits. Whether a turn that produced nothing is re-requested is decided once, in `EmptyTurnRetry` (retry only a cleanly-completed empty turn; never a truncated or severed one), shared by the Gemini and Responses clients — `AzureOpenAiLlmClient` still carries its own copy and is unreachable. All are wrapped by the `@Primary` `AccountingLlmClient`. The Azure client uses the **async** SDK client over the JDK HTTP transport; that pairing is load-bearing for token-by-token streaming — see § 6 of `AGENTS.md` before changing it.
 - **Spring Security (OIDC / OAuth2 client / resource server)**: Authentication against Microsoft Entra ID.
 - **Spring Boot Actuator**: Health metrics and diagnostics.
 
@@ -30,10 +30,10 @@
 ### Testing & Assertions
 - **JUnit 5**: The core testing framework (via `spring-boot-starter-test`).
 - **Testcontainers**: Used strictly for spinning up transient PostgreSQL databases during integration testing (`-Pit-tests`).
-- **Spring Test Annotations**: Use `@SpringBootTest`, `@MockBean` (or `@MockitoBean` in newer Spring Boot), and standard Mockito for service-level mocking.
+- **Spring Test Annotations**: Use `@SpringBootTest`, `@MockitoBean` and standard Mockito for service-level mocking. **`@MockBean` is gone** — Spring Boot 4 removed it and the class is not on the classpath (`spring-boot-test-4.1.0.jar` ships no `org/springframework/boot/test/mock/mockito/MockBean.class`, where `3.5.14` did), so code written against it does not compile; the repo uses `@MockitoBean` exclusively. To mock the LLM, replace the **provider** bean — `@MockitoBean(name = "llmProviderClient") LlmClient` — never the `@Primary` `LlmClient`, which is the `AccountingLlmClient` decorator and would take cost accounting down along with the provider.
 - **JaCoCo (`${jacoco.version}`, 0.8.15)**: Aggregated code coverage across the unit (surefire) and integration (failsafe) tiers. `prepare-agent`/`prepare-agent-integration` write `target/jacoco-ut.exec` / `jacoco-it.exec`; at the `verify` phase these are merged (`jacoco-merged.exec`) and a single HTML/XML/CSV report is emitted to `target/site/jacoco-aggregate`. Run `./mvnw verify -Pit-tests` for the full unit+IT number; a plain `./mvnw verify` reports unit-only. Under `-Pit-tests` a JaCoCo `check` **coverage ratchet** fails the build if the merged aggregate drops below the floor (instruction/line ≥ 0.77, branch ≥ 0.55); a unit-only `verify` is not gated. See `docs/testing-plan.md`.
 - **Playwright (`${playwright.version}`, 1.61.0)**: Browser end-to-end tests (real headless Chromium). Named `*E2EIT.java` and run **only** under the `-Pe2e-tests` profile (`./mvnw verify -Pe2e-tests`); the `it-tests` profile excludes them so the fast IT loop is unaffected. E2E tests extend `AbstractE2E` (`src/it/java/.../web/e2e`), which boots the app on a random port with `app.security.mock=true` + a `@MockitoBean(name = "llmProviderClient") LlmClient` (deterministic answers, no network; the primary `LlmClient` is the `AccountingLlmClient` decorator). First run downloads Chromium to `~/.cache/ms-playwright`. See `docs/testing-plan.md` Phase 1.
-- **`node:test` (JS tier)**: Browser-side logic that is pure string→string is unit-tested in Node instead of in a browser. Sources live in `src/main/resources/static/js/chat/citation-render.js` (extracted from `thread.js`, which imports it as an ES module); tests in `src/test/js/*.test.js`. **Zero dependencies** — the root `package.json` only declares `type: module` plus an `npm test` script, so there is no `npm install` and no lockfile. Wired into the Maven `test` phase by **`exec-maven-plugin` 3.5.0** (execution id `js-tests`, runs `node --test`), so `./mvnw test` covers it; disable with `-DskipJsTests=true` (property `skipJsTests`, default `false`). Requires `node` on `PATH` — present on GitHub's `ubuntu-latest` runners, so CI needs no extra setup step. Prefer this tier over e2e for rendering logic: it is ~1000× faster, and e2e **cannot** cover mermaid/KaTeX at all (both are CDN-loaded in `templates/chat/layout.html` while `AbstractE2E` aborts non-localhost requests, so such assertions pass whether the source is intact or destroyed).
+- **`node:test` (JS tier)**: Browser-side logic that is pure string→string is unit-tested in Node instead of in a browser. Sources live under `src/main/resources/static/js/chat/` (six modules — `thread.js` plus the five it imports as ES modules: `citation-render.js`, `markdown-render.js`, `sse-accumulator.js`, `thread-markup.js`, `thread-text.js`) and `src/main/resources/static/js/admin/` (five module + `-bootstrap` pairs, the bootstrap half assigning the module's exports to `window` so the admin pages' classic inline scripts can reach them); eight test files in `src/test/js/*.test.js`, 281 tests. One of them is a **syntax gate** (`syntax.test.js`): it `node --check`s every app-owned `.js` under `static/js` (vendored `*.min.js` excluded) **and** every inline `<script>` extracted from every Thymeleaf template under `src/main/resources/templates` — Spotless is Java-only, so without it a JS syntax error reaches production. **Zero dependencies** — the root `package.json` only declares `type: module` plus an `npm test` script, so there is no `npm install` and no lockfile. Wired into the Maven `test` phase by **`exec-maven-plugin` 3.5.0** (execution id `js-tests`, runs `node --test`), so `./mvnw test` covers it; disable with `-DskipJsTests=true` (property `skipJsTests`, default `false`). Requires `node` on `PATH` — present on GitHub's `ubuntu-latest` runners, so CI needs no extra setup step. Prefer this tier over e2e for rendering logic: it is ~1000× faster, and e2e **cannot** cover mermaid/KaTeX at all (both are CDN-loaded in `templates/chat/layout.html` while `AbstractE2E` aborts non-localhost requests, so such assertions pass whether the source is intact or destroyed).
 
 ## Release Versioning
 
@@ -71,17 +71,22 @@
 
 ### Utilities
 - **Voyage Reranker API**: Voyage `rerank-2.5` accessed via `RestClient`.
-- **Jackson / Gson**: JSON serialization.
+- **Jackson**: JSON serialization. (No Gson — it is neither declared in `pom.xml` nor imported anywhere.)
 
 ## Configuration
 
 - **YAML-based**: Config in `src/main/resources/application.yml`.
 
+- **`.env.example`** (repo root): the only description of the environment this application needs. All three `docker compose` services declare `env_file: .env`, so it covers the Postgres/Flyway container variables as well as everything `application.yml` reads. `EnvExampleContractTest` (unit tier) runs the contract in **both** directions — a variable in the example that nothing consumes fails, and so does a setting whose shipped default is a `placeholder-…` that the example omits — plus a check that no value in it looks like a real credential.
+
+- **Deployment manifests**: `K8sManifestContractTest` (unit tier) reads `k8s/app/yvoke-app/configmap.yaml` and the sops-sealed `k8s/app/yvoke-app/secrets/secret.sops.yaml` (key names stay plaintext under `encrypted_regex: ^(data|stringData)$`, which is the half it needs) and asserts that every ConfigMap key is consumed by the app, that a model routed to `azure-openai-responses` ships `AZURE_OPENAI_ENDPOINT` in the ConfigMap and `AZURE_OPENAI_API_KEY` in the Secret in the same release, and that no retired provider's settings (`CLOUDFLARE_*`, `OPENROUTER_*`) are shipped.
+
 - **Environment variables**:
-  - `AI_PROVIDER`: Selects the default LLM provider (`cloudflare-gemini`, `gemini`, `openrouter` or `azure-openai`).
+  - `AI_PROVIDER`: The default route — the provider for any model `AI_MODEL_ROUTES` does not map (`gemini` or `azure-openai-responses`). `cloudflare-gemini`, `openrouter` and `azure-openai` are retired and fail startup with a message naming the replacement. Pinned against `k8s/app/yvoke-app/configmap.yaml` by `ApplicationYamlInvariantsTest`, because a retired value there is a failed start rather than a degraded one.
+  - `AI_MODEL_ROUTES`: Per-model overrides as a JSON object, e.g. `{"gemini-3.6-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}`. Blank or `{}` by default; every entry is validated at startup (invalid JSON, a non-object, an unknown route, a non-string route or a duplicated model all fail).
   - `GEMINI_API_KEY`: API key for Gemini models.
-  - `OPENROUTER_API_KEY`: API key for OpenRouter (DeepSeek) models.
-  - `AZURE_OPENAI_ENDPOINT`: Azure OpenAI resource endpoint. Required when the provider is `azure-openai` — startup fails without it, because the SDK would otherwise target the public OpenAI service and forward the key there.
+  - `OPENROUTER_API_KEY`: API key for OpenRouter (DeepSeek) models. Retired — the provider is not selectable.
+  - `AZURE_OPENAI_ENDPOINT`: Azure OpenAI resource endpoint. Required when the provider is `azure-openai-responses` — startup fails without it, because the SDK would otherwise target the public OpenAI service and forward the key there.
   - `AZURE_OPENAI_API_KEY`: API key for Azure OpenAI.
   - `AZURE_OPENAI_REASONING_MODELS`: Optional comma-separated deployment names that address a reasoning model, when the deployment is not named after the model it serves.
   - `VOYAGE_API_KEY`: API key for Voyage embeddings and reranker.
@@ -106,25 +111,34 @@
 
 ## MCP Server
 
-- **Framework**: Spring AI Starter MCP Server (WebMVC) using the SSE protocol.
-- **Endpoints**:
-  - SSE Connection: `GET /mcp`
-  - Client Messages: `POST /mcp/message`
-- **Security**: OAuth2 token authentication mapping against Microsoft Entra ID. Requires the configured audience `api://oim-kb` and scope `api://oim-kb/mcp.read`.
-- **Testing**: Can be verified locally using an SSE-compatible client or MCP inspector tools pointing to the SSE endpoint.
+- **Framework**: Spring AI Starter MCP Server (WebMVC), running the **Streamable HTTP** transport (`spring.ai.mcp.server.protocol: STREAMABLE`).
+- **Endpoint**: ONE path — `/mcp` (`spring.ai.mcp.server.streamable-http.mcp-endpoint`). Every JSON-RPC message is a `POST /mcp`; the `initialize` reply carries an `Mcp-Session-Id` header that each later request must echo (without it the transport answers `400 "Session ID missing"`), `GET /mcp` opens the server→client stream for that session and `DELETE /mcp` ends it. A POST answer comes back either as `application/json` or as one `text/event-stream` event, so a client must send `Accept: application/json, text/event-stream` — with either half missing the transport answers `400 "Invalid Accept headers"`.
+- The legacy HTTP+SSE transport (`GET /sse` + `POST /mcp/message`) is **NOT** served. Those are the defaults of spring-ai's `McpServerSseProperties`, registered only under `protocol=SSE` — whose autoconfiguration is `@Deprecated(since = "2.0.0", forRemoval = true)`. Against the running app `POST /mcp/message` is a **404**; outside this document the string survives in the repo only in `SecurityGatingIT`, as one of the paths the API-key chain must NOT match.
+- **Security**: bearer-only Entra ID access tokens on the `@Order(1)` `/mcp/**` chain (`SecurityConfig.mcpSecurityFilterChain`), `SessionCreationPolicy.STATELESS` so an ambient browser session cannot carry its authorities into MCP (SEC-13). `SecurityConfig.AudienceValidator` accepts the configured audience with or without its `api://` prefix, and a request needs `SCOPE_<required-scope>`, `SCOPE_<its last path segment>` (Entra puts the RELATIVE name in `scp` — see the javadoc on `McpSecurityGatingIT.aBearerCarryingOnlyTheRelativeScopeStillReachesMcp`), `ROLE_USER` or `ROLE_ADMIN`. Anonymous requests get 401 plus `WWW-Authenticate: Bearer realm="mcp", resource_metadata="<base>/.well-known/oauth-protected-resource"`, served by `ProtectedResourceMetadataController` alongside `/.well-known/oauth-authorization-server` and an identical `/.well-known/openid-configuration`.
+- **Audience and scope are per-environment, and the two environments DIFFER**: `application.yml` defaults to `api://oim-kb` / `api://oim-kb/mcp.read` (local Compose and every test), while `k8s/app/yvoke-app/configmap.yaml` sets `APP_SECURITY_MCP_AUDIENCE: api://a1824d0a-79eb-4dde-8c0b-242dde321967` and `APP_SECURITY_MCP_SCOPE: api://a1824d0a-79eb-4dde-8c0b-242dde321967/desktop` — the Entra app registration's own client id (`ENTRA_CLIENT_ID`), scope `desktop`, not `mcp.read`. `K8sManifestContractTest` checks only that every ConfigMap key is READ by the app; nothing compares the two VALUES, so read the ConfigMap before quoting an audience or scope at an operator.
+- **What is published**: the MCP annotation scanner is OFF (`spring.ai.mcp.server.annotation-scanner.enabled: false`), so the only publisher of tools is the `List<ToolCallback>` bean in `McpToolsConfig` — three context-aware callbacks appended by hand (`search_corpus`, `get_section`, `ask_clarifying_question`) plus every `@Component` in `de.palsoftware.yvoke.mcp.tools` found by its classpath scan, so a new tool needs no edit there. `tools/list` returns ten (`search_corpus`, `get_section`, `get_toc`, `list_documents`, `search_graph_entities`, `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `ask_clarifying_question`). `prompts` are playbooks resolved from the `playbooks` table by `PromptsService`; `capabilities: tool: true, prompt: true` is what the config enables, though the `initialize` reply also advertises `resources`, `completions` and `logging`.
+- **Testing**: `McpServerEndpointsIT` drives the real transport on a `RANDOM_PORT` context — `initialize`, `notifications/initialized`, `tools/list` (including `toolsListPublishesTheWholeToolCatalogue`, which asserts all ten names) and `prompts/list`/`prompts/get`; `McpSecurityGatingIT` covers the 401 challenge, the relative-scope token and the discovery documents; `JsonObjectsToolsIT.everyDocumentedToolIsPresentInTheRegisteredCallbackList` pins the callback bean and `McpToolCatalogueParityTest` the `@McpTool`/`@Tool` annotation parity. Locally, `./redeploy.sh` then curl the handshake against `http://localhost:8080/mcp`: `app.security.mock` defaults to **false** in `application.yml`, but `.env.example` ships `APP_SECURITY_MOCK=true`, and with it on any bearer token is trusted — so `-H "Authorization: Bearer x"` is enough. An MCP inspector must be pointed at `/mcp` as a Streamable HTTP server, not at an SSE URL.
 
 ## Manuals Ingestion & KG Extraction
 
 - The `kind="manual"` pipeline (`ingest.core`) chunks consolidated Markdown with a **faithful Java port** of the reference `_md_tree.py` (`MarkdownTree`); do not introduce a different chunking algorithm. Parity is locked by a golden fixture generated from the Python reference.
-- **Write-side repositories** own inserts: `ManualDocumentRepository` (documents/chunks) and the write methods on `KgRepository` (`upsertEntity`/`upsertRelationship`).
+- **Write-side repositories** own inserts: `document.core.repository.DocumentRepository`
+  (`upsertManualDocument` / `upsertDocumentBySourceFile` / `insertChunks`), which carries both the read
+  and the write side since the former `ManualDocumentRepository` was merged into it, and
+  `kg.core.repository.KgWriteRepository` (`upsertEntity` / `upsertRelationship`).
   All are idempotent by their natural key so re-ingest replaces rather than duplicates.
-  - Naming: the ingest document repo is `ManualDocumentRepository` (not `DocumentRepository`) to avoid
-    a Spring default-bean-name collision with `document.DocumentRepository`.
-- KG extraction uses a **non-reasoning** chat model with a generous output budget. Config keys
+- KG extraction uses a fast chat model with a generous output budget. Config keys
   (`application.yml`, prefix `app.ai.kg`): `model`, `max-tokens` (default **4096**, must stay
-  `>= 4096` to avoid mid-element truncation), `temperature` (default `0.0`), and `system-prompt`.
-  The extractor overrides only the model per call on the shared `LlmClient`, reusing
-  the existing provider wiring (`app.ai.rag.*`).
+  `>= 4096` to avoid mid-element truncation), `temperature` (default `0.0`), `concurrency`
+  (default **8**), `max-attempts` (default **2**) and `thinking-level` (default `low`). There is no
+  `system-prompt` key: the extraction system prompt is a `system_prompts` DATABASE row resolved by
+  `SystemPromptService`, with a per-run override — prompts are data and live outside this repo, see
+  CLAUDE.md § 3.
+  Per call the extractor builds its own `LlmRequest` overriding **model, temperature, max-tokens,
+  thinking-level, response MIME type (`application/json`) and `RESPONSE_SCHEMA`** — not just the
+  model — on the `@Primary` `AccountingLlmClient`. Which PROVIDER answers is decided by
+  `app.ai.model-routes` / `app.ai.provider` keyed on `app.ai.kg.model`, not by `app.ai.rag.*`,
+  which holds no provider setting at all.
 - Orchestrator run limits. Config keys (`application.yml`, prefix `app.ai.orchestrator`):
   `max-review-rounds` (default **3**) and `max-specialist-calls` (default **8**). These are
   *fallbacks and form pre-fills*, not the effective values: a run resolves its limits from the

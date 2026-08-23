@@ -97,7 +97,7 @@ system and watch what it costs.
 | **Passage** | The piece a document is split into, so the assistant can quote an exact place and cite it. | "chunk" in the admin screens |
 | **Playbook** | A named, reusable way of answering a class of question, written by administrators. Users pick one before asking. |  |
 | **Conversation** | One thread of questions and answers, belonging to the person who started it. |  |
-| **Citation** | A marker in an answer that opens the exact passage it came from. |  |
+| **Citation** | A marker in an answer naming the exact passage it came from. Opening it shows that passage in its surrounding section. |  |
 | **Knowledge graph** | The named things in a knowledge area — tables, processes, forms, endpoints — and how they connect. |  |
 | **Structured records** | Record-shaped data the assistant queries directly rather than reading as prose. | "JSON objects" in the admin screens |
 | **In-depth mode** | A team of specialist agents investigates one question and a reviewer checks the draft. | "multi-agent" / "orchestrator profile" |
@@ -120,10 +120,10 @@ a register of everyone's conversations.
 | **Start a conversation** | *New Chat* opens an empty thread titled *New Conversation*. The first question becomes the title, shortened if long, and is then fixed. Conversations made in the desktop app appear in the same sidebar, marked *Desktop*. |
 | **Pick a playbook** | Before asking, the user picks a named way of answering. Suggestions appear as chips on an empty conversation; typing `/` or clicking **+** opens the full list with descriptions. The active choice is shown above the input. |
 | **Ask by typing or by voice** | The input grows as you type; Enter sends, Shift+Enter adds a line. A microphone button dictates into the box — tap to start and stop, or hold to record, chosen in voice settings. |
-| **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response* — and names each research tool as it runs. |
+| **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response*, *Polishing the answer* — and names each research tool as it runs. |
 | **Read a formatted answer** | Answers render headings, tables, code blocks, mathematical formulas and drawn diagrams. In Streaming mode a diagram shows as its source text while the answer is still arriving, and is drawn once it finishes. |
 | **Stop a running answer** | The send button becomes a stop button while an answer runs. Stopping marks the answer *[Generation stopped by user]*. In Standard mode the text so far is kept; in in-depth mode the partial answer is discarded. |
-| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel with the cited passage, its document title, its version, and a link to the original page where one exists. |
+| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel showing the section the cited passage sits in — the passage in context, not on its own — with its document title, its version, and a link to the original page where one exists. |
 | **See the reasoning and tools used** | *Show thinking & tools* reveals the assistant's reasoning and every tool it called. A *View Thinking Process* button opens the full reasoning in a panel. Forced on in Streaming mode. |
 | **See how much work an answer took** | Each answer shows how much text the assistant read, re-used, thought with and wrote. Users see effort, never money — no prices appear in chat. |
 | **Answer a clarifying question** | When the assistant needs more information it posts a *Clarification Required* card, often with ready-made options. The input is locked until the user answers. The card then collapses to *Clarification Provided*. |
@@ -158,8 +158,13 @@ a register of everyone's conversations.
   thread and its ratings, but cannot post, rate, tag, stop or delete it.
 - **Sharing is one tag away** — immediate, no confirmation step, no per-person control. Adding `public`
   exposes the whole conversation to every signed-in user.
-- **A bare thumb is recorded.** Clicking thumbs-up or thumbs-down stores the rating immediately, with or
-  without a comment, and it survives a reload. Web chat and the desktop app now count the same way.
+- **A bare thumb is recorded in web chat.** Clicking thumbs-up or thumbs-down stores the rating
+  immediately, with or without a comment, and it survives a reload. The desktop app is stricter on one
+  point: it takes a bare thumbs-up, but a thumbs-down without a comment is refused rather than stored.
+- **In Standard mode the answer is produced on the server**, so closing the tab or reloading the page
+  does not lose it. Re-opening the conversation shows the answer again — still being written, or
+  finished while the tab was closed. Streaming mode is the exception; there the answer lives only in
+  the open connection.
 - **A stopped or failed answer is still saved** and can be rated — except in Streaming mode, where
   stopping saves nothing and leaves the question standing without an answer.
 - **Settings changes fail silently.** If a model or effort change is rejected, the selector still shows
@@ -188,14 +193,22 @@ a register of everyone's conversations.
 - **Voice typing depends on the browser.** It is only offered where the browser supports it, so some
   users never see the button at all. It dictates in **whatever language the browser is set to** — which
   matters for a corpus containing German material.
-- **Voice, streaming and thinking preferences are stored per browser**, not per account, so they do not
-  follow a user to a second device.
+- **Only the voice preference is stored per browser**, not per account, so it does not follow a user to
+  a second device. Response mode and *Show thinking & tools* are remembered on the conversation itself
+  and do follow — the browser only supplies the starting value for a conversation that has never had
+  one set.
 - **Citation checking only confirms a source exists.** It never confirms the source supports the
   statement, so a confident answer with valid-looking citations can still be wrong.
+- **Opening a citation can show far more than the passage cited.** A citation names one passage, but the
+  panel shows the whole section that passage belongs to, and a section is as large as its heading is
+  broad — a passage under a wide chapter heading opens a section of a couple of hundred passages, while
+  one under a narrow sub-heading opens a handful, and the depth of the heading alone does not tell you
+  which you will get. The panel does not say which passage was the cited one, so in a large section the
+  reader has to find it.
 - **Folder names are free text** with no length or character limit and no rename. Renaming a folder means
   removing the tag from every conversation and adding a new one.
 - **In-depth mode is only available** where an administrator has defined at least one profile.
-- **The reasoning effort setting does nothing on some models.** Low / Medium / High is offered on every conversation and always saves, but only models that support extended thinking act on it — on the others the answer is produced with no thinking effort at all, and neither the selector nor the answer says so. Some models go further and refuse the setting whenever the assistant is allowed to search the knowledge base, which is every ordinary question; there the level is dropped and the model thinks at its own default, again silently.
+- **The reasoning effort setting does nothing on some models.** Low / Medium / High is offered on every conversation and always saves, but only models that support extended thinking act on it — on the others the answer is produced with no thinking effort at all, and neither the selector nor the answer says so.
 
 ### Not supported
 
@@ -225,7 +238,7 @@ in-depth profiles, and can inspect any search or trace.
 | Capability | What happens |
 | --- | --- |
 | **Every answer starts from a live search** | The assistant searches two ways at once — by meaning and by exact wording — merges both result lists, then re-orders them by relevance before reading anything. It answers from what it retrieved, not from the model's own memory. |
-| **Citations that open the source in place** | Clicking a source marker expands the cited passage inside the conversation, with document title, version, and how much of the document is shown. If the source has since been deleted, the panel says so rather than failing. |
+| **Citations that open the source in place** | Clicking a source marker expands the section containing the cited passage inside the conversation, with document title, version, and how much of the document is shown. If the source has since been deleted, the panel says so rather than failing. |
 | **Citation self-check while writing** | The assistant can check its own citations before finishing, and a source reference that is provably invented is removed as the answer is written. Ordinary bracketed text and numbered references are always kept. This applies to in-depth answers as well as ordinary ones. |
 | **Playbooks — expert strategies users pick** | A named, reusable instruction set telling the assistant how to attack a class of question and which tools it may use. Its instructions stay invisible in the conversation. |
 | **Playbook recommendation** | Before the first message is sent, the system checks whether the chosen playbook fits. If not it offers a one-click switch and a **Send Anyway** button. |
@@ -235,7 +248,7 @@ in-depth profiles, and can inspect any search or trace.
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
 | **Automated review of in-depth answers** | A reviewer agent checks the draft against the evidence the specialists gathered, and either approves it or sends it back with notes. If it still fails after the last attempt, the answer is delivered with a visible warning and the reviewer's notes. |
 | **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, the tools it may use, whether code execution is allowed, and its role. A saved playbook is immediately live for users and connected AI clients. |
-| **Administrators manage base instructions** | Managed separately from playbooks, with one marked as the active default. Typed by purpose — chat, graph extraction, summarisation — and importable/exportable as files. |
+| **Administrators manage base instructions** | Managed separately from playbooks, with one marked as the active default. Typed by purpose — chat, graph extraction, summarisation — and the type is enforced wherever one is chosen, so an entry can only be picked for the job it was written for. Importable/exportable as files. |
 | **Administrators configure in-depth profiles** | A profile names the lead playbook, the reviewer playbook and the available specialists, plus how many review rounds and specialist calls one question may spend, and which model each role runs at. |
 | **Administrators test and audit** | A search console runs any query against a knowledge area and shows the passages, their scores and which search found them. A log lists past searches with the rating the user gave. Every investigation keeps a full trace. |
 
@@ -282,6 +295,11 @@ in-depth profiles, and can inspect any search or trace.
   lead agent fixes it by citing material it already holds. Evidence with no passage id, such as a
   version-history table, is always passed on in full: it can never be cited and could never be
   recovered.
+- **A review that cannot run does not throw the draft away.** When the reviewer itself fails rather
+  than rejecting, the answer is delivered carrying its own warning — that nothing has validated its
+  claims or citations, so it should be treated as unverified. That is a different notice from the one a
+  rejected answer carries. The exception is a failure with no draft to rescue: then the question fails
+  and the user sees the generic error notice.
 - **A failing tool never fails the answer.** The assistant is told the step could not be completed and
   asked to continue and state the gap; the technical reason goes to the log only.
 - **Users only ever see one generic notice when something breaks.** A failure is never presented as
@@ -339,11 +357,21 @@ in-depth profiles, and can inspect any search or trace.
   within their own method — so the fallback is no longer skewed toward either method.
 - **Answering depends on an external AI service with a usage quota.** When it is busy the system waits and
   retries, which can add a minute; if it still fails the user sees the generic error notice.
+- **An answer where the AI thinks and then says nothing is asked for once more.** Both AI services behave
+  the same way here, and they try once more only when the service reported that it finished normally. A turn
+  cut short by its own length limit is not asked again — it would simply run out again — and neither is one
+  where the connection dropped. In either of those cases the user sees the generic error notice rather than
+  a blank message.
 - **The admin search console can search across all versions at once**, which the assistant itself is
   forbidden to do — so it does not exactly reproduce what a user's answer saw.
+- **Which AI service answers is decided per model.** An operator maps individual models to a service;
+  anything unmapped goes to the default one. Two answers in the same conversation can therefore come from
+  different services, and nothing on screen says which one answered.
 
 ### Not supported
 
+- Automatic switching to another AI service when the chosen one fails or is busy. A model is answered by
+  the one service it is mapped to, and a failure there is reported rather than retried elsewhere.
 - Version history for playbooks, base instructions or profiles. Saving overwrites, deletion is immediate, and
   nothing warns about conversations still using them.
 - Any check that a cited passage actually supports the sentence it is attached to.
@@ -354,9 +382,6 @@ in-depth profiles, and can inspect any search or trace.
 - Automatic retry of an answer that fails review. It is delivered as it stands.
 - User control over which specialists run, or any way to intervene mid-investigation.
 - Learning from feedback. Ratings are stored but change neither ranking nor future answers.
-- Code execution on every AI service. A playbook can enable it, but only some services can run code;
-  on the others the checkbox is accepted, the question is answered without running any code, and
-  neither the playbook screen nor the answer says so.
 
 ---
 
@@ -375,14 +400,14 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 | **Create knowledge areas** | An administrator registers an area with a name and description; it then appears wherever content can be targeted. Names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
 | **Declare the versions an area holds** | Versions are declared on the area first, then chosen at import. One area holds several side by side; content, graph and records never mix between them. |
 | **Import documents and archives** | Upload a document or a zipped tree, pick the area, version and pipeline, and start. The upload returns immediately and the work runs in the background. Oversized sections are split into numbered parts automatically. |
-| **Ask the searchable pipeline for section summaries too** | *Standard* imports offer **Generate section summaries**, off by default. It writes the same per-section summaries the *Hierarchical* pipeline produces, so a searchable document can also be browsed by its table of contents. Summaries are reused across imports whenever a section's text is unchanged, so a manual already imported for browsing usually costs nothing to summarise again. |
-| **Import a manual for browsing** | The *Hierarchical* pipeline keeps a manual's heading structure intact and writes an AI summary for every section, built bottom-up so a parent's summary reflects its children. A section that cannot be summarised reads *Section summary unavailable* rather than failing the import. |
-| **Import a prepared export** | The *Custom* pipeline takes a zipped export of already-prepared documents plus optional entity and relationship files, so an install-kit extract arrives as documents and a knowledge graph in one job. Code-heavy sources are summarised during import. |
+| **Ask the searchable pipeline for section summaries too** | *Standard* imports offer **Generate section summaries**, off by default. Switching it on requires choosing the summarisation instructions to use. It writes the same per-section summaries the *Hierarchical* pipeline produces, so a searchable document can also be browsed by its table of contents. Summaries are reused across imports whenever a section's text is unchanged, so a manual already imported for browsing usually costs nothing to summarise again. |
+| **Import a manual for browsing** | The *Hierarchical* pipeline keeps a manual's heading structure intact and writes an AI summary for every section, built bottom-up so a parent's summary reflects its children. It always summarises, so it always needs summarisation instructions named. A section that cannot be summarised reads *Section summary unavailable* rather than failing the import. |
+| **Import a prepared export** | The *Custom* pipeline takes a zipped export of already-prepared documents plus optional entity and relationship files, so an install-kit extract arrives as documents and a knowledge graph in one job. Code-heavy sources are summarised during import, so this pipeline needs summarisation instructions named too. |
 | **Import structured records** | The *JSON Import* pipeline loads record-shaped data so the assistant can query facts directly instead of searching prose. Name a unique field to update matching records in place; leave it blank and every import adds new copies. |
-| **Connect a Confluence site** | Register any number of sites: address, account e-mail, API token, space, root page, include/exclude label filters, target area and version, and whether attachments are read. **Test Connection** verifies credentials and lists sample pages. |
+| **Connect a Confluence site** | Register any number of sites: address, account e-mail, API token, space, root page, include/exclude label filters, target area and version, whether attachments are read, and whether section summaries are built — with the summarisation instructions to use when they are. **Test Connection** verifies credentials and lists sample pages. |
 | **Edit or switch off a connector** | A saved site can be edited, and can be disabled so it is skipped by *Sync All* and cannot crawl, without deleting it. Deleting is separate and also cancels its queued work. |
 | **Sync a Confluence space** | Sync one site or every enabled one. The crawl walks the page tree under the root, applies the label filters, and queues one import per changed page. It reports pages queued, pages already queued, and how many carry none of the required labels. |
-| **Extract a knowledge graph** | Run extraction on a document, optionally choosing the extraction prompt. A model reads each passage and produces the named things and their connections for that area and version, then duplicates are merged. |
+| **Extract a knowledge graph** | Run extraction on a document, choosing the extraction prompt. A model reads each passage and produces the named things and their connections for that area and version, then duplicates are merged. The prompt is required: it is what tells the model to answer in the strict shape the reader expects, so an extraction without one produces nothing usable rather than a smaller graph. |
 | **Import through the integration interface** | Upload documents, prepared exports and record files without using the screen, then poll a job or subscribe to its live progress. Confluence imports are refused to anyone but an administrator. |
 
 ### How it behaves
@@ -394,7 +419,25 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   import is dropped silently, the content lands unversioned, and a second version's import then replaces
   the first.
 - **Once an area declares any tag, every import must name one.** Tag names must match exactly,
-  including capitalisation.
+  including capitalisation — from the admin screens and from the job-queueing endpoint. **Two
+  integration routes are the exception**: file upload and graph-extraction requests *declare* the
+  version they were given before the check runs, so a typo there is accepted rather than refused. It
+  silently adds a new version to the area and files the content under it, where no ordinary search
+  will look. Nothing reports it; only the area's version list shows the stray name.
+- **Work that needs AI instructions is refused when none are named**, at the moment it is submitted
+  rather than part-way through. Anything that summarises sections, and every graph extraction, must name
+  the instructions it will use, and that name must still exist; either way the submission comes back
+  refused with the valid choices listed, and nothing is queued. This is deliberately strict: the earlier
+  behaviour was to run anyway with no instructions at all, which does not fail — it finishes, reports
+  success, and leaves summaries that describe nothing and a graph the model never returned in a usable
+  shape. Neither is visible until someone reads the result much later.
+- **Instructions are checked for purpose as well as existence.** Summarisation instructions cannot be
+  used for graph extraction or the other way round, so picking a stale entry from the wrong list is
+  refused instead of quietly steering the model to do the wrong job.
+- **Confluence sites do not summarise unless asked.** A newly connected or previously existing site
+  imports pages without section summaries until an administrator switches them on, which also means it
+  costs no AI calls per section by default. A site with summaries switched on but no instructions chosen
+  cannot be saved.
 - **Submitting the same file twice while an import of it is running attaches to that job.** A warning
   states that the options chosen this time were not applied; cancel and resubmit to change them.
 - **Re-importing a file updates that document instead of duplicating it.** For uploads and prepared exports
@@ -411,8 +454,9 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 - **Imports never retry themselves.** A failed job stays failed until the work is submitted again, and a
   restart of the service re-runs interrupted jobs from the beginning.
 - **Graph extraction by the model reports what it could not use and still completes**, because one stray
-  name must not cost a whole document. A prepared-export import instead fails and names the offending
-  files — up to twenty, plus a total count.
+  name must not cost a whole document. An extraction that found nothing at all is the exception: it is
+  recorded as failed, not completed with an empty graph. A prepared-export import instead fails and
+  names the offending files — up to twenty, plus a total count.
 - **A Confluence re-sync only re-imports pages whose version changed**, so repeat syncs over a large space
   are cheap. A page with no usable content is recorded as empty so it is not re-queued forever.
 - **Structured records are updated in place only when a unique field is named.** The job count reports
@@ -424,6 +468,9 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 
 - **One file per upload, 200 MB maximum.** The form offers Markdown, zip, JSON and line-delimited JSON, but
   nothing rejects another file type — an unsupported file is accepted and the job fails when it runs.
+- **An archive import only ever reads Markdown.** *Standard* and *Hierarchical* imports match `**/*.md`
+  inside the zip and ignore everything else; only the *Custom* pipeline offers a file filter that can be
+  changed. A zip holding any other format finishes as *Completed* with zero documents.
 - **Inside an archive, a file that fails is skipped without a message.** An archive in which every file
   fails still finishes as *Completed* with zero documents — **read the document count, not the status**.
 - **A prepared-export import silently skips** a document with no metadata header, one it cannot read, and
@@ -432,12 +479,13 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   already stored. Fix the export and re-run; do not assume the failed job left nothing behind.
 - **Documents imported with the Hierarchical pipeline are not reachable by meaning-based search**, only by
   literal word matches. Use it for material meant to be browsed and summarised.
-- **Re-importing an uploaded document whose title changed creates a second document.** Uploads are matched
+- **Re-importing a single uploaded file whose title changed creates a second document.** Uploads are matched
   by title in practice, because each upload is stored under a fresh internal name that never matches the
   previous one. Edit the heading a manual opens with and the re-import is treated as new material: the
   earlier revision keeps its passages, stays searchable, and answers can cite it as current. Nothing warns,
   and only the document count in the area reveals it. Change a title and the superseded document has to be
-  deleted by hand.
+  deleted by hand. Files inside an archive are unaffected: they are matched by their path within the zip,
+  which stays the same from one import to the next, so a changed title still updates the same document.
 - **A hand-written declaration of structured data is frozen permanently.** Later imports never update it,
   nothing warns, and it cannot be rebuilt from the data — the only way to change it is to write it again
   by hand. Until someone does, the assistant reports data that exists as missing.
@@ -446,13 +494,15 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   of them, chosen arbitrarily, and the rest silently keep their old content.
 - **Merging duplicate entities keeps only the longest description** and discards the rest of the
   duplicate, including its link to a document.
-- **Every Confluence page imported is also summarised section by section**, so syncing a large space costs
-  AI calls per page and shows up on the spend report as import cost.
+- **A Confluence site with section summaries switched on summarises every page it imports**, so syncing a
+  large space costs AI calls per section and shows up on the spend report as import cost. The setting is
+  per site and off by default, so this is a cost a site opts into rather than one every sync carries.
 - **A connector saves a target version the knowledge area does not declare without complaint**; that only
   surfaces as a failure when the first sync runs.
 - **Switching a connector off does not stop a crawl already under way.** It still walks the whole page
-  tree to the end; only the page imports it would have queued are skipped. Stopping the running job is
-  the only way to halt it.
+  tree to the end and still queues one import per changed page; each of those imports then fails as soon
+  as it needs the switched-off connector's credentials. Nothing is imported, but the job list fills with
+  failures. Stopping the running job is the only way to halt it cleanly.
 - **Renaming a Confluence page does not change the document's title** — the title is fixed when the
   document is first created. Attachments over 50 MB are skipped and extracted text is cut at 100,000
   characters.
@@ -499,24 +549,33 @@ preview behind a citation.
 | **Test search quality** | The search console runs a query against a chosen area and version. The two search methods — by meaning and by exact wording — can each be switched off, and each hit shows which one found it, its score, breadcrumb, document and full text. |
 | **See search statistics** | A panel shows how many possible sources were considered, how many came from each of the two search methods, and how much the relevance ordering changed the result. The figures are always those of the search just run. |
 | **Trace where every result came from** | Below the statistics, each returned passage is listed with its rank before re-ordering and its rank within each of the two search methods — a dash where that method did not find it at all. A second list shows the merged order before re-ordering, labelled with the total it was cut from. Together these show whether a result was promoted by re-ordering, found by both methods or only one, and how deep in a method it was buried. |
-| **Review search history and reader feedback** | A log lists past searches with time, query, area and version. Where a search came from a real conversation it also shows the user's message and that reader's thumbs up or down and comment. |
+| **Review search history and reader feedback** | A log lists past searches with time, query, area and version, and flags the ones that came from the search console or an integration rather than a conversation. Where a search came from a real conversation it also shows that reader's thumbs up or down and comment. What is shown is always the query that was actually run — never the chat message that prompted it. |
 
 ### How it behaves
 
 - **Only administrators reach these screens.** Any signed-in user can open a source preview, and any
   authorised user can retrieve from **every** knowledge area — there is no per-area read restriction.
-- **Every browse, graph and record view is scoped to one tag at a time**, and the assistant never
-  mixes two versions in one answer.
-- **Versions must be declared on the area before content is imported under them.** Import a version that
-  was never declared and the content lands unversioned — the next version's import then overwrites it,
-  with no error anywhere.
+- **The assistant never mixes two versions in one answer.** The admin screens are looser: the corpus
+  browser and the structured-records browser both offer *All Tags*, which lists content from every
+  version side by side. The graph is always browsed one version at a time.
+- **Versions must be declared on the area before content is imported under them.** While an area declares
+  none, the version chosen at import is dropped and the content lands unversioned — the next version's
+  import then overwrites it, with no error anywhere. Once the area declares even one version, an import
+  naming a version it does not hold is refused instead.
 - **Deletion is immediate and permanent.** There is no recycle bin and no undo. Deleting a document or a
   knowledge area asks for confirmation first. **Removing a tag does not** — one click on the small ×
   beside a version permanently deletes every document that carried only that version.
+- **Removing a version can be carried out only partly and still report success.** A document that also
+  carries other versions keeps the removed one whenever another document of the same source file already
+  holds exactly the versions it would be left with. The version disappears from the area's list either
+  way, so that content is left marked with a version the area no longer offers. The screen still says the
+  version was removed; only the server log records what was skipped.
 - **Graph extraction runs as a background job**, so the screen hands you the job to watch. If that
   document is already queued, your newly chosen settings are ignored and you are shown the running job.
 - **Deletions, version removals, graph merges and extraction requests are audited.** Adding or removing a
-  version on a single document is not.
+  version on a single document is not — and neither is clearing a graph scope, the one action on that
+  screen that deletes every thing and connection for an area and version, while the merge beside it is
+  recorded.
 - **Where a name is ambiguous** — the same name existing under several kinds — the assistant returns the
   candidates and asks which one, instead of merging them.
 - **An administrator inspecting a passage can see the conversations where it was used as evidence**,
@@ -536,7 +595,8 @@ preview behind a citation.
   list, so the same sort of thing can be labelled differently in two areas, and the kind filter can only
   offer the labels that happen to be present.
 - **Merging keeps only the longest description**; everything else on the discarded copies — their link to
-  a document, their extra versions — is lost.
+  a document above all — is lost. Duplicates are only ever recognised within one version, so a merge
+  never pulls two versions together.
 - **Deleting a document leaves its graph entries behind**, still pointing at content that no longer
   exists. Only clearing or re-extracting that graph cleans them up.
 - **Import status shows only pending or completed.** A document stuck on pending means the import was
@@ -556,9 +616,14 @@ preview behind a citation.
 - **Rebuilding a declaration from the stored records recovers the field names only** — never which values
   a field may hold, nor which fields are required. The assistant learns the shape of the data but not its
   vocabulary unless someone writes that in by hand.
-- **A typed record filter that does not start from the whole record is accepted rather than refused**, and
-  it then means something different when listing records, when counting them and when grouping the counts
-  — so the three views can disagree about the same data, with nothing on screen to explain why.
+- **A declaration once written by hand can never be rebuilt from the records.** The rebuild is refused
+  with a notice saying the declaration must be switched back to *Inferred* first, and nothing on the
+  screen can switch it back — from then on the only way to change it is to write it out by hand again.
+- **A typed record filter that does not start from the whole record is treated as plain text.** On the
+  records screen the list and the total agree about it. Asking the assistant to group counts by such a
+  filter is refused with an explanation of how to rewrite it. One divergence is left: the assistant's own
+  record listing insists on a whole-record expression and reports an error, while a count of the very
+  same filter quietly returns a plain-text match.
 
 ### Not supported
 
@@ -596,7 +661,7 @@ Ordinary chat users never see jobs.
 | **Cancel a whole backlog** | The *Queued Work* card cancels every job still waiting for one type — typically a crawl that queued hundreds of pages before the connector was repointed. Running jobs are untouched. |
 | **See per-document import state** | The document list shows each document's import status and whether a graph was extracted: Yes, No, or how many passages failed. This is how an operator spots partial results without going through job history. |
 | **Follow imports from outside the web UI** | An integration can submit a job, read its state, and subscribe to a live progress feed. It cannot stop or cancel anything — that stays with administrators. |
-| **Avoid accidental duplicate runs** | Submitting the same file into the same area and version while a run is queued or running does not start a second one; the screen opens the existing job. |
+| **Avoid accidental duplicate runs** | Asking for work that is already queued or running does not start a second run; the screen opens the existing job, warning that the options chosen this time were not applied. Work is recognised by a stable reference — the same document sent for graph extraction, the same Confluence page, the same job submitted by an integration. Uploads are never recognised: each uploaded file is stored under a fresh name of its own, so re-uploading the same file always starts a second run. |
 
 ### How it behaves
 
@@ -605,8 +670,12 @@ Ordinary chat users never see jobs.
 - **Four jobs run at the same time by default**; the rest wait and are picked up in submission order.
 - **Stopping is cooperative** — the job ends at its next checkpoint, not instantly. Everything already
   written stays in the corpus and remains searchable.
-- **A cancelled job is never presented as a failure.** It keeps the counts it reached and is shown
-  neutrally.
+- **A cancelled job is never presented as a failure**, and is shown neutrally with its own stopped-job
+  card. It records no counts at all, though: what it managed to index before stopping stays in the corpus
+  but is never reported on the job.
+- **A job that cannot succeed is refused at submission, not queued and failed later.** Missing or
+  unknown AI instructions are caught before the work is accepted, so the queue holds only jobs that had
+  everything they needed when they were submitted.
 - **There is no automatic retry.** A failed job stays failed until someone submits the same work again.
 - **If the service restarts while jobs are running, they go back into the queue and start over from the
   beginning.** An *Attempts* figure records how often a job was started.
@@ -707,9 +776,11 @@ automation or AI coding tools connecting on a company account or a machine key.
   covers only the live word-by-word mode, so the effective limit depends on which mode people use.
 - **All automation shares one machine key**, therefore one send budget and one identity. A busy script can
   rate-limit every other integration, and reporting cannot tell them apart.
-- **The machine key reaches further than importing and reading documents.** It can also read how the
-  assistant is configured — the playbook library, the specialist profiles and the base instructions. A
-  leaked key therefore exposes how Yvoke works, not only what it knows.
+- **Every signed-in user can read how the assistant is configured.** The playbook library, the
+  specialist profiles and the base instructions are readable by any account holding an access token —
+  the desktop app and connected AI clients need them — with no administrator check. So how Yvoke works
+  is visible to everyone who can sign in, not only what it knows. The machine key, by contrast, cannot
+  reach them at all: it is confined to importing, jobs and documents.
 - **The offered models, the chat on/off switch, the per-user question limit, the capacity ceiling and the
   number of simultaneous imports are set when the system is deployed** — not editable by an administrator
   in the product. Changing any of them is a deployment change.
@@ -723,7 +794,9 @@ automation or AI coding tools connecting on a company account or a machine key.
 ### Not supported
 
 - Sharing with one person, a named group, or via an external link.
-- Any user management inside Yvoke — no invite, no role change, no deactivation, no user list.
+- Any user management inside Yvoke — no invite, no role change, no deactivation. Every account is
+  nevertheless listed by name in the spend filter (chapter 8) — by email address where no name is
+  stored — but only as something to filter a report by; there is nothing there to act on.
 - Signing in with anything but the company account. No local password, self-registration or reset.
 - Read receipts, share notifications, or a "who viewed this" list.
 - **Restricting a knowledge area to a team.** Every signed-in user can query the whole corpus; there are
@@ -764,11 +837,12 @@ running corpus scripts and the evaluation harness.
 
 ### How it behaves
 
-- **Every search and browse must name one knowledge area**, and a version where the area holds several.
-  An unknown name is refused rather than answered with an empty result, so a typo can never look like
-  "this is not in the knowledge base" — but only a *missing* tag and an invalid document kind list the
-  valid values back; an unknown knowledge area or tag says only that it does not exist. *Reading a table of contents, reading
-  a section, or checking a citation works from an id and needs neither.*
+- **Every search and browse from an AI client must name one knowledge area**, and a version where the
+  area holds several. An unknown name is refused rather than answered with an empty result, so a typo
+  can never look like "this is not in the knowledge base" — but only a *missing* tag and an invalid
+  document kind list the valid values back; an unknown knowledge area or tag says only that it does
+  not exist. *Reading a table of contents, reading a section, or checking a citation works from an id
+  and needs neither.*
 - **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
 - **Anyone who can connect reads every knowledge area.** Access control is the sign-in, not the content.
 - **When a name matches several different things, the client is handed the candidates** to choose between
@@ -797,8 +871,10 @@ running corpus scripts and the evaluation harness.
   the version silently and import unversioned. File uploads and graph-extraction requests keep it.
 - **Two import routes create a missing knowledge area automatically**; the others reject it. A typo on
   those two mints a new, empty area rather than failing.
-- **Malformed requests from scripts come back as a generic failure** rather than a specific complaint, so
-  a client-side mistake looks like an outage.
+- **A missing or wrongly-typed value in a request's web address comes back as a generic failure**
+  rather than a specific complaint, so that one client-side mistake looks like an outage. Everything
+  else is reported properly: a malformed request body names the field it rejected, and a rejected or
+  not-found import comes back with its own reason.
 - **Graph lookups return at most 200 rows and grouped counts at most 100 groups**; the passage cap is the
   same one chapter 2 states, and is owned there. Graph name search cannot be paged at all.
 - **Following connections needs a thing's exact name**; an approximate name returns "nothing found" with
@@ -849,7 +925,7 @@ feedback triage and answer traces; every user rates answers.
 | **Filter spend** | Presets for this month, last month, all time, or a custom range, plus multi-select filters for models and users. At the most granular level, also by call type and **by which surface the call came from — web chat or the desktop app**. At turn level, by playbook or in-depth profile. |
 | **See what the money was spent on** | Every call is labelled with the work it did: writing an answer, reviewing one, a specialist answering a sub-question, summarising during import, extracting the graph, and the calls that interpret a question and re-rank search results. |
 | **Open the conversation behind any row** | Conversation and message rows link into the conversation, so an expensive turn can be read in full. Rows also show the user, models, in-depth profile and playbooks involved. |
-| **Cache savings reported separately** | When exactly the same request has been made before, the provider returns the earlier result instead of running the model. That call is billed at zero and its list price is reported as *Saved by Cache*, with a hit rate. |
+| **Cache savings reported separately** | Where a call was answered by replaying an earlier identical request instead of running the model, it is billed at zero and its list price is reported as *Saved by Cache*, with a hit rate. **No AI service currently in use replays**, so this figure covers past usage only and no longer grows. |
 | **Editable model prices, with a coverage check** | Administrators set the four rates per model. The list exports and imports as a file. A companion view lists every model actually used beside every priced one and counts those still missing a price. |
 | **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, and whether it came from web chat or the desktop app. Conversations open read-only. |
 | **Effort shown on every answer** | Each answer shows how much text it read, re-used, thought with and wrote. Users see effort, never money. |
@@ -866,15 +942,16 @@ feedback triage and answer traces; every user rates answers.
   usage at today's rates, so **editing a price changes historical figures**.
 - **A model with no price set counts as zero cost everywhere, silently** — no error, no warning.
 - **A cache-replayed call costs nothing and is reported as a saving.** Anything that cannot be positively
-  confirmed as replayed is billed in full, so an unclear signal never wipes out a real charge.
-- **⚠ An identical repeated question can be answered from the cache without the model running.** That is
-  free — but it also means a repeated test question is not really being re-answered, which matters when
-  evaluating answer quality.
+  confirmed as replayed is billed in full, so an unclear signal never wipes out a real charge. **No AI
+  service currently in use replays a request**, so this describes usage recorded while one did; a repeated
+  question is now always re-answered by the model.
 - **Only administrators reach any of these screens**, and they can read every user's conversations and
   every logged question. That is a data-protection position to take deliberately, not a technical detail.
-- **A bare thumb is stored** on both surfaces, so the satisfaction figures count every rating rather than
-  only commented ones. **Note the discontinuity:** ratings recorded before 2026-08-08 count web positives
-  only when they carried a comment, so the ratio steps up at that date without quality having changed.
+- **A bare thumb is stored**, so the satisfaction figures count every rating rather than only commented
+  ones — with one gap: the desktop app refuses a thumbs-down that carries no comment, so negatives from
+  that surface are undercounted relative to web chat. **Note the discontinuity:** ratings recorded before
+  2026-08-08 count web positives only when they carried a comment, so the ratio steps up at that date
+  without quality having changed.
 - **One rating per answer**; a new thumb replaces the previous one and keeps any comment. Only the
   conversation's owner can rate.
 - **Deleting a conversation** destroys its answers, ratings and trace. The spend stays in the totals and
@@ -932,7 +1009,8 @@ feedback triage and answer traces; every user rates answers.
 
 Positions the product held by default rather than by choice. **All twelve were reviewed on 2026-08-08**:
 four were changed, seven were accepted deliberately and stay as they are, and one was handed to the
-evaluation harness where it actually lands. Each row records which.
+evaluation harness — that twelfth has since been resolved by an unrelated change. Each row records
+which.
 
 An accepted item is not an open question — it is a decision, and the reasoning is in the row. What is
 worth re-reading periodically is the *trigger* on item 5, and items 3, 4 and 7, which are the ones an
@@ -951,6 +1029,7 @@ before we would otherwise revisit them.
 | 8 | ~~A bare thumbs-up is discarded in web chat but kept in the desktop app.~~ **Resolved 2026-08-08** — both surfaces now store it. | Was: the metric measured two different things. Leaves a step change in the ratio at that date. |
 | 9 | ~~The chat UI says "skill" while the admin screens say "playbook".~~ **Resolved 2026-08-08** — the chat UI now says **playbook** everywhere, and **tag** stays the term for a content label (a tag usually carries a product version, but is not limited to that). One vocabulary across the product. | Was: two vocabularies for the same things, surfacing in every training and support conversation. |
 | 10 | **Removing a tag deletes content with no confirmation** — one click on a small ×, permanently, cascading to that tag's documents, knowledge graph and orphaned records, then reporting "Tag removed successfully." **Accepted 2026-08-08.** | The only destructive action in the product without a confirmation step — deleting a knowledge area, one row below on the same screen, does confirm. It is at least audited with its document count. |
-| 11 | **A repeated identical question can be answered from cache without the model running.** **Actioned 2026-08-08** — no change here; documented in the eval harness README, where the risk actually lands. | An evaluation replaying a fixed question set sends byte-identical requests by design, so it can score a replayed answer at near-zero cost. Re-running a suite is the worst case, not the safest. |
+| 11 | ~~A repeated identical question can be answered from cache without the model running.~~ **Resolved 2026-08-22** — the gateway that replayed requests is no longer used; every question reaches the model. | Was: an evaluation replaying a fixed question set sent byte-identical requests by design, so it could score a replayed answer at near-zero cost. Re-running a suite was the worst case, not the safest. |
 | 12 | ~~A playbook saved with no tools answers from the question alone, and nothing warns.~~ **Resolved 2026-08-08** — the tool allow-list now denies by default (an unset list no longer grants everything), and the playbook list badges both a specialist with no tools and a reviewer/orchestrator whose tools are ignored. | Was: one misconfigured playbook silently turned the product back into a plain chatbot. |
+| 13 | ~~Summarising and graph extraction ran with no instructions at all when none were chosen, and reported success.~~ **Resolved 2026-08-23** — the instructions are a required part of the job now, checked when it is submitted, and no code path falls back to running without them. | Was: the worst shape of failure this product has. Nothing errored, the job completed with normal counts, and the damage sat in the corpus — section summaries that announced themselves instead of describing anything ("Here is a summary of the section:"), and graph extraction whose output the model was never told to shape, so its unparseable replies were counted as passages containing nothing. Both are indistinguishable from thin source material until somebody reads the result. One connected space was imported this way. |
 

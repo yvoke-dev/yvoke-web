@@ -1,4 +1,5 @@
 package de.palsoftware.yvoke.ingest.core;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
@@ -21,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.util.Map;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,6 +87,10 @@ public class DocumentIngestServiceIT {
                 jdbcTemplate.update(
                                 "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
                                 UUID.randomUUID(), COLLECTION);
+                // The KG prompt is a required job setting now, so the row the jobs name must exist.
+                jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
+                                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+                                "it-kg", "KG", "Return STRICT JSON only.");
                 manualPath = tempDir.resolve("auth_guide.md");
                 Files.writeString(manualPath, MARKDOWN, StandardCharsets.UTF_8);
 
@@ -178,7 +184,7 @@ public class DocumentIngestServiceIT {
 
         @Test
         public void ingestPersistsChunksWithContiguousSortOrderAndGraph() {
-                when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+                when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(new KgExtractionResult(
                                 List.of(new ExtractedEntity("OAuth", "module", "token auth"),
                                                 new ExtractedEntity("SAML", "module", "sso"),
                                                 new ExtractedEntity("OIM", "product", "the product")),
@@ -197,10 +203,11 @@ public class DocumentIngestServiceIT {
                                 "SELECT d.id FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?",
                                 UUID.class, COLLECTION);
                 IngestionJob kgJob = new IngestionJob(
-                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(), VERSION,
-                                COLLECTION,
+                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(),
+                                List.of(VERSION), UUID.randomUUID(), COLLECTION,
                                 JobStatus.RUNNING, JobStep.CHUNK, 0, 1, null, null,
-                                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                                OffsetDateTime.now(), OffsetDateTime.now(), null,
+                                Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"));
                 JobCounts kgCounts = documentIngestService.processDocumentKg(kgJob, ctxFor(kgJob));
 
                 // The three declared entities; endpoints are never materialized implicitly.
@@ -239,7 +246,7 @@ public class DocumentIngestServiceIT {
 
         @Test
         public void reingestDoesNotDuplicateChunksOrGraph() {
-                when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+                when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(new KgExtractionResult(
                                 List.of(new ExtractedEntity("OAuth", "module", "token auth"),
                                                 new ExtractedEntity("OIM", "product", "the product")),
                                 List.of(new ExtractedRelationship("OAuth", "part_of", "OIM", "")),
@@ -251,10 +258,11 @@ public class DocumentIngestServiceIT {
                                 "SELECT d.id FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?",
                                 UUID.class, COLLECTION);
                 IngestionJob firstKg = new IngestionJob(
-                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), docId1.toString(), VERSION,
-                                COLLECTION,
+                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), docId1.toString(),
+                                List.of(VERSION), UUID.randomUUID(), COLLECTION,
                                 JobStatus.RUNNING, JobStep.CHUNK, 0, 1, null, null,
-                                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                                OffsetDateTime.now(), OffsetDateTime.now(), null,
+                                Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"));
                 documentIngestService.processDocumentKg(firstKg, ctxFor(firstKg));
 
                 IngestionJob second = job();
@@ -265,10 +273,11 @@ public class DocumentIngestServiceIT {
                 assertThat(docId2).isEqualTo(docId1);
 
                 IngestionJob secondKg = new IngestionJob(
-                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), docId2.toString(), VERSION,
-                                COLLECTION,
+                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), docId2.toString(),
+                                List.of(VERSION), UUID.randomUUID(), COLLECTION,
                                 JobStatus.RUNNING, JobStep.CHUNK, 0, 1, null, null,
-                                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                                OffsetDateTime.now(), OffsetDateTime.now(), null,
+                                Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"));
                 documentIngestService.processDocumentKg(secondKg, ctxFor(secondKg));
 
                 assertThat(secondCounts.chunks()).isEqualTo(firstCounts.chunks());
@@ -301,7 +310,7 @@ public class DocumentIngestServiceIT {
          */
         @Test
         public void undeclaredRelationshipEndpointCreatesNoNodeAndDropsTheEdge() {
-                when(kgExtractor.extract(anyList(), any(), any())).thenReturn(new KgExtractionResult(
+                when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(new KgExtractionResult(
                                 List.of(new ExtractedEntity("OAuth", "module", "token auth")),
                                 List.of(new ExtractedRelationship("OAuth", "part_of", "OIM", "")),
                                 0));
@@ -312,10 +321,11 @@ public class DocumentIngestServiceIT {
                                 "SELECT d.id FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?",
                                 UUID.class, COLLECTION);
                 IngestionJob kgJob = new IngestionJob(
-                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(), VERSION,
-                                COLLECTION,
+                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(),
+                                List.of(VERSION), UUID.randomUUID(), COLLECTION,
                                 JobStatus.RUNNING, JobStep.CHUNK, 0, 1, null, null,
-                                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                                OffsetDateTime.now(), OffsetDateTime.now(), null,
+                                Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"));
 
                 JobCounts kgCounts = documentIngestService.processDocumentKg(kgJob, ctxFor(kgJob));
 
@@ -337,7 +347,7 @@ public class DocumentIngestServiceIT {
 
         @Test
         public void zeroEntityExtractionStillPersistsChunksButReportsNoEntities() {
-                when(kgExtractor.extract(anyList(), any(), any())).thenReturn(
+                when(kgExtractor.extract(anyList(), any(), any(), any())).thenReturn(
                                 new KgExtractionResult(List.of(), List.of(), 0));
 
                 IngestionJob job = job();
@@ -351,10 +361,11 @@ public class DocumentIngestServiceIT {
                                 "SELECT d.id FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?",
                                 UUID.class, COLLECTION);
                 IngestionJob kgJob = new IngestionJob(
-                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(), VERSION,
-                                COLLECTION,
+                                UUID.randomUUID(), IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(),
+                                List.of(VERSION), UUID.randomUUID(), COLLECTION,
                                 JobStatus.RUNNING, JobStep.CHUNK, 0, 1, null, null,
-                                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                                OffsetDateTime.now(), OffsetDateTime.now(), null,
+                                Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"));
                 JobCounts kgCounts = documentIngestService.processDocumentKg(kgJob, ctxFor(kgJob));
 
                 assertThat(kgCounts.entities()).isZero();

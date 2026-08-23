@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.document.core;
 
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.model.SectionChunks;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
 import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
@@ -191,53 +192,77 @@ public class HierarchicalRetrievalIT {
     }
 
     /**
-     * A citation click in chat and an MCP {@code get_section(chunk_id)} call both land in
-     * {@link SectionService#getSectionByChunkId(String)}, which must return the ONE section the
-     * cited chunk belongs to. The method passes a hard-coded "not the full document" flag into the
-     * shared assembly routine; if that flag ever flips, both callers silently return the ENTIRE
-     * manual. The citation dialog — whose whole job is to show the single passage behind a single
-     * claim — would render the complete document, and every MCP get_section(chunk_id) would burn
-     * thousands of tokens on a whole manual with the cited passage buried in it. Nothing throws and
-     * nothing logs: the response looks perfectly successful either way, which is why no caller can
-     * detect the regression. The input is deliberately an 8-character PREFIX, because that is the
-     * production input shape — citation-render.js linkifies truncated chunk ids and
-     * CitationVerifier classifies exactly that form as UNVERIFIED rather than fabricated. The
-     * doesNotContain assertions are the load-bearing half: asserting only that both Section 1.1
-     * parts are present would still pass on the full document, which contains them too. Nothing
-     * else covers this — GetSectionToolTest and CitationControllerTest both stub SectionService
-     * with a canned response, so the real resolution never runs, and this class's other section
-     * assertions all go through the name-based overload, which derives the flag from its
-     * heading_path argument instead.
+     * A citation click lands in {@link SectionService#getChunkContent(String)}, which must return
+     * the ONE cited passage — not its section, and not the document.
+     *
+     * <p>
+     * It used to return the whole section, by turning the chunk into a heading path and running the
+     * shared prefix-matching assembly. What came back therefore grew with the breadth of the
+     * chunk's heading rather than with anything about the citation: on one real answer a cited
+     * passage of 1,357 characters arrived inside 220 passages and 314,064 characters. Nothing threw
+     * and nothing logged — the response looked perfectly successful at any size, which is why no
+     * caller could detect it.
+     *
+     * <p>
+     * The load-bearing assertion is that the SIBLING PART is absent. Part 1 and part 2 of
+     * "Section 1.1" are one heading split at ingest, so they are the closest thing to the cited
+     * passage that still is not it; a test that only checked "not the whole document" would pass
+     * with them both present, which is the exact regression this replaces. The input is an
+     * 8-character PREFIX because that is the production input shape — a shortened citation link
+     * carries a truncated id.
+     *
+     * <p>
+     * Nothing else covers this. {@code GetSectionToolTest} and {@code CitationControllerTest} both
+     * stub {@code SectionService} with a canned response, so the real resolution never runs, and
+     * this class's other section assertions go through the name-based overload. The agent-facing
+     * {@code getSectionChunksByChunkId} still expands on purpose and is covered separately.
      */
     @Test
-    public void aCitedChunkIdResolvesToItsOwnSectionNotTheWholeDocument() {
+    public void aCitedChunkIdResolvesToThatPassageAlone() {
         String prefix = chunkId2.toString().substring(0, 8);
 
-        SectionResponse section = sectionService.getSectionByChunkId(prefix);
+        SectionResponse passage = sectionService.getChunkContent(prefix);
 
-        // The path is reconstructed from the chunk's own heading_path + heading, with the
-        // "(part 1/2)" suffix stripped, so the two parts collapse onto one section.
-        assertThat(section.headingPath()).containsExactly("Chapter 1", "Section 1.1");
-        assertThat(section.documentTitle()).isEqualTo("Manual A Title");
-        assertThat(section.tag()).isEqualTo("9.3");
-        assertThat(section.scope()).isEqualTo("with sub-sections");
-        assertThat(section.chunkCount()).isEqualTo(2);
+        // The breadcrumb still names where the passage sits, with the "(part 1/2)" suffix stripped.
+        assertThat(passage.headingPath()).containsExactly("Chapter 1", "Section 1.1");
+        assertThat(passage.documentTitle()).isEqualTo("Manual A Title");
+        assertThat(passage.tag()).isEqualTo("9.3");
+        assertThat(passage.scope()).isEqualTo("this passage only");
+        assertThat(passage.chunkCount()).isEqualTo(1);
 
-        // The header names the section, not the document.
-        assertThat(section.text()).startsWith("# Section: Chapter 1 > Section 1.1\n");
+        // Exactly the cited chunk's own text, with its "> Section path: …" breadcrumb stripped and
+        // no "# Section: …" header restating what the panel's own header row already shows.
+        assertThat(passage.text()).isEqualTo("Section 1.1 Text Part 1");
 
-        // Both parts of Section 1.1, in sort_order (20 before 21).
-        assertThat(section.text()).contains("Section 1.1 Text Part 1");
-        assertThat(section.text()).contains("Section 1.1 Text Part 2");
-        assertThat(section.text().indexOf("Section 1.1 Text Part 1"))
-            .isLessThan(section.text().indexOf("Section 1.1 Text Part 2"));
+        // The sibling part of the SAME heading is the assertion that matters: it is not the cited
+        // passage, and it was never in front of the model that cited part 1.
+        assertThat(passage.text()).doesNotContain("Section 1.1 Text Part 2");
 
-        // …and nothing else: not the parent chapter's own prose, not the sibling section, not the
-        // later chapter, and not the same chapter in the other version's document.
-        assertThat(section.text()).doesNotContain("Chapter 1 Intro text");
-        assertThat(section.text()).doesNotContain("Section 1.2 Text");
-        assertThat(section.text()).doesNotContain("Chapter 2 Text");
-        assertThat(section.text()).doesNotContain("Chapter 1 v10 Text");
+        // …nor the parent chapter's prose, the sibling section, the later chapter, or the same
+        // chapter in the other version's document.
+        assertThat(passage.text()).doesNotContain("Chapter 1 Intro text");
+        assertThat(passage.text()).doesNotContain("Section 1.2 Text");
+        assertThat(passage.text()).doesNotContain("Chapter 2 Text");
+        assertThat(passage.text()).doesNotContain("Chapter 1 v10 Text");
+    }
+
+    /**
+     * The agent-facing read of the same id keeps expanding to the section, which is what
+     * {@code get_section}'s description promises: "a chunk_id returns the whole section containing
+     * that chunk, not just the chunk". Asserted next to the citation test so the two contracts are
+     * visibly opposite and neither can be "fixed" into the other by someone who saw only one.
+     */
+    @Test
+    public void anAgentReadingTheSameChunkIdStillGetsTheWholeSection() {
+        SectionChunks section =
+            sectionService.getSectionChunksByChunkId(chunkId2.toString().substring(0, 8));
+
+        assertThat(section.chunks()).hasSize(2);
+        assertThat(section.chunks().stream().map(SectionChunks.SectionChunk::text))
+            .anySatisfy(t -> assertThat(t).contains("Section 1.1 Text Part 1"))
+            .anySatisfy(t -> assertThat(t).contains("Section 1.1 Text Part 2"));
+        // Every passage carries its own id, which is what lets an agent cite the one it used.
+        assertThat(section.chunks()).allSatisfy(c -> assertThat(c.id()).isNotNull());
     }
 
     @Test

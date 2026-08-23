@@ -1522,6 +1522,14 @@ pre.json-view {
     border-radius: var(--radius-sm);
 }
 
+/* Breadcrumb of the cited passage, between the source header row and the passage itself. */
+.citation-heading-path {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-bottom: 0.25rem;
+}
+
 .citation-content-md {
     font-size: 0.85rem;
     color: var(--text-secondary);

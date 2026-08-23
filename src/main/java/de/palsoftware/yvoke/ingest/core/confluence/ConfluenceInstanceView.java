@@ -18,12 +18,17 @@ import java.util.UUID;
  * @param tokenHealth derived by comparing fingerprints — no decryption, so a list page cannot fail
  *        on one bad row
  */
-public record ConfluenceInstanceView(UUID id,String name,String slug,String domain,String email,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean enabled,TokenHealth tokenHealth){
+public record ConfluenceInstanceView(UUID id,String name,String slug,String domain,String email,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean buildSectionSummaries,@Nullable String summarizePrompt,boolean enabled,TokenHealth tokenHealth){
+
+/**
+ * Pre-{@code summarizePrompt} arity, so existing construction sites keep compiling.
+ */
+public ConfluenceInstanceView(UUID id,String name,String slug,String domain,String email,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean enabled,TokenHealth tokenHealth){this(id,name,slug,domain,email,space,rootPageId,includeLabels,excludeLabels,targetCollection,targetTag,processAttachments,false,null,enabled,tokenHealth);}
 
 /**
  * @param currentKeyId {@code SecretCipher.keyId()}, or null when encryption is disabled
  */
-public static ConfluenceInstanceView of(ConfluenceInstance instance,@Nullable String currentKeyId){return new ConfluenceInstanceView(instance.id(),instance.name(),instance.slug(),instance.domain(),instance.email(),instance.space(),instance.rootPageId(),instance.includeLabels(),instance.excludeLabels(),instance.targetCollection(),instance.targetTag(),instance.processAttachments(),instance.enabled(),instance.tokenHealth(currentKeyId));}
+public static ConfluenceInstanceView of(ConfluenceInstance instance,@Nullable String currentKeyId){return new ConfluenceInstanceView(instance.id(),instance.name(),instance.slug(),instance.domain(),instance.email(),instance.space(),instance.rootPageId(),instance.includeLabels(),instance.excludeLabels(),instance.targetCollection(),instance.targetTag(),instance.processAttachments(),instance.buildSectionSummaries(),instance.summarizePrompt(),instance.enabled(),instance.tokenHealth(currentKeyId));}
 
 /**
  * Whether the unlabelled-page count is meaningful for this instance: pages are selected by a

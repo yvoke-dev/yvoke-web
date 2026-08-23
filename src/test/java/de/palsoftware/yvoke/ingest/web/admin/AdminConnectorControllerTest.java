@@ -10,6 +10,7 @@ import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstance;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceView;
 import de.palsoftware.yvoke.ingest.core.confluence.TokenHealth;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -29,7 +30,8 @@ class AdminConnectorControllerTest {
     void setUp() {
         collectionService = mock(CollectionService.class);
         instanceService = mock(ConfluenceInstanceService.class);
-        controller = new AdminConnectorController(collectionService, instanceService);
+        controller = new AdminConnectorController(collectionService, instanceService,
+            mock(SystemPromptService.class));
         model = new ConcurrentModel();
 
         when(collectionService.listCollections()).thenReturn(List.of(

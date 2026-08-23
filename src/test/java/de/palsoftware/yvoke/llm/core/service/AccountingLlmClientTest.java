@@ -376,4 +376,95 @@ class AccountingLlmClientTest {
 
         assertTrue(published.isEmpty());
     }
+
+    // ------------------------------------------------------------------------
+    // One row per HTTP call
+    // ------------------------------------------------------------------------
+
+    /**
+     * A client that re-requests internally — the empty-turn retry — makes several HTTP calls inside
+     * one {@code generateStream}. Each is its own {@code llm_call_logs} row, which is what this
+     * class's contract has always claimed ("one row per HTTP call"). Summing them onto the winner
+     * instead makes the abandoned attempt invisible and forces every retrying client to carry its
+     * own usage-accumulation code.
+     */
+    @Test
+    void eachHttpCallInOneStreamPublishesItsOwnEvent() {
+        LlmUsage first = new LlmUsage(10, 20, 30, 0, 15);
+        LlmUsage second = new LlmUsage(11, 22, 33, 0, 1);
+        AccountingLlmClient client =
+            clientFor(streamingChunks(List.of(new LlmResponseChunk(null, "thinking", null, first),
+                LlmResponseChunk.endOfCall(first, null),
+                new LlmResponseChunk("the answer", null, null, second),
+                LlmResponseChunk.endOfCall(second, null)), null));
+
+        client.generateStream(REQUEST, c -> {
+        });
+
+        assertEquals(2, published.size(), "two HTTP calls must produce two rows, not one");
+        assertEquals(30, published.get(0).totalTokens());
+        assertEquals(33, published.get(1).totalTokens(),
+            "the second row must report only its own call; summing would report 63");
+    }
+
+    /**
+     * The marker is bookkeeping, not output. It is consumed here rather than forwarded, so no
+     * downstream consumer has to learn to ignore it — and so a marker can never be mistaken for a
+     * chunk that ends an answer.
+     */
+    @Test
+    void theEndOfCallMarkerIsConsumedAndNotForwarded() {
+        LlmUsage usage = new LlmUsage(1, 2, 3, 0, 0);
+        AccountingLlmClient client =
+            clientFor(streamingChunks(List.of(new LlmResponseChunk("hi", null, null, null),
+                LlmResponseChunk.endOfCall(usage, null)), null));
+
+        List<LlmResponseChunk> seen = new ArrayList<>();
+        client.generateStream(REQUEST, seen::add);
+
+        assertEquals(1, seen.size(), "the caller must see the content chunk and nothing else");
+        assertEquals("hi", seen.get(0).content());
+        assertFalse(seen.stream().anyMatch(LlmResponseChunk::endOfCall),
+            "an end-of-call marker must never reach the caller");
+    }
+
+    /**
+     * The reset is what keeps one call's usage out of the next one's row. Without it a second call
+     * that reported nothing would republish the first call's tokens and bill them twice.
+     */
+    @Test
+    void usageIsNotCarriedFromOneCallIntoTheNext() {
+        LlmUsage first = new LlmUsage(10, 20, 30, 0, 0);
+        // Two calls: the first reports usage, the second reports none at all. Without the reset the
+        // second marker republishes the FIRST call's tokens and bills them twice.
+        AccountingLlmClient client =
+            clientFor(streamingChunks(List.of(LlmResponseChunk.endOfCall(first, null),
+                new LlmResponseChunk("x", null, null, null),
+                LlmResponseChunk.endOfCall(null, null)), null));
+
+        client.generateStream(REQUEST, c -> {
+        });
+
+        assertEquals(1, published.size(),
+            "the second call reported no usage, so it must not republish the first call's tokens");
+        assertEquals(30, published.get(0).totalTokens());
+    }
+
+    /**
+     * Clients that never re-request emit no marker at all, and must keep behaving exactly as
+     * before: one row, published when the stream ends.
+     */
+    @Test
+    void aStreamWithoutAnyMarkerStillPublishesOnceAtTheEnd() {
+        LlmUsage usage = new LlmUsage(5, 6, 11, 0, 0);
+        AccountingLlmClient client =
+            clientFor(streamingChunks(List.of(new LlmResponseChunk("a", null, null, null),
+                new LlmResponseChunk("b", null, null, usage)), null));
+
+        client.generateStream(REQUEST, c -> {
+        });
+
+        assertEquals(1, published.size());
+        assertEquals(11, published.get(0).totalTokens());
+    }
 }

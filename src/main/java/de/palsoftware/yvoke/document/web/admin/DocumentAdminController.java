@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.document.web.admin;
 
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetailPage;
@@ -166,7 +167,7 @@ public class DocumentAdminController {
 
         Map<String, Object> settings = new HashMap<>();
         if (kgPrompt != null && !kgPrompt.isBlank()) {
-            settings.put("kgPrompt", kgPrompt.trim());
+            settings.put(IngestPrompts.SETTING_KG_PROMPT, kgPrompt.trim());
         }
 
         EnqueueResult result = jobService.enqueue(new EnqueueRequest("kg-extract",

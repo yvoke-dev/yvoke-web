@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.ingest.core.confluence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
@@ -155,6 +156,36 @@ class ConfluenceInstanceTest {
             "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "1", null,
             null, null, null, false, true, null, null)).isInstanceOf(NullPointerException.class)
             .hasMessageContaining("targetCollection");
+    }
+
+    @Test
+    void summariesEnabledWithoutAPromptIsRefused() {
+        // Mirrors ck_confluence_instances_summaries_need_a_prompt. Enforced in the record too so a
+        // caller finds out at construction rather than as a constraint violation from the
+        // repository -- and because this exact state, summarizing with no prompt, is what produced
+        // the unusable summaries this configuration exists to prevent.
+        assertThatThrownBy(() -> new ConfluenceInstance(null, "iCC Wiki", "icc",
+            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "1", null,
+            null, "coll", "10.0", false, true, null, true, null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("names no summarize prompt");
+    }
+
+    @Test
+    void summariesOffNeedsNoPrompt() {
+        assertThatCode(() -> new ConfluenceInstance(null, "iCC Wiki", "icc",
+            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "1", null,
+            null, "coll", "10.0", false, false, null, true, null, null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aBlankPromptWithSummariesOnIsRefusedRatherThanNormalizedToNull() {
+        // The normalization runs first, so " " becomes null and must then fail the pairing check
+        // instead of silently disabling the prompt while leaving summaries on.
+        assertThatThrownBy(() -> new ConfluenceInstance(null, "iCC Wiki", "icc",
+            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "1", null,
+            null, "coll", "10.0", false, true, "   ", true, null, null))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -65,7 +65,7 @@
                             <div style="display: flex; gap: 0.5rem; align-items: center;">
                                 <!-- Edit: copies the row's values into the single form on the right. -->
                                 <button type="button" class="btn btn-secondary btn-edit-instance" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
-                                        th:attr="data-id=${instance.id}, data-name=${instance.name}, data-slug=${instance.slug}, data-domain=${instance.domain}, data-email=${instance.email}, data-space=${instance.space}, data-root-page-id=${instance.rootPageId}, data-include-labels=${instance.includeLabels}, data-exclude-labels=${instance.excludeLabels}, data-collection=${instance.targetCollection}, data-tag=${instance.targetTag}, data-attachments=${instance.processAttachments}, data-enabled=${instance.enabled}">
+                                        th:attr="data-id=${instance.id}, data-name=${instance.name}, data-slug=${instance.slug}, data-domain=${instance.domain}, data-email=${instance.email}, data-space=${instance.space}, data-root-page-id=${instance.rootPageId}, data-include-labels=${instance.includeLabels}, data-exclude-labels=${instance.excludeLabels}, data-collection=${instance.targetCollection}, data-tag=${instance.targetTag}, data-attachments=${instance.processAttachments}, data-build-summaries=${instance.buildSectionSummaries}, data-summarize-prompt=${instance.summarizePrompt}, data-enabled=${instance.enabled}">
                                     Edit
                                 </button>
 
@@ -98,6 +98,7 @@
                                     <div th:text="${instance.targetCollection}">OIM - Docs</div>
                                     <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Tag: <span th:text="${instance.targetTag != null ? instance.targetTag : 'none'}">10.0</span></div>
                                     <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${instance.processAttachments} ? 'Attachments: processed' : 'Attachments: skipped'">Attachments: skipped</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${instance.buildSectionSummaries} ? 'Section summaries: ' + ${instance.summarizePrompt} : 'Section summaries: off'">Section summaries: off</div>
                                 </div>
                             </div>
                             <div>
@@ -228,6 +229,34 @@
                             </div>
                         </div>
 
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="hidden" name="_buildSectionSummaries" value="on" />
+                                <input type="checkbox" id="buildSectionSummaries" name="buildSectionSummaries" value="true" style="width: auto;" />
+                                <span class="form-label" style="margin-bottom: 0;">Build section summaries (one LLM call per section)</span>
+                            </label>
+                            <!-- Off by default. Page imports used to summarize unconditionally and
+                                 with no prompt, so this is opt-in rather than opt-out: turning it
+                                 on is a deliberate choice to pay for it, and the prompt below is
+                                 then required (enforced by the DB constraint, the record and the
+                                 enqueue validator alike). -->
+                            <label class="form-label" for="summarizePromptSelect" style="margin-top: 0.6rem;">Summarize prompt</label>
+                            <select id="summarizePromptSelect" name="summarizePrompt" class="form-select">
+                                <option value="">None — required if summaries are enabled</option>
+                                <option th:each="p : ${summarizePrompts}" th:value="${p.name}" th:text="${p.name}"></option>
+                            </select>
+                            <!-- A crawl has no per-run form (and "sync all" fans out over every
+                                 instance), so this is the only place a Confluence page job can be
+                                 told which prompt to summarize with. Leaving it unset is allowed
+                                 and honest: the page job is then refused at enqueue instead of
+                                 summarizing with no prompt, which is what produced this
+                                 collection's "Here is a summary of the section:" summaries. -->
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.3rem;">
+                                Used for section summaries of every page this instance imports. Required
+                                whenever the box above is checked.
+                            </div>
+                        </div>
+
                         <!-- The two `_<field>` hidden inputs are Spring's checkbox field markers.
                              An unchecked checkbox submits NO parameter at all; the marker is what
                              WebDataBinder keys off to bind FALSE instead of leaving the value
@@ -296,6 +325,8 @@
             const excludeLabelsInput = document.getElementById('excludeLabels');
             const collectionSelect = document.getElementById('collectionSelect');
             const attachmentsInput = document.getElementById('processAttachments');
+            const summarizePromptSelect = document.getElementById('summarizePromptSelect');
+            const buildSummariesInput = document.getElementById('buildSectionSummaries');
             const enabledInput = document.getElementById('enabled');
             const btnReset = document.getElementById('btn-reset');
 
@@ -332,6 +363,13 @@
                     includeLabelsInput.value = this.dataset.includeLabels || '';
                     excludeLabelsInput.value = this.dataset.excludeLabels || '';
                     attachmentsInput.checked = this.dataset.attachments === 'true';
+                    // Thymeleaf renders a null as the literal "null" in a data attribute, so an
+                    // instance with no prompt configured must not be allowed to select an option
+                    // named "null" — it falls back to the empty "None" option instead.
+                    buildSummariesInput.checked = this.dataset.buildSummaries === 'true';
+                    const savedPrompt = this.dataset.summarizePrompt;
+                    summarizePromptSelect.value =
+                        (savedPrompt && savedPrompt !== 'null') ? savedPrompt : '';
                     enabledInput.checked = this.dataset.enabled === 'true';
                     // Never repopulated: the stored token is not sent to the browser, and a blank
                     // field means "keep it".

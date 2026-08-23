@@ -45,6 +45,49 @@ public class SystemPromptService {
         return systemPromptRepository.findByType(type);
     }
 
+    /**
+     * The prompt named, or a failure that says what to fix.
+     *
+     * <p>
+     * The silent alternative — {@code getPrompt(name).orElse(null)} — is what let a whole
+     * collection be ingested with no summarize prompt at all: the job reported success, the
+     * summaries came back as "Here is a summary of the section:", and the defect only surfaced much
+     * later as content an agent read out of a {@code get_toc}. A prompt a job was told to use and
+     * cannot find is a configuration error, so it is raised as one, at the point the name is known.
+     *
+     * <p>
+     * The TYPE is checked as well as the name. Prompts share one flat namespace, so nothing stops a
+     * CHAT prompt being selected where a SUMMARIZE one is meant — that would "resolve" and then
+     * quietly instruct the summarizer to answer questions and cite sources. The message lists the
+     * valid names rather than just rejecting, because the caller is an operator who picked from a
+     * list that has since changed.
+     */
+    public SystemPrompt requirePrompt(String name, SystemPromptType expectedType) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("No " + expectedType
+                + " system prompt was specified. Available: " + availableNames(expectedType));
+        }
+        SystemPrompt prompt = getPrompt(name).orElseThrow(() -> new IllegalArgumentException(
+            "System prompt '" + name.trim() + "' does not exist. Available " + expectedType
+                + " prompts: " + availableNames(expectedType)));
+        if (expectedType != null && prompt.type() != expectedType) {
+            throw new IllegalArgumentException("System prompt '" + prompt.name() + "' is of type "
+                + prompt.type() + ", but a " + expectedType + " prompt is required. Available: "
+                + availableNames(expectedType));
+        }
+        return prompt;
+    }
+
+    /** Valid names for an error message; deliberately sorted so the text is stable in tests. */
+    private String availableNames(SystemPromptType type) {
+        if (type == null) {
+            return "(no type given)";
+        }
+        List<String> names =
+            listPromptsByType(type).stream().map(SystemPrompt::name).sorted().toList();
+        return names.isEmpty() ? "(none registered)" : String.join(", ", names);
+    }
+
     @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
         condition = "#name != null && !#name.isBlank()")
     public Optional<SystemPrompt> getPrompt(String name) {

@@ -76,6 +76,7 @@ public class IngestApiControllerIT {
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
                         .param("tag", "v2.0")
+                        .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id", notNullValue()));
@@ -104,6 +105,7 @@ public class IngestApiControllerIT {
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
                         .param("tag", "v2.0")
+                        .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
@@ -112,6 +114,7 @@ public class IngestApiControllerIT {
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
                         .param("tag", "v2.0")
+                        .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
                 .andExpect(status().isConflict())
                 .andExpect(content().json(firstBody));
@@ -210,6 +213,7 @@ public class IngestApiControllerIT {
                         .param("sourceTag", "v1.0")
                         .param("collection", "target-col")
                         .param("tag", "v2.0")
+                        .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id", notNullValue()));

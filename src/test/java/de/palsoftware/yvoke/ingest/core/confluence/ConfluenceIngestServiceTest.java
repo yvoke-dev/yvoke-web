@@ -15,6 +15,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,11 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,8 +121,22 @@ class ConfluenceIngestServiceTest {
 
         service = new ConfluenceIngestService(instanceRepository, confluenceClient,
             confluenceConverter, embeddingService, documentRepository, sectionSummarizer,
-            jobRepository, transactionManager, applicationContext);
+            jobRepository, transactionManager, applicationContext, resolvingPrompts());
     }
+
+    /**
+     * An {@link IngestPrompts} that resolves any name. A page job carries its prompt in settings
+     * (snapshotted from the instance at crawl time), so the importer no longer summarizes with null
+     * — the behaviour that produced this collection's degenerate summaries.
+     */
+    private static IngestPrompts resolvingPrompts() {
+        SystemPromptService prompts = mock(SystemPromptService.class);
+        when(prompts.requirePrompt(any(), any())).thenReturn(
+            new SystemPrompt(SUMMARIZE_PROMPT, SystemPromptType.SUMMARIZE, "SUMMARIZE.", ""));
+        return new IngestPrompts(prompts);
+    }
+
+    static final String SUMMARIZE_PROMPT = "oim-summarize";
 
     private void configureTag(String tag) {
         configureInstance(tag, "");
@@ -168,6 +188,10 @@ class ConfluenceIngestServiceTest {
         if (pageVersion != null) {
             settings.put("pageVersion", pageVersion);
         }
+        // Snapshotted by enqueuePageImport from the instance. The fixture enables summaries so the
+        // summarizing path stays covered; summariesOffSkipsTheSummarizer covers the other branch.
+        settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
+        settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT);
         settings.put("instanceId", INSTANCE_ID.toString());
         settings.put("instanceName", instance.name());
         settings.put("domain", instance.domain());
@@ -675,6 +699,27 @@ class ConfluenceIngestServiceTest {
     // ---------------------------------------------------------------------
 
     @Test
+    void summariesOffSkipsTheSummarizerAndNeedsNoPrompt() {
+        // The off branch of the per-instance flag. Page imports used to summarize unconditionally,
+        // so this asserts both halves of the fix: no summarizer call, and no prompt required to
+        // get there (an instance with summaries off has none configured).
+        Map<String, Object> settings = pageSettings(4);
+        settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, false);
+        settings.remove(IngestPrompts.SETTING_SUMMARIZE_PROMPT);
+        JobContext ctx = pageJobContext(settings);
+
+        when(confluenceClient.getPageBodyStorage(any(), eq("page-1"))).thenReturn("<p>x</p>");
+        when(confluenceConverter.convertToMarkdown(any(), anyBoolean(), eq("page-1"), anyString()))
+            .thenReturn("# Heading\n\nBody prose.");
+        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
+            any(), any())).thenReturn(UUID.randomUUID());
+
+        service.ingestPage(ctx, "page-1", "Page 1");
+
+        verify(sectionSummarizer, never()).generateSummaries(any(), anyList(), any(), any(), any());
+    }
+
+    @Test
     void ingestPageUsesTheJobSnapshotEvenAfterTheInstanceIsRetargeted() {
         JobContext ctx = pageJobContext(7);
 
@@ -881,8 +926,8 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void legacyPageJobWithoutASnapshotFallsBackToTheInstance() {
-        JobContext ctx = pageJobContext(
-            new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1", "pageVersion", 4)));
+        JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
+            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)));
         when(ctx.job().collection()).thenReturn("coll");
         when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
             eq("confluence")))
@@ -904,8 +949,8 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void legacyPageJobWhoseCollectionNoLongerMatchesTheInstanceIsRefused() {
-        JobContext ctx = pageJobContext(
-            new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1", "pageVersion", 4)));
+        JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
+            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)));
         when(ctx.job().collection()).thenReturn("old-coll");
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))

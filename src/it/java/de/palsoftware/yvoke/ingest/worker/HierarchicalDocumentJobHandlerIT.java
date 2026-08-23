@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.ingest.worker;
 
+import java.util.Map;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.shared.jobengine.model.*;
 import de.palsoftware.yvoke.shared.jobengine.service.*;
@@ -93,6 +95,14 @@ public class HierarchicalDocumentJobHandlerIT {
         jdbcTemplate.update(
             "INSERT INTO collections (id, name, description, tags) VALUES (?, ?, ?, ?)", collId,
             COLLECTION, "Hierarchical test collection", new String[] {VERSION});
+        // Prompts are required job settings now, so the rows the jobs name must exist -- exactly
+        // as in a real deployment, where an operator picks them from a list of registered prompts.
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
+            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-kg", "KG",
+            "Return STRICT JSON only.");
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
+            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-summarize", "SUMMARIZE",
+            "Write a concise summary.");
 
         manualPath = tempDir.resolve("hierarchical_guide.md");
         Files.writeString(manualPath, MARKDOWN, StandardCharsets.UTF_8);
@@ -174,7 +184,8 @@ public class HierarchicalDocumentJobHandlerIT {
     @Test
     public void hierarchicalChunksAreStoredWithoutEmbeddingsAndNeverCallTheEmbedder() {
         UUID id = jobService.enqueue(new EnqueueRequest(IngestJobKind.HIERARCHICAL.getValue(),
-            manualPath.toString(), VERSION, COLLECTION)).jobId();
+            manualPath.toString(), VERSION, COLLECTION,
+            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(id).orElseThrow();
@@ -201,7 +212,8 @@ public class HierarchicalDocumentJobHandlerIT {
     @Test
     public void hierarchicalJobRunsToCompletionAndSavesSummaries() {
         UUID id = jobService.enqueue(new EnqueueRequest(IngestJobKind.HIERARCHICAL.getValue(),
-            manualPath.toString(), VERSION, COLLECTION)).jobId();
+            manualPath.toString(), VERSION, COLLECTION,
+            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(id).orElseThrow();

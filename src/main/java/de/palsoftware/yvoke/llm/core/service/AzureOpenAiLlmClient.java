@@ -109,6 +109,14 @@ import reactor.core.publisher.Mono;
  * builds private, so there is genuinely nothing to release — a {@code close()} here could only be a
  * no-op that misleads its next reader. {@code OpenRouterLlmClient} is likewise not closeable.</li>
  * </ul>
+ *
+ * <p>
+ * <b>Not wired.</b> {@code app.ai.provider=azure-openai} is rejected at startup by
+ * {@code LlmConfig}; Azure is reached through {@link AzureOpenAiResponsesLlmClient} instead,
+ * because this chat-completions surface refuses function tools and {@code reasoning_effort}
+ * together — so every agentic turn silently gave up its thinking level. The class and its tests are
+ * kept deliberately: re-enabling it is one branch in {@code LlmConfig}. It also does NOT use the
+ * shared {@code EmptyTurnRetry}, so its empty-turn handling is a third, independent copy.
  */
 public class AzureOpenAiLlmClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(AzureOpenAiLlmClient.class);

@@ -4,6 +4,8 @@ import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.DocumentKind;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.ingest.core.model.Section;
 import de.palsoftware.yvoke.ingest.core.service.SectionSummarizer;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
@@ -19,6 +21,7 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import jakarta.annotation.Nullable;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -65,6 +68,7 @@ public class ConfluenceIngestService {
     static final String SETTING_TAG = "tag";
     static final String SETTING_PROCESS_ATTACHMENTS = "processAttachments";
 
+    private final IngestPrompts ingestPrompts;
     private final ConfluenceInstanceRepository instanceRepository;
     private final ConfluenceClientService confluenceClient;
     private final ConfluenceConverter confluenceConverter;
@@ -79,7 +83,8 @@ public class ConfluenceIngestService {
         ConfluenceClientService confluenceClient, ConfluenceConverter confluenceConverter,
         EmbeddingService embeddingService, DocumentRepository documentRepository,
         SectionSummarizer sectionSummarizer, JobRepository jobRepository,
-        PlatformTransactionManager transactionManager, ApplicationContext applicationContext) {
+        PlatformTransactionManager transactionManager, ApplicationContext applicationContext,
+        IngestPrompts ingestPrompts) {
         this.instanceRepository = instanceRepository;
         this.confluenceClient = confluenceClient;
         this.confluenceConverter = confluenceConverter;
@@ -89,6 +94,7 @@ public class ConfluenceIngestService {
         this.jobRepository = jobRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.applicationContext = applicationContext;
+        this.ingestPrompts = ingestPrompts;
     }
 
     private JobService getJobService() {
@@ -366,6 +372,19 @@ public class ConfluenceIngestService {
      * detail page — the API token (and any other secret) must never be put here. Only the instance
      * ID is stored; credentials are resolved from the instance row at execution time.
      */
+    /**
+     * Whether this page job should build section summaries.
+     *
+     * <p>
+     * Absent means off, exactly as {@code DocumentIngestService.isSectionSummariesEnabled} treats
+     * it: every job enqueued before this setting existed carries no key, and reading that as "on"
+     * would resume summarizing on the old unconditional terms.
+     */
+    private static boolean summariesEnabled(@Nullable Map<String, Object> settings) {
+        return settings != null && Boolean.TRUE
+            .equals(settings.get(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES));
+    }
+
     private EnqueueResult enqueuePageImport(ConfluenceInstance instance, String pageId,
         String title, Integer pageVersion) {
         Map<String, Object> settings = new HashMap<>();
@@ -383,6 +402,18 @@ public class ConfluenceIngestService {
             settings.put(SETTING_TAG, instance.targetTag());
         }
         settings.put(SETTING_PROCESS_ATTACHMENTS, instance.processAttachments());
+        // Snapshotted for the same reason as everything above it: a page job must ingest under the
+        // configuration the crawl was started with, not whatever the instance row says by the time
+        // the worker picks it up.
+        //
+        // Deliberately the SAME key the standard document path uses. Section summaries are one
+        // operator-facing concept, so a Confluence-specific key would mean two names for it, two
+        // rules in the enqueue validator, and two places to look when summaries do not appear.
+        settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES,
+            instance.buildSectionSummaries());
+        if (instance.summarizePrompt() != null) {
+            settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, instance.summarizePrompt());
+        }
 
         return getJobService().enqueue(new EnqueueRequest(
             IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue() + ":" + instance.slug(),
@@ -481,9 +512,18 @@ public class ConfluenceIngestService {
         UUID documentId = persistDocument(collection, tag, sourceFile, sections, chunkTexts,
             embeddings, title, pageVersion);
 
-        // Generate hierarchical summaries
-        ctx.report(JobStep.INJECT, 90, "Generating section summaries");
-        sectionSummarizer.generateSummaries(documentId, sections, ctx.job().id(), ctx, null);
+        // Section summaries are opt-in per instance, and both halves of that decision travel in the
+        // job's own settings, snapshotted at crawl time. Page imports used to summarize
+        // unconditionally AND pass a null prompt, which is the pair of lines that produced every
+        // "Here is a summary of the section:" summary in this collection. The prompt is resolved
+        // before the summarizer starts, so a prompt deleted mid-crawl fails one page rather than
+        // three hundred.
+        if (summariesEnabled(ctx.job().settings())) {
+            ctx.report(JobStep.INJECT, 90, "Generating section summaries");
+            sectionSummarizer.generateSummaries(documentId, sections, ctx.job().id(), ctx,
+                ingestPrompts.requireSummarizePromptText(ctx.job().settings(),
+                    "section summaries for Confluence page '" + title + "'"));
+        }
 
         ctx.report(JobStep.INJECT, 100, "Successfully ingested page: " + title);
         return new JobCounts(1, sections.size(), 0, 0, 0);

@@ -73,7 +73,8 @@ public class IngestService {
      * was never created.
      */
     public EnqueueResult processKg(UUID documentId, String sourceFile, String sourceCollection,
-        String sourceTag, String targetCollectionName, String targetTag) {
+        String sourceTag, String targetCollectionName, String targetTag,
+        @Nullable String kgPromptName) {
 
         UUID targetDocId = documentId;
         if (targetDocId == null) {
@@ -110,8 +111,16 @@ public class IngestService {
 
         // A duplicate request adopts the job already in flight for the same document/target, so
         // the caller gets that job's id instead of a 500 from the admission-control index.
+        // The gap this closes: this path used the settings-less EnqueueRequest overload, so an
+        // API-triggered extraction could never name a KG prompt and ran with an empty one. Written
+        // conditionally because the enqueue validator owns the "required" error, which names the
+        // setting and lists the valid prompts.
+        Map<String, Object> settings = new HashMap<>();
+        if (kgPromptName != null && !kgPromptName.isBlank()) {
+            settings.put(IngestPrompts.SETTING_KG_PROMPT, kgPromptName.trim());
+        }
         return jobService.enqueue(new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(),
-            targetDocId.toString(), trimmedTargetTag, trimmedTargetCol));
+            targetDocId.toString(), trimmedTargetTag, trimmedTargetCol, settings));
     }
 
     /**
@@ -119,7 +128,8 @@ public class IngestService {
      * against path traversal) and enqueues a custom-ingest job. Returns the new job id.
      */
     public UUID enqueueCustom(MultipartFile file, String collection, String tag,
-        String documentGlob, String entitiesFile, String relationshipsFile) {
+        String documentGlob, String entitiesFile, String relationshipsFile,
+        @Nullable String summarizePromptName) {
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
@@ -144,6 +154,13 @@ public class IngestService {
             settings.put("documentGlob", documentGlob);
             settings.put("entitiesFile", entitiesFile);
             settings.put("relationshipsFile", relationshipsFile);
+            // A custom extract summarizes every matched section, so this is not optional. It is
+            // still written conditionally: the enqueue validator produces the "required" error,
+            // which names the setting and lists the valid prompts, and duplicating that check here
+            // would give the same request two different rejection messages.
+            if (summarizePromptName != null && !summarizePromptName.isBlank()) {
+                settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, summarizePromptName.trim());
+            }
 
             EnqueueRequest request = new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
                 zipPath.toString(), tag, collection, settings);
@@ -168,7 +185,8 @@ public class IngestService {
      * kind must be rejected by default instead of by remembering to name it.
      */
     public UUID uploadAndEnqueue(MultipartFile file, String collectionName, String tag, String kind,
-        String jsonUniqueField, @Nullable Boolean buildSectionSummaries) {
+        String jsonUniqueField, @Nullable Boolean buildSectionSummaries,
+        @Nullable String summarizePromptName) {
 
         String normalizedKind = kind == null ? "" : kind.trim();
         if (!UPLOAD_KINDS.contains(normalizedKind)) {
@@ -220,6 +238,13 @@ public class IngestService {
             // Opt-in only; absent means off (DocumentIngestService treats a missing key as false).
             if (Boolean.TRUE.equals(buildSectionSummaries)) {
                 settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
+            }
+            // The gap this closes: the API could switch section summaries ON and had no parameter
+            // to say which prompt to use, so every API-triggered summarizing ingest ran with none.
+            // A `hierarchical` upload needs it whether or not the flag is set — that path
+            // summarizes unconditionally.
+            if (summarizePromptName != null && !summarizePromptName.isBlank()) {
+                settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, summarizePromptName.trim());
             }
 
             // 4. Enqueue job

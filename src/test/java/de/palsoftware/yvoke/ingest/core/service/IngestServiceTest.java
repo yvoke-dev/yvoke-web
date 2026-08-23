@@ -90,7 +90,7 @@ public class IngestServiceTest {
             new IllegalArgumentException("Collection 'GHOST-COLLECTION' does not exist."));
 
         assertThatThrownBy(() -> ingestService.enqueueCustom(zip, "GHOST-COLLECTION", "9.3",
-            "**/*.md", "graph/entities.jsonl", "graph/relationships.jsonl"))
+            "**/*.md", "graph/entities.jsonl", "graph/relationships.jsonl", null))
             .as("a validator rejection must reach the caller as a 400, not an unhandled 500")
             .isInstanceOf(ResponseStatusException.class).satisfies(thrown -> {
                 ResponseStatusException rse = (ResponseStatusException) thrown;
@@ -119,7 +119,7 @@ public class IngestServiceTest {
             "zip bytes".getBytes());
 
         UUID jobId = ingestService.enqueueCustom(file, "OIM", "v1", "**/*.md",
-            "graph/entities.jsonl", "graph/relationships.jsonl");
+            "graph/entities.jsonl", "graph/relationships.jsonl", null);
 
         assertThat(jobId).isNotNull();
 
@@ -147,7 +147,7 @@ public class IngestServiceTest {
             new MockMultipartFile("file", "corpus.zip", "application/zip", "zip bytes".getBytes());
 
         ingestService.enqueueCustom(file, "OIM", "v1", "**/*.md", "graph/entities.jsonl",
-            "graph/relationships.jsonl");
+            "graph/relationships.jsonl", null);
 
         Path staged = Path.of(captor.getValue().sourceRef()).normalize();
         Path root = uploadDir.toAbsolutePath().normalize();
@@ -191,9 +191,9 @@ public class IngestServiceTest {
         when(jobService.enqueue(captor.capture())).thenReturn(EnqueueResult.created(jobId));
 
         EnqueueResult omitted = ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", null, " OIM ", " 10.0 ");
-        EnqueueResult blank =
-            ingestService.processKg(null, "install-kit.md", "OIM-Install", "   ", "OIM", "10.0");
+            "  OIM-Install  ", null, " OIM ", " 10.0 ", null);
+        EnqueueResult blank = ingestService.processKg(null, "install-kit.md", "OIM-Install", "   ",
+            "OIM", "10.0", null);
 
         assertThat(omitted.jobId()).as("a null sourceTag must resolve the document, not 404")
             .isEqualTo(jobId);
@@ -226,7 +226,7 @@ public class IngestServiceTest {
         MockMultipartFile file =
             new MockMultipartFile("file", "m.md", "text/markdown", "data".getBytes());
 
-        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null);
+        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null, null);
 
         InOrder inOrder = Mockito.inOrder(tagService, jobService);
         inOrder.verify(tagService).addTagToCollection(colId, "10.0");
@@ -270,7 +270,7 @@ public class IngestServiceTest {
         when(jobService.enqueue(captor.capture()))
             .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
-        ingestService.processKg(docId, null, null, null, " OIM ", " 10.0 ");
+        ingestService.processKg(docId, null, null, null, " OIM ", " 10.0 ", null);
 
         InOrder inOrder = inOrder(tagService, jobService);
         inOrder.verify(tagService).addTagToCollection(colId, "10.0");
@@ -292,7 +292,8 @@ public class IngestServiceTest {
         MockMultipartFile file =
             new MockMultipartFile("file", "../../../evil.md", "text/markdown", "data".getBytes());
 
-        UUID jobId = ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null);
+        UUID jobId =
+            ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null, null);
 
         assertThat(jobId).isNotNull();
 
@@ -326,12 +327,12 @@ public class IngestServiceTest {
     public void processKgWithoutDocumentIdDemandsBothSourceFieldsAndReportsAMissingDocument() {
         // Half a key is not a key: neither field alone may be accepted.
         assertThatThrownBy(
-            () -> ingestService.processKg(null, "install-kit.md", null, null, "OIM", "10.0"))
+            () -> ingestService.processKg(null, "install-kit.md", null, null, "OIM", "10.0", null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
         assertThatThrownBy(
-            () -> ingestService.processKg(null, null, "OIM-Install", null, "OIM", "10.0"))
+            () -> ingestService.processKg(null, null, "OIM-Install", null, "OIM", "10.0", null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -340,7 +341,7 @@ public class IngestServiceTest {
             .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", "  9.3.1  ", "OIM", "10.0"))
+            "  OIM-Install  ", "  9.3.1  ", "OIM", "10.0", null))
             .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
                 ResponseStatusException ex = (ResponseStatusException) e;
                 assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -367,7 +368,7 @@ public class IngestServiceTest {
         for (String kind : new String[] {"confluence-import", "confluence-page-import", "custom",
             "kg-extract", "manual", ""}) {
             assertThatThrownBy(
-                () -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null))
+                () -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null))
                 .as("kind=%s", kind).isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                     .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -396,13 +397,13 @@ public class IngestServiceTest {
             new MockMultipartFile("file", "corpus.zip", "application/zip", new byte[0]);
 
         assertThatThrownBy(
-            () -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard", null, null))
+            () -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard", null, null, null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
 
         assertThatThrownBy(() -> ingestService.enqueueCustom(empty, "OIM", "9.3", "**/*.md",
-            "graph/entities.jsonl", "graph/relationships.jsonl"))
+            "graph/entities.jsonl", "graph/relationships.jsonl", null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -425,7 +426,7 @@ public class IngestServiceTest {
         for (String kind : new String[] {"standard", "hierarchical", "json-import"}) {
             MockMultipartFile file =
                 new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
-            assertThat(ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null))
+            assertThat(ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null))
                 .isNotNull();
         }
 

@@ -487,9 +487,11 @@ class AzureOpenAiResponsesLlmClientTest {
         // so establishment is the only retryable part.
         List<LlmResponseChunk> chunks = new ArrayList<>();
         try {
-            chunks = replay("truncated.sse");
+            replayInto(chunks, "truncated.sse");
         } catch (RuntimeException severed) {
-            // Whether the SDK raises on a severed stream is its business; not retrying is ours.
+            // A severed stream that produced no answer is a failure now, not a quiet success —
+            // whether the SDK or the empty-turn guard raises it is beside the point here. Not
+            // RETRYING it is what this test owns, and the chunks already delivered must survive.
         }
 
         assertThat(requests.get()).isEqualTo(1);
@@ -513,28 +515,53 @@ class AzureOpenAiResponsesLlmClientTest {
     }
 
     @Test
-    void theAbandonedAttemptsTokensAreBilledOntoTheRecoveredTurn() throws IOException {
-        // AccountingLlmClient calls observedUsage.set(...) — not add — and publishes ONE row per
-        // generateStream, so without carrying the abandoned attempt forward a recovered turn is
-        // billed as though its first 1040 output tokens had never been spent, and nothing anywhere
-        // would notice the ledger under-reporting.
+    void eachAttemptIsBilledAsItsOwnCall() throws IOException {
+        // Two HTTP calls, two llm_call_logs rows. The abandoned attempt's 1040 output tokens used
+        // to be summed onto the winning chunk instead, because AccountingLlmClient published one
+        // row per generateStream — so the attempt was billed but invisible, and every retrying
+        // client had to carry its own usage-accumulation code to make that come out right.
         List<LlmResponseChunk> chunks =
             replaySequence("reasoning-only-empty.sse", "reasoning-and-text.sse");
 
-        assertThat(lastUsage(chunks)).isEqualTo(new LlmUsage(274, 1104, 1378, 82, 1053));
+        List<LlmResponseChunk> markers =
+            chunks.stream().filter(LlmResponseChunk::endOfCall).toList();
+        assertThat(markers).hasSize(2);
+        assertThat(markers.get(0).usage()).isEqualTo(new LlmUsage(137, 1040, 1177, 41, 1024));
+        assertThat(markers.get(1).usage()).isEqualTo(new LlmUsage(137, 64, 201, 41, 29));
+        assertThat(lastUsage(chunks.stream().filter(c -> !c.endOfCall()).toList()))
+            .as("the winning attempt reports only what IT cost; the sum would be 1378 total")
+            .isEqualTo(new LlmUsage(137, 64, 201, 41, 29));
+    }
+
+    /**
+     * A turn that ran out of output budget having produced nothing is still a blank answer. It is
+     * not re-requested — the budget would simply run out again — but it must not be delivered as a
+     * quiet success either, which is what returning on "not cleanly completed" used to do.
+     */
+    @Test
+    void aTruncatedTurnThatProducedNothingFailsRatherThanDeliveringABlankAnswer()
+        throws IOException {
+        assertThatThrownBy(() -> replaySequence("truncated-empty.sse"))
+            .isInstanceOf(LlmCallFailedException.class)
+            .hasMessageContaining("no content and no tool calls after 1 attempt(s)");
+
+        assertThat(requests.get())
+            .as("a truncated turn exhausts its budget again on a retry; it must cost one request")
+            .isEqualTo(1);
     }
 
     @Test
     void anEmptyTurnThatRepeatsFailsInsteadOfLoopingForever() throws IOException {
-        // Bounded at two: an empty turn that repeats is systematic rather than a glitch, and the
-        // failure still carries both attempts' tokens so the spend is recorded.
+        // Bounded at two: an empty turn that repeats is systematic rather than a glitch. Both
+        // attempts' tokens are already recorded, one row each, via their end-of-call markers.
         assertThatThrownBy(
             () -> replaySequence("reasoning-only-empty.sse", "reasoning-only-empty.sse"))
             .isInstanceOf(LlmCallFailedException.class)
             .hasMessageContaining("no content and no tool calls after 2 attempt(s)")
             .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
             .extracting(LlmCallFailedException::usage)
-            .isEqualTo(new LlmUsage(274, 2080, 2354, 82, 2048));
+            .as("each attempt already has its own row; the failure names the last one's cost")
+            .isEqualTo(new LlmUsage(137, 1040, 1177, 41, 1024));
         assertThat(requests.get()).isEqualTo(2);
     }
 
@@ -681,6 +708,17 @@ class AzureOpenAiResponsesLlmClientTest {
      * retried; {@link #requests} counts every request the client actually made.
      */
     private List<LlmResponseChunk> replay(String fixture) throws IOException {
+        List<LlmResponseChunk> chunks = new ArrayList<>();
+        replayInto(chunks, fixture);
+        return chunks;
+    }
+
+    /**
+     * As {@link #replay}, but collecting into a caller-supplied list so the chunks delivered before
+     * a failure survive it. A severed stream that produced no answer now throws, and a test that
+     * assigns from a return value loses its evidence when it does.
+     */
+    private void replayInto(List<LlmResponseChunk> sink, String fixture) throws IOException {
         String body = new String(
             getClass().getResourceAsStream("/llm/azure-responses/" + fixture).readAllBytes(),
             StandardCharsets.UTF_8);
@@ -717,10 +755,8 @@ class AzureOpenAiResponsesLlmClientTest {
         AzureOpenAiResponsesLlmClient client =
             new AzureOpenAiResponsesLlmClient(transport, true, "medium", "");
 
-        List<LlmResponseChunk> chunks = new ArrayList<>();
-        client.generateStream(requestWithTools("gpt-5.6-luna"), chunks::add);
+        client.generateStream(requestWithTools("gpt-5.6-luna"), sink::add);
         assertThat(request.get()).as("the client must actually have sent a request").isNotNull();
-        return chunks;
     }
 
     private static String argumentsFor(List<LlmToolCallDelta> deltas, int index) {
@@ -824,5 +860,65 @@ class AzureOpenAiResponsesLlmClientTest {
             }
         }
         return text.toString();
+    }
+
+    // -------------------------------------------------- reasoning-model classification
+
+    /**
+     * Classification decides what is on the wire, and getting it wrong is a 400 on EVERY call in
+     * either direction: a reasoning model rejects any {@code temperature} but its default, and an
+     * ordinary one rejects {@code reasoning.effort}. Until now nothing exercised
+     * {@link AzureOpenAiResponsesLlmClient#isReasoningModel} at all.
+     *
+     * <p>
+     * {@code DeepSeek-V4-Flash} is the case worth naming: it refuses {@code reasoning.effort} on
+     * both the chat-completions and the Responses surface, so it must classify as ordinary — which
+     * the heuristic gets right only because nothing in its name matches.
+     */
+    @Test
+    void theDeployedAzureModelsAreClassifiedCorrectlyByTheDefaultHeuristic() {
+        AzureOpenAiResponsesLlmClient client = reasoningModels("");
+
+        assertThat(client.isReasoningModel("gpt-5.4-mini")).isTrue();
+        assertThat(client.isReasoningModel("gpt-5.6-luna")).isTrue();
+        assertThat(client.isReasoningModel("DeepSeek-V4-Flash"))
+            .as("DeepSeek refuses reasoning.effort on both surfaces; sending one 400s every call")
+            .isFalse();
+    }
+
+    /**
+     * {@code app.ai.azure-openai.reasoning-models} REPLACES the heuristic rather than adding to it,
+     * which is right for its stated purpose — naming deployments that are not called after the
+     * model they serve — and is a trap when half-filled.
+     *
+     * <p>
+     * Naming only one of two reasoning deployments silently declassifies the other, which then
+     * receives a {@code temperature} and 400s on every call. Pinned here so the semantics cannot be
+     * changed, or half-configured, without something going red.
+     */
+    @Test
+    void anExplicitReasoningListReplacesTheHeuristicRatherThanExtendingIt() {
+        AzureOpenAiResponsesLlmClient client = reasoningModels("gpt-5.6-luna");
+
+        assertThat(client.isReasoningModel("gpt-5.6-luna")).isTrue();
+        assertThat(client.isReasoningModel("gpt-5.4-mini"))
+            .as("naming one deployment declassifies every other the heuristic would have caught — "
+                + "the list is an override, so it must be complete or empty")
+            .isFalse();
+        // Mixed case on the CONFIGURED side, which is the side the parser lowercases. A lowercase
+        // fixture here proves nothing: dropping the parser's toLowerCase leaves it unchanged, so
+        // the assertion stays green against the very bug it names.
+        assertThat(reasoningModels("GPT-5.6-Luna").isReasoningModel("gpt-5.6-luna"))
+            .as("a deployment name is hand-typed into a manifest; the override must match "
+                + "case-insensitively on the configured spelling too")
+            .isTrue();
+    }
+
+    /**
+     * No transport is needed: classification reads only the configured names and the model string.
+     * The constructor stores the client without touching it.
+     */
+    private static AzureOpenAiResponsesLlmClient reasoningModels(String csv) {
+        return new AzureOpenAiResponsesLlmClient((OpenAIClient) null, true, "medium", csv);
     }
 }

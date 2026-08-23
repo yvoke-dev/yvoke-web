@@ -58,11 +58,18 @@ public record ConfluenceInstanceForm(@Nullable UUID id,
 
 @Size(max=100,message="The tag must be at most 100 characters.")@Nullable String targetTag,
 
-@Nullable Boolean processAttachments,@Nullable Boolean enabled){
+@Nullable Boolean processAttachments,@Nullable Boolean buildSectionSummaries,@Nullable String summarizePrompt,@Nullable Boolean enabled){
 
 public ConfluenceInstanceForm{name=trimToNull(name);slug=trimToNull(slug);domain=trimToNull(domain);email=trimToNull(email);space=trimToNull(space);rootPageId=trimToNull(rootPageId);includeLabels=trimToNull(includeLabels);excludeLabels=trimToNull(excludeLabels);targetCollection=trimToNull(targetCollection);targetTag=trimToNull(targetTag);
 // An unchecked checkbox sends nothing; "nothing" is false, not a binding failure.
-processAttachments=processAttachments!=null&&processAttachments;enabled=enabled!=null&&enabled;}
+processAttachments=processAttachments!=null&&processAttachments;buildSectionSummaries=buildSectionSummaries!=null&&buildSectionSummaries;summarizePrompt=trimToNull(summarizePrompt);enabled=enabled!=null&&enabled;}
+
+/**
+ * Pre-{@code summarizePrompt} arity, for callers with no prompt to bind. Spring's WebDataBinder
+ * uses the canonical constructor, so this exists purely to keep existing construction sites — none
+ * of which have a prompt — compiling.
+ */
+public ConfluenceInstanceForm(@Nullable UUID id,String name,String slug,String domain,String email,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,@Nullable Boolean processAttachments,@Nullable Boolean enabled){this(id,name,slug,domain,email,space,rootPageId,includeLabels,excludeLabels,targetCollection,targetTag,processAttachments,false,null,enabled);}
 
 private static String trimToNull(String value){if(value==null){return null;}String trimmed=value.trim();return trimmed.isEmpty()?null:trimmed;}
 
@@ -74,4 +81,4 @@ private static String trimToNull(String value){if(value==null){return null;}Stri
  * Only call this on a form that passed validation — {@link ConfluenceInstance}'s compact
  * constructor enforces the same NOT NULL and slug-format invariants and throws otherwise.
  */
-public ConfluenceInstance toInstance(){return new ConfluenceInstance(id,name,slug,domain,email,null,null,space,rootPageId,includeLabels,excludeLabels,targetCollection,targetTag,processAttachments,enabled,null,null);}}
+public ConfluenceInstance toInstance(){return new ConfluenceInstance(id,name,slug,domain,email,null,null,space,rootPageId,includeLabels,excludeLabels,targetCollection,targetTag,processAttachments,buildSectionSummaries,summarizePrompt,enabled,null,null);}}

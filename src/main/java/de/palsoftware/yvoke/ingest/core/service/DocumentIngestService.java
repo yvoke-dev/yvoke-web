@@ -62,6 +62,7 @@ public class DocumentIngestService {
      */
     public static final String SETTING_BUILD_SECTION_SUMMARIES = "buildSectionSummaries";
 
+    private final IngestPrompts ingestPrompts;
     private final EmbeddingService embeddingService;
     private final DocumentRepository documentRepository;
     private final ChunkRepository chunkRepository;
@@ -79,7 +80,8 @@ public class DocumentIngestService {
         KgWriteRepository kgRepository, DocumentKgExtractor kgExtractor,
         KgConsolidator kgConsolidator, JdbcClient jdbcClient,
         PlatformTransactionManager transactionManager, SectionSummarizer sectionSummarizer,
-        SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard) {
+        SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard,
+        IngestPrompts ingestPrompts) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
@@ -91,6 +93,7 @@ public class DocumentIngestService {
         this.sectionSummarizer = sectionSummarizer;
         this.systemPromptService = systemPromptService;
         this.uploadPathGuard = uploadPathGuard;
+        this.ingestPrompts = ingestPrompts;
     }
 
     public JobCounts ingest(IngestionJob job, JobContext ctx) {
@@ -155,7 +158,7 @@ public class DocumentIngestService {
             ctx.report(JobStep.EXTRACT, 80,
                 "Generating section summaries (LLM, cached by content)");
             sectionSummarizer.generateSummaries(documentId, unsplitSections, jobId, ctx,
-                resolveSummarizePrompt(settings));
+                resolveSummarizePrompt(settings, "section summaries for " + sourceFile));
         }
         ctx.report(JobStep.INSERT, 100, "Ingestion completed successfully for " + sourceFile);
 
@@ -181,18 +184,14 @@ public class DocumentIngestService {
         checkCancellation(job.id());
         ctx.report(JobStep.EXTRACT, 20,
             String.format("Extracting knowledge graph from %d chunks (LLM)", chunks.size()));
-        String kgPromptName = (String) job.settings().get("kgPrompt");
-        String kgPromptText = null;
-        if (kgPromptName != null) {
-            kgPromptText = systemPromptService.getPrompt(kgPromptName)
-                .map(SystemPrompt::systemPrompt).orElse(null);
-        }
-        KgExtractionResult kg;
-        if (kgPromptText != null && !kgPromptText.isBlank()) {
-            kg = kgExtractor.extract(chunkTexts, job.id(), ctx, kgPromptText);
-        } else {
-            kg = kgExtractor.extract(chunkTexts, job.id(), ctx);
-        }
+        // Required, and resolved before the extractor starts. The else-branch this replaces called
+        // the no-prompt overload whenever no kgPrompt was selected, which ran the whole extraction
+        // with an empty system prompt — the one that defines the strict-JSON shape. A kg-extract
+        // job
+        // exists only because somebody asked for it, so there is no "off" to check here: the job's
+        // own existence is the opt-in.
+        KgExtractionResult kg = kgExtractor.extract(chunkTexts, job.id(), ctx, ingestPrompts
+            .requireKgPromptText(job.settings(), "a knowledge graph for document " + documentId));
         GraphCounts graphCounts = persistGraph(collection, tags, kg);
         persistChunkKgStatuses(chunks, kg);
         ctx.report(JobStep.EXTRACT, 90,
@@ -253,15 +252,17 @@ public class DocumentIngestService {
     }
 
     /**
-     * The operator's chosen summarize prompt, or null to let SectionSummarizer pick the default.
+     * The summarize prompt this job must use, or a failure naming what is missing.
+     *
+     * <p>
+     * Was "the operator's chosen prompt, or null to let SectionSummarizer pick the default" — but
+     * there was no default to pick: SectionSummarizer looked up {@code "default-summarize"}, a name
+     * no deployment has ever had, and summarized with a null system prompt. Resolution is shared
+     * with {@code CustomIngestService} now (this method and its twin there were the same code) and
+     * refuses rather than returning null.
      */
-    @Nullable
-    private String resolveSummarizePrompt(@Nullable Map<String, Object> settings) {
-        String name = settings != null ? (String) settings.get("summarizePrompt") : null;
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        return systemPromptService.getPrompt(name).map(SystemPrompt::systemPrompt).orElse(null);
+    private String resolveSummarizePrompt(@Nullable Map<String, Object> settings, String what) {
+        return ingestPrompts.requireSummarizePromptText(settings, what);
     }
 
     private void checkCancellation(UUID jobId) {
@@ -432,7 +433,7 @@ public class DocumentIngestService {
         checkCancellation(jobId);
         ctx.report(JobStep.EXTRACT, 76, "Generating hierarchical section summaries (LLM)");
         sectionSummarizer.generateSummaries(documentId, sections, jobId, ctx,
-            resolveSummarizePrompt(settings));
+            resolveSummarizePrompt(settings, "hierarchical section summaries for " + sourceFile));
         ctx.report(JobStep.EXTRACT, 100, "Ingestion completed successfully for " + sourceFile);
         log.info("Hierarchical manual ingest complete: source={} sections={}", sourceFile,
             sections.size());

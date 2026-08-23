@@ -2,7 +2,10 @@ package de.palsoftware.yvoke;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.llm.core.LlmModelRoutes;
+import de.palsoftware.yvoke.llm.core.LlmRouteId;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -438,20 +441,108 @@ public class ApplicationYamlInvariantsTest {
             .as("a false default 503s the entire chat surface for every deployment that never set"
                 + " APP_CHAT_ENABLED")
             .isEqualToIgnoringCase("true");
-        assertThat(text("app", "chat", "allowed-models"))
+        assertThat(text("app", "chat", "allowed-models").split(","))
             .as("this is the whitelist the model picker and the per-request model check are built"
-                + " from; a drifted default offers a model the account may not be entitled to")
-            .isEqualTo("gemini-3.6-flash");
+                + " from; a drifted default offers a model the account may not be entitled to."
+                + " ORDER is behaviour, not presentation: element 0 is stamped on every new"
+                + " conversation and is the model the playbook preflight runs against, so a reorder"
+                + " changes what everybody gets by default")
+            .containsExactly("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                "gpt-5.4-mini", "DeepSeek-V4-Flash", "gpt-5.6-luna");
+        assertThat(text("app", "ai", "azure-openai", "reasoning-models"))
+            .as("this list REPLACES the name heuristic rather than extending it, so a half-filled"
+                + " value declassifies every deployment it omits and 400s each of them; empty means"
+                + " 'detect from the name', which is correct for every deployment in use")
+            .isEmpty();
         assertThat(text("app", "chat", "playbook-validation-enabled"))
             .as("false removes the preflight guard silently — the question is sent against a"
                 + " playbook that cannot answer it, with no warning card and nothing in the log")
             .isEqualToIgnoringCase("true");
 
         assertThat(text("app", "ai", "provider"))
-            .as("off the AI Gateway the app still answers normally, but gateway_cache_status is"
-                + " never populated, replayed calls are billed at list price and the cf-aig-metadata"
-                + " attribution disappears — a pure cost-accounting regression with no symptom")
-            .isEqualTo("cloudflare-gemini");
+            .as("the default route for every model app.ai.model-routes does not map. Leaving the"
+                + " Cloudflare AI Gateway was a deliberate decision and it was not free:"
+                + " gateway_cache_status is no longer populated, nothing is billed as replayed, and"
+                + " the cf-aig-metadata attribution is gone. Drifting BACK is equally consequential,"
+                + " so the value is pinned in both directions")
+            .isEqualTo("gemini");
+        assertThat(text("app", "ai", "model-routes"))
+            .as("the route table must ship EMPTY: every entry is validated at startup, so a value"
+                + " committed here would have to be valid in every environment at once")
+            .isEmpty();
+    }
+
+    /**
+     * The deployed route table is a hand-written JSON string inside a YAML manifest, and nothing
+     * else ever parses it until a pod starts. Running it through the real
+     * {@link LlmModelRoutes#parse} here turns a typo — a stray comma, a misspelled route, a model
+     * named twice — from a failed rollout into a failed build.
+     *
+     * <p>
+     * The cross-check matters as much as the parse. A route naming a model that is not in
+     * {@code ALLOWED_MODELS} is dead configuration: nobody can select it, so the route silently
+     * never applies. The reverse is deliberately NOT asserted — a Gemini model correctly has no
+     * entry, because unrouted models take the default route.
+     */
+    @Test
+    void theDeployedRouteTableParsesAndOnlyNamesSelectableModels() throws Exception {
+        Map<String, String> data = deployedConfigMap();
+        String routesJson = data.get("AI_MODEL_ROUTES");
+        assertThat(routesJson).as("the ConfigMap must declare AI_MODEL_ROUTES").isNotNull();
+
+        LlmModelRoutes routes = LlmModelRoutes.parse(new ObjectMapper(), routesJson);
+        assertThat(routes.routeFor("gpt-5.4-mini")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+        assertThat(routes.routeFor("DeepSeek-V4-Flash"))
+            .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+        assertThat(routes.routeFor("gpt-5.6-luna")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+
+        List<String> allowed =
+            Arrays.stream(data.get("ALLOWED_MODELS").split(",")).map(String::trim).toList();
+        assertThat(routes.byModel().keySet())
+            .as("a route for a model nobody can select never applies; both spellings are"
+                + " hand-typed and only this compares them")
+            .allSatisfy(
+                routed -> assertThat(allowed.stream().anyMatch(a -> a.equalsIgnoreCase(routed)))
+                    .as("routed model '%s' is absent from ALLOWED_MODELS %s", routed, allowed)
+                    .isTrue());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> deployedConfigMap() throws Exception {
+        Path configMap = Path.of("k8s/app/yvoke-app/configmap.yaml");
+        assertThat(configMap).as("the deployment's env source must exist to be checked").exists();
+        Map<String, Object> root =
+            new Yaml().load(Files.readString(configMap, StandardCharsets.UTF_8));
+        return (Map<String, String>) root.get("data");
+    }
+
+    /**
+     * The shipped default and the deployed value are one contract that nothing else compares.
+     *
+     * <p>
+     * It matters more than it looks, because {@code LlmConfig} now REJECTS a retired provider
+     * rather than falling through to Gemini. A ConfigMap still naming {@code cloudflare-gemini}
+     * after the code stopped accepting it does not degrade — the container fails to start. And the
+     * ConfigMap cannot self-heal on the way in: {@code kustomization.yaml} lists it under
+     * {@code resources:} with no generator and no hash, the Deployment consumes it via
+     * {@code envFrom}, and {@code redeploy.sh} deliberately omits a restart — so a ConfigMap edit
+     * shipped on its own leaves the pod template identical, reports a successful rollout, and takes
+     * effect at some later unrelated release.
+     */
+    @Test
+    void theDeployedProviderIsOneTheCodeStillAccepts() throws Exception {
+        Path configMap = Path.of("k8s/app/yvoke-app/configmap.yaml");
+        assertThat(configMap).as("the deployment's env source must exist to be checked").exists();
+
+        String deployed = Files.readAllLines(configMap, StandardCharsets.UTF_8).stream()
+            .map(String::trim).filter(line -> line.startsWith("AI_PROVIDER:")).findFirst()
+            .orElseThrow(() -> new AssertionError("k8s ConfigMap declares no AI_PROVIDER"))
+            .replace("AI_PROVIDER:", "").replace("\"", "").trim();
+
+        assertThat(deployed)
+            .as("the deployed provider must be one LlmConfig still wires; a retired value is not a"
+                + " degraded start, it is a failed one")
+            .isEqualTo(text("app", "ai", "provider"));
     }
 
     /**

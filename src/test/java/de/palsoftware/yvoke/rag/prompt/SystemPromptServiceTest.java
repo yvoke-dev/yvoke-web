@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,5 +86,72 @@ class SystemPromptServiceTest {
         assertEquals("Test Description", imported.description());
         verify(repository).upsert("test-prompt", SystemPromptType.CHAT,
             "System instruction content", "Test Description");
+    }
+
+    // ---- requirePrompt --------------------------------------------------
+    //
+    // The whole point of this method is that it REFUSES, so its refusal paths are the behaviour.
+    // The type check especially: prompts share one flat namespace, so nothing else stops a CHAT
+    // prompt being selected where a SUMMARIZE one is meant, and that mistake resolves cleanly and
+    // then instructs the summarizer to answer questions and cite sources.
+
+    private static SystemPrompt prompt(String name, SystemPromptType type) {
+        return new SystemPrompt(name, type, "BODY", "");
+    }
+
+    @Test
+    void requirePromptReturnsThePromptWhenNameAndTypeMatch() {
+        when(repository.findByName("oim-summarize"))
+            .thenReturn(Optional.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
+        assertEquals("BODY",
+            service.requirePrompt("oim-summarize", SystemPromptType.SUMMARIZE).systemPrompt());
+    }
+
+    @Test
+    void requirePromptRefusesAWrongTypedPrompt() {
+        when(repository.findByName("default-chat"))
+            .thenReturn(Optional.of(prompt("default-chat", SystemPromptType.CHAT)));
+        when(repository.findByType(SystemPromptType.SUMMARIZE))
+            .thenReturn(List.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> service.requirePrompt("default-chat", SystemPromptType.SUMMARIZE));
+        assertTrue(e.getMessage().contains("is of type CHAT"), e.getMessage());
+        assertTrue(e.getMessage().contains("SUMMARIZE prompt is required"), e.getMessage());
+        assertTrue(e.getMessage().contains("oim-summarize"), "must list the valid names");
+    }
+
+    @Test
+    void requirePromptRefusesAnUnknownName() {
+        when(repository.findByName("nope")).thenReturn(Optional.empty());
+        when(repository.findByType(SystemPromptType.KG)).thenReturn(List.of());
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> service.requirePrompt("nope", SystemPromptType.KG));
+        assertTrue(e.getMessage().contains("does not exist"), e.getMessage());
+        assertTrue(e.getMessage().contains("(none registered)"),
+            "an empty roster must say so rather than trailing an empty list");
+    }
+
+    @Test
+    void requirePromptRefusesANullOrBlankName() {
+        when(repository.findByType(SystemPromptType.SUMMARIZE)).thenReturn(List
+            .of(prompt("b", SystemPromptType.SUMMARIZE), prompt("a", SystemPromptType.SUMMARIZE)));
+        for (String bad : new String[] {null, "", "   "}) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.requirePrompt(bad, SystemPromptType.SUMMARIZE));
+            assertTrue(e.getMessage().contains("was specified"), e.getMessage());
+            assertTrue(e.getMessage().contains("a, b"), "names are sorted so the text is stable");
+        }
+    }
+
+    @Test
+    void requirePromptWithNoExpectedTypeSkipsTheTypeCheck() {
+        // Defensive: a null type must not NPE while building the message.
+        when(repository.findByName("x"))
+            .thenReturn(Optional.of(prompt("x", SystemPromptType.CHAT)));
+        assertEquals("x", service.requirePrompt("x", null).name());
+        IllegalArgumentException e =
+            assertThrows(IllegalArgumentException.class, () -> service.requirePrompt(null, null));
+        assertTrue(e.getMessage().contains("(no type given)"), e.getMessage());
     }
 }

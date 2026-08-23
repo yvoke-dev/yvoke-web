@@ -34,10 +34,11 @@ public class IngestApiController {
         @RequestParam(value = "sourceCollection", required = false) String sourceCollection,
         @RequestParam(value = "sourceTag", required = false) String sourceTag,
         @RequestParam("collection") String targetCollectionName,
-        @RequestParam("tag") String targetTag) {
+        @RequestParam("tag") String targetTag,
+        @RequestParam(value = "kgPrompt", required = false) String kgPrompt) {
 
         EnqueueResult result = ingestService.processKg(documentId, sourceFile, sourceCollection,
-            sourceTag, targetCollectionName, targetTag);
+            sourceTag, targetCollectionName, targetTag, kgPrompt);
         HttpStatus status = result.created() ? HttpStatus.ACCEPTED : HttpStatus.CONFLICT;
         return ResponseEntity.status(status).body(Map.of("id", result.jobId()));
     }
@@ -51,10 +52,11 @@ public class IngestApiController {
         @RequestParam(value = "entitiesFile", required = false,
             defaultValue = "graph/entities.jsonl") String entitiesFile,
         @RequestParam(value = "relationshipsFile", required = false,
-            defaultValue = "graph/relationships.jsonl") String relationshipsFile) {
+            defaultValue = "graph/relationships.jsonl") String relationshipsFile,
+        @RequestParam(value = "summarizePrompt", required = false) String summarizePrompt) {
 
         UUID jobId = ingestService.enqueueCustom(file, collection, tag, documentGlob, entitiesFile,
-            relationshipsFile);
+            relationshipsFile, summarizePrompt);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", jobId));
     }
 
@@ -65,7 +67,8 @@ public class IngestApiController {
         @RequestParam("kind") String kind,
         @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
         @RequestParam(value = "buildSectionSummaries",
-            required = false) Boolean buildSectionSummaries) {
+            required = false) Boolean buildSectionSummaries,
+        @RequestParam(value = "summarizePrompt", required = false) String summarizePrompt) {
 
         // Same gate as POST /api/jobs/v1: this endpoint names the job kind from a request param and
         // shares the ROLE_INGEST/USER/ADMIN chain, so without it a plain user could POST a 1-byte
@@ -73,7 +76,7 @@ public class IngestApiController {
         // IngestService additionally allowlists the kinds this endpoint actually serves.
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(kind);
         UUID jobId = ingestService.uploadAndEnqueue(file, collectionName, tag, kind,
-            jsonUniqueField, buildSectionSummaries);
+            jsonUniqueField, buildSectionSummaries, summarizePrompt);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", jobId));
     }
 }

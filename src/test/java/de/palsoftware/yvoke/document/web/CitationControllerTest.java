@@ -29,7 +29,7 @@ public class CitationControllerTest {
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
-        when(sectionService.getSectionByChunkId("chunk123")).thenReturn(mockResponse);
+        when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
         String view = controller.getCitation("chunk123", null, model);
 
@@ -44,7 +44,7 @@ public class CitationControllerTest {
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
-        when(sectionService.getSectionByChunkId("chunk123")).thenReturn(mockResponse);
+        when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
         String view = controller.getCitation("chunk123", null, model);
 
@@ -59,7 +59,7 @@ public class CitationControllerTest {
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
-        when(sectionService.getSectionByChunkId("chunk123")).thenReturn(mockResponse);
+        when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
         String view = controller.getCitation("chunk123", null, model);
 
@@ -147,7 +147,7 @@ public class CitationControllerTest {
 
         // An unexpected (e.g. data-access) failure must not surface its raw message — which can
         // carry SQL / provider / stack detail — into the rendered fragment (SEC-17 / ARC-10).
-        when(sectionService.getSectionByChunkId(any()))
+        when(sectionService.getChunkContent(any()))
             .thenThrow(new RuntimeException("ERROR: relation \"chunks\" does not exist"));
 
         String view = controller.getCitation("chunk123", null, model);

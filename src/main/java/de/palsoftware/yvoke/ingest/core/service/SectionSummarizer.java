@@ -60,15 +60,30 @@ public class SectionSummarizer {
         }
     }
 
+    /**
+     * @param systemPrompt the SUMMARIZE prompt to run with — required, and validated here rather
+     *        than per node. It used to be an optional "override" resolved inside
+     *        {@link #processNode}: once per node, inside the concurrent fan-out, falling back to
+     *        {@code getPrompt("default-summarize")} — a prompt name that exists in no deployment.
+     *        So the fallback always missed, every node summarized with a null system prompt, and
+     *        the job reported success. Resolving here instead means one check for a 27,000-node
+     *        corpus instead of 27,000, and a failure that lands before the first LLM call rather
+     *        than inside a {@code Future}.
+     *        <p>
+     *        The no-prompt overload is gone deliberately. It existed so a caller could omit the
+     *        argument, and the caller that did — the Confluence importer — is exactly the one whose
+     *        summaries came out as "Here is a summary of the section:". Making the parameter
+     *        required turns that into a compile error instead of a silent behaviour.
+     */
     public void generateSummaries(UUID documentId, List<Section> sections, UUID jobId,
-        JobContext ctx) {
-        generateSummaries(documentId, sections, jobId, ctx, null);
-    }
-
-    public void generateSummaries(UUID documentId, List<Section> sections, UUID jobId,
-        JobContext ctx, String systemPromptOverride) {
+        JobContext ctx, String systemPrompt) {
         if (sections.isEmpty()) {
             return;
+        }
+        if (systemPrompt == null || systemPrompt.isBlank()) {
+            throw new IllegalArgumentException(
+                "A summarize system prompt is required to generate section summaries for document "
+                    + documentId + "; none was supplied.");
         }
 
         log.info("Starting bottom-up hierarchical summarization for document {}", documentId);
@@ -131,7 +146,7 @@ public class SectionSummarizer {
                                 cancelled.set(true);
                                 return;
                             }
-                            processNode(node, gate, systemPromptOverride);
+                            processNode(node, gate, systemPrompt);
                         } catch (Exception e) {
                             log.error("Failed to summarize section node: {}",
                                 String.join(" > ", node.path), e);
@@ -194,7 +209,7 @@ public class SectionSummarizer {
         log.info("Section summarization completed successfully for document {}", documentId);
     }
 
-    private void processNode(SectionNode node, Semaphore gate, String systemPromptOverride)
+    private void processNode(SectionNode node, Semaphore gate, String systemPrompt)
         throws InterruptedException {
         String contentToSummarize;
         if (node.children.isEmpty()) {
@@ -222,14 +237,8 @@ public class SectionSummarizer {
                 String.format("Section path: %s\n\n```markdown\n%s\n```\n\nWrite the summary now.",
                     String.join(" > ", node.path), contentToSummarize);
 
-            String resolvedPrompt = systemPromptOverride;
-            if (resolvedPrompt == null || resolvedPrompt.isBlank()) {
-                resolvedPrompt = systemPromptService.getPrompt("default-summarize")
-                    .map(SystemPrompt::systemPrompt).orElse(null);
-            }
-
             node.summary = generalSummarizer.summarize(contentToSummarize, "section_summary",
-                resolvedPrompt, userMsg);
+                systemPrompt, userMsg);
         } finally {
             gate.release();
         }

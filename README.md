@@ -40,10 +40,21 @@ Spotless is Java-only, so without it a JavaScript syntax error can otherwise rea
 
 All three Compose services (`postgres`, `db-migration`, `app`) declare `env_file: .env`, so **the
 stack will not start without it** and it is deliberately not in the repository — it holds real
-credentials. There is no `.env.example`; ask a maintainer for a copy. It supplies the datastore and
-Flyway settings (`POSTGRES_*`, `SPRING_DATASOURCE_*`, `FLYWAY_*`), the auth mode (`APP_SECURITY_MOCK`,
-`APP_SECURITY_API_KEY`, `ENTRA_*`) and the model/provider keys (`AI_PROVIDER`, `GEMINI_API_KEY`,
-`VOYAGE_API_KEY`, `OPENROUTER_API_KEY`, `CLOUDFLARE_*`, `ALLOWED_MODELS`, the `*_THINKING_LEVEL` set).
+credentials. Copy the template and fill in the blanks:
+
+```bash
+cp .env.example .env
+```
+
+[`.env.example`](.env.example) is the list, with a comment per setting saying what breaks without
+it. Only the variables that cannot work as shipped are uncommented; everything else has a working
+default in `src/main/resources/application.yml`, which stays the single source of defaults. Ask a
+maintainer for the credential values.
+
+That file cannot quietly drift, which is why the list lives there rather than here:
+`EnvExampleContractTest` compares it against `application.yml` in both directions — a variable in
+the example that nothing reads fails the build, and so does a setting whose shipped default is a
+`placeholder-…` that the example forgets to mention.
 
 ### 2. Build and start
 

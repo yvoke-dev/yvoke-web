@@ -53,22 +53,63 @@ public class SectionService {
             headingPathStr == null || headingPathStr.isBlank());
     }
 
-    public SectionResponse getSectionByChunkId(String chunkIdPrefix) {
+    /**
+     * The text of ONE cited passage — the human-facing citation lookup.
+     *
+     * <p>
+     * A citation is the claim "this passage supports this sentence", so the passage it names is the
+     * whole of what this returns. It used to return the whole SECTION the passage belongs to, by
+     * converting the chunk into a heading path and handing that to {@link #getSectionForDocument}.
+     * That is a prefix match, so the answer grew with the breadth of the chunk's heading rather
+     * than with anything about the citation: measured on one real answer, a cited passage of 1,357
+     * characters came back inside 220 passages and 314,064 characters — 231x the text that was
+     * cited. Two of that answer's eight citations expanded past 70 passages.
+     *
+     * <p>
+     * Worse than the volume, the extra text is not evidence. {@code search_corpus} hands a model
+     * one chunk at a time, so nothing else in that section was in front of it when it wrote the
+     * claim, and showing the neighbours invites confirming a claim from text the model never read.
+     * That is the same failure the server's reviewer playbook gives as its reason for refusing
+     * {@code get_section} altogether.
+     *
+     * <p>
+     * This includes the sibling parts of a {@code (part N/M)} split. Such a passage does end
+     * mid-content, but the model that cited it saw it end there too — if the claim leans on what
+     * the cut removed, that is a real weakness in the citation, and quietly padding the passage
+     * back out would hide it.
+     *
+     * <p>
+     * The agent-facing sibling {@link #getSectionChunksByChunkId} still expands, deliberately:
+     * {@code get_section}'s own description promises that "a chunk_id returns the whole section
+     * containing that chunk, not just the chunk", which is the right contract for an agent widening
+     * a search hit. The two audiences want opposite things from the same id, which is why they are
+     * separate methods with one consumer each.
+     *
+     * @param chunkIdPrefix a full chunk id, or a prefix of at least 8 hex characters — the
+     *        production input shape, since a truncated id is what a shortened citation link carries
+     */
+    public SectionResponse getChunkContent(String chunkIdPrefix) {
         if (chunkIdPrefix == null || chunkIdPrefix.isBlank()) {
             throw new IllegalArgumentException("Chunk ID prefix cannot be null or empty.");
         }
 
+        // findByIdPrefix INNER JOINs documents, so the row already carries the document's title and
+        // tag and a chunk whose document is gone simply does not come back. The second lookup this
+        // method used to do for the title could therefore never fail, and is gone with it.
         ChunkRow chunk = chunkRepository.findByIdPrefix(chunkIdPrefix)
             .orElseThrow(() -> new NoSuchElementException(
                 "(no chunk with id starting '" + chunkIdPrefix + "')"));
 
-        DocumentRow doc = documentRepository.findById(chunk.documentId())
-            .orElseThrow(() -> new NoSuchElementException(
-                "(no document found for chunk '" + chunkIdPrefix + "')"));
+        String documentTitle = chunk.documentTitle() != null ? chunk.documentTitle() : "?";
+        String tag = chunk.tag() != null ? chunk.tag() : "?";
+        // No "# Section: …" header: it restated the title, tag and scope that the citation panel
+        // already renders in its own header row, and titling one passage as a section was the very
+        // confusion this method exists to end. `text` is now the passage and nothing else, with the
+        // breadcrumb carried structurally in headingPath.
+        String text = HierarchyUtils.stripBreadcrumb(chunk.text()).strip();
 
-        List<String> targetPath = HierarchyUtils.getChunkFullPath(chunk);
-
-        return getSectionForDocument(doc, targetPath, false);
+        return new SectionResponse(HierarchyUtils.getChunkFullPath(chunk), documentTitle, tag, 1,
+            "this passage only", text);
     }
 
     public SectionResponse getSectionByDocumentId(String documentIdStr,
@@ -96,8 +137,15 @@ public class SectionService {
     }
 
     /**
-     * The agent-facing view of {@link #getSectionByChunkId}: the same section, but with its
+     * The agent-facing read of a chunk id: the whole section the chunk belongs to, with its
      * passages kept apart so each can carry its id.
+     *
+     * <p>
+     * Deliberately NOT the same scope as the human-facing {@link #getChunkContent}, which returns
+     * only the cited passage. {@code get_section}'s description promises an agent that "a chunk_id
+     * returns the whole section containing that chunk, not just the chunk" — widening a search hit
+     * is a useful operation for a model and a misleading one for a reader, so the two audiences get
+     * different methods rather than a shared one with a flag.
      */
     public SectionChunks getSectionChunksByChunkId(String chunkIdPrefix) {
         if (chunkIdPrefix == null || chunkIdPrefix.isBlank()) {

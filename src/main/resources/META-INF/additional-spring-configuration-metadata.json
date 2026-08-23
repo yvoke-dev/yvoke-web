@@ -165,8 +165,14 @@
     {
       "name": "app.ai.provider",
       "type": "java.lang.String",
-      "description": "Active LLM client provider backend ('cloudflare-gemini', 'gemini', 'openrouter' or 'azure-openai').",
-      "defaultValue": "cloudflare-gemini"
+      "description": "Active LLM client provider backend, and the default route for any model app.ai.model-routes does not map ('gemini' or 'azure-openai-responses'). 'cloudflare-gemini', 'openrouter' and 'azure-openai' are retired and rejected at startup; their classes and settings remain but are not wired.",
+      "defaultValue": "gemini"
+    },
+    {
+      "name": "app.ai.model-routes",
+      "type": "java.lang.String",
+      "description": "Per-model provider overrides as a JSON object of model to route, e.g. {\"gemini-3.6-flash\": \"gemini\", \"gpt-5.6-luna\": \"azure-openai-responses\"}. A model with no entry uses app.ai.provider; blank or {} means every model does. Every entry is validated at startup (invalid JSON, a non-object, an unknown route, a non-string route or a duplicated model all fail).",
+      "defaultValue": ""
     },
     {
       "name": "app.ai.openrouter.base-url",
@@ -447,10 +453,8 @@
     {
       "name": "app.chat.allowed-models",
       "type": "java.util.List<java.lang.String>",
-      "description": "Acceptable AI models allowed to be selected by the UI.",
-      "defaultValue": [
-        "gemini-3.6-flash"
-      ]
+      "description": "Comma-separated whitelist backing the model picker and the per-request model check. Order is behaviour: the first entry is the default for a new conversation and the model the playbook preflight runs against.",
+      "defaultValue": "gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna"
     },
     {
       "name": "rest-client.connect-timeout-ms",

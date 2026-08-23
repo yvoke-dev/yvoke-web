@@ -113,22 +113,45 @@ class SectionSummarizerTest {
             any(BatchPreparedStatementSetter.class));
     }
 
+    /**
+     * Replaces {@code nullOverrideResolvesDefaultSummarizePrompt}, which asserted the behaviour
+     * that caused the bug: with no prompt supplied, this class looked up
+     * {@code "default-summarize"} — a name registered in no deployment — and summarized with
+     * whatever that returned, i.e. null. The old test passed because it STUBBED that name into
+     * existence, so the one path production actually took (lookup misses, prompt is null, every
+     * summary is generated unguided) was the one path never exercised. The prompt is a required
+     * argument now, and the absence of one is a failure rather than a silent default.
+     */
     @Test
-    void nullOverrideResolvesDefaultSummarizePrompt() {
+    void refusesToSummarizeWithoutAPrompt() {
+        Section s = new Section(1, "Overview", List.of(), "body");
+
+        assertThatThrownBy(() -> summarizer.generateSummaries(docId, List.of(s), null, null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("summarize system prompt is required");
+        assertThatThrownBy(() -> summarizer.generateSummaries(docId, List.of(s), null, null, "  "))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        // Refused before any work: no LLM call, and nothing written.
+        verify(generalSummarizer, never()).summarize(any(), any(), any(), any());
+        verifyNoInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void usesTheSuppliedPromptForEveryNode() {
         stubPersistenceDelete();
-        when(systemPromptService.getPrompt("default-summarize")).thenReturn(Optional.of(
-            new SystemPrompt("default-summarize", SystemPromptType.SUMMARIZE, "DB_PROMPT", "")));
         when(generalSummarizer.summarize(anyString(), anyString(), any(), anyString()))
             .thenReturn("x");
 
         Section s = new Section(1, "Overview", List.of(), "body");
-        summarizer.generateSummaries(docId, List.of(s), null, null); // 4-arg => override == null
+        summarizer.generateSummaries(docId, List.of(s), null, null, "SUPPLIED_PROMPT");
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(generalSummarizer).summarize(anyString(), anyString(), prompt.capture(),
             anyString());
-        assertThat(prompt.getValue()).isEqualTo("DB_PROMPT");
-        verify(systemPromptService).getPrompt("default-summarize");
+        assertThat(prompt.getValue()).isEqualTo("SUPPLIED_PROMPT");
+        // The prompt arrives resolved; this class no longer looks anything up per node.
+        verifyNoInteractions(systemPromptService);
     }
 
     @Test

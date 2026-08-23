@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  *        {@link ConfluenceInstanceRepository#upsert}.
  * @param targetTag null means "no tag"; never the empty string (see the compact constructor)
  */
-public record ConfluenceInstance(@Nullable UUID id,String name,String slug,String domain,String email,@Nullable String apiTokenEnc,@Nullable String tokenKeyId,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean enabled,@Nullable OffsetDateTime createdAt,@Nullable OffsetDateTime updatedAt){
+public record ConfluenceInstance(@Nullable UUID id,String name,String slug,String domain,String email,@Nullable String apiTokenEnc,@Nullable String tokenKeyId,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean buildSectionSummaries,@Nullable String summarizePrompt,boolean enabled,@Nullable OffsetDateTime createdAt,@Nullable OffsetDateTime updatedAt){
 
 /**
  * Mirrors {@code ck_confluence_instances_slug_format}. The slug is embedded in the job kind
@@ -55,7 +55,20 @@ domain=ConfluenceDomains.canonicalizeOrKeep(domain);
 // '' is not "no tag": the DB CHECK rejects it, it becomes List.of("") at enqueue (which
 // hard-fails once the target collection declares any tag), and it defeats the ingest
 // version-skip, which tests `:tag IS NULL`. Normalize once, here, rather than at each user.
-targetTag=(targetTag==null||targetTag.isBlank())?null:targetTag.trim();}
+targetTag=(targetTag==null||targetTag.isBlank())?null:targetTag.trim();
+// Same normalization, same reason: the DB CHECK rejects '', and a blank would otherwise read as
+// "a prompt is configured" to the enqueue validator and then resolve to nothing.
+summarizePrompt=(summarizePrompt==null||summarizePrompt.isBlank())?null:summarizePrompt.trim();
+// Mirrors ck_confluence_instances_summaries_need_a_prompt. Enforced here too so a caller building
+// the record gets the error at construction, not as a constraint violation from the repository.
+if(buildSectionSummaries&&summarizePrompt==null){throw new IllegalArgumentException("Confluence instance \""+name+"\" has section summaries enabled but names no summarize prompt; summarizing without one is what produced unusable summaries.");}}
+
+/**
+ * Pre-{@code summarizePrompt} callers: an instance with none configured reads as null, which is
+ * what it is. Follows the {@code IngestionJob} precedent rather than editing the 50-odd existing
+ * construction sites, none of which have a prompt to supply.
+ */
+public ConfluenceInstance(@Nullable UUID id,String name,String slug,String domain,String email,@Nullable String apiTokenEnc,@Nullable String tokenKeyId,String space,String rootPageId,@Nullable String includeLabels,@Nullable String excludeLabels,String targetCollection,@Nullable String targetTag,boolean processAttachments,boolean enabled,@Nullable OffsetDateTime createdAt,@Nullable OffsetDateTime updatedAt){this(id,name,slug,domain,email,apiTokenEnc,tokenKeyId,space,rootPageId,includeLabels,excludeLabels,targetCollection,targetTag,processAttachments,false,null,enabled,createdAt,updatedAt);}
 
 /**
  * Whether the stored token is usable, decided by comparing fingerprints only — no decryption, so

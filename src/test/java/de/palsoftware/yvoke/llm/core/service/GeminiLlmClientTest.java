@@ -264,7 +264,7 @@ class GeminiLlmClientTest {
             client.generateStream(userRequest("Hello"), chunks::add);
 
             assertNotNull(chunks);
-            assertEquals(2, chunks.size());
+            assertEquals(2, delivered(chunks));
             assertEquals("Hello ", chunks.get(0).content());
             assertEquals("world!", chunks.get(1).content());
             assertEquals(7, chunks.get(1).usage().totalTokens());
@@ -286,7 +286,7 @@ class GeminiLlmClientTest {
                 client.generateStream(userRequest("Hi"), chunks::add);
 
                 assertNotNull(chunks);
-                assertEquals(1, chunks.size());
+                assertEquals(1, delivered(chunks));
                 assertEquals("Hello world", chunks.get(0).content(),
                     "Multiple text parts in one chunk must be concatenated, not overwritten");
             });
@@ -302,7 +302,7 @@ class GeminiLlmClientTest {
                 client.generateStream(userRequest("Hi"), chunks::add);
 
                 assertNotNull(chunks);
-                assertEquals(1, chunks.size());
+                assertEquals(1, delivered(chunks));
                 assertEquals("reasoning", chunks.get(0).reasoning());
                 assertEquals("answer", chunks.get(0).content());
             });
@@ -489,7 +489,7 @@ class GeminiLlmClientTest {
             client.generateStream(userRequest("Hello"), chunks::add);
 
             assertNotNull(chunks);
-            assertEquals(1, chunks.size());
+            assertEquals(1, delivered(chunks));
             assertEquals("Stream success after retry", chunks.get(0).content());
             assertEquals(3, attemptCount.get());
         });
@@ -505,7 +505,7 @@ class GeminiLlmClientTest {
                 client.generateStream(userRequest("Hello"), chunks::add);
 
                 assertNotNull(chunks);
-                assertEquals(1, chunks.size());
+                assertEquals(1, delivered(chunks));
                 LlmResponseChunk chunk = chunks.get(0);
                 assertNotNull(chunk.toolCallDeltas());
                 assertEquals(1, chunk.toolCallDeltas().size());
@@ -639,10 +639,11 @@ class GeminiLlmClientTest {
      * client never did.
      *
      * <p>
-     * Deliberately NOT retried, unlike the Azure sibling. That client's bounded re-request is safe
-     * for one precise reason — "empty" there means nothing whatsoever reached the consumer — and
-     * that reason does not hold here: Gemini streams its reasoning, so the {@code <think>} block is
-     * already on the user's screen and a second attempt would replay one underneath it.
+     * Re-requested once first, via {@link de.palsoftware.yvoke.llm.core.EmptyTurnRetry} — this
+     * fixture answers identically both times, so the failure still arrives, and says so. This
+     * client used to refuse the retry outright on the grounds that Gemini streams its reasoning and
+     * a second attempt replays it; the Azure sibling took the same fact and called it an acceptable
+     * price. It is a price, and the alternative is the blank message this test exists to prevent.
      *
      * <p>
      * Usage rides the exception for the same reason as
@@ -673,6 +674,9 @@ class GeminiLlmClientTest {
                     "the reasoning/answer split is the whole diagnosis and must survive");
                 assertTrue(ex.getMessage().contains("finishReason=STOP"),
                     "the finish reason must be named: STOP is what makes this look like success");
+                assertTrue(ex.getMessage().contains("2 attempt(s)"),
+                    "a cleanly-completed empty turn is re-requested once before it is reported: "
+                        + ex.getMessage());
             });
     }
 
@@ -1015,5 +1019,119 @@ class GeminiLlmClientTest {
                 os.flush();
             }
         }
+    }
+
+    // ------------------------------------------------------------------------
+    // Empty-turn retry (shared with AzureOpenAiResponsesLlmClient via EmptyTurnRetry)
+    // ------------------------------------------------------------------------
+
+    private static final String THOUGHT_ONLY_STOP =
+        """
+            {"candidates":[{"content":{"parts":[{"thought":true,"text":"weighing"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":137,"candidatesTokenCount":1040,"totalTokenCount":1177,"thoughtsTokenCount":1024}}""";
+
+    private static final String REAL_ANSWER_STOP =
+        """
+            {"candidates":[{"content":{"parts":[{"text":"the answer"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":137,"candidatesTokenCount":3,"totalTokenCount":140}}""";
+
+    /**
+     * The behaviour this client refused to implement until the two providers were unified. A turn
+     * that completed and said nothing is re-requested once: nothing the caller can use reached
+     * them, so the second attempt cannot duplicate an answer. The reasoning IS re-emitted, which is
+     * the accepted price — the alternative is the blank message this guard exists to prevent, and
+     * the UI hides {@code <think>} in any case.
+     */
+    @Test
+    void aCleanlyCompletedEmptyTurnIsRequestedOnceMore() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> respondSse(exchange,
+            requests.incrementAndGet() == 1 ? THOUGHT_ONLY_STOP : REAL_ANSWER_STOP), client -> {
+                List<LlmResponseChunk> chunks = new ArrayList<>();
+                client.generateStream(userRequest("Hello"), chunks::add);
+
+                assertEquals(2, requests.get(), "the empty turn must be re-requested exactly once");
+                assertTrue(chunks.stream().anyMatch(c -> "the answer".equals(c.content())),
+                    "the second attempt's answer must reach the caller");
+            });
+    }
+
+    /**
+     * A turn that ran out of output budget will run out of it again, so it is reported rather than
+     * re-requested. This is the distinction that makes the retry safe to share: without it, the
+     * guard would pay for the whole budget twice on every truncated answer.
+     */
+    @Test
+    void aTruncatedEmptyTurnIsNotRequestedAgain() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            requests.incrementAndGet();
+            respondSse(exchange,
+                """
+                    {"candidates":[{"content":{"parts":[{"thought":true,"text":"still weighing"}],"role":"model"},"finishReason":"MAX_TOKENS"}],"usageMetadata":{"promptTokenCount":137,"candidatesTokenCount":1040,"totalTokenCount":1177,"thoughtsTokenCount":1040}}""");
+        }, client -> {
+            LlmCallFailedException ex = assertThrows(LlmCallFailedException.class,
+                () -> client.generateStream(userRequest("Hello"), c -> {
+                }));
+
+            assertEquals(1, requests.get(),
+                "a truncated turn exhausts its budget again on a retry; it must cost one request");
+            assertTrue(ex.getMessage().contains("MAX_TOKENS"),
+                "the finish reason is the whole diagnosis and must be named: " + ex.getMessage());
+        });
+    }
+
+    /**
+     * A stream that ends with no finish reason at all was cut short rather than completed. That is
+     * a transport fault, and re-requesting it here would be a guess about the network rather than
+     * about the model — {@code LlmRetry} owns that question, and only for establishment.
+     */
+    @Test
+    void aSeveredEmptyStreamIsNotRequestedAgain() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> {
+            requests.incrementAndGet();
+            respondSse(exchange,
+                """
+                    {"candidates":[{"content":{"parts":[{"thought":true,"text":"weighing"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":137,"candidatesTokenCount":40,"totalTokenCount":177,"thoughtsTokenCount":40}}""");
+        }, client -> {
+            assertThrows(LlmCallFailedException.class,
+                () -> client.generateStream(userRequest("Hello"), c -> {
+                }));
+
+            assertEquals(1, requests.get(), "a severed stream must not be re-requested");
+        });
+    }
+
+    /**
+     * Each HTTP call closes with its own end-of-call marker, which is how the abandoned attempt
+     * gets its own {@code llm_call_logs} row instead of being summed onto the winner's.
+     * {@code AccountingLlmClient} consumes these; a caller of the raw client sees them.
+     */
+    @Test
+    void everyAttemptClosesWithItsOwnEndOfCallMarker() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        withMockServer(exchange -> respondSse(exchange,
+            requests.incrementAndGet() == 1 ? THOUGHT_ONLY_STOP : REAL_ANSWER_STOP), client -> {
+                List<LlmResponseChunk> chunks = new ArrayList<>();
+                client.generateStream(userRequest("Hello"), chunks::add);
+
+                List<LlmResponseChunk> markers =
+                    chunks.stream().filter(LlmResponseChunk::endOfCall).toList();
+                assertEquals(2, markers.size(),
+                    "two HTTP calls must produce two end-of-call markers");
+                assertTrue(markers.stream().allMatch(m -> m.usage() != null),
+                    "a marker must carry what its call cost, including the abandoned attempt");
+                assertEquals(1177, markers.get(0).usage().totalTokens(),
+                    "the abandoned attempt's own tokens, not the winner's");
+                assertEquals(140, markers.get(1).usage().totalTokens());
+            });
+    }
+
+    /**
+     * What a caller actually receives. The client closes each HTTP call with an end-of-call marker
+     * so an abandoned empty-turn attempt still gets its own {@code llm_call_logs} row;
+     * {@link AccountingLlmClient} consumes those markers, so no production caller ever sees one.
+     */
+    private static long delivered(List<LlmResponseChunk> chunks) {
+        return chunks.stream().filter(c -> !c.endOfCall()).count();
     }
 }

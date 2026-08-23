@@ -2,21 +2,48 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: yvoke-app-config
+# The non-secret half of the same contract `.env.example` describes for local Compose; the
+# credentials live in secrets/secret.sops.yaml. The two halves are split ONLY by secrecy, so a
+# variable an operator needs is in exactly one of them and neither file is a partial list.
+#
+# `K8sManifestContractTest` pins this file: every key here must be read by application.yml, a
+# declared Azure route must ship its endpoint here and its key in the Secret, and no retired
+# provider's setting may appear in either.
+#
+# This ConfigMap has no generator and no hash and is consumed via envFrom, so a change here needs
+# `kubectl rollout restart deploy/yvoke-app`; verify with
+#   kubectl exec deploy/yvoke-app -- printenv AI_MODEL_ROUTES
 data:
+  # ── Authentication ─────────────────────────────────────────────────────────────────────────
   APP_SECURITY_MOCK: "false"
-  AI_PROVIDER: "cloudflare-gemini"
-  CLOUDFLARE_ACCOUNT_ID: "fda1bf10c0a3dc1647d8ec6388854a53"
-  CLOUDFLARE_GATEWAY_ID: "ai-gateway-netcup"
-  OPENAI_API_BASE: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  ENTRA_TENANT_ID: "b0b1499f-1764-4eb8-855b-a5658b219405"
+  ENTRA_CLIENT_ID: "a1824d0a-79eb-4dde-8c0b-242dde321967"
+  APP_SECURITY_MCP_AUDIENCE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967"
+  APP_SECURITY_MCP_SCOPE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967/desktop"
+
+  # ── Models and providers ───────────────────────────────────────────────────────────────────
+  # The DEFAULT route, used for any model AI_MODEL_ROUTES does not map.
+  AI_PROVIDER: "gemini"
+
+  # Model -> provider client. Declaring a route CONSTRUCTS its client at startup, so the three
+  # Azure entries below require AZURE_OPENAI_ENDPOINT (below) and AZURE_OPENAI_API_KEY (sops
+  # secret) to be present in the SAME release — without them the pod does not degrade, it fails
+  # to start, naming the missing setting. Models absent from this map take AI_PROVIDER above.
+  AI_MODEL_ROUTES: '{"gpt-5.4-mini":"azure-openai-responses","DeepSeek-V4-Flash":"azure-openai-responses","gpt-5.6-luna":"azure-openai-responses"}'
+
+  # Models offered in the chat model picker.
+  ALLOWED_MODELS: "gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna"
+
+  # The RESOURCE ROOT — the client appends /openai/v1 itself, so a full API path copied from the
+  # Foundry portal produces a 404 that names nothing. The matching AZURE_OPENAI_API_KEY is in the
+  # sops secret.
+  AZURE_OPENAI_ENDPOINT: "https://eduardpal-yvoke-foundry-resource.services.ai.azure.com"
+
+  # ── Tunables (overrides of the application.yml defaults) ───────────────────────────────────
   GEMINI_THINKING_LEVEL: "medium"
   RAG_THINKING_LEVEL: "medium"
-  APP_AI_RAG_MAX_ITERATIONS: "20"
   KG_THINKING_LEVEL: "low"
   SUMMARIZE_THINKING_LEVEL: "low"
   KG_MODEL: "gemini-3.1-flash-lite"
   SUMMARIZE_MODEL: "gemini-3.1-flash-lite"
-  ALLOWED_MODELS: "gemini-3.6-flash,gemini-3.5-flash-lite"
-  ENTRA_CLIENT_ID: "a1824d0a-79eb-4dde-8c0b-242dde321967"
-  ENTRA_TENANT_ID: "b0b1499f-1764-4eb8-855b-a5658b219405"
-  APP_SECURITY_MCP_AUDIENCE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967"
-  APP_SECURITY_MCP_SCOPE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967/desktop"
+  APP_AI_RAG_MAX_ITERATIONS: "20"

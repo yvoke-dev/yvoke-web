@@ -34,7 +34,7 @@ class CustomIngestServiceTest {
         return new CustomIngestService(embeddingService, mock(DocumentRepository.class),
             mock(GeneralSummarizer.class), mock(KgWriteRepository.class), mock(JdbcClient.class),
             mock(PlatformTransactionManager.class), mock(UploadPathGuard.class), 4,
-            mock(SystemPromptService.class));
+            mock(SystemPromptService.class), new IngestPrompts(mock(SystemPromptService.class)));
     }
 
     /** Kind-aware document map covering every entity used below, so the doc invariant is met. */

@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -71,13 +72,27 @@ public class AccountingLlmClient implements LlmClient {
 
     /**
      * Usage arrives inside the stream — in practice on the last chunk that carries it — so the
-     * event can only be published once the stream ends. A stream that fails or is cancelled part
-     * way still consumed tokens the provider billed for, so whatever usage was observed is recorded
+     * event can only be published once a call ends. A stream that fails or is cancelled part way
+     * still consumed tokens the provider billed for, so whatever usage was observed is recorded
      * before the failure propagates unchanged.
+     *
+     * <p>
+     * ONE stream may contain several HTTP calls: the empty-turn retry re-requests within a single
+     * {@code generateStream}. Each is closed by a
+     * {@link LlmResponseChunk#endOfCall(LlmUsage, LlmGatewayInfo)} marker, which publishes that
+     * call's row and resets, so the abandoned attempt appears in {@code llm_call_logs} on its own
+     * terms instead of being summed onto the winner by every retrying client. The marker is
+     * consumed here rather than forwarded — it is bookkeeping, not output, and its own constructor
+     * forbids it carrying anything a caller would miss.
+     *
+     * <p>
+     * The boundary has to be explicit. It cannot be inferred from "this chunk carried usage",
+     * because {@code GeminiLlmClient} emits an absolute whole-request snapshot on every event that
+     * carries usage — inferring there would mint a row per chunk.
      */
     @Override
     public void generateStream(LlmRequest request, Consumer<LlmResponseChunk> onChunk) {
-        long startNanos = System.nanoTime();
+        AtomicLong callStartNanos = new AtomicLong(System.nanoTime());
         AtomicReference<LlmUsage> observedUsage = new AtomicReference<>();
         AtomicReference<LlmGatewayInfo> observedGateway = new AtomicReference<>();
         try {
@@ -90,13 +105,18 @@ public class AccountingLlmClient implements LlmClient {
                 if (chunk != null && chunk.gateway() != null) {
                     observedGateway.set(chunk.gateway());
                 }
+                if (chunk != null && chunk.endOfCall()) {
+                    publish(request, observedUsage.getAndSet(null), observedGateway.getAndSet(null),
+                        callStartNanos.getAndSet(System.nanoTime()));
+                    return;
+                }
                 onChunk.accept(chunk);
             });
         } catch (RuntimeException e) {
-            publish(request, observedUsage.get(), observedGateway.get(), startNanos);
+            publish(request, observedUsage.get(), observedGateway.get(), callStartNanos.get());
             throw e;
         }
-        publish(request, observedUsage.get(), observedGateway.get(), startNanos);
+        publish(request, observedUsage.get(), observedGateway.get(), callStartNanos.get());
     }
 
     /**

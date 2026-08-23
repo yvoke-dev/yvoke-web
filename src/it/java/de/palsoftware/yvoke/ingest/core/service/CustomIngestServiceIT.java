@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
@@ -24,6 +25,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -57,6 +60,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class CustomIngestServiceIT {
 
     private static final String COLLECTION = "OIM-CUSTOM-INGEST-TEST";
+    private static final String SUMMARIZE_PROMPT = "it-summarize";
     private static final String VERSION = "9.3";
     private static final String DOC_COUNT_SQL =
         "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?";
@@ -87,6 +91,12 @@ public class CustomIngestServiceIT {
         jdbcTemplate.update(
             "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
             UUID.randomUUID(), COLLECTION);
+        // A custom extract summarizes every matched section, and the prompt is now a required job
+        // setting that must resolve — so the row has to exist, exactly as in a real deployment.
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt) VALUES (?, ?, ?)"
+                + " ON CONFLICT (name) DO NOTHING",
+            SUMMARIZE_PROMPT, "SUMMARIZE", "Write a concise summary.");
 
         zipPath = writeZip("custom.zip", Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"),
             "docs/other.md", markdown("table", "OTHER_TABLE"), "graph/entities.jsonl", """
@@ -155,6 +165,13 @@ public class CustomIngestServiceIT {
     }
 
     private IngestionJob job(Path zip, Map<String, Object> settings) {
+        // Every custom job carries a summarize prompt now. Defaulted here rather than at 14 call
+        // sites, but only when the test has not set one itself — one test overrides it on purpose.
+        if (!settings.containsKey(IngestPrompts.SETTING_SUMMARIZE_PROMPT)) {
+            Map<String, Object> withPrompt = new HashMap<>(settings);
+            withPrompt.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT);
+            settings = withPrompt;
+        }
         return new IngestionJob(UUID.randomUUID(), IngestJobKind.CUSTOM.getValue(), zip.toString(),
             List.of(VERSION), UUID.randomUUID(), COLLECTION, JobStatus.RUNNING, JobStep.CHUNK, 0, 1,
             null, null, OffsetDateTime.now(), OffsetDateTime.now(), null, settings);
@@ -573,8 +590,19 @@ public class CustomIngestServiceIT {
         when(generalSummarizer.summarize(any(), any(), any(), any()))
             .thenReturn("Watches pending operations and reports their state.");
 
-        IngestionJob job = job(zip,
-            Map.of("enableGraph", false, "summarizePrompt", "no-such-summarize-prompt"));
+        // An unregistered prompt is now a hard error, not a null that summarizes unguided. This
+        // test previously asserted the opposite ("resolves to null — no default fallback here"),
+        // which is the behaviour that let a whole collection be summarized with no prompt.
+        IngestionJob unresolvable = job(zip,
+            Map.of("enableGraph", false, IngestPrompts.SETTING_SUMMARIZE_PROMPT,
+                "no-such-summarize-prompt"));
+        assertThatThrownBy(() -> customIngestService.ingest(unresolvable, ctxFor(unresolvable)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("no-such-summarize-prompt");
+        verifyNoInteractions(generalSummarizer);
+
+        // With a registered prompt the extraction proceeds and the prompt reaches the model.
+        IngestionJob job = job(zip, Map.of("enableGraph", false));
         JobCounts counts = customIngestService.ingest(job, ctxFor(job));
         assertThat(counts.docs()).isEqualTo(1);
 
@@ -586,15 +614,8 @@ public class CustomIngestServiceIT {
             .as("the model must receive the extracted code block, not the whole markdown document")
             .isEqualTo("CREATE PROCEDURE dbo.QBM_PWatchOperation AS BEGIN SELECT 1 END");
         assertThat(systemPrompt.getValue())
-            .as("an unregistered summarizePrompt resolves to null — no default fallback here")
-            .isNull();
-
-        String stored = jdbcTemplate.queryForObject(
-            "SELECT ch.text FROM chunks ch JOIN collections c ON ch.collection_id = c.id WHERE c.name = ?",
-            String.class, COLLECTION);
-        assertThat(stored).as("the stored chunk must be prose, and the raw source must be gone")
-            .contains("## Summary").contains("Watches pending operations and reports their state.")
-            .doesNotContain("## Source").doesNotContain("CREATE PROCEDURE");
+            .as("the resolved prompt body reaches the summarizer")
+            .isEqualTo("Write a concise summary.");
     }
 
     /**

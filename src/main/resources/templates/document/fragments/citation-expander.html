@@ -8,8 +8,16 @@
         <div class="citation-expander-header">
             <a th:if="${section.documentTitle != null and section.documentTitle.startsWith('http')}" th:href="${section.documentTitle}" target="_blank" class="citation-source-info" style="color: var(--color-accent); text-decoration: underline;" th:text="${section.documentTitle} + ' (v' + ${section.tag} + ')'"></a>
             <span th:unless="${section.documentTitle != null and section.documentTitle.startsWith('http')}" class="citation-source-info" th:text="${section.documentTitle} + ' (v' + ${section.tag} + ')'">manual_file.md (v9.3)</span>
-            <span class="citation-scope-badge" th:text="${section.scope}">this heading only</span>
+            <span class="citation-scope-badge" th:text="${section.scope}">this passage only</span>
         </div>
+        <!--
+          The breadcrumb. It used to arrive inside section.text as a "# Section: …" markdown
+          heading that also restated the title, tag and scope already shown above; now that text
+          holds the passage and nothing else, the path is rendered here where it belongs.
+        -->
+        <div th:if="${section.headingPath != null and !section.headingPath.isEmpty()}"
+             class="citation-heading-path"
+             th:text="${#strings.listJoin(section.headingPath, ' > ')}">Chapter 1 &gt; Section 1.1</div>
         <div class="citation-expander-body citation-content-md" th:text="${section.text}">Section content...</div>
     </div>
 </div>

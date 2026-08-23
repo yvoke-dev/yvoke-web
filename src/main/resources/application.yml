@@ -136,7 +136,28 @@ app:
       resource-url: ${APP_SECURITY_MCP_RESOURCE_URL:http://localhost:8080/mcp}
       authorization-server-url: ${APP_SECURITY_MCP_AUTHORIZATION_SERVER_URL:https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0}
   ai:
-    provider: ${AI_PROVIDER:cloudflare-gemini}
+    # One of: gemini, azure-openai-responses.
+    #
+    # 'cloudflare-gemini', 'openrouter' and 'azure-openai' are RETIRED: LlmConfig rejects them at
+    # startup rather than letting them reach the unknown-value fallback, which answers with Gemini
+    # on a Gemini key and logs the operator's own spelling back at them. All three classes, their
+    # tests and the settings below are deliberately left in place, so re-enabling any of them is a
+    # branch in LlmConfig plus an entry in LlmRouteId. Note that retiring cloudflare-gemini gives up
+    # the AI Gateway's response cache, its cf-aig-metadata attribution and the cost_avoided figures
+    # derived from cache hits.
+    provider: ${AI_PROVIDER:gemini}
+    # Per-model overrides as a JSON object, e.g.
+    #   AI_MODEL_ROUTES={"gemini-3.6-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}
+    # A model with no entry is answered by `provider` above; blank or {} means every model is.
+    # One string rather than a nested map because the deployment delivers configuration as flat
+    # environment variables (envFrom over a ConfigMap), where a nested structure cannot be set at
+    # all. JSON rather than the comma-separated style used by `reasoning-models` because a model
+    # name is operator-chosen free text — quoting settles what a separator inside one would mean.
+    # Everything it DOES contain is validated at startup: invalid JSON, a non-object, an unknown
+    # route, a non-string route and a model mapped twice all fail, because each of those answers a
+    # model with the wrong provider rather than erroring.
+    model-routes: ${AI_MODEL_ROUTES:}
+    # Retired — not selectable; see the note on `provider` above.
     openrouter:
       base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
       api-key: ${OPENROUTER_API_KEY:placeholder-openrouter-api-key}
@@ -145,6 +166,7 @@ app:
       api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:placeholder-gemini-api-key}}
       enable-thinking: true
       thinking-level: ${GEMINI_THINKING_LEVEL:medium}
+    # Retired — not selectable; see the note on `provider` above.
     cloudflare-gemini:
       account-id: ${CLOUDFLARE_ACCOUNT_ID:placeholder-cf-account-id}
       gateway-id: ${CLOUDFLARE_GATEWAY_ID:placeholder-cf-gateway-id}
@@ -245,7 +267,12 @@ app:
     max-concurrent: ${APP_GENERATION_MAX_CONCURRENT:64}
   chat:
     enabled: ${APP_CHAT_ENABLED:true}
-    allowed-models: "${ALLOWED_MODELS:gemini-3.6-flash}"
+    # The model picker, and the per-request whitelist. ORDER IS BEHAVIOUR: element 0 is
+    # stamped on every new conversation and is the model the playbook preflight runs
+    # against. The Azure deployments only answer where AZURE_OPENAI_ENDPOINT / _API_KEY are
+    # set AND app.ai.model-routes maps them; without a route they reach the default route
+    # (Gemini), which rejects the name at call time.
+    allowed-models: "${ALLOWED_MODELS:gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna}"
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
