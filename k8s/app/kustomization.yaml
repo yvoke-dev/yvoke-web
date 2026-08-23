@@ -31,7 +31,7 @@ labels:
 images:
   - name: yvoke/app
     newName: edipal/yvoke-app
-    newTag: "1.0.0"
+    newTag: "1.1.0"
   - name: yvoke/db-migration
     newName: edipal/yvoke-db-migration
-    newTag: "1.0.0"
+    newTag: "1.1.0"
