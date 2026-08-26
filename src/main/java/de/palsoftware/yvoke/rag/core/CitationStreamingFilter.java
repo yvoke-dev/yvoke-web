@@ -63,7 +63,7 @@ public class CitationStreamingFilter {
             } else {
                 if (inBrackets) {
                     buffer.append(c);
-                    if (buffer.length() > 100) {
+                    if (buffer.length() > 500) {
                         // If buffer is abnormally long, flush it and stop treatment as citation
                         output.add(buffer.toString());
                         buffer.setLength(0);

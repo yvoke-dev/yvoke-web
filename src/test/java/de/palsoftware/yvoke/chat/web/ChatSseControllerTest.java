@@ -117,13 +117,18 @@ class ChatSseControllerTest {
         verify(sseExecutor, never()).submit(any(Runnable.class));
     }
 
+    private static ChatMessageService.PreparedChat dummyPreparedChat() {
+        return new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "content",
+            "model", "systemPrompt", List.of(), List.of(), null, false);
+    }
+
     @Test
     void returns429AndDoesNotStreamWhenAtGlobalCapacity() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(mock(ChatMessageService.PreparedChat.class));
+            .thenReturn(dummyPreparedChat());
 
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
         when(limiter.tryAcquire()).thenReturn(false); // at capacity
@@ -165,7 +170,7 @@ class ChatSseControllerTest {
                 return null;
             });
             when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-                .thenReturn(mock(ChatMessageService.PreparedChat.class));
+                .thenReturn(dummyPreparedChat());
             Mockito.doAnswer(inv -> {
                 streamBehaviour.run();
                 return null;
@@ -201,7 +206,7 @@ class ChatSseControllerTest {
             return null;
         });
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(mock(ChatMessageService.PreparedChat.class));
+            .thenReturn(dummyPreparedChat());
 
         // Two tokens go through (no handler is installed outside a real async dispatch, so they are
         // buffered rather than written), then the task completes the emitter — after which every
@@ -251,7 +256,7 @@ class ChatSseControllerTest {
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(mock(ChatMessageService.PreparedChat.class));
+            .thenReturn(dummyPreparedChat());
 
         SseEmitter emitter = new ChatSseController(chatMessageService, chatCancellationService,
             sseExecutor, allowingLimiter()).sendMessageStream(UUID.randomUUID(), "hello", null);
@@ -271,8 +276,8 @@ class ChatSseControllerTest {
             return null;
         });
 
-        ChatMessageService.PreparedChat prepared = mock(ChatMessageService.PreparedChat.class);
-        when(chatMessageService.prepare(any(UUID.class), anyString(), any())).thenReturn(prepared);
+        when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
+            .thenReturn(dummyPreparedChat());
 
         Mockito.doThrow(new RuntimeException("Test stream failure")).when(chatMessageService)
             .stream(any(), any(), any());

@@ -135,6 +135,11 @@ export function normalizeSpacing(text) {
     });
 }
 
+const UUID_HEX =
+    '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}';
+const CITE_ITEM = `(?:(?:chunk_id|document_id)=[a-zA-Z0-9_.-]+|${UUID_HEX})`;
+const CITE_GROUP = `\\x5B\\s*${CITE_ITEM}(?:\\s*,\\s*${CITE_ITEM})*\\s*\\x5D`;
+
 /**
  * Swaps citation tokens for `%%CITE_n%%` placeholders so marked cannot reinterpret them (a bare
  * `[1]` next to a `(` would otherwise parse as a link). Returns the rewritten text plus the
@@ -151,11 +156,12 @@ export function protectTokens(text) {
         return `%%CITE_${idx}%%`;
     };
 
-    // [chunk_id=…], [document_id=…] and bare full-uuid citations. The id character class matches
-    // the one used by the link passes below — a mismatch left dotted ids as dead text. A document
-    // NAME is not a citation form: it cannot identify a document unambiguously.
+    // [chunk_id=…], [document_id=…], bare full-uuid citations and comma-separated groups like
+    // [uuid_1, uuid_2]. The id character class matches the one used by the link passes below —
+    // a mismatch left dotted ids as dead text. A document NAME is not a citation form: it cannot
+    // identify a document unambiguously.
     let safe = text.replace(
-        new RegExp('\\x5B(?:(?:chunk_id|document_id)=([a-zA-Z0-9_.-]+)|([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}))\\x5D', 'g'),
+        new RegExp(CITE_GROUP, 'g'),
         function (match) {
             return push(match);
         });
@@ -208,21 +214,27 @@ export function formatCitations(html, escapeHtml) {
     return mapOutsideCode(html, function (segment) {
         let out = segment;
 
-        out = out.replace(new RegExp('\\x5Bchunk_id=([a-zA-Z0-9_.-]+)\\x5D', 'g'),
-            function (match, chunkId) {
-                return `<a href="#" class="citation-link" data-action="toggle-citation" data-chunk-id="${escapeHtml(chunkId)}">${match}</a>`;
-            });
-
-        out = out.replace(new RegExp('\\x5Bdocument_id=([a-zA-Z0-9_.-]+)\\x5D', 'g'),
-            function (match, documentId) {
-                return `<a href="#" class="citation-link" data-action="toggle-citation" data-document-id="${escapeHtml(documentId)}">${match}</a>`;
-            });
-
-        out = out.replace(
-            new RegExp('\\x5B([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})\\x5D', 'g'),
-            function (match, uuid) {
-                return `<a href="#" class="citation-link" data-action="toggle-citation" data-chunk-id="${escapeHtml(uuid)}">[${uuid.substring(0, 8)}]</a>`;
-            });
+        out = out.replace(new RegExp(CITE_GROUP, 'g'), function (match) {
+            const inner = match.slice(1, -1).trim();
+            const items = inner.split(',');
+            return items.map(function (item) {
+                const s = item.trim();
+                const chunkMatch = /^chunk_id=([a-zA-Z0-9_.-]+)$/i.exec(s);
+                if (chunkMatch) {
+                    return `<a href="#" class="citation-link" data-action="toggle-citation" data-chunk-id="${escapeHtml(chunkMatch[1])}">[chunk_id=${escapeHtml(chunkMatch[1])}]</a>`;
+                }
+                const docMatch = /^document_id=([a-zA-Z0-9_.-]+)$/i.exec(s);
+                if (docMatch) {
+                    return `<a href="#" class="citation-link" data-action="toggle-citation" data-document-id="${escapeHtml(docMatch[1])}">[document_id=${escapeHtml(docMatch[1])}]</a>`;
+                }
+                const uuidMatch = new RegExp(`^(${UUID_HEX})$`).exec(s);
+                if (uuidMatch) {
+                    const uuid = uuidMatch[1];
+                    return `<a href="#" class="citation-link" data-action="toggle-citation" data-chunk-id="${escapeHtml(uuid)}">[${uuid.substring(0, 8)}]</a>`;
+                }
+                return `[${s}]`;
+            }).join('');
+        });
 
         // One badge per number, so [1, 2] reads like two adjacent single citations. The
         // .citation-ref margin supplies the spacing between them.

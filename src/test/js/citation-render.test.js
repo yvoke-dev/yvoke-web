@@ -147,6 +147,45 @@ describe('citation link forms', () => {
         assert.ok(!out.includes('data-document-id="a"b.md"'),
             'quote must not break the attribute');
     });
+
+    test('grouped bare uuids become separate citation links', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const out = fmt(`<p>See [${UUID}, ${UUID2}].</p>`);
+        assert.equal((out.match(/class="citation-link"/g) || []).length, 2);
+        assert.ok(out.includes(`data-chunk-id="${UUID}"`), 'contains first uuid');
+        assert.ok(out.includes(`data-chunk-id="${UUID2}"`), 'contains second uuid');
+        assert.ok(out.includes('>[4b7b0f51]<'), 'first label truncated');
+        assert.ok(out.includes('>[8f7c1a2b]<'), 'second label truncated');
+        assert.ok(!out.includes(`[${UUID},`), 'raw bracket group replaced');
+    });
+
+    test('adjacent separate brackets [uuid1][uuid2] become separate citation links', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const out = fmt(`<p>See [${UUID}][${UUID2}].</p>`);
+        assert.equal((out.match(/class="citation-link"/g) || []).length, 2);
+        assert.ok(out.includes(`data-chunk-id="${UUID}"`));
+        assert.ok(out.includes(`data-chunk-id="${UUID2}"`));
+        assert.ok(out.includes('>[4b7b0f51]<'));
+        assert.ok(out.includes('>[8f7c1a2b]<'));
+    });
+
+    test('grouped bare uuids without space [uuid1,uuid2] become separate citation links', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const out = fmt(`<p>See [${UUID},${UUID2}].</p>`);
+        assert.equal((out.match(/class="citation-link"/g) || []).length, 2);
+        assert.ok(out.includes(`data-chunk-id="${UUID}"`));
+        assert.ok(out.includes(`data-chunk-id="${UUID2}"`));
+        assert.ok(out.includes('>[4b7b0f51]<'));
+        assert.ok(out.includes('>[8f7c1a2b]<'));
+    });
+
+    test('grouped chunk_id and document_id become separate citation links', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const out = fmt(`<p>See [chunk_id=${UUID}, document_id=${UUID2}].</p>`);
+        assert.equal((out.match(/class="citation-link"/g) || []).length, 2);
+        assert.ok(out.includes(`data-chunk-id="${UUID}"`));
+        assert.ok(out.includes(`data-document-id="${UUID2}"`));
+    });
 });
 
 describe('placeholder protect/restore round trip', () => {
@@ -154,6 +193,14 @@ describe('placeholder protect/restore round trip', () => {
         const text = `A claim [chunk_id=${UUID}] and a marker [1, 2].`;
         const { safe, placeholders } = protectTokens(text);
         assert.ok(!safe.includes('chunk_id='), 'protected out of the markdown');
+        assert.equal(restoreTokens(safe, placeholders), text);
+    });
+
+    test('grouped uuid tokens survive a round trip unchanged', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const text = `A claim with multiple citations [${UUID}, ${UUID2}].`;
+        const { safe, placeholders } = protectTokens(text);
+        assert.ok(!safe.includes(UUID), 'protected out of the markdown');
         assert.equal(restoreTokens(safe, placeholders), text);
     });
 

@@ -74,9 +74,11 @@
                     <button th:each="prompt : ${prompts}" 
                             type="button"
                             class="chip" 
-                            th:attr="data-prompt-name=${prompt.name}, data-prompt-title=${prompt.title}"
+                            th:classappend="${prompt.prototype ? ' chip-prototype' : ''}"
+                            th:style="${prompt.prototype && !(settings != null && (settings['show-prototypes'] == true || settings['show-prototypes'] == 'true')) ? 'display: none;' : ''}"
+                            th:attr="data-prompt-name=${prompt.name}, data-prompt-title=${prompt.title}, data-prototype=${prompt.prototype}"
                             th:title="${prompt.description}"
-                            th:text="${prompt.title}"
+                            th:text="${prompt.prototype ? '🧪 ' + prompt.title : prompt.title}"
                             data-action="select-playbook">
                         Prompt Title
                     </button>
@@ -160,6 +162,14 @@
                                     </svg>
                                     <div class="custom-tooltip">Show thinking & tools</div>
                                 </button>
+                                <button th:if="${!isReadOnly}" type="button" id="show-prototypes-btn" class="chat-input-action-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M10 2v7.31L4.69 18.2A2 2 0 0 0 6.38 21h11.24a2 2 0 0 0 1.69-2.8L14 9.31V2"></path>
+                                        <line x1="8.5" y1="2" x2="15.5" y2="2"></line>
+                                        <line x1="14" y1="9.3" x2="10" y2="9.3"></line>
+                                    </svg>
+                                    <div class="custom-tooltip">Show prototype playbooks</div>
+                                </button>
                                 <button type="button" id="mode-standard-btn" class="chat-input-action-btn">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -229,6 +239,7 @@
             prompts: /*[[${prompts}]]*/ [],
             streaming: /*[[${settings['streaming']}]]*/ false,
             showThinking: /*[[${settings['show-thinking']}]]*/ false,
+            showPrototypes: /*[[${settings['show-prototypes']}]]*/ false,
             playbookValidationEnabled: /*[[${playbookValidationEnabled}]]*/ false
         };
     </script>

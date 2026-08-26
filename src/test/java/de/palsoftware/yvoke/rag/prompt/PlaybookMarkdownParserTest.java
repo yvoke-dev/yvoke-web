@@ -16,6 +16,7 @@ class PlaybookMarkdownParserTest {
             title: OIM Orchestrator
             description: Orchestrator playbook description
             target_agent: orchestrator
+            prototype: true
             tools:
               - call_specialist
               - ask_clarifying_question
@@ -32,6 +33,7 @@ class PlaybookMarkdownParserTest {
         assertEquals("OIM Orchestrator", pb.title());
         assertEquals("Orchestrator playbook description", pb.description());
         assertEquals("orchestrator", pb.targetAgent());
+        assertTrue(pb.prototype());
         assertEquals(List.of("call_specialist", "ask_clarifying_question"), pb.tools());
         assertTrue(pb.codeExecution());
         assertTrue(pb.templateText().contains("# You are the OIM Orchestrator"));
@@ -55,6 +57,7 @@ class PlaybookMarkdownParserTest {
         assertEquals("OIM Access Governance", pb.title());
         assertEquals("Short description", pb.description());
         assertEquals("specialist", pb.targetAgent());
+        assertFalse(pb.prototype());
         assertTrue(pb.tools().isEmpty());
         assertFalse(pb.codeExecution());
         assertEquals("# Template text", pb.templateText().trim());
@@ -126,8 +129,8 @@ class PlaybookMarkdownParserTest {
     void testToMarkdownAndReParseRoundtrip() {
         Playbook original = new Playbook("oim-orchestrator-reviewer", "OIM Orchestrator Reviewer",
             "Reviewer playbook for validation", "# Reviewer Prompt\nCheck citations.",
-            List.of("verify_citations", "get_section", "submit_review"), false, "reviewer", null,
-            null);
+            List.of("verify_citations", "get_section", "submit_review"), false, "reviewer", true,
+            null, null);
 
         String md = PlaybookMarkdownParser.toMarkdown(original);
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(md, "oim-orchestrator-reviewer");
@@ -136,6 +139,7 @@ class PlaybookMarkdownParserTest {
         assertEquals(original.title(), parsed.title());
         assertEquals(original.description(), parsed.description());
         assertEquals(original.targetAgent(), parsed.targetAgent());
+        assertEquals(original.prototype(), parsed.prototype());
         assertEquals(original.tools(), parsed.tools());
         assertEquals(original.codeExecution(), parsed.codeExecution());
         assertEquals(original.templateText(), parsed.templateText());

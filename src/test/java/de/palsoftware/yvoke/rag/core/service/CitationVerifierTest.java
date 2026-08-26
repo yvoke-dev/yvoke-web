@@ -348,4 +348,49 @@ public class CitationVerifierTest {
         assertThat(cited.covers(REAL_CHUNK_ID)).isFalse();
         assertThat(cited.covers(null)).isFalse();
     }
+
+    @Test
+    void testGroupedBareUuidsAreParsedAndVerified() {
+        String group = "[" + REAL_CHUNK_ID + ", " + REAL_DOCUMENT_ID + "]";
+
+        List<CitationVerifier.CitationCheckResult> results =
+            verifier.checkCitations(List.of(group));
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
+
+        assertThat(verifier.isFabricated(group)).isFalse();
+
+        String cleaned = verifier.cleanFabricatedCitations("Statement " + group + ".");
+        assertThat(cleaned).contains(group);
+    }
+
+    @Test
+    void testGroupedWithFabricatedUuid() {
+        UUID fake1 = UUID.randomUUID();
+        UUID fake2 = UUID.randomUUID();
+        String mixed = "[" + REAL_CHUNK_ID + ", " + fake1 + "]";
+        String allFake = "[" + fake1 + ", " + fake2 + "]";
+
+        // Mixed: classify flags fabricated, but isFabricated is false to avoid deleting real
+        // evidence
+        assertThat(verifier.checkCitations(List.of(mixed)).get(0).getStatus())
+            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+        assertThat(verifier.isFabricated(mixed)).isFalse();
+
+        // All fake: both are provably bad IDs, so isFabricated is true and it gets stripped
+        assertThat(verifier.checkCitations(List.of(allFake)).get(0).getStatus())
+            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+        assertThat(verifier.isFabricated(allFake)).isTrue();
+        assertThat(verifier.cleanFabricatedCitations("Text " + allFake + ".")).isEqualTo("Text .");
+    }
+
+    @Test
+    void citedIdsExtractsMultipleIdsFromGroupedBracket() {
+        String answer = "Claims supported by [" + REAL_CHUNK_ID + ", " + REAL_DOCUMENT_ID + "].";
+
+        CitationVerifier.CitedIds cited = CitationVerifier.citedIds(answer);
+
+        assertThat(cited.covers(REAL_CHUNK_ID)).isTrue();
+        assertThat(cited.covers(REAL_DOCUMENT_ID)).isTrue();
+    }
 }

@@ -46,9 +46,6 @@ class CostGatewayRepricingTest {
     @BeforeEach
     void setUp() {
         service = new CostCalculationService(pricingRepository, costQueryRepository, 5000);
-        when(pricingRepository.findAll()).thenReturn(List.of(new ModelPricing(UUID.randomUUID(),
-            MODEL, new BigDecimal("1.50"), new BigDecimal("10.00"), new BigDecimal("0.20"),
-            new BigDecimal("10.00"), Instant.now())));
     }
 
     /** One million prompt tokens + 100k completion at the rates above. */
@@ -62,6 +59,13 @@ class CostGatewayRepricingTest {
         row.put("c_tokens", 100_000L);
         row.put("ca_tokens", 0L);
         row.put("t_tokens", 0L);
+        if ("REPLAYED".equals(gatewayStatus)) {
+            row.put("total_cost", BigDecimal.ZERO);
+            row.put("cost_avoided", new BigDecimal(ONE_UNIT_COST));
+        } else {
+            row.put("total_cost", new BigDecimal(ONE_UNIT_COST));
+            row.put("cost_avoided", BigDecimal.ZERO);
+        }
         return row;
     }
 
@@ -158,6 +162,13 @@ class CostGatewayRepricingTest {
         row.put("c_tokens", 100_000L);
         row.put("ca_tokens", 0L);
         row.put("t_tokens", 0L);
+        if ("REPLAYED".equals(gatewayStatus)) {
+            row.put("total_cost", BigDecimal.ZERO);
+            row.put("cost_avoided", new BigDecimal(ONE_UNIT_COST));
+        } else {
+            row.put("total_cost", new BigDecimal(ONE_UNIT_COST));
+            row.put("cost_avoided", BigDecimal.ZERO);
+        }
         return row;
     }
 

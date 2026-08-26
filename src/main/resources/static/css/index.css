@@ -17,6 +17,11 @@
     --color-accent-dim: hsla(172, 90%, 38%, 0.15);
     --color-accent-blue: hsl(207, 90%, 54%);
     
+    --color-citation: hsl(212, 100%, 67%);     /* Link Blue */
+    --color-citation-bg: var(--bg-surface-elevated);
+    --color-citation-border: var(--border-color);
+    --color-citation-hover: hsl(212, 100%, 78%);
+    
     --color-success: hsl(145, 63%, 42%);      /* Emerald Green */
     --color-success-dim: hsla(145, 63%, 42%, 0.12);
     --color-warning: hsl(38, 92%, 50%);       /* Amber/Yellow */
@@ -1449,15 +1454,15 @@ pre.json-view {
 
 /* Citations expander */
 .citation-link {
-    color: var(--color-accent);
+    color: var(--color-citation);
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 500;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    background-color: var(--color-accent-dim);
-    padding: 0.1rem 0.35rem;
+    font-size: 0.85em;
+    background-color: var(--color-citation-bg);
+    padding: 0.15em 0.4em;
     border-radius: var(--radius-sm);
-    border: 1px solid hsla(172, 90%, 38%, 0.3);
+    border: 1px solid var(--color-citation-border);
     margin: 0 0.25rem;
     display: inline-block;
     cursor: pointer;
@@ -1465,8 +1470,10 @@ pre.json-view {
 }
 
 .citation-link:hover {
-    background-color: var(--color-accent);
-    color: var(--bg-base);
+    background-color: var(--bg-surface-hover);
+    border-color: var(--color-citation);
+    color: var(--color-citation-hover);
+    text-decoration: underline;
 }
 
 .citation-ref {
@@ -1478,9 +1485,10 @@ pre.json-view {
     padding: 0 0.2em;
     margin: 0 0.1em;
     font-size: 0.7em;
-    font-weight: 600;
-    color: var(--color-accent);
-    background-color: var(--color-accent-dim);
+    font-weight: 500;
+    color: var(--color-citation);
+    background-color: var(--color-citation-bg);
+    border: 1px solid var(--color-citation-border);
     border-radius: 3px;
     cursor: default;
     vertical-align: super;

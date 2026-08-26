@@ -39,6 +39,7 @@ import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,11 +165,10 @@ class ConfluenceIngestServiceTest {
 
     private JobContext crawlJobContext(String kind, Map<String, Object> settings) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(UUID.randomUUID(), kind, "sourceRef", List.of(),
+            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
+            null, settings, null);
         when(ctx.job()).thenReturn(job);
-        when(job.id()).thenReturn(UUID.randomUUID());
-        when(job.kind()).thenReturn(kind);
-        when(job.settings()).thenReturn(settings);
         return ctx;
     }
 
@@ -209,12 +209,15 @@ class ConfluenceIngestServiceTest {
     }
 
     private JobContext pageJobContext(Map<String, Object> settings) {
+        return pageJobContext(settings, "col");
+    }
+
+    private JobContext pageJobContext(Map<String, Object> settings, String collection) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(UUID.randomUUID(), PAGE_KIND, "sourceRef", List.of(),
+            UUID.randomUUID(), collection, null, null, 0, 0, null, null, OffsetDateTime.now(), null,
+            null, settings, null);
         when(ctx.job()).thenReturn(job);
-        when(job.id()).thenReturn(UUID.randomUUID());
-        when(job.kind()).thenReturn(PAGE_KIND);
-        when(job.settings()).thenReturn(settings);
         return ctx;
     }
 
@@ -803,9 +806,10 @@ class ConfluenceIngestServiceTest {
     @Test
     void crawlOfAJobWithoutAnInstanceSuffixFallsBackToTheDefaultInstance() {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(UUID.randomUUID(),
+            IngestJobKind.CONFLUENCE_IMPORT.getValue(), "sourceRef", List.of(), UUID.randomUUID(),
+            "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null, null, Map.of(), null);
         when(ctx.job()).thenReturn(job);
-        when(job.kind()).thenReturn(IngestJobKind.CONFLUENCE_IMPORT.getValue());
         when(instanceRepository.findBySlug("default")).thenReturn(Optional.of(instance));
         crawlReturns(page("page-1", "Page 1", 4));
 
@@ -817,9 +821,10 @@ class ConfluenceIngestServiceTest {
     @Test
     void crawlOfAnUnknownInstanceFailsWithAMessageNamingIt() {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(UUID.randomUUID(), "confluence-import:gone",
+            "sourceRef", List.of(), UUID.randomUUID(), "col", null, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null, Map.of(), null);
         when(ctx.job()).thenReturn(job);
-        when(job.kind()).thenReturn("confluence-import:gone");
         when(instanceRepository.findBySlug("gone")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.ingest(ctx)).isInstanceOf(IllegalStateException.class)
@@ -927,8 +932,7 @@ class ConfluenceIngestServiceTest {
     @Test
     void legacyPageJobWithoutASnapshotFallsBackToTheInstance() {
         JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
-            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)));
-        when(ctx.job().collection()).thenReturn("coll");
+            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)), "coll");
         when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
             eq("confluence")))
             .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
@@ -950,8 +954,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void legacyPageJobWhoseCollectionNoLongerMatchesTheInstanceIsRefused() {
         JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
-            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)));
-        when(ctx.job().collection()).thenReturn("old-coll");
+            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)),
+            "old-coll");
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("old-coll")

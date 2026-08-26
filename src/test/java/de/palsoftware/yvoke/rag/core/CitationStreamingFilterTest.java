@@ -102,14 +102,26 @@ public class CitationStreamingFilterTest {
     @Test
     public void testAbnormallyLongCitationFlushes() {
         StringBuilder longToken = new StringBuilder("[");
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 500; i++) {
             longToken.append("a");
         }
         List<String> output = filter.processToken(longToken.toString());
         assertFalse(output.isEmpty());
         assertEquals(1, output.size());
-        assertEquals(101, output.get(0).length());
+        assertEquals(501, output.get(0).length());
         assertTrue(output.get(0).startsWith("["));
+    }
+
+    @Test
+    public void testGroupedMultiUuidCitationDoesNotFlushEarly() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        UUID id3 = UUID.randomUUID();
+        String group = "[" + id1 + ", " + id2 + ", " + id3 + "]";
+        when(citationVerifier.isFabricated(group)).thenReturn(false);
+
+        List<String> output = filter.processToken(group);
+        assertEquals(List.of(group), output);
     }
 
     @Test

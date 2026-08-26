@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -16,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +28,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 
 class ChatAsyncControllerTest {
+
+    private static Message messageWithStatus(UUID conversationId, String status) {
+        return new Message(UUID.randomUUID(), conversationId, "assistant", "content", null,
+            List.of(), List.of(), Instant.now(), null, null, null, null, null, status, null);
+    }
 
     @Test
     void validationErrorPropagatesAndDoesNotSubmit() {
@@ -83,17 +91,9 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
-        Message generatingMessage = mock(Message.class);
-        when(generatingMessage.status()).thenReturn("generating");
-        when(generatingMessage.conversationId()).thenReturn(conversationId);
-
-        Message errorMessage = mock(Message.class);
-        when(errorMessage.status()).thenReturn("error");
-        when(errorMessage.conversationId()).thenReturn(conversationId);
-
-        Message doneMessage = mock(Message.class);
-        when(doneMessage.status()).thenReturn("done");
-        when(doneMessage.conversationId()).thenReturn(conversationId);
+        Message generatingMessage = messageWithStatus(conversationId, "generating");
+        Message errorMessage = messageWithStatus(conversationId, "error");
+        Message doneMessage = messageWithStatus(conversationId, "done");
 
         ChatAsyncController controller =
             new ChatAsyncController(chatMessageService, chatConversationService);
@@ -142,9 +142,7 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
-        Message cancelledMessage = mock(Message.class);
-        when(cancelledMessage.status()).thenReturn("cancelled");
-        when(cancelledMessage.conversationId()).thenReturn(conversationId);
+        Message cancelledMessage = messageWithStatus(conversationId, "cancelled");
         when(chatMessageService.getMessageStatus(messageId))
             .thenReturn(Optional.of(cancelledMessage));
 
@@ -184,9 +182,7 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
-        Message queuedMessage = mock(Message.class);
-        when(queuedMessage.status()).thenReturn("queued");
-        when(queuedMessage.conversationId()).thenReturn(conversationId);
+        Message queuedMessage = messageWithStatus(conversationId, "queued");
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(queuedMessage));
 
         ChatAsyncController controller =
@@ -198,9 +194,9 @@ class ChatAsyncControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("done", response.getBody().get("status"));
         assertEquals(queuedMessage, response.getBody().get("message"));
-        assertFalse(response.getBody().toString().contains("queued"),
+        assertNotEquals("queued", response.getBody().get("status"),
             "an unrecognised status must not be echoed back to a client that has no branch for it: "
-                + response.getBody());
+                + response.getBody().get("status"));
     }
 
     @Test
@@ -214,8 +210,7 @@ class ChatAsyncControllerTest {
         // Caller owns `conversationId`, but the requested message lives in a different
         // conversation.
         // Without a cross-check this leaks another conversation's message content (SEC-08 / IDOR).
-        Message foreignMessage = mock(Message.class);
-        when(foreignMessage.conversationId()).thenReturn(otherConversationId);
+        Message foreignMessage = messageWithStatus(otherConversationId, "done");
         when(chatMessageService.getMessageStatus(messageId))
             .thenReturn(Optional.of(foreignMessage));
 

@@ -59,7 +59,19 @@ public class PlaybookValidationController {
         try {
             LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
                 "playbook_validator", "validator");
-            List<Playbook> playbooks = playbookService.listSpecializedPlaybooks();
+            boolean showPrototypes = false;
+            if (conversation.settings() != null) {
+                Object val =
+                    conversation.settings().get(ConversationSetting.SHOW_PROTOTYPES.getValue());
+                if (val instanceof Boolean b) {
+                    showPrototypes = b;
+                } else if (val != null) {
+                    showPrototypes = Boolean.parseBoolean(String.valueOf(val));
+                }
+            }
+            boolean finalShowPrototypes = showPrototypes;
+            List<Playbook> playbooks = playbookService.listSpecializedPlaybooks().stream()
+                .filter(p -> finalShowPrototypes || !p.prototype()).toList();
 
             String model = null;
             if (conversation.settings() != null) {

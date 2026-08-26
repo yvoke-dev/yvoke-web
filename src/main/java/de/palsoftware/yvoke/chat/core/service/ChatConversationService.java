@@ -70,6 +70,7 @@ public class ChatConversationService {
         settings.put(ConversationSetting.STREAMING.getValue(), false);
         settings.put(ConversationSetting.SHOW_THINKING.getValue(), false);
         settings.put(ConversationSetting.THINKING_LEVEL.getValue(), "medium");
+        settings.put(ConversationSetting.SHOW_PROTOTYPES.getValue(), false);
 
         String title = "New Conversation";
         UUID userId = userService.getCurrentUser().map(User::id).orElse(null);

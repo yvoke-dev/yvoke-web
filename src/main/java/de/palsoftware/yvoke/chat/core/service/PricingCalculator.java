@@ -55,18 +55,20 @@ public final class PricingCalculator {
             completionPricePerMillion != null ? completionPricePerMillion : BigDecimal.ZERO;
         BigDecimal caPrice =
             cachedPricePerMillion != null ? cachedPricePerMillion : BigDecimal.ZERO;
-        BigDecimal tPrice =
-            thoughtPricePerMillion != null ? thoughtPricePerMillion : BigDecimal.ZERO;
+        BigDecimal effectiveThoughtPrice =
+            thoughtPricePerMillion != null ? thoughtPricePerMillion : cPrice;
 
         long uncachedPromptTokens = Math.max(0, promptTokens - cachedTokens);
+        long unthoughtCompletionTokens = Math.max(0, completionTokens - thoughtTokens);
+
         BigDecimal pCost = new BigDecimal(uncachedPromptTokens).multiply(pPrice).divide(MILLION,
             BUCKET_SCALE, RoundingMode.HALF_UP);
-        BigDecimal cCost = new BigDecimal(completionTokens).multiply(cPrice).divide(MILLION,
-            BUCKET_SCALE, RoundingMode.HALF_UP);
+        BigDecimal cCost = new BigDecimal(unthoughtCompletionTokens).multiply(cPrice)
+            .divide(MILLION, BUCKET_SCALE, RoundingMode.HALF_UP);
         BigDecimal caCost = new BigDecimal(cachedTokens).multiply(caPrice).divide(MILLION,
             BUCKET_SCALE, RoundingMode.HALF_UP);
-        BigDecimal tCost = new BigDecimal(thoughtTokens).multiply(tPrice).divide(MILLION,
-            BUCKET_SCALE, RoundingMode.HALF_UP);
+        BigDecimal tCost = new BigDecimal(thoughtTokens).multiply(effectiveThoughtPrice)
+            .divide(MILLION, BUCKET_SCALE, RoundingMode.HALF_UP);
 
         return pCost.add(cCost).add(caCost).add(tCost).setScale(RESULT_SCALE, RoundingMode.HALF_UP);
     }

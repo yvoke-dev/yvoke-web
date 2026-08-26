@@ -252,8 +252,6 @@ public class CostCalculationService {
     }
 
     public List<MessageCostRow> getMessagesByConversation(UUID conversationId) {
-        Map<String, ModelPricing> dbPrices = loadPricingMap();
-
         List<Map<String, Object>> rows = costQueryRepository.messageCostRows(conversationId);
 
         List<MessageCostRow> result = new ArrayList<>();
@@ -265,11 +263,9 @@ public class CostCalculationService {
             long c = getLong(row.get("completion_tokens"));
             long ca = getLong(row.get("cached_tokens"));
             long t = getLong(row.get("thought_tokens"));
+            BigDecimal cost = getBigDecimal(row.get("total_cost"));
             Timestamp ts = (Timestamp) row.get("created_at");
             Instant createdAt = ts != null ? ts.toInstant() : null;
-
-            BigDecimal cost = isReplayed(row) ? BigDecimal.ZERO
-                : getModelCost(model != null ? model : "", p, c, ca, t, dbPrices);
 
             result.add(new MessageCostRow(id, role, model, p, c, ca, t,
                 cost.setScale(6, RoundingMode.HALF_UP), createdAt));
@@ -342,12 +338,6 @@ public class CostCalculationService {
         pricingRepository.deleteByModelName(modelName);
     }
 
-    /**
-     * Prices the per-model token rows returned by the {@code calculate*} repository queries. Sums
-     * per-model cost via {@link PricingCalculator} (scale-8 per bucket, scale-6 total) and the
-     * token buckets across models. Cost stays in Java (not SQL) so the rounding matches the
-     * persisted write path exactly (MNT-03).
-     */
     /** Per-model accumulator, merging the (model, gateway_cache_status) groups back together. */
     private static final class ModelAcc {
         long pTokens;
@@ -358,13 +348,6 @@ public class CostCalculationService {
     }
 
     private CostReport aggregateModelRows(List<Map<String, Object>> rows) {
-        // Empty result skips the pricing read (as before); otherwise price against a fresh
-        // snapshot.
-        return aggregateModelRows(rows, rows.isEmpty() ? null : loadPricingMap());
-    }
-
-    private CostReport aggregateModelRows(List<Map<String, Object>> rows,
-        Map<String, ModelPricing> dbPrices) {
         if (rows.isEmpty()) {
             return new CostReport(Collections.emptyList(), 0, 0, 0, 0,
                 BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP));
@@ -377,10 +360,6 @@ public class CostCalculationService {
         long totalThought = 0;
         BigDecimal totalCost = BigDecimal.ZERO;
 
-        // The queries group by (model, gateway_cache_status) so each row is uniformly replayed or
-        // not — that is what lets a replay be priced at zero. The BREAKDOWN is per model though,
-        // so the split is merged back here; leaving it through would list a model twice on the
-        // dashboard, with nothing on screen explaining why.
         Map<String, ModelAcc> byModel = new LinkedHashMap<>();
 
         for (Map<String, Object> row : rows) {
@@ -389,25 +368,20 @@ public class CostCalculationService {
             long cTokens = getLong(row.get("c_tokens"));
             long caTokens = getLong(row.get("ca_tokens"));
             long tTokens = getLong(row.get("t_tokens"));
+            BigDecimal rowCost = getBigDecimal(row.get("total_cost"));
 
             totalPrompt += pTokens;
             totalCompletion += cTokens;
             totalCached += caTokens;
             totalThought += tTokens;
-
-            // A gateway-replayed call reported these tokens from a stored response body: the
-            // provider was never reached and charged nothing, so it contributes no cost. Tokens
-            // still count — they describe the exchange the model would have processed.
-            BigDecimal modelCost = isReplayed(row) ? BigDecimal.ZERO
-                : PricingCalculator.cost(model, pTokens, cTokens, caTokens, tTokens, dbPrices);
-            totalCost = totalCost.add(modelCost);
+            totalCost = totalCost.add(rowCost);
 
             ModelAcc acc = byModel.computeIfAbsent(model, k -> new ModelAcc());
             acc.pTokens += pTokens;
             acc.cTokens += cTokens;
             acc.caTokens += caTokens;
             acc.tTokens += tTokens;
-            acc.cost = acc.cost.add(modelCost);
+            acc.cost = acc.cost.add(rowCost);
         }
 
         byModel.forEach((model, acc) -> breakdowns.add(new ModelCostBreakdown(model, acc.pTokens,
@@ -440,8 +414,6 @@ public class CostCalculationService {
     public FilteredCostExplorerReport getFilteredExplorerReport(String viewLevel,
         LocalDate startDate, LocalDate endDate, List<String> models, List<UUID> userIds,
         List<String> sources, List<String> playbooks, String cursor) {
-
-        Map<String, ModelPricing> dbPrices = loadPricingMap();
 
         boolean isRawLevel =
             "RAW".equalsIgnoreCase(viewLevel) || "CALL".equalsIgnoreCase(viewLevel);
@@ -495,16 +467,13 @@ public class CostCalculationService {
                     long c = getLong(row.get("completion_tokens"));
                     long ca = getLong(row.get("cached_tokens"));
                     long t = getLong(row.get("thought_tokens"));
+                    BigDecimal cost = getBigDecimal(row.get("total_cost"));
+                    BigDecimal rowAvoided = getBigDecimal(row.get("cost_avoided"));
                     Timestamp ts = (Timestamp) row.get("created_at");
                     Instant createdAt = ts != null ? ts.toInstant() : null;
 
-                    BigDecimal cost =
-                        getModelCost(model != null ? model : "", p, c, ca, t, dbPrices);
-                    // A replayed call reported these tokens from a stored body; nothing was
-                    // charged for them, so the money moves from spend to savings.
                     if (isReplayed(row)) {
-                        avoidedCost = avoidedCost.add(cost);
-                        cost = BigDecimal.ZERO;
+                        avoidedCost = avoidedCost.add(rowAvoided);
                         replayed++;
                     } else if (isGatewayRouted(row)) {
                         forwarded++;
@@ -555,14 +524,13 @@ public class CostCalculationService {
                     long c = getLong(row.get("completion_tokens"));
                     long ca = getLong(row.get("cached_tokens"));
                     long t = getLong(row.get("thought_tokens"));
+                    BigDecimal cost = getBigDecimal(row.get("total_cost"));
+                    BigDecimal rowAvoided = getBigDecimal(row.get("cost_avoided"));
                     Timestamp ts = (Timestamp) row.get("created_at");
                     Instant createdAt = ts != null ? ts.toInstant() : null;
 
-                    BigDecimal cost =
-                        getModelCost(model != null ? model : "", p, c, ca, t, dbPrices);
                     if (isReplayed(row)) {
-                        avoidedCost = avoidedCost.add(cost);
-                        cost = BigDecimal.ZERO;
+                        avoidedCost = avoidedCost.add(rowAvoided);
                         replayed++;
                     } else if (isGatewayRouted(row)) {
                         forwarded++;
@@ -621,10 +589,6 @@ public class CostCalculationService {
             List<Map<String, Object>> rows = costQueryRepository.explorerConversationRows(startDate,
                 endDate, models, userIds, sources, playbooks, explorerRowCap);
             if (rows.size() >= explorerRowCap) {
-                // PRF-01: the CONVERSATION group query is otherwise unbounded (esp.
-                // timePreset='all',
-                // which drops the date predicate); cap it and warn so the figure isn't mistaken for
-                // the complete total.
                 log.warn("Cost-explorer CONVERSATION view truncated at the {}-row cap; narrow the "
                     + "filters or date range for complete figures.", explorerRowCap);
             }
@@ -659,12 +623,11 @@ public class CostCalculationService {
                 long t = getLong(row.get("t_tokens"));
                 long msgC = getLong(row.get("msg_count"));
                 long stepC = getLong(row.get("step_count"));
+                BigDecimal cost = getBigDecimal(row.get("total_cost"));
+                BigDecimal rowAvoided = getBigDecimal(row.get("cost_avoided"));
 
-                BigDecimal cost = getModelCost(model != null ? model : "", p, c, ca, t, dbPrices);
-                // Rows are grouped by gateway status, so each row is uniformly replayed or not.
                 if (isReplayed(row)) {
-                    avoidedCost = avoidedCost.add(cost);
-                    cost = BigDecimal.ZERO;
+                    avoidedCost = avoidedCost.add(rowAvoided);
                     replayed += msgC + stepC;
                 } else if (isGatewayRouted(row)) {
                     forwarded += msgC + stepC;
@@ -736,53 +699,33 @@ public class CostCalculationService {
         return prices;
     }
 
-    private BigDecimal getModelCost(String model, long p, long c, long ca, long t,
-        Map<String, ModelPricing> dbPrices) {
-        return PricingCalculator.cost(model, p, c, ca, t, dbPrices);
-    }
-
-    /**
-     * The overview fragment's four reports in one call, sharing a single pricing snapshot (PRF-14).
-     * The four standalone methods each load {@code chat_model_pricing} independently — rendering
-     * the overview through them costs four identical reads; this composite reads once and prices
-     * global, top-users, top-conversations and MAS-profiles against the same map. Values are
-     * identical to calling the four methods separately (a stable pricing table); the shared
-     * snapshot is also more internally consistent.
-     */
     public OverviewReport getOverviewReport(LocalDate startDate, LocalDate endDate, int topN) {
-        Map<String, ModelPricing> dbPrices = loadPricingMap();
-        CostReport report = aggregateModelRows(
-            costQueryRepository.globalModelTokenRows(startDate, endDate), dbPrices);
-        List<UserCostRow> topUsers = topUsersByCost(
-            costQueryRepository.topUserTokenRows(startDate, endDate), dbPrices, topN);
+        CostReport report =
+            aggregateModelRows(costQueryRepository.globalModelTokenRows(startDate, endDate));
+        List<UserCostRow> topUsers =
+            topUsersByCost(costQueryRepository.topUserTokenRows(startDate, endDate), topN);
         List<ConversationCostRow> topConversations = topConversationsByCost(
-            costQueryRepository.topConversationTokenRows(startDate, endDate), dbPrices, topN);
-        List<MasProfileCostRow> masProfiles = masProfilesByCost(
-            costQueryRepository.masProfileTokenRows(startDate, endDate), dbPrices);
+            costQueryRepository.topConversationTokenRows(startDate, endDate), topN);
+        List<MasProfileCostRow> masProfiles =
+            masProfilesByCost(costQueryRepository.masProfileTokenRows(startDate, endDate));
         return new OverviewReport(report, topUsers, topConversations, masProfiles);
     }
 
     public List<UserCostRow> getTopUsersByCost(LocalDate startDate, LocalDate endDate, int limit) {
-        return topUsersByCost(costQueryRepository.topUserTokenRows(startDate, endDate),
-            loadPricingMap(), limit);
+        return topUsersByCost(costQueryRepository.topUserTokenRows(startDate, endDate), limit);
     }
 
-    private List<UserCostRow> topUsersByCost(List<Map<String, Object>> rows,
-        Map<String, ModelPricing> dbPrices, int limit) {
+    private List<UserCostRow> topUsersByCost(List<Map<String, Object>> rows, int limit) {
         Map<UUID, UserCostRow> userMap = new HashMap<>();
         for (Map<String, Object> row : rows) {
             UUID userId = (UUID) row.get("user_id");
             String displayName = (String) row.get("display_name");
             String email = (String) row.get("email");
-            String model = (String) row.get("model");
             long p = getLong(row.get("p_tokens"));
             long c = getLong(row.get("c_tokens"));
             long ca = getLong(row.get("ca_tokens"));
             long t = getLong(row.get("t_tokens"));
-
-            // Replayed by the gateway: the provider was never reached and charged nothing.
-            BigDecimal cost =
-                isReplayed(row) ? BigDecimal.ZERO : getModelCost(model, p, c, ca, t, dbPrices);
+            BigDecimal cost = getBigDecimal(row.get("total_cost"));
             long tokens = p + c + ca + t;
 
             UserCostRow existing = userMap.get(userId);
@@ -802,26 +745,21 @@ public class CostCalculationService {
     public List<ConversationCostRow> getTopConversationsByCost(LocalDate startDate,
         LocalDate endDate, int limit) {
         return topConversationsByCost(
-            costQueryRepository.topConversationTokenRows(startDate, endDate), loadPricingMap(),
-            limit);
+            costQueryRepository.topConversationTokenRows(startDate, endDate), limit);
     }
 
     private List<ConversationCostRow> topConversationsByCost(List<Map<String, Object>> rows,
-        Map<String, ModelPricing> dbPrices, int limit) {
+        int limit) {
         Map<UUID, ConversationCostRow> convMap = new HashMap<>();
         for (Map<String, Object> row : rows) {
             UUID convId = (UUID) row.get("conv_id");
             String title = (String) row.get("title");
             String userName = (String) row.get("user_name");
-            String model = (String) row.get("model");
             long p = getLong(row.get("p_tokens"));
             long c = getLong(row.get("c_tokens"));
             long ca = getLong(row.get("ca_tokens"));
             long t = getLong(row.get("t_tokens"));
-
-            // Replayed by the gateway: the provider was never reached and charged nothing.
-            BigDecimal cost =
-                isReplayed(row) ? BigDecimal.ZERO : getModelCost(model, p, c, ca, t, dbPrices);
+            BigDecimal cost = getBigDecimal(row.get("total_cost"));
             long tokens = p + c + ca + t;
 
             ConversationCostRow existing = convMap.get(convId);
@@ -839,24 +777,18 @@ public class CostCalculationService {
     }
 
     public List<MasProfileCostRow> getMasProfilesByCost(LocalDate startDate, LocalDate endDate) {
-        return masProfilesByCost(costQueryRepository.masProfileTokenRows(startDate, endDate),
-            loadPricingMap());
+        return masProfilesByCost(costQueryRepository.masProfileTokenRows(startDate, endDate));
     }
 
-    private List<MasProfileCostRow> masProfilesByCost(List<Map<String, Object>> rows,
-        Map<String, ModelPricing> dbPrices) {
+    private List<MasProfileCostRow> masProfilesByCost(List<Map<String, Object>> rows) {
         Map<String, MasProfileCostRow> profileMap = new HashMap<>();
         for (Map<String, Object> row : rows) {
             String profileName = (String) row.get("profile_name");
-            String model = (String) row.get("model");
             long p = getLong(row.get("p_tokens"));
             long c = getLong(row.get("c_tokens"));
             long ca = getLong(row.get("ca_tokens"));
             long t = getLong(row.get("t_tokens"));
-
-            // Replayed by the gateway: the provider was never reached and charged nothing.
-            BigDecimal cost =
-                isReplayed(row) ? BigDecimal.ZERO : getModelCost(model, p, c, ca, t, dbPrices);
+            BigDecimal cost = getBigDecimal(row.get("total_cost"));
             long tokens = p + c + ca + t;
 
             MasProfileCostRow existing = profileMap.get(profileName);
@@ -895,6 +827,19 @@ public class CostCalculationService {
             return n.longValue();
         }
         return 0L;
+    }
+
+    private static BigDecimal getBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+        return new BigDecimal(value.toString());
     }
 
     /** Keyset cursor for the RAW explorer page: a row's ordering key {@code (created_at, id)}. */

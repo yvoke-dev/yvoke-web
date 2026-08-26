@@ -100,13 +100,13 @@ public class CostQueryRepository {
         String sql = """
             SELECT
                 model,
-                -- Grouped on as well, so each row is uniformly replayed or not and the service
-                -- can zero the cost of gateway-replayed calls while keeping their token counts.
                 gateway_cache_status,
                 SUM(prompt_tokens) AS p_tokens,
                 SUM(completion_tokens) AS c_tokens,
                 SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens
+                SUM(thought_tokens) AS t_tokens,
+                SUM(COALESCE(total_cost, 0)) AS total_cost,
+                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs
             WHERE model IS NOT NULL AND model != ''""" + dateFilter
             + " GROUP BY model, gateway_cache_status";
@@ -123,13 +123,13 @@ public class CostQueryRepository {
         String sql = """
             SELECT
                 model,
-                -- Grouped on as well, so each row is uniformly replayed or not and the service
-                -- can zero the cost of gateway-replayed calls while keeping their token counts.
                 gateway_cache_status,
                 SUM(prompt_tokens) AS p_tokens,
                 SUM(completion_tokens) AS c_tokens,
                 SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens
+                SUM(thought_tokens) AS t_tokens,
+                SUM(COALESCE(total_cost, 0)) AS total_cost,
+                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs
             WHERE model IS NOT NULL AND model != '' AND user_id = :userId""" + dateFilter
             + " GROUP BY model, gateway_cache_status";
@@ -146,13 +146,13 @@ public class CostQueryRepository {
         String sql = """
             SELECT
                 model,
-                -- Grouped on as well, so each row is uniformly replayed or not and the service
-                -- can zero the cost of gateway-replayed calls while keeping their token counts.
                 gateway_cache_status,
                 SUM(prompt_tokens) AS p_tokens,
                 SUM(completion_tokens) AS c_tokens,
                 SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens
+                SUM(thought_tokens) AS t_tokens,
+                SUM(COALESCE(total_cost, 0)) AS total_cost,
+                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs
             WHERE model IS NOT NULL AND model != '' AND conversation_id = :convId""" + dateFilter
             + " GROUP BY model, gateway_cache_status";
@@ -166,13 +166,13 @@ public class CostQueryRepository {
         String sql = """
             SELECT
                 model,
-                -- Grouped on as well, so each row is uniformly replayed or not and the service
-                -- can zero the cost of gateway-replayed calls while keeping their token counts.
                 gateway_cache_status,
                 SUM(prompt_tokens) AS p_tokens,
                 SUM(completion_tokens) AS c_tokens,
                 SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens
+                SUM(thought_tokens) AS t_tokens,
+                SUM(COALESCE(total_cost, 0)) AS total_cost,
+                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs
             WHERE model IS NOT NULL AND model != '' AND agent_run_id = :runId
             GROUP BY model, gateway_cache_status
@@ -190,13 +190,13 @@ public class CostQueryRepository {
         String sql = """
             SELECT
                 l.model,
-                -- Grouped on as well, so each row is uniformly replayed or not and the service
-                -- can zero the cost of gateway-replayed calls while keeping their token counts.
                 l.gateway_cache_status AS gateway_cache_status,
                 SUM(l.prompt_tokens) AS p_tokens,
                 SUM(l.completion_tokens) AS c_tokens,
                 SUM(l.cached_tokens) AS ca_tokens,
-                SUM(l.thought_tokens) AS t_tokens
+                SUM(l.thought_tokens) AS t_tokens,
+                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs l
             JOIN agent_runs ar ON l.agent_run_id = ar.id
             WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name = :profileName"""
@@ -205,8 +205,8 @@ public class CostQueryRepository {
     }
 
     /**
-     * Per-call rows for one conversation (id, role, effective_model, token buckets, created_at),
-     * ordered oldest-first. The service prices each row via PricingCalculator.
+     * Per-call rows for one conversation (id, role, effective_model, token buckets, total_cost,
+     * created_at), ordered oldest-first.
      */
     public List<Map<String, Object>> messageCostRows(UUID conversationId) {
         String sql = """
@@ -218,11 +218,9 @@ public class CostQueryRepository {
                 COALESCE(l.completion_tokens, 0) AS completion_tokens,
                 COALESCE(l.cached_tokens, 0) AS cached_tokens,
                 COALESCE(l.thought_tokens, 0) AS thought_tokens,
-                -- The explorer re-prices from token counts at CURRENT rates rather than reading
-                -- total_cost, so it has to know which calls the gateway replayed: those reported
-                -- tokens were never purchased. Without this the dashboard would keep charging for
-                -- cache hits even though the persisted ledger no longer does.
                 l.gateway_cache_status AS gateway_cache_status,
+                COALESCE(l.total_cost, 0) AS total_cost,
+                COALESCE(l.cost_avoided, 0) AS cost_avoided,
                 l.created_at
             FROM llm_call_logs l
             WHERE l.conversation_id = :convId
@@ -272,11 +270,9 @@ public class CostQueryRepository {
                 COALESCE(l.completion_tokens, 0) AS completion_tokens,
                 COALESCE(l.cached_tokens, 0) AS cached_tokens,
                 COALESCE(l.thought_tokens, 0) AS thought_tokens,
-                -- The explorer re-prices from token counts at CURRENT rates rather than reading
-                -- total_cost, so it has to know which calls the gateway replayed: those reported
-                -- tokens were never purchased. Without this the dashboard would keep charging for
-                -- cache hits even though the persisted ledger no longer does.
                 l.gateway_cache_status AS gateway_cache_status,
+                COALESCE(l.total_cost, 0) AS total_cost,
+                COALESCE(l.cost_avoided, 0) AS cost_avoided,
                 l.created_at
             FROM llm_call_logs l
             LEFT JOIN conversations c ON l.conversation_id = c.id
@@ -364,14 +360,13 @@ public class CostQueryRepository {
                         (SELECT m2.playbook FROM messages m2 WHERE m2.conversation_id = c.id AND m2.playbook IS NOT NULL AND m2.playbook != '' LIMIT 1)
                     ) AS playbook,
                     CASE WHEN l.agent_run_id IS NOT NULL THEN 'MAS_STEP' ELSE 'MESSAGE' END AS source_type,
-                    -- Grouped on as well, so replayed and forwarded calls land in separate rows
-                    -- and the service can price each group correctly. The service re-aggregates
-                    -- per conversation anyway, so the extra split costs nothing downstream.
                     l.gateway_cache_status AS gateway_cache_status,
                     SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
                     SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
                     SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
                     SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                    SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided,
                     COUNT(CASE WHEN l.agent_run_id IS NULL THEN 1 END) AS msg_count,
                     COUNT(CASE WHEN l.agent_run_id IS NOT NULL THEN 1 END) AS step_count
                 FROM llm_call_logs l
@@ -381,10 +376,6 @@ public class CostQueryRepository {
                 WHERE l.model IS NOT NULL AND l.model != ''"""
                 + filters
                 + " GROUP BY c.id, c.title, u.display_name, c.updated_at, l.model, ar.profile_name, l.source, l.gateway_cache_status, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile', CASE WHEN l.agent_run_id IS NOT NULL THEN 'MAS_STEP' ELSE 'MESSAGE' END"
-                // A LIMIT with no ORDER BY lets Postgres return ANY rowCap of the grouped rows, so
-                // a wide date range showed an arbitrary subset that changed between refreshes with
-                // identical filters. Ordering on a TOTAL key — updated_at alone is not unique —
-                // keeps the most recent conversations and makes truncation reproducible.
                 + " ORDER BY c.updated_at DESC, c.id, l.model LIMIT :explorerRowCap";
         params.put("explorerRowCap", rowCap);
         return runRows(sql, params);
@@ -433,9 +424,9 @@ public class CostQueryRepository {
     }
 
     // -----------------------------------------------------------------------------------------------
-    // Top-N token rows (Wave 3.2 Slice 3 repo move). These return the per-entity×model token sums
-    // from messages + agent_steps; the service applies PricingCalculator and sorts/limits by cost.
-    // SQL moved verbatim from CostCalculationService; behavior pinned by CostCalculationTopNIT.
+    // Top-N token rows (Wave 3.2 Slice 3 repo move). These return the per-entity×model token and
+    // cost
+    // sums from llm_call_logs.
     // -----------------------------------------------------------------------------------------------
 
     /** Per (user × model) token sums over the optional half-open UTC date range. */
@@ -445,10 +436,6 @@ public class CostQueryRepository {
             new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
         String sql = """
             SELECT
-                -- Sourced from llm_call_logs, not the messages/agent_steps token mirrors. Those
-                -- mirrors carry no gateway_cache_status, so this tab kept charging list price for
-                -- calls the gateway replayed while every llm_call_logs-based view had stopped.
-                -- Reading the ledger also removes the dashboard's second, divergent token source.
                 u.id AS user_id,
                 u.display_name,
                 u.email,
@@ -457,7 +444,9 @@ public class CostQueryRepository {
                 SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
                 SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
                 SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens
+                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs l
             LEFT JOIN conversations c ON l.conversation_id = c.id
             JOIN users u ON COALESCE(l.user_id, c.user_id) = u.id
@@ -474,10 +463,6 @@ public class CostQueryRepository {
             new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
         String sql = """
             SELECT
-                -- Sourced from llm_call_logs, not the messages/agent_steps token mirrors. Those
-                -- mirrors carry no gateway_cache_status, so this tab kept charging list price for
-                -- calls the gateway replayed while every llm_call_logs-based view had stopped.
-                -- Reading the ledger also removes the dashboard's second, divergent token source.
                 c.id AS conv_id,
                 c.title,
                 u.display_name AS user_name,
@@ -486,7 +471,9 @@ public class CostQueryRepository {
                 SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
                 SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
                 SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens
+                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs l
             JOIN conversations c ON l.conversation_id = c.id
             JOIN users u ON c.user_id = u.id
@@ -502,17 +489,15 @@ public class CostQueryRepository {
             new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
         String sql = """
             SELECT
-                -- Sourced from llm_call_logs, not the messages/agent_steps token mirrors. Those
-                -- mirrors carry no gateway_cache_status, so this tab kept charging list price for
-                -- calls the gateway replayed while every llm_call_logs-based view had stopped.
-                -- Reading the ledger also removes the dashboard's second, divergent token source.
                 ar.profile_name,
                 l.model,
                 l.gateway_cache_status,
                 SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
                 SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
                 SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens
+                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
             FROM llm_call_logs l
             JOIN agent_runs ar ON l.agent_run_id = ar.id
             WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name IS NOT NULL"""

@@ -232,9 +232,10 @@ public class RagAdminController {
         @RequestParam(required = false) List<String> tools,
         @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
         @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
+        @RequestParam(required = false, defaultValue = "false") boolean prototype,
         RedirectAttributes redirectAttributes) {
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent);
+            targetAgent, prototype);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";

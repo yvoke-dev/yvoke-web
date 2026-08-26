@@ -88,7 +88,7 @@ public class ChatConversationServiceTest {
      * {@code anyMap()}, so it passes against any seed at all, correct or not.
      */
     @Test
-    public void aNewConversationIsSeededWithExactlyTheFourDefaultSettings() {
+    public void aNewConversationIsSeededWithExactlyTheDefaultSettings() {
         Conversation created = new Conversation(UUID.randomUUID(), null, "New Conversation",
             Collections.emptyMap(), null, null, Collections.emptyList());
         when(conversationRepository.findById(any())).thenReturn(Optional.of(created));
@@ -104,7 +104,7 @@ public class ChatConversationServiceTest {
         // setUp) — the whitelist's head is the default, so reordering the list changes it.
         assertThat(settingsCaptor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
             entry("streaming", false), entry("show-thinking", false),
-            entry("thinking-level", "medium"));
+            entry("show-prototypes", false), entry("thinking-level", "medium"));
     }
 
     /**

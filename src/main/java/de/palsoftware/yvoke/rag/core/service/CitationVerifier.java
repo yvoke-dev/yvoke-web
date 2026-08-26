@@ -70,6 +70,7 @@ public class CitationVerifier {
      * table it refers to. Resolved against both.
      */
     private static final String KIND_BARE_ID = "id";
+    private static final String KIND_GROUP = "group";
 
     private record ResolvedIds(Set<UUID> existingChunks, Set<UUID> existingDocuments) {
         boolean chunkExists(String value) {
@@ -88,18 +89,28 @@ public class CitationVerifier {
         Set<UUID> chunkIds = new HashSet<>();
         Set<UUID> documentIds = new HashSet<>();
         for (ParsedCitation p : parsed) {
-            if (!isValidUuid(p.value)) {
-                continue;
-            }
-            if ("chunk".equals(p.kind) || KIND_BARE_ID.equals(p.kind)) {
-                chunkIds.add(toUuid(p.value));
-            }
-            if ("document".equals(p.kind) || KIND_BARE_ID.equals(p.kind)) {
-                documentIds.add(toUuid(p.value));
+            if (!p.items.isEmpty()) {
+                for (ParsedCitation sub : p.items) {
+                    collectId(sub, chunkIds, documentIds);
+                }
+            } else {
+                collectId(p, chunkIds, documentIds);
             }
         }
         return new ResolvedIds(chunkRepository.findExistingIds(chunkIds),
             documentRepository.findExistingIds(documentIds));
+    }
+
+    private static void collectId(ParsedCitation p, Set<UUID> chunkIds, Set<UUID> documentIds) {
+        if (!isValidUuid(p.value)) {
+            return;
+        }
+        if ("chunk".equals(p.kind) || KIND_BARE_ID.equals(p.kind)) {
+            chunkIds.add(toUuid(p.value));
+        }
+        if ("document".equals(p.kind) || KIND_BARE_ID.equals(p.kind)) {
+            documentIds.add(toUuid(p.value));
+        }
     }
 
     public enum CitationStatus {
@@ -115,13 +126,19 @@ public class CitationVerifier {
 
     public static class ParsedCitation {
         public final String raw;
-        public final String kind; // "chunk", "document", "unknown"
+        public final String kind; // "chunk", "document", "unknown", "id", "numref", "group"
         public final String value;
+        public final List<ParsedCitation> items;
 
         public ParsedCitation(String raw, String kind, String value) {
+            this(raw, kind, value, Collections.emptyList());
+        }
+
+        public ParsedCitation(String raw, String kind, String value, List<ParsedCitation> items) {
             this.raw = raw;
             this.kind = kind;
             this.value = value;
+            this.items = items == null ? Collections.emptyList() : items;
         }
     }
 
@@ -222,14 +239,24 @@ public class CitationVerifier {
     public static CitedIds citedIds(String text) {
         Set<String> prefixes = new LinkedHashSet<>();
         for (ParsedCitation parsed : scanCitations(text)) {
-            if (isIdKind(parsed.kind) && parsed.value != null) {
-                String clean = parsed.value.trim().replace("-", "").toLowerCase();
-                if (isIdPrefix(clean) || isValidUuid(clean)) {
-                    prefixes.add(clean);
+            if (!parsed.items.isEmpty()) {
+                for (ParsedCitation sub : parsed.items) {
+                    collectPrefix(sub, prefixes);
                 }
+            } else {
+                collectPrefix(parsed, prefixes);
             }
         }
         return new CitedIds(Set.copyOf(prefixes));
+    }
+
+    private static void collectPrefix(ParsedCitation parsed, Set<String> prefixes) {
+        if (isIdKind(parsed.kind) && parsed.value != null) {
+            String clean = parsed.value.trim().replace("-", "").toLowerCase();
+            if (isIdPrefix(clean) || isValidUuid(clean)) {
+                prefixes.add(clean);
+            }
+        }
     }
 
     /**
@@ -254,6 +281,28 @@ public class CitationVerifier {
         if (s.startsWith("[") && s.endsWith("]")) {
             s = s.substring(1, s.length() - 1).trim();
         }
+        if (s.contains(",")) {
+            String[] parts = s.split(",");
+            List<ParsedCitation> items = new ArrayList<>();
+            for (String part : parts) {
+                String trimmed = part.trim();
+                items.add(parseSingleCitation(trimmed, trimmed));
+            }
+            boolean allNumref =
+                !items.isEmpty() && items.stream().allMatch(i -> "numref".equals(i.kind));
+            if (allNumref) {
+                return new ParsedCitation(raw, "numref", s, items);
+            }
+            boolean anyIdKind = items.stream().anyMatch(i -> isIdKind(i.kind));
+            if (anyIdKind) {
+                return new ParsedCitation(raw, KIND_GROUP, s, items);
+            }
+            return new ParsedCitation(raw, "unknown", s, items);
+        }
+        return parseSingleCitation(raw, s);
+    }
+
+    private static ParsedCitation parseSingleCitation(String raw, String s) {
         // Numeric reference markers like [1], [42]
         if (NUMERIC_REF_PATTERN.matcher(s).matches()) {
             return new ParsedCitation(raw, "numref", s);
@@ -313,6 +362,26 @@ public class CitationVerifier {
      */
     private CitationCheckResult classify(ParsedCitation parsed, ResolvedIds resolved) {
         String raw = parsed.raw;
+        if (!parsed.items.isEmpty()) {
+            List<CitationCheckResult> itemResults = new ArrayList<>();
+            for (ParsedCitation item : parsed.items) {
+                itemResults.add(classify(item, resolved));
+            }
+            if (itemResults.stream().allMatch(r -> r.getStatus() == CitationStatus.REAL)) {
+                return new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
+                    itemResults.size() + " citation(s)");
+            }
+            if (itemResults.stream().anyMatch(r -> r.getStatus() == CitationStatus.FABRICATED)) {
+                return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
+                    "contains fabricated citation(s)");
+            }
+            if (itemResults.stream().anyMatch(r -> r.getStatus() == CitationStatus.UNVERIFIED)) {
+                return new CitationCheckResult(raw, parsed.kind, CitationStatus.UNVERIFIED,
+                    "contains unverified citation(s)");
+            }
+            return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
+                "unrecognized citation format");
+        }
         if (KIND_BARE_ID.equals(parsed.kind)) {
             // Either table resolving is enough: the id is real, only its table was unstated.
             if (isValidUuid(parsed.value)) {
@@ -378,6 +447,14 @@ public class CitationVerifier {
      * truncated id — is text the user wrote or can still resolve, and stays.
      */
     private boolean shouldStrip(ParsedCitation parsed, ResolvedIds resolved) {
+        if (!parsed.items.isEmpty()) {
+            boolean allIdKinds = parsed.items.stream().allMatch(i -> isIdKind(i.kind));
+            if (!allIdKinds) {
+                return false;
+            }
+            return parsed.items.stream()
+                .allMatch(i -> classify(i, resolved).getStatus() == CitationStatus.FABRICATED);
+        }
         return isIdKind(parsed.kind)
             && classify(parsed, resolved).getStatus() == CitationStatus.FABRICATED;
     }
@@ -418,6 +495,14 @@ public class CitationVerifier {
      */
     public boolean isFabricated(String rawCitation) {
         ParsedCitation parsed = parseCitation(rawCitation);
+        if (!parsed.items.isEmpty()) {
+            boolean allIdKinds = parsed.items.stream().allMatch(i -> isIdKind(i.kind));
+            if (!allIdKinds) {
+                return false;
+            }
+            List<ParsedCitation> single = List.of(parsed);
+            return shouldStrip(parsed, resolveIds(single));
+        }
         if (!isIdKind(parsed.kind)) {
             // Ordinary bracket text or a numbered reference: no id to look up, nothing to delete.
             return false;

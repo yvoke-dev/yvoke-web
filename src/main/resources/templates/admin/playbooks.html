@@ -227,6 +227,7 @@
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
                                     <span th:if="${playbook.codeExecution}" title="Gemini server-side code execution is enabled for this playbook" style="font-size: 0.75rem; background-color: var(--color-accent-dim, rgba(59,130,246,0.15)); color: var(--color-accent); border: 1px solid var(--color-accent); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">⚙ Code Execution</span>
+                                    <span th:if="${playbook.prototype}" title="Marked as prototype — hidden from normal chat users" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
                                 <p style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.5rem;" th:text="${playbook.description}">Description</p>
                                 <div th:if="${playbook.tools != null and !#lists.isEmpty(playbook.tools)}" style="margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;">
@@ -271,7 +272,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary" 
-                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}"
+                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
                                     Edit
@@ -347,6 +348,13 @@
                                     <span class="form-label" style="margin: 0;">Enable code execution</span>
                                 </label>
                                 <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Allow the model to run Python in Gemini's server-side sandbox when this playbook is active (Gemini 3+ models). Useful for computation/aggregation over query results.</span>
+                            </div>
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                    <input type="checkbox" id="prototype" name="prototype" value="true" style="width: auto; margin: 0;" />
+                                    <span class="form-label" style="margin: 0;">Prototype playbook</span>
+                                </label>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Mark as experimental/prototype. Hidden by default in chat clients unless the prototype setting is enabled.</span>
                             </div>
                             <div class="form-group">
                                 <label for="templateText" class="form-label">Template Content (Markdown)</label>
@@ -452,6 +460,7 @@
                 let targetAgent = 'specialist';
                 let tools = [];
                 let codeExecution = false;
+                let prototype = false;
                 let templateText = content;
 
                 // Parse frontmatter
@@ -477,6 +486,11 @@
                             } else if (trimmed.startsWith('target_agent:') || trimmed.startsWith('targetAgent:') || trimmed.startsWith('role:')) {
                                 const colonIdx = trimmed.indexOf(':');
                                 targetAgent = trimmed.substring(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+                                inTools = false;
+                            } else if (trimmed.startsWith('prototype:')) {
+                                const colonIdx = trimmed.indexOf(':');
+                                const valStr = trimmed.substring(colonIdx + 1).trim();
+                                prototype = valStr === 'true';
                                 inTools = false;
                             } else if (trimmed.startsWith('code_execution:') || trimmed.startsWith('codeExecution:')) {
                                 const colonIdx = trimmed.indexOf(':');
@@ -523,6 +537,10 @@
                 const codeExecCheckbox = document.getElementById('codeExecution');
                 codeExecCheckbox.checked = codeExecution;
                 codeExecCheckbox.disabled = false;
+
+                const protoCheckbox = document.getElementById('prototype');
+                protoCheckbox.checked = prototype;
+                protoCheckbox.disabled = false;
 
                 // Set value in EasyMDE
                 if (easyMDE) {
@@ -580,6 +598,10 @@
             codeExecCheckbox.checked = button.getAttribute('data-code-execution') === 'true';
             codeExecCheckbox.disabled = isReadOnly;
 
+            const protoCheckbox = document.getElementById('prototype');
+            protoCheckbox.checked = button.getAttribute('data-prototype') === 'true';
+            protoCheckbox.disabled = isReadOnly;
+
             // Set value in EasyMDE
             if (easyMDE) {
                 easyMDE.value(templateText);
@@ -629,6 +651,10 @@
             const codeExecCheckbox = document.getElementById('codeExecution');
             codeExecCheckbox.checked = false;
             codeExecCheckbox.disabled = false;
+
+            const protoCheckbox = document.getElementById('prototype');
+            protoCheckbox.checked = false;
+            protoCheckbox.disabled = false;
 
             // Set value in EasyMDE
             if (easyMDE) {

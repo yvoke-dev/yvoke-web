@@ -22,6 +22,7 @@ import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,13 +64,10 @@ class JsonImportJobHandlerTest {
 
     private JobContext contextFor(JobStatus liveStatus) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(JOB_ID, "json-import", jsonFile.toString(),
+            List.of("1.0"), COLLECTION_ID, "OIM", null, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null, Map.of(), null);
         when(ctx.job()).thenReturn(job);
-        when(job.id()).thenReturn(JOB_ID);
-        when(job.sourceRef()).thenReturn(jsonFile.toString());
-        when(job.collectionId()).thenReturn(COLLECTION_ID);
-        when(job.collectionName()).thenReturn("OIM");
-        when(job.tags()).thenReturn(List.of("1.0"));
         when(jobRepository.findStatusById(JOB_ID)).thenReturn(Optional.ofNullable(liveStatus));
         return ctx;
     }
@@ -88,10 +86,10 @@ class JsonImportJobHandlerTest {
         Files.writeString(outside, "[{\"secret\":\"value\"}]", StandardCharsets.UTF_8);
 
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = mock(IngestionJob.class);
+        IngestionJob job = new IngestionJob(JOB_ID, "json-import", outside.toString(),
+            List.of("1.0"), COLLECTION_ID, "OIM", null, null, 0, 0, null, null,
+            OffsetDateTime.now(), null, null, Map.of(), null);
         when(ctx.job()).thenReturn(job);
-        when(job.id()).thenReturn(JOB_ID);
-        when(job.sourceRef()).thenReturn(outside.toString());
 
         assertThatThrownBy(() -> handler.run(ctx)).isInstanceOf(SecurityException.class)
             .hasMessageContaining("outside the permitted upload directory");

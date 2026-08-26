@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -299,12 +300,25 @@ public class CostCalculationTopNIT {
 
     private void insertCall(UUID convId, UUID userId, UUID agentRunId, int prompt, int completion,
         int cached, int thought, String gatewayCacheStatus) {
+        long uncachedPrompt = Math.max(0, prompt - cached);
+        long unthoughtCompletion = Math.max(0, completion - thought);
+        BigDecimal promptCost = new BigDecimal(uncachedPrompt).multiply(new BigDecimal("0.50")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal completionCost = new BigDecimal(unthoughtCompletion).multiply(new BigDecimal("1.50")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal cachedCost = new BigDecimal(cached).multiply(new BigDecimal("0.10")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal thoughtCost = new BigDecimal(thought).multiply(new BigDecimal("0.00")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal totalCost = promptCost.add(completionCost).add(cachedCost).add(thoughtCost).setScale(6, RoundingMode.HALF_UP);
+        BigDecimal costAvoided = BigDecimal.ZERO;
+        if ("REPLAYED".equals(gatewayCacheStatus)) {
+            costAvoided = totalCost;
+            totalCost = BigDecimal.ZERO;
+        }
+
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, "
             + "agent_run_id, source, role, model, prompt_tokens, completion_tokens, cached_tokens, "
-            + "thought_tokens, total_tokens, gateway_cache_status, created_at) "
-            + "VALUES (?, ?, ?, ?, 'chat', 'assistant', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            + "thought_tokens, total_tokens, gateway_cache_status, total_cost, cost_avoided, created_at) "
+            + "VALUES (?, ?, ?, ?, 'chat', 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
             UUID.randomUUID(), convId, userId, agentRunId, MODEL, prompt, completion, cached,
-            thought, prompt + completion + cached + thought, gatewayCacheStatus);
+            thought, prompt + completion + cached + thought, gatewayCacheStatus, totalCost, costAvoided);
     }
 
     private void cleanup() {

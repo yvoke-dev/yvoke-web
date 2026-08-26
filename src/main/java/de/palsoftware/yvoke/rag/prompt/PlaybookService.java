@@ -53,13 +53,20 @@ public class PlaybookService {
 
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution) {
-        savePlaybook(name, title, description, templateText, tools, codeExecution, "specialist");
+        savePlaybook(name, title, description, templateText, tools, codeExecution, "specialist",
+            false);
+    }
+
+    public void savePlaybook(String name, String title, String description, String templateText,
+        List<String> tools, boolean codeExecution, String targetAgent) {
+        savePlaybook(name, title, description, templateText, tools, codeExecution, targetAgent,
+            false);
     }
 
     @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name",
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent) {
+        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
         }
@@ -75,7 +82,7 @@ public class PlaybookService {
 
         playbookRepository.upsert(name.trim(), title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,
-            codeExecution, agent);
+            codeExecution, agent, prototype);
 
         if (mcpSyncServer != null) {
             registerPlaybookWithMcp(name.trim());
@@ -85,7 +92,7 @@ public class PlaybookService {
     public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName) {
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName);
         savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),
-            parsed.tools(), parsed.codeExecution(), parsed.targetAgent());
+            parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype());
         return getPlaybook(parsed.name()).orElse(parsed);
     }
 
@@ -144,12 +151,13 @@ public class PlaybookService {
     }
 
     private void doRegister(Playbook playbook, McpSyncServer server) {
-        var promptSpec = McpSchema.Prompt.builder(playbook.name())
-            .description(playbook.description())
-            .meta(Map.of("tools", playbook.tools() != null ? playbook.tools() : List.of(),
-                "codeExecution", playbook.codeExecution(), "targetAgent",
-                playbook.targetAgent() != null ? playbook.targetAgent() : "specialist"))
-            .build();
+        var promptSpec =
+            McpSchema.Prompt.builder(playbook.name()).description(playbook.description())
+                .meta(Map.of("tools", playbook.tools() != null ? playbook.tools() : List.of(),
+                    "codeExecution", playbook.codeExecution(), "targetAgent",
+                    playbook.targetAgent() != null ? playbook.targetAgent() : "specialist",
+                    "prototype", playbook.prototype()))
+                .build();
 
         var registration =
             new McpServerFeatures.SyncPromptSpecification(promptSpec, (exchange, request) -> {
@@ -161,7 +169,8 @@ public class PlaybookService {
                     .description(current.description())
                     .meta(Map.of("tools", current.tools() != null ? current.tools() : List.of(),
                         "codeExecution", current.codeExecution(), "targetAgent",
-                        current.targetAgent() != null ? current.targetAgent() : "specialist"))
+                        current.targetAgent() != null ? current.targetAgent() : "specialist",
+                        "prototype", current.prototype()))
                     .build();
             });
 

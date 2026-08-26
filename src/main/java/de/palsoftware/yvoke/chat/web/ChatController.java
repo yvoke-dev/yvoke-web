@@ -151,6 +151,17 @@ public class ChatController {
         chatConversationService.updateSettings(id, settings);
     }
 
+    @PostMapping("/{id}/show-prototypes")
+    @ResponseBody
+    public void updateShowPrototypes(@PathVariable UUID id,
+        @RequestParam("enabled") boolean enabled) {
+        log.info("Updating show-prototypes setting for conversation id: {} to {}", id, enabled);
+        Map<String, Object> settings = chatConversationService.getConversation(id)
+            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
+        settings.put(ConversationSetting.SHOW_PROTOTYPES.getValue(), enabled);
+        chatConversationService.updateSettings(id, settings);
+    }
+
     @PostMapping("/{id}/thinking-level")
     @ResponseBody
     public void updateThinkingLevel(@PathVariable UUID id, @RequestParam("level") String level) {

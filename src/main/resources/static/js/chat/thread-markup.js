@@ -17,9 +17,10 @@ export function autocompleteOptionsMarkup(prompts, highlightIndex) {
     if (!Array.isArray(prompts)) return '';
     return prompts.map(function (p, idx) {
         const activeClass = idx === highlightIndex ? 'active' : '';
+        const protoBadge = p.prototype ? ' <span class="badge badge-warning" style="font-size: 0.65rem; padding: 0.1rem 0.35rem; margin-left: 0.35rem; border-radius: 4px; vertical-align: middle;">🧪 Prototype</span>' : '';
         return `
                     <div class="prompt-option ${activeClass}" data-action="select-playbook" data-index="${idx}" data-prompt-name="${escapeHtml(p.name)}" data-prompt-title="${escapeHtml(p.title)}">
-                        <span class="prompt-option-title">${escapeHtml(p.title)}</span>
+                        <span class="prompt-option-title">${escapeHtml(p.title)}${protoBadge}</span>
                         <span class="prompt-option-desc">${escapeHtml(p.description)}</span>
                     </div>
                 `;

@@ -71,6 +71,16 @@ describe('autocompleteOptionsMarkup', () => {
     test('a highlight index past the end simply highlights nothing', () => {
         assert.ok(!autocompleteOptionsMarkup(prompts, 99).includes('prompt-option active'));
     });
+
+    test('renders prototype badge when prototype is true', () => {
+        const withProto = [
+            { name: 'oim-browsing', title: 'OIM Browsing', description: 'Test', prototype: true },
+            { name: 'oim-full', title: 'OIM Full', description: 'Full', prototype: false },
+        ];
+        const html = autocompleteOptionsMarkup(withProto, 0);
+        assert.ok(html.includes('🧪 Prototype'));
+        assert.ok(html.includes('badge-warning'));
+    });
 });
 
 describe('citationQueryParam', () => {

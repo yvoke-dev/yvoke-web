@@ -24,10 +24,12 @@ class PlaybookServiceTest {
 
     @Test
     void testListAllPlaybooks() {
-        Playbook dbPlaybook1 = new Playbook("db-playbook-1", "DB Playbook 1 Title",
-            "DB 1 Description", "Hello from DB 1", List.of(), false, "specialist", null, null);
-        Playbook dbPlaybook2 = new Playbook("db-playbook-2", "DB Playbook 2 Title",
-            "DB 2 Description", "Hello from DB 2", List.of(), false, "orchestrator", null, null);
+        Playbook dbPlaybook1 =
+            new Playbook("db-playbook-1", "DB Playbook 1 Title", "DB 1 Description",
+                "Hello from DB 1", List.of(), false, "specialist", false, null, null);
+        Playbook dbPlaybook2 =
+            new Playbook("db-playbook-2", "DB Playbook 2 Title", "DB 2 Description",
+                "Hello from DB 2", List.of(), false, "orchestrator", true, null, null);
 
         when(playbookRepository.findAll()).thenReturn(List.of(dbPlaybook1, dbPlaybook2));
 
@@ -39,6 +41,7 @@ class PlaybookServiceTest {
         assertEquals("DB Playbook 1 Title", playbook1.title());
         assertEquals("Hello from DB 1", playbook1.templateText());
         assertEquals("specialist", playbook1.targetAgent());
+        assertFalse(playbook1.prototype());
         assertFalse(playbook1.readOnly());
 
         Playbook playbook2 = playbooks.stream().filter(p -> p.name().equals("db-playbook-2"))
@@ -46,6 +49,7 @@ class PlaybookServiceTest {
         assertEquals("DB Playbook 2 Title", playbook2.title());
         assertEquals("Hello from DB 2", playbook2.templateText());
         assertEquals("orchestrator", playbook2.targetAgent());
+        assertTrue(playbook2.prototype());
         assertFalse(playbook2.readOnly());
     }
 
@@ -84,25 +88,27 @@ class PlaybookServiceTest {
     @Test
     void testSavePlaybookSuccess() {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator");
+            false, "orchestrator", true);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator");
+            false, "orchestrator", true);
     }
 
     @Test
     void testExportAndImportPlaybook() {
         Playbook pb = new Playbook("test-export", "Test Export", "Desc", "Body content",
-            List.of("tool1"), true, "orchestrator", null, null);
+            List.of("tool1"), true, "orchestrator", true, null, null);
         when(playbookRepository.findByName("test-export")).thenReturn(Optional.of(pb));
 
         String exportedMd = playbookService.exportPlaybookToMarkdown("test-export");
         assertTrue(exportedMd.contains("target_agent: orchestrator"));
+        assertTrue(exportedMd.contains("prototype: true"));
         assertTrue(exportedMd.contains("code_execution: true"));
 
         when(playbookRepository.findByName("test-export")).thenReturn(Optional.of(pb));
         Playbook imported = playbookService.importPlaybookFromMarkdown(exportedMd, "test-export");
         assertEquals("test-export", imported.name());
         assertEquals("orchestrator", imported.targetAgent());
+        assertTrue(imported.prototype());
         assertTrue(imported.codeExecution());
     }
 

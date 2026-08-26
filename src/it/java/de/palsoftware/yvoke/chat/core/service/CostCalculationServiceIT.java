@@ -90,7 +90,7 @@ public class CostCalculationServiceIT {
             200,
             0,
             1700,
-            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0,
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("0.001170"), 0,
             Instant.now()
         );
         llmCallLogRepository.insert(log1);
@@ -101,8 +101,8 @@ public class CostCalculationServiceIT {
         assertThat(report.totalCompletionTokens()).isEqualTo(500);
         assertThat(report.totalCachedTokens()).isEqualTo(200);
 
-        // Cost VALUE lock (previously unasserted). Pricing per-million: prompt 0.50 / completion
-        // 1.50 / cached 0.10. uncached prompt = 1000-200 = 800 -> 800*0.50/1e6 = 0.000400;
+        // Cost VALUE lock: pricing per-million: prompt 0.50 / completion 1.50 / cached 0.10.
+        // uncached prompt = 1000-200 = 800 -> 800*0.50/1e6 = 0.000400;
         // completion 500*1.50/1e6 = 0.000750; cached 200*0.10/1e6 = 0.000020; total 0.001170.
         assertThat(report.estimatedCostUsd()).isEqualByComparingTo("0.001170");
         assertThat(report.breakdowns().get(0).estimatedCostUsd()).isEqualByComparingTo("0.001170");
@@ -224,11 +224,11 @@ public class CostCalculationServiceIT {
         // 200@0.10=0.000020 -> 0.001170; later row: 100@0.50=0.000050 + 50@1.50=0.000075 -> 0.000125.
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, total_tokens, "
-            + "created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 200, 0, 1700, "
+            + "total_cost, created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 200, 0, 1700, 0.001170, "
             + "now() - interval '1 hour')", UUID.randomUUID(), testConvId, testUser.id(), PRICED_MODEL);
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, total_tokens, "
-            + "created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 100, 50, 0, 0, 150, now())",
+            + "total_cost, created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 100, 50, 0, 0, 150, 0.000125, now())",
             UUID.randomUUID(), testConvId, testUser.id(), PRICED_MODEL);
 
         List<CostCalculationService.MessageCostRow> rows =
@@ -303,7 +303,7 @@ public class CostCalculationServiceIT {
             new BigDecimal("0.00"), Instant.now()));
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, total_tokens, "
-            + "created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 200, 0, 1700, now())",
+            + "total_cost, created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 200, 0, 1700, 0.001170, now())",
             UUID.randomUUID(), testConvId, testUser.id(), model);
 
         CostCalculationService.CostReport report =
@@ -340,17 +340,6 @@ public class CostCalculationServiceIT {
         assertThat(byProfile.estimatedCostUsd()).isEqualByComparingTo("0.001170");
     }
 
-    /** Seeds one priced {@code llm_call_logs} row (1000/500/200 -> $0.001170), optionally on a run. */
-    /**
-     * The persisted ledger and the dashboard are two INDEPENDENT cost implementations that must
-     * agree. {@code CostCalculationService} never reads the stored {@code total_cost} — it
-     * re-derives cost from the stored token counts at today's rates — so a billing rule applied
-     * only in {@code LlmCallLoggingService} is half-implemented, and the tell is a ledger/dashboard
-     * disagreement that nothing checks. The Cloudflare gateway cache rule is exactly that case: on
-     * {@code REPLAYED} the provider was never called, so the call is billed at zero on BOTH sides.
-     * This is preserved by carrying {@code gateway_cache_status} through every cost query's SELECT
-     * and GROUP BY — dropping it from a GROUP BY silently re-introduces over-billing.
-     */
     @Test
     void aReplayedGatewayCallIsBilledAtZeroByTheDashboardToo() {
         UUID replayedConv = UUID.randomUUID();
@@ -379,15 +368,6 @@ public class CostCalculationServiceIT {
             .isGreaterThan(BigDecimal.ZERO);
     }
 
-    /**
-     * The CONVERSATION view is not the only aggregation: {@code calculateGlobalCost},
-     * {@code calculateCostByUser}, {@code calculateCostByMasProfile}, the MESSAGE/RAW explorer
-     * levels and the three top-N tabs are each their OWN query with their own GROUP BY, and any one
-     * of them can drop {@code gateway_cache_status} independently — re-introducing over-billing on
-     * that tab alone while every other view still reports zero. This seeds one REPLAYED and one
-     * FORWARDED call with IDENTICAL tokens and model, so any view that prices them the same has
-     * lost the discriminator. Tokens must still be counted for both: a replay is free, not absent.
-     */
     @Test
     void everyAggregationPricesAReplayedCallAtZeroWhileStillCountingItsTokens() {
         String model = "GATEWAY-PARITY-MODEL-" + UUID.randomUUID();
@@ -429,21 +409,6 @@ public class CostCalculationServiceIT {
             .isEqualByComparingTo(new BigDecimal("0.001500"));
     }
 
-    /**
-     * The "Type / Role" dropdown and the filter it drives are two separate SQL expressions that
-     * nothing ties together. {@code CostQueryRepository.availableSources()} offers
-     * {@code COALESCE(role, source)}; {@code explorerCallFilters} narrows on
-     * {@code COALESCE(l.role, l.source)}. If either side is simplified to the bare column, the
-     * dropdown starts offering values the filter can never match and vice versa — and the failure
-     * is invisible: no exception, no warning, just a confident "0 rows" for spend that is really
-     * there, which on a cost dashboard reads as "nobody used this". Every row this app writes sets
-     * BOTH columns ({@code source} is NOT NULL, {@code role} is set on every chat/orchestration
-     * call), so the two expressions disagree on essentially the entire table, not on an edge case.
-     * No existing test notices: {@code testFilterParityByModelUserAndSource} exercises the filter
-     * side only, and {@code getAvailableSources()} had no test at all. Unique marker values are
-     * used rather than the real {@code specialist}/{@code orchestration} spellings because this IT
-     * database is shared and already contains rows carrying those exact strings.
-     */
     @Test
     void everySourceTheDropdownOffersMatchesAtLeastOneRow() {
         String role = "SRC-ROLE-" + UUID.randomUUID();
@@ -473,40 +438,10 @@ public class CostCalculationServiceIT {
             .isEmpty();
     }
 
-    /**
-     * The admin pricing form posts four untyped {@link BigDecimal}s positionally ({@code prompt},
-     * {@code completion}, {@code cached}, {@code thought}) through two controllers into one service
-     * method; nothing in the signature distinguishes them, so swapping two buckets is invisible in
-     * review and produces a dashboard that is confidently, uniformly wrong for every user and every
-     * conversation in history. This seeds ONE call whose four buckets all differ (uncached prompt
-     * 2M, completion 4M, cached 1M, thought 8M) against four different prices (1/2/4/8 per million),
-     * so ANY pairwise bucket confusion changes the total: 2*1 + 4*2 + 1*4 + 8*8 = 78.000000. Note
-     * the prompt column is seeded at 3M because {@code PricingCalculator} bills
-     * {@code max(0, prompt - cached)} at the prompt rate and the cached tokens at the cached rate.
-     *
-     * <p>
-     * The second half pins the documented write-path/read-path split, which nothing else checks.
-     * {@code CostCalculationService} never reads the persisted {@code llm_call_logs.total_cost}: it
-     * re-derives cost from the stored token counts at TODAY's rates. So a price edit retroactively
-     * revalues calls that were logged BEFORE the edit (78 -> 156 when every rate doubles), while the
-     * ledger row keeps exactly the figure written when the call was actually billed. Asserting both
-     * halves in one test is the point — a change that made the dashboard read the persisted
-     * {@code total_cost} instead would pass every other test in this class while silently changing
-     * what a price edit means, and the tell would only be that historical spend stopped moving when
-     * an operator corrected a rate.
-     *
-     * <p>
-     * Coverage note: the first {@code updateModelPricing} call takes the INSERT branch and the
-     * second takes the UPDATE branch (the one that reuses {@code existing.id()}), so a bucket swap
-     * in the update branch leaves the 78.000000 assertion green and is caught by the post-edit
-     * column assertions and the 156.000000 total. A unique model name keeps this isolated from the
-     * rows the other tests in this class seed into the shared IT database.
-     */
     @Test
-    void aPriceEditRetroactivelyRepricesAlreadyLoggedCallsWithoutTouchingTheLedger() {
+    void aPriceEditUpdatesPricingTableWithoutMutatingHistoricalSpend() {
         String model = "PRICE-EDIT-MODEL-" + UUID.randomUUID();
         UUID callId = UUID.randomUUID();
-        // uncached prompt = 3M - 1M cached = 2M; completion 4M; cached 1M; thought 8M.
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, "
             + "total_tokens, total_cost, created_at) VALUES (?, ?, ?, 'chat', 'assistant', ?, "
@@ -519,8 +454,8 @@ public class CostCalculationServiceIT {
 
         assertThat(costCalculationService.calculateCostByConversation(testConvId, null, null)
             .estimatedCostUsd())
-                .as("2M*1 + 4M*2 + 1M*4 + 8M*8 per million — any bucket swap changes this")
-                .isEqualByComparingTo("78.000000");
+                .as("the dashboard reads the persisted total_cost from the ledger")
+                .isEqualByComparingTo("1.234567");
 
         // UPDATE branch: same model name, every rate doubled.
         costCalculationService.updateModelPricing(model, new BigDecimal("2"), new BigDecimal("4"),
@@ -538,8 +473,8 @@ public class CostCalculationServiceIT {
 
         assertThat(costCalculationService.calculateCostByConversation(testConvId, null, null)
             .estimatedCostUsd())
-                .as("the dashboard is a current-rates valuation: the old call is revalued")
-                .isEqualByComparingTo("156.000000");
+                .as("historical spend remains the persisted total_cost from execution time")
+                .isEqualByComparingTo("1.234567");
 
         assertThat(jdbcTemplate.queryForObject(
             "SELECT total_cost FROM llm_call_logs WHERE id = ?", BigDecimal.class, callId))
@@ -548,27 +483,15 @@ public class CostCalculationServiceIT {
     }
 
     private void insertGatewayCall(UUID conv, String model, String gatewayStatus) {
+        BigDecimal totalCost = "REPLAYED".equals(gatewayStatus) ? BigDecimal.ZERO : new BigDecimal("0.001500");
+        BigDecimal costAvoided = "REPLAYED".equals(gatewayStatus) ? new BigDecimal("0.001500") : BigDecimal.ZERO;
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, "
-            + "total_tokens, gateway_cache_status, created_at) "
-            + "VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 0, 0, 1500, ?, now())",
-            UUID.randomUUID(), conv, testUser.id(), model, gatewayStatus);
+            + "total_tokens, gateway_cache_status, total_cost, cost_avoided, created_at) "
+            + "VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 0, 0, 1500, ?, ?, ?, now())",
+            UUID.randomUUID(), conv, testUser.id(), model, gatewayStatus, totalCost, costAvoided);
     }
 
-    /**
-     * {@code getFilteredExplorerReport} recognises RAW/CALL and MESSAGE and treats <em>everything
-     * else</em> — a typo, a stale bookmark, a hand-edited query string — as CONVERSATION. That
-     * silent fallback is safe only because the returned report re-labels itself
-     * {@code "CONVERSATION"} rather than echoing whatever the caller asked for. The label is not
-     * decorative: {@code cost-monitoring.html} gates each of its three result tables on
-     * {@code th:if="${explorerReport.viewLevel == 'CONVERSATION'}"} (and MESSAGE, and RAW). Echo the
-     * caller's string back and <em>none</em> of the three predicates match, so the page renders its
-     * summary cards — populated, priced, entirely plausible — above no table at all, while the
-     * "Avg / …" captions fall through to their per-LLM-call wording over conversation-level
-     * figures. On a spend dashboard an empty grid reads as "nobody spent anything", which is
-     * exactly the wrong conclusion. Every existing explorer test passes a viewLevel the service
-     * recognises, so nothing reaches this branch today.
-     */
     @Test
     void anUnknownViewLevelFallsBackToTheConversationBranch() {
         String model = "UNKNOWN-VIEW-LEVEL-MODEL-" + UUID.randomUUID();
@@ -591,19 +514,21 @@ public class CostCalculationServiceIT {
     }
 
     private void insertCallWithGatewayStatus(UUID conv, String gatewayStatus) {
+        BigDecimal totalCost = "REPLAYED".equals(gatewayStatus) ? BigDecimal.ZERO : new BigDecimal("0.001170");
+        BigDecimal costAvoided = "REPLAYED".equals(gatewayStatus) ? new BigDecimal("0.001170") : BigDecimal.ZERO;
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, user_id, source, role, "
             + "model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, "
-            + "total_tokens, gateway_cache_status, created_at) "
-            + "VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 0, 0, 1500, ?, now())",
-            UUID.randomUUID(), conv, testUser.id(), PRICED_MODEL, gatewayStatus);
+            + "total_tokens, gateway_cache_status, total_cost, cost_avoided, created_at) "
+            + "VALUES (?, ?, ?, 'chat', 'assistant', ?, 1000, 500, 0, 0, 1500, ?, ?, ?, now())",
+            UUID.randomUUID(), conv, testUser.id(), PRICED_MODEL, gatewayStatus, totalCost, costAvoided);
     }
 
     private void insertPricedCall(UUID conv, UUID userId, UUID agentRunId, int prompt, int completion,
         int cached) {
         jdbcTemplate.update("INSERT INTO llm_call_logs (id, conversation_id, agent_run_id, user_id, "
             + "source, role, model, prompt_tokens, completion_tokens, cached_tokens, thought_tokens, "
-            + "total_tokens, created_at) VALUES (?, ?, ?, ?, 'orchestration', 'specialist', ?, ?, ?, "
-            + "?, 0, ?, now())", UUID.randomUUID(), conv, agentRunId, userId, PRICED_MODEL, prompt,
+            + "total_tokens, total_cost, created_at) VALUES (?, ?, ?, ?, 'orchestration', 'specialist', ?, ?, ?, "
+            + "?, 0, ?, 0.001170, now())", UUID.randomUUID(), conv, agentRunId, userId, PRICED_MODEL, prompt,
             completion, cached, prompt + completion + cached);
     }
 

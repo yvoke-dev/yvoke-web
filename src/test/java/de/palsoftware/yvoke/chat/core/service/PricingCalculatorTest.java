@@ -49,6 +49,30 @@ class PricingCalculatorTest {
     }
 
     @Test
+    void thoughtTokensSubtractedFromCompletionAndBilledAtThoughtRateWhenThoughtPriceSet() {
+        // completion 3000, thought 1000 -> unthought 2000 @ $3.00/M = 0.006000; thought 1000 @
+        // $5.00/M = 0.005000; total 0.011000
+        BigDecimal c = PricingCalculator.cost(0, 3000, 0, 1000, null, bd("3.00"), null, bd("5.00"));
+        assertThat(c).isEqualByComparingTo("0.011000");
+    }
+
+    @Test
+    void thoughtTokensFallBackToCompletionPriceWhenThoughtPriceNull() {
+        // completion 3000, thought 1000, thought price null -> billed at completion rate $3.00/M:
+        // total 0.009000 (no double billing)
+        BigDecimal c = PricingCalculator.cost(0, 3000, 0, 1000, null, bd("3.00"), null, null);
+        assertThat(c).isEqualByComparingTo("0.009000");
+    }
+
+    @Test
+    void unthoughtCompletionFlooredAtZeroWhenCompletionBelowThought() {
+        // completion 100 < thought 500 -> unthought 0; only thought billed: 500 @ $5.00/M =
+        // 0.002500
+        assertThat(PricingCalculator.cost(0, 100, 0, 500, null, bd("3.00"), null, bd("5.00")))
+            .isEqualByComparingTo("0.002500");
+    }
+
+    @Test
     void perBucketRoundingUsesScaleEightIntermediate() {
         // 1 prompt + 1 completion token, each @ $2.50/M: per-token 0.0000025. At the scale-8
         // intermediate precision (matching the persisted write path) each bucket is exact

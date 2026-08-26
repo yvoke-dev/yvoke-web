@@ -56,28 +56,23 @@ class CostOverviewReportTest {
     void setUp() {
         service = new CostCalculationService(pricingRepository, costQueryRepository, 1000);
 
-        // Per-million pricing: prompt 0.50 / completion 1.50 / cached 0.10 / thought 0.
-        when(pricingRepository.findAll()).thenReturn(List.of(
-            new ModelPricing(UUID.randomUUID(), M1, new BigDecimal("0.50"), new BigDecimal("1.50"),
-                new BigDecimal("0.10"), new BigDecimal("0.00"), Instant.now())));
-
         when(costQueryRepository.globalModelTokenRows(start, end))
-            .thenReturn(List.of(tokenRow(M1, 1000, 500, 200, 0)));
-        when(costQueryRepository.topUserTokenRows(start, end))
-            .thenReturn(List.of(userRow(user1, "User One", "u1@x", M1, 1000, 500, 200, 0),
-                userRow(user2, "User Two", "u2@x", M1, 100, 50, 0, 0)));
-        when(costQueryRepository.topConversationTokenRows(start, end))
-            .thenReturn(List.of(convRow(conv1, "Conv One", "User One", M1, 1000, 500, 200, 0),
-                convRow(conv2, "Conv Two", "User Two", M1, 100, 50, 0, 0)));
+            .thenReturn(List.of(tokenRow(M1, 1000, 500, 200, 0, new BigDecimal("0.001170"))));
+        when(costQueryRepository.topUserTokenRows(start, end)).thenReturn(List.of(
+            userRow(user1, "User One", "u1@x", M1, 1000, 500, 200, 0, new BigDecimal("0.001170")),
+            userRow(user2, "User Two", "u2@x", M1, 100, 50, 0, 0, new BigDecimal("0.000125"))));
+        when(costQueryRepository.topConversationTokenRows(start, end)).thenReturn(List.of(
+            convRow(conv1, "Conv One", "User One", M1, 1000, 500, 200, 0,
+                new BigDecimal("0.001170")),
+            convRow(conv2, "Conv Two", "User Two", M1, 100, 50, 0, 0, new BigDecimal("0.000125"))));
         when(costQueryRepository.masProfileTokenRows(start, end))
-            .thenReturn(List.of(profileRow("P1", M1, 2000, 0, 0, 0)));
+            .thenReturn(List.of(profileRow("P1", M1, 2000, 0, 0, 0, new BigDecimal("0.001000"))));
     }
 
     @Test
-    void overviewReadsPricingOnceAndFetchesEachSourceOnce() {
+    void overviewFetchesEachSourceOnce() {
         service.getOverviewReport(start, end, 10);
 
-        verify(pricingRepository, times(1)).findAll();
         verify(costQueryRepository, times(1)).globalModelTokenRows(start, end);
         verify(costQueryRepository, times(1)).topUserTokenRows(start, end);
         verify(costQueryRepository, times(1)).topConversationTokenRows(start, end);
@@ -99,15 +94,13 @@ class CostOverviewReportTest {
     void overviewPricesAndRanksCorrectly() {
         OverviewReport overview = service.getOverviewReport(start, end, 10);
 
-        // Global: uncached 800@0.50=0.000400 + 500@1.50=0.000750 + cached 200@0.10=0.000020 =
-        // 0.001170.
         assertThat(overview.report().estimatedCostUsd()).isEqualByComparingTo("0.001170");
         // Top users cost-descending: user1 (0.001170) before user2 (0.000125).
         assertThat(overview.topUsers()).hasSize(2);
         assertThat(overview.topUsers().get(0).userId()).isEqualTo(user1);
         assertThat(overview.topUsers().get(0).estimatedCostUsd()).isEqualByComparingTo("0.001170");
         assertThat(overview.topUsers().get(1).userId()).isEqualTo(user2);
-        // MAS profile P1: 2000 uncached prompt @0.50 = 0.001000.
+        // MAS profile P1: 2000 uncached prompt = 0.001000.
         assertThat(overview.masProfiles()).hasSize(1);
         assertThat(overview.masProfiles().get(0).estimatedCostUsd())
             .isEqualByComparingTo("0.001000");
@@ -115,19 +108,22 @@ class CostOverviewReportTest {
 
     // ---- token-row builders (keys match the SQL aliases the service reads) ----
 
-    private static Map<String, Object> tokenRow(String model, long p, long c, long ca, long t) {
+    private static Map<String, Object> tokenRow(String model, long p, long c, long ca, long t,
+        BigDecimal totalCost) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("model", model);
         row.put("p_tokens", p);
         row.put("c_tokens", c);
         row.put("ca_tokens", ca);
         row.put("t_tokens", t);
+        row.put("total_cost", totalCost);
+        row.put("cost_avoided", BigDecimal.ZERO);
         return row;
     }
 
     private static Map<String, Object> userRow(UUID userId, String displayName, String email,
-        String model, long p, long c, long ca, long t) {
-        Map<String, Object> row = tokenRow(model, p, c, ca, t);
+        String model, long p, long c, long ca, long t, BigDecimal totalCost) {
+        Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("user_id", userId);
         row.put("display_name", displayName);
         row.put("email", email);
@@ -135,8 +131,8 @@ class CostOverviewReportTest {
     }
 
     private static Map<String, Object> convRow(UUID convId, String title, String userName,
-        String model, long p, long c, long ca, long t) {
-        Map<String, Object> row = tokenRow(model, p, c, ca, t);
+        String model, long p, long c, long ca, long t, BigDecimal totalCost) {
+        Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("conv_id", convId);
         row.put("title", title);
         row.put("user_name", userName);
@@ -144,8 +140,8 @@ class CostOverviewReportTest {
     }
 
     private static Map<String, Object> profileRow(String profileName, String model, long p, long c,
-        long ca, long t) {
-        Map<String, Object> row = tokenRow(model, p, c, ca, t);
+        long ca, long t, BigDecimal totalCost) {
+        Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("profile_name", profileName);
         return row;
     }

@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -67,8 +68,9 @@ public class AdminControllerTest {
     @Test
     public void testGetJobDetails() {
         UUID id = UUID.randomUUID();
-        IngestionJob mockJob = mock(IngestionJob.class);
-        when(mockJob.kind()).thenReturn(ItTestJobHandler.KIND);
+        IngestionJob mockJob = new IngestionJob(id, ItTestJobHandler.KIND, "sourceRef", List.of(),
+            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
+            null, Map.of(), null);
         when(jobRepository.findById(id)).thenReturn(Optional.of(mockJob));
 
         String view = adminController.getJobDetails(id, model);

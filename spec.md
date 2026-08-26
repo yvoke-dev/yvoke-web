@@ -132,6 +132,7 @@ a register of everyone's conversations.
 | **Organise conversations into folders** | Folder tags group conversations in the sidebar; a conversation appears under each tag it carries, or under *No Tag*. Autocomplete offers the user's own existing folder names. |
 | **Share a conversation** | Adding the tag `public` moves it into a *Public Conversations* folder that every signed-in user sees, with a *Shared* badge. Removing the tag un-shares it. |
 | **Choose model, effort and mode** | Each conversation picks its own model from the allowed list, a reasoning effort of Low / Medium / High, and Standard or Streaming delivery. Where in-depth profiles exist, a selector switches to one. |
+| **Toggle prototype playbooks** | A button in the composer toolbar toggles *Show prototype playbooks*. When enabled, experimental and prototype playbooks (marked with 🧪) appear in empty-thread suggestion chips and in `/` and `+` playbook menus. Disabled by default. |
 | **Delete a conversation** | Confirmed, then permanent — the thread, its answers and its ratings. |
 | **Administrators: review ratings and read any thread** | A *Feedback* page shows the positive-rating share, counts and every comment, filterable by rating, review status and time. A *User Conversations* page lists all conversations with owner, title and source. |
 
@@ -140,6 +141,9 @@ a register of everyone's conversations.
 - **The user never picks the knowledge area or the tag.** The chosen playbook decides which area and which
   tag are searched. Asking about a different product version means picking a different playbook — there is
   no tag selector in chat. *This surprises most new users.*
+- **Prototype playbooks (`prototype = true`) are hidden from user selection by default.** An experimental
+  playbook does not appear in prompt chips, slash autocomplete or preflight recommendations unless the user
+  enables prototype visibility for the conversation or browser session.
 - **A playbook is mandatory.** Without one the input shakes, a warning appears, and nothing is sent. The
   server refuses it too. In-depth mode is the only exception; it hides the playbook picker entirely.
 - **A playbook's instructions apply once**, the first time that playbook is used in a conversation — not on
@@ -247,13 +251,16 @@ in-depth profiles, and can inspect any search or trace.
 | **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where a playbook allows it, the assistant can also write and run small programs; both the code and its result appear in the answer. |
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
 | **Automated review of in-depth answers** | A reviewer agent checks the draft against the evidence the specialists gathered, and either approves it or sends it back with notes. If it still fails after the last attempt, the answer is delivered with a visible warning and the reviewer's notes. |
-| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, the tools it may use, whether code execution is allowed, and its role. A saved playbook is immediately live for users and connected AI clients. |
+| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, the tools it may use, whether code execution is allowed, its role, and whether it is flagged as a prototype (`prototype = true`). Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
 | **Administrators manage base instructions** | Managed separately from playbooks, with one marked as the active default. Typed by purpose — chat, graph extraction, summarisation — and the type is enforced wherever one is chosen, so an entry can only be picked for the job it was written for. Importable/exportable as files. |
 | **Administrators configure in-depth profiles** | A profile names the lead playbook, the reviewer playbook and the available specialists, plus how many review rounds and specialist calls one question may spend, and which model each role runs at. |
 | **Administrators test and audit** | A search console runs any query against a knowledge area and shows the passages, their scores and which search found them. A log lists past searches with the rating the user gave. Every investigation keeps a full trace. |
 
 ### How it behaves
 
+- **Prototype playbooks are flagged with `prototype = true` (default `false`).** They are excluded from
+  normal user-facing playbook discovery and preflight suggestions, allowing new or experimental retrieval
+  strategies (such as top-down browsing) to be tested without cluttering standard workflows.
 - **If a knowledge area holds several versions, a search must name one.** An unversioned search, or one
   naming a version the area does not offer, is refused rather than answered from the wrong version.
 - **A playbook's tool list is exact, and selecting nothing means nothing.** A playbook saved with no tools
@@ -938,8 +945,9 @@ feedback triage and answer traces; every user rates answers.
 
 ### How it behaves
 
-- **Prices are applied when a report is read, not when the call happened.** Reports always value past
-  usage at today's rates, so **editing a price changes historical figures**.
+- **Spend reflects the billed cost recorded at execution time.** Historical spend in reports is read from
+  the persisted cost ledger (`llm_call_logs.total_cost`), preserving the exact pricing applied when
+  the call was executed rather than retroactively revaluing past calls upon price edits.
 - **A model with no price set counts as zero cost everywhere, silently** — no error, no warning.
 - **A cache-replayed call costs nothing and is reported as a saving.** Anything that cannot be positively
   confirmed as replayed is billed in full, so an unclear signal never wipes out a real charge. **No AI
@@ -970,8 +978,9 @@ feedback triage and answer traces; every user rates answers.
 
 - **The per-call view is paged, but the message and conversation views stop at 5,000 rows.** Beyond that
   their totals cover only part of the period, **and nothing on the page says so**.
-- **Costs are estimates.** They are recalculated from recorded usage using hand-entered prices; they are
-  not the provider's invoice and will not reconcile to the cent.
+- **Costs are estimates.** They are calculated from recorded usage and persisted into the ledger at
+  execution time using configured model prices; they are not the provider's invoice and will not reconcile
+  to the cent.
 - **The cost page offers only the explorer.** There is no per-user, per-conversation, per-profile or
   top-spender summary — those would need a new screen.
 - **Usage recorded before cache accounting was introduced is valued as if charged in full.** Those older

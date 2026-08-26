@@ -58,7 +58,9 @@ class ChatControllerTest {
         feedbackService = mock(ChatFeedbackService.class);
         cancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
-        orchestratorProperties = mock(OrchestratorProperties.class);
+        orchestratorProperties = new OrchestratorProperties(3, 8, null,
+            List.of(new OrchestratorProperties.Profile("yaml-profile", "orch", "rev", List.of(),
+                null, null, null)));
         orchestratorProfileService = mock(OrchestratorProfileService.class);
 
         controller = new ChatController(conversationService, messageService, feedbackService,
@@ -69,13 +71,13 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_validDbProfile_updatesSettingsSuccessfully() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = mock(Conversation.class);
-        when(conv.settings()).thenReturn(Collections.emptyMap());
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
-        OrchestratorProfile dbProfile = mock(OrchestratorProfile.class);
+        OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
+            List.of(), null, null, null, null, null, null, Instant.now(), Instant.now());
         when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
-        when(orchestratorProperties.profile("OIM")).thenReturn(Optional.empty());
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
@@ -85,13 +87,10 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_validPropertyProfile_updatesSettingsSuccessfully() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = mock(Conversation.class);
-        when(conv.settings()).thenReturn(Collections.emptyMap());
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-
-        OrchestratorProperties.Profile propProfile = mock(OrchestratorProperties.Profile.class);
         when(orchestratorProfileService.getProfile("yaml-profile")).thenReturn(Optional.empty());
-        when(orchestratorProperties.profile("yaml-profile")).thenReturn(Optional.of(propProfile));
 
         assertDoesNotThrow(
             () -> controller.updateOrchestratorProfile(conversationId, "yaml-profile"));
@@ -103,7 +102,6 @@ class ChatControllerTest {
     void updateOrchestratorProfile_unknownProfile_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
         when(orchestratorProfileService.getProfile("Unknown")).thenReturn(Optional.empty());
-        when(orchestratorProperties.profile("Unknown")).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
             () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
@@ -137,8 +135,8 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_emptyName_clearsProfile() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = mock(Conversation.class);
-        when(conv.settings()).thenReturn(Map.of("orchestrator-profile", "OIM"));
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "  "));
@@ -215,17 +213,11 @@ class ChatControllerTest {
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         when(orchestratorProfileService.listProfileNames()).thenReturn(List.of("OIM"));
-        // A runnable yaml profile exists in parallel — updateOrchestratorProfile would accept it.
-        OrchestratorProperties.Profile yamlOnly = mock(OrchestratorProperties.Profile.class);
-        when(orchestratorProperties.profiles()).thenReturn(List.of(yamlOnly));
 
         Model model = new ConcurrentModel();
         assertEquals("chat/thread", controller.threadView(conversationId, model));
 
         assertEquals(List.of("OIM"), model.getAttribute("orchestratorProfiles"));
-        // Not "the yaml one happened to be filtered out": the properties are never consulted here.
-        verify(orchestratorProperties, never()).profiles();
-        verify(orchestratorProperties, never()).profileNames();
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

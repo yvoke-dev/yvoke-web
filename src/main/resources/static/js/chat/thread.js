@@ -189,9 +189,12 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 const isPopupOpen = popup && popup.style.display === 'flex';
                 if (isPopupOpen) {
                     hideAutocomplete();
-                } else if (mcpPrompts.length > 0) {
-                    showAutocomplete(mcpPrompts);
-                    chatInput.focus();
+                } else {
+                    const available = getAvailablePrompts();
+                    if (available.length > 0) {
+                        showAutocomplete(available);
+                        chatInput.focus();
+                    }
                 }
             });
         }
@@ -304,6 +307,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
         // MCP Prompts script state and functions
         const mcpPrompts = CHAT_CONFIG.prompts || [];
+        function getAvailablePrompts() {
+            return mcpPrompts.filter(p => showPrototypesEnabled || !p.prototype);
+        }
         const PROMPT_LABELS = {
             // MCP Tools (src/main/java/de/palsoftware/yvoke/mcp/tools)
             'search_corpus': 'Search Corpus',
@@ -521,6 +527,73 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
         if (showThinkingBtn) {
             showThinkingBtn.addEventListener('click', toggleShowThinking);
+        }
+
+        // Show Prototypes Toggle Handling
+        let showPrototypesEnabled = false;
+        const dbShowPrototypes = CHAT_CONFIG.showPrototypes;
+        if (dbShowPrototypes !== null && dbShowPrototypes !== undefined) {
+            showPrototypesEnabled = (dbShowPrototypes === true || dbShowPrototypes === 'true');
+        } else {
+            const localShowPrototypes = localStorage.getItem('userDefaultShowPrototypes');
+            if (localShowPrototypes !== null) {
+                showPrototypesEnabled = (localShowPrototypes === 'true');
+            }
+        }
+
+        const showPrototypesBtn = document.getElementById('show-prototypes-btn');
+
+        function updateShowPrototypesUI() {
+            if (showPrototypesBtn) {
+                const tooltipEl = showPrototypesBtn.querySelector('.custom-tooltip');
+                if (showPrototypesEnabled) {
+                    showPrototypesBtn.classList.add('active');
+                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks (enabled)";
+                } else {
+                    showPrototypesBtn.classList.remove('active');
+                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks (disabled)";
+                }
+            }
+            const chips = document.querySelectorAll('#prompt-chips .chip[data-prototype="true"]');
+            chips.forEach(chip => {
+                chip.style.display = showPrototypesEnabled ? '' : 'none';
+            });
+        }
+        updateShowPrototypesUI();
+
+        function toggleShowPrototypes() {
+            showPrototypesEnabled = !showPrototypesEnabled;
+            updateShowPrototypesUI();
+            localStorage.setItem('userDefaultShowPrototypes', showPrototypesEnabled);
+
+            const popup = document.getElementById('autocomplete-popup');
+            if (popup && popup.style.display === 'flex') {
+                const available = getAvailablePrompts();
+                if (available.length > 0) {
+                    showAutocomplete(available);
+                } else {
+                    hideAutocomplete();
+                }
+            }
+
+            if (isReadOnly) return;
+
+            const conversationId = CHAT_CONFIG.conversationId;
+            fetch(`/chat/${conversationId}/show-prototypes?enabled=${showPrototypesEnabled}`, {
+                method: 'POST'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    console.error('Failed to update show-prototypes settings in DB');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating show-prototypes settings in DB:', error);
+            });
+        }
+
+        if (showPrototypesBtn) {
+            showPrototypesBtn.addEventListener('click', toggleShowPrototypes);
         }
 
         const modelSelector = document.getElementById('model-selector');
@@ -1004,9 +1077,10 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 }
                 const val = chatInput.value;
                 const match = val.match(/^[\/\+](\S*)$/);
-                if (match && mcpPrompts.length > 0) {
+                const available = getAvailablePrompts();
+                if (match && available.length > 0) {
                     const query = match[1].toLowerCase();
-                    const filtered = mcpPrompts.filter(p => p.name.toLowerCase().includes(query) || p.title.toLowerCase().includes(query));
+                    const filtered = available.filter(p => p.name.toLowerCase().includes(query) || p.title.toLowerCase().includes(query));
                     if (filtered.length > 0) {
                         showAutocomplete(filtered);
                     } else {
