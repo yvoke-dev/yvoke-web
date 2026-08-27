@@ -221,6 +221,7 @@ class ChatControlsE2EIT extends AbstractE2E {
             null,
             null,
             null,
+            false,
             null,
             null));
 

@@ -168,7 +168,7 @@
                                         <line x1="8.5" y1="2" x2="15.5" y2="2"></line>
                                         <line x1="14" y1="9.3" x2="10" y2="9.3"></line>
                                     </svg>
-                                    <div class="custom-tooltip">Show prototype playbooks</div>
+                                    <div class="custom-tooltip">Show prototype playbooks &amp; profiles</div>
                                 </button>
                                 <button type="button" id="mode-standard-btn" class="chat-input-action-btn">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -187,9 +187,13 @@
                                 <select th:if="${!#lists.isEmpty(orchestratorProfiles)}" id="orchestrator-profile-selector" class="model-select-borderless" title="Multi-agent knowledge base">
                                     <option value="" th:selected="${settings['orchestrator-profile'] == null || settings['orchestrator-profile'] == ''}">Single playbook</option>
                                     <option th:each="pf : ${orchestratorProfiles}"
-                                            th:value="${pf}"
-                                            th:text="${'🤖 ' + pf}"
-                                            th:selected="${settings['orchestrator-profile'] == pf}"></option>
+                                            th:value="${pf.name}"
+                                            th:text="${(pf.prototype ? '🧪 ' : '🤖 ') + pf.name}"
+                                            th:attr="data-prototype=${pf.prototype}"
+                                            th:selected="${settings['orchestrator-profile'] == pf.name}"
+                                            th:hidden="${pf.prototype
+                                                and settings['orchestrator-profile'] != pf.name
+                                                and !(settings != null and (settings['show-prototypes'] == true or settings['show-prototypes'] == 'true'))}"></option>
                                 </select>
                                 <select id="model-selector" name="model" class="model-select-borderless">
                                     <option th:each="modelOpt : ${allowedModels}"

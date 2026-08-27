@@ -44,6 +44,10 @@
          unconditionally when an answer finalizes, so an unreachable CDN is an uncaught TypeError,
          not a graceful degradation (unlike mermaid/KaTeX below, which are feature-detected). -->
     <script th:src="@{/js/htmx.min.js}"></script>
+    <!-- htmx binds swapped-in content at SETTLE, not at swap, so a form is briefly
+         visible and not yet htmx-driven. Without this a submit landing in that window
+         becomes a native GET that puts the form fields in the URL. -->
+    <script type="module" th:src="@{/js/htmx-submit-guard.js}"></script>
 </head>
 <body>
     <div class="chat-layout">

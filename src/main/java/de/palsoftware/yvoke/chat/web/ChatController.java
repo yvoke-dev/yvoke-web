@@ -114,7 +114,7 @@ public class ChatController {
         model.addAttribute("isReadOnly", isReadOnly);
         model.addAttribute("playbookValidationEnabled",
             chatConversationService.isPlaybookValidationEnabled());
-        model.addAttribute("orchestratorProfiles", orchestratorProfileService.listProfileNames());
+        model.addAttribute("orchestratorProfiles", orchestratorProfileService.listProfileOptions());
 
         return "chat/thread";
     }

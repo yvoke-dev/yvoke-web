@@ -94,6 +94,7 @@ public class OrchestratorAdminController {
         @RequestParam(required = false) String reviewerThinkingLevel,
         @RequestParam(required = false) String specialistModel,
         @RequestParam(required = false) String specialistThinkingLevel,
+        @RequestParam(required = false, defaultValue = "false") boolean prototype,
         RedirectAttributes redirectAttributes) {
 
         int rounds =
@@ -105,7 +106,7 @@ public class OrchestratorAdminController {
             new OrchestratorProfile(name, rounds, calls, orchestratorPlaybook, reviewerPlaybook,
                 specialistPlaybooks != null ? specialistPlaybooks : List.of(), orchestratorModel,
                 orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel,
-                specialistThinkingLevel, null, null);
+                specialistThinkingLevel, prototype, null, null);
         profileService.saveProfile(profile);
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + name + "' saved successfully.");

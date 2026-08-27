@@ -34,6 +34,10 @@
     <!-- htmx 2.0.0, vendored — every admin filter, fragment swap and polling control depends on it,
          so it must not be a network request. -->
     <script th:src="@{/js/htmx.min.js}"></script>
+    <!-- htmx binds swapped-in content at SETTLE, not at swap, so a form is briefly
+         visible and not yet htmx-driven. Without this a submit landing in that window
+         becomes a native GET that puts the form fields in the URL. -->
+    <script type="module" th:src="@{/js/htmx-submit-guard.js}"></script>
 </head>
 <body>
     <div class="admin-layout">

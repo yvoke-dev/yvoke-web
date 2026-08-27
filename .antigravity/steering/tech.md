@@ -155,7 +155,10 @@
   column (`OrchestratorProfileRepository.upsert`, `yvoke-exports/lib/objects.py` `_profiles_upsert`,
   and `pg_dump`'s column-qualified `COPY`) and nothing else inserts into the table — so it was
   deliberately left alone rather than spent on a migration. If you ever add a writer that omits
-  either column, it will silently inherit those stale numbers: name the columns.
+  either column, it will silently inherit those stale numbers: name the columns. The later
+  `prototype BOOLEAN NOT NULL DEFAULT FALSE` (`V9`) is the opposite case and is meant to be relied
+  on — `false` is the correct value for any row written by something that predates the flag, and a
+  nullable column would leave rows that no `WHERE prototype` clause can see.
 
 ## Chat Configuration
 

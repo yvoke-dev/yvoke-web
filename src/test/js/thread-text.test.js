@@ -15,6 +15,7 @@ import {
     isMermaidText,
     normalizeThinkTags,
     pollTerminalDecision,
+    profileOptionVisibility,
     promptLabel,
     syncLoaderMarkup,
 } from '../../main/resources/static/js/chat/thread-text.js';
@@ -261,5 +262,52 @@ describe('cancelledNoticeMarkup', () => {
 
     test('replaces the bubble with a bare span when nothing was generated', () => {
         assert.doesNotMatch(cancelledNoticeMarkup(false), /class="aborted-text"/);
+    });
+});
+
+describe('profileOptionVisibility', () => {
+    const ordinary = { name: 'OIM', prototype: false };
+    const proto = { name: 'OIM - Browsing', prototype: true };
+
+    test('hides prototype profiles while the toggle is off', () => {
+        const decision = profileOptionVisibility([ordinary, proto], false, '');
+        assert.deepEqual(decision.visible, ['OIM']);
+        assert.deepEqual(decision.hidden, ['OIM - Browsing']);
+        assert.equal(decision.anyVisible, true);
+    });
+
+    test('shows every profile while the toggle is on', () => {
+        const decision = profileOptionVisibility([ordinary, proto], true, '');
+        assert.deepEqual(decision.visible, ['OIM', 'OIM - Browsing']);
+        assert.deepEqual(decision.hidden, []);
+    });
+
+    // The dropdown would otherwise render "Single playbook" over a conversation that is still in
+    // multi-agent mode — lying about how the next question gets answered, and unrecoverable
+    // without picking some other profile.
+    test('never hides the profile the conversation has already selected', () => {
+        const decision = profileOptionVisibility([ordinary, proto], false, 'OIM - Browsing');
+        assert.deepEqual(decision.visible, ['OIM', 'OIM - Browsing']);
+        assert.deepEqual(decision.hidden, []);
+    });
+
+    test('selecting away from a prototype withdraws its exemption', () => {
+        const decision = profileOptionVisibility([ordinary, proto], false, 'OIM');
+        assert.deepEqual(decision.hidden, ['OIM - Browsing']);
+    });
+
+    // A deployment whose only profiles are prototypes must not show a dropdown offering nothing
+    // but "Single playbook", which is what the selector already means when it is absent.
+    test('reports nothing visible when every profile is a hidden prototype', () => {
+        const decision = profileOptionVisibility([proto], false, '');
+        assert.equal(decision.anyVisible, false);
+        assert.deepEqual(decision.visible, []);
+    });
+
+    test('tolerates an absent or malformed profile list', () => {
+        assert.deepEqual(profileOptionVisibility(undefined, false, ''),
+            { visible: [], hidden: [], anyVisible: false });
+        assert.deepEqual(profileOptionVisibility([null, { prototype: true }], true, ''),
+            { visible: [], hidden: [], anyVisible: false });
     });
 });

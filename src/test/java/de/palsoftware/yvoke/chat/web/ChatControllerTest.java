@@ -24,6 +24,7 @@ import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -76,7 +77,7 @@ class ChatControllerTest {
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
-            List.of(), null, null, null, null, null, null, Instant.now(), Instant.now());
+            List.of(), null, null, null, null, null, null, false, Instant.now(), Instant.now());
         when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
@@ -212,12 +213,50 @@ class ChatControllerTest {
             Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
-        when(orchestratorProfileService.listProfileNames()).thenReturn(List.of("OIM"));
+        when(orchestratorProfileService.listProfileOptions())
+            .thenReturn(List.of(new OrchestratorProfileOption("OIM", false)));
 
         Model model = new ConcurrentModel();
         assertEquals("chat/thread", controller.threadView(conversationId, model));
 
-        assertEquals(List.of("OIM"), model.getAttribute("orchestratorProfiles"));
+        assertEquals(List.of(new OrchestratorProfileOption("OIM", false)),
+            model.getAttribute("orchestratorProfiles"));
+    }
+
+    /**
+     * A prototype profile reaches the page FLAGGED, not filtered out.
+     *
+     * <p>
+     * The obvious implementation — drop prototype rows in the controller when the conversation's
+     * {@code show-prototypes} setting is off — is wrong in both directions, and silently. It would
+     * make the toggle a page reload rather than a live control, since {@code thread.js} flips the
+     * chips and the dropdown in the browser with no round trip; and it would drop the
+     * conversation's OWN selected profile out of the dropdown, which then renders "Single playbook"
+     * over a conversation that is still in multi-agent mode. The visibility decision belongs to
+     * {@code profileOptionVisibility} in the client, and it can only make it if the server sends
+     * every profile with its flag.
+     */
+    @Test
+    void aPrototypeProfileIsSentToThePageFlaggedRatherThanWithheld() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("show-prototypes", false), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        when(orchestratorProfileService.listProfileOptions())
+            .thenReturn(List.of(new OrchestratorProfileOption("OIM", false),
+                new OrchestratorProfileOption("OIM - Browsing", true)));
+
+        Model model = new ConcurrentModel();
+        assertEquals("chat/thread", controller.threadView(conversationId, model));
+
+        assertEquals(
+            List.of(new OrchestratorProfileOption("OIM", false),
+                new OrchestratorProfileOption("OIM - Browsing", true)),
+            model.getAttribute("orchestratorProfiles"));
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

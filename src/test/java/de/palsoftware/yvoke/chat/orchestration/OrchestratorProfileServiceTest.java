@@ -36,7 +36,7 @@ public class OrchestratorProfileServiceTest {
     void testListAllProfiles() {
         OrchestratorProfile profile =
             new OrchestratorProfile("TestProfile", 3, 10, "orch-pb", "rev-pb", List.of("spec-pb"),
-                "model-a", "high", "model-b", "high", "model-c", "low", null, null);
+                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
         when(repository.findAll()).thenReturn(List.of(profile));
 
         List<OrchestratorProfile> result = service.listAllProfiles();
@@ -51,7 +51,7 @@ public class OrchestratorProfileServiceTest {
     void testResolveProfileFromDb() {
         OrchestratorProfile profile = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
             List.of("spec-1"), "custom-orch-model", "high", "custom-rev-model", "high",
-            "custom-spec-model", "low", null, null);
+            "custom-spec-model", "low", false, null, null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(profile));
 
         ResolvedProfile resolved = service.resolve("OIM");
@@ -83,8 +83,9 @@ public class OrchestratorProfileServiceTest {
      */
     @Test
     void nonPositiveCapsInheritThePropertyDefaults() {
-        OrchestratorProfile uncapped = new OrchestratorProfile("OIM", 0, 0, "oim-orch", "oim-rev",
-            List.of("spec-1"), "model-a", "high", "model-b", "high", "model-c", "low", null, null);
+        OrchestratorProfile uncapped =
+            new OrchestratorProfile("OIM", 0, 0, "oim-orch", "oim-rev", List.of("spec-1"),
+                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(uncapped));
 
         ResolvedProfile resolved = service.resolve("OIM");
@@ -96,8 +97,9 @@ public class OrchestratorProfileServiceTest {
             .as("0 calls would refuse the first delegation and strip the run of all retrieval")
             .isEqualTo(8);
 
-        OrchestratorProfile negative = new OrchestratorProfile("OIM", -1, -5, "oim-orch", "oim-rev",
-            List.of("spec-1"), "model-a", "high", "model-b", "high", "model-c", "low", null, null);
+        OrchestratorProfile negative =
+            new OrchestratorProfile("OIM", -1, -5, "oim-orch", "oim-rev", List.of("spec-1"),
+                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(negative));
 
         ResolvedProfile fromNegative = service.resolve("OIM");
@@ -106,10 +108,76 @@ public class OrchestratorProfileServiceTest {
         assertThat(fromNegative.maxSpecialistCalls()).isEqualTo(8);
     }
 
+    /**
+     * The dropdown's options carry the prototype flag and nothing else about the profile.
+     *
+     * <p>
+     * Both halves matter. Without the flag the client cannot hide anything, and the feature is a
+     * no-op that looks implemented from the admin side. And the mapping is what keeps the per-role
+     * MODEL bindings — operator configuration naming the provider deployments a run bills against —
+     * out of a page any signed-in user can view source on; handing the template
+     * {@code listAllProfiles()} would be one character shorter and would publish them.
+     */
+    @Test
+    void profileOptionsCarryThePrototypeFlagAndNoOperatorConfiguration() {
+        when(repository.findAll()).thenReturn(List.of(
+            new OrchestratorProfile("OIM", 3, 10, "orch-pb", "rev-pb", List.of("spec-pb"),
+                "gpt-5.6-luna", "high", "gpt-5.6-luna", "high", "gemini-3.1-flash", "low", false,
+                null, null),
+            new OrchestratorProfile("OIM - Browsing", 3, 10, "orch-pb", "rev-pb",
+                List.of("spec-pb"), "gpt-5.6-luna", "high", "gpt-5.6-luna", "high",
+                "gemini-3.1-flash", "low", true, null, null)));
+
+        List<OrchestratorProfileOption> options = service.listProfileOptions();
+
+        assertThat(options).containsExactly(new OrchestratorProfileOption("OIM", false),
+            new OrchestratorProfileOption("OIM - Browsing", true));
+    }
+
+    /**
+     * A prototype profile is still listed. It is a DISCOVERY flag, and the two clients decide
+     * visibility from their own settings — the web per conversation, the desktop per install — so
+     * filtering here would take that decision away from both and, worse, hide the profile a
+     * conversation has already selected. It would also strip the admin page, which reads the same
+     * repository, of the only rows an admin marks prototype in order to work on.
+     */
+    @Test
+    void aPrototypeProfileIsListedRatherThanFilteredOutByTheService() {
+        OrchestratorProfile prototype = new OrchestratorProfile("OIM - Browsing", 3, 10, "orch-pb",
+            "rev-pb", List.of("spec-pb"), null, null, null, null, null, null, true, null, null);
+        when(repository.findAll()).thenReturn(List.of(prototype));
+
+        assertThat(service.listProfileOptions())
+            .containsExactly(new OrchestratorProfileOption("OIM - Browsing", true));
+        assertThat(service.listAllProfiles()).containsExactly(prototype);
+    }
+
+    /**
+     * Prototype is a discovery flag, so it must not reach {@link ResolvedProfile}: a run resolves
+     * and executes identically whether or not the profile is experimental. The one thing that could
+     * go wrong here is a "safety" check refusing to resolve a prototype profile, which would break
+     * exactly the conversations that deliberately selected one.
+     */
+    @Test
+    void aPrototypeProfileResolvesExactlyLikeAnyOther() {
+        OrchestratorProfile prototype = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
+            List.of("spec-1"), "custom-orch-model", "high", "custom-rev-model", "high",
+            "custom-spec-model", "low", true, null, null);
+        when(repository.findByName("OIM")).thenReturn(Optional.of(prototype));
+
+        ResolvedProfile resolved = service.resolve("OIM");
+
+        assertThat(resolved.name()).isEqualTo("OIM");
+        assertThat(resolved.maxReviewRounds()).isEqualTo(4);
+        assertThat(resolved.maxSpecialistCalls()).isEqualTo(12);
+        assertThat(resolved.orchestrator().model()).isEqualTo("custom-orch-model");
+        assertThat(resolved.orchestratorPlaybook()).isEqualTo("oim-orch");
+    }
+
     @Test
     void testSaveAndDeleteProfile() {
         OrchestratorProfile profile = new OrchestratorProfile("NewProfile", 2, 8, "orch", "rev",
-            List.of("spec"), null, null, null, null, null, null, null, null);
+            List.of("spec"), null, null, null, null, null, null, false, null, null);
 
         service.saveProfile(profile);
         verify(repository).upsert(profile);
@@ -122,7 +190,7 @@ public class OrchestratorProfileServiceTest {
     void testExportAndImportProfile() {
         OrchestratorProfile profile = new OrchestratorProfile("ExportImportProfile", 3, 9,
             "orch-pb", "rev-pb", List.of("spec-1", "spec-2"), "model-a", "high", "model-b", "low",
-            "model-c", "medium", null, null);
+            "model-c", "medium", false, null, null);
         when(repository.findByName("ExportImportProfile")).thenReturn(Optional.of(profile));
 
         String json = service.exportProfileToJson("ExportImportProfile");
@@ -135,6 +203,29 @@ public class OrchestratorProfileServiceTest {
         assertThat(imported.maxReviewRounds()).isEqualTo(3);
         assertThat(imported.specialistPlaybooks()).containsExactly("spec-1", "spec-2");
         verify(repository).upsert(any(OrchestratorProfile.class));
+    }
+
+    /**
+     * The exported JSON carries {@code prototype}, and re-importing it keeps the flag.
+     *
+     * <p>
+     * Export/import is how a profile moves between environments, and the flag is what keeps an
+     * experimental profile out of every user's dropdown. A field the export omits comes back
+     * {@code false} on import — Jackson's default for an absent boolean — so the profile silently
+     * goes live for everyone in the target environment, with the import reporting success. The
+     * sibling round-trip test above uses a non-prototype profile, so it is green either way.
+     */
+    @Test
+    void theExportedJsonCarriesThePrototypeFlagAndTheImportKeepsIt() {
+        OrchestratorProfile prototype = new OrchestratorProfile("Browsing", 3, 9, "orch-pb",
+            "rev-pb", List.of("spec-1"), null, null, null, null, null, null, true, null, null);
+        when(repository.findByName("Browsing")).thenReturn(Optional.of(prototype));
+
+        String json = service.exportProfileToJson("Browsing");
+        assertThat(json).contains("\"prototype\" : true");
+
+        when(repository.findByName("Browsing")).thenReturn(Optional.empty());
+        assertThat(service.importProfileFromJson(json).prototype()).isTrue();
     }
 
     /**
@@ -151,7 +242,7 @@ public class OrchestratorProfileServiceTest {
     @Test
     void emptyStringModelAndThinkingLevelInheritTheRoleDefaults() {
         OrchestratorProfile blanks = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
-            List.of("spec-1"), "", "", "", "", "", "", null, null);
+            List.of("spec-1"), "", "", "", "", "", "", false, null, null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(blanks));
 
         ResolvedProfile resolved = service.resolve("OIM");

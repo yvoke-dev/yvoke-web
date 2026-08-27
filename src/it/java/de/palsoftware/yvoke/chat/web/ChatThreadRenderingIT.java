@@ -13,6 +13,8 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -65,6 +67,9 @@ public class ChatThreadRenderingIT {
 
     @Autowired
     private MessageRepository messageRepository;
+
+    @Autowired
+    private OrchestratorProfileRepository orchestratorProfileRepository;
 
     private MockMvc mockMvc;
 
@@ -576,5 +581,71 @@ public class ChatThreadRenderingIT {
         // Cleanup
         setSecurityContext(userOid, "rendering-test@local", "Rendering Test User");
         chatConversationService.deleteConversation(convId);
+    }
+
+    /**
+     * The server-rendered profile dropdown hides a prototype profile — unless this conversation is
+     * the one using it.
+     *
+     * <p>
+     * The exemption is the whole point and it is the half a unit test cannot reach: the decision is
+     * a Thymeleaf expression, so a wrong one produces a page that renders perfectly and simply lists
+     * the wrong options. Without it a conversation set to a prototype profile paints a dropdown
+     * whose selected option is hidden, which browsers render as the FIRST visible option — "Single
+     * playbook" — over a conversation that is still in multi-agent mode. The user would read that as
+     * their profile having been unset, and the only way to make the control tell the truth again is
+     * to pick some other profile.
+     *
+     * <p>
+     * Asserting on the rendered HTML rather than the model is deliberate: {@code threadView} sends
+     * every profile flagged (pinned in {@code ChatControllerTest}), so the model is identical in
+     * both cases and only the markup differs.
+     */
+    @Test
+    @DisplayName("A prototype profile renders hidden, except when this conversation has selected it")
+    public void thePrototypeProfileOptionIsHiddenUnlessThisConversationSelectedIt() throws Exception {
+        String userOid = "profile-visibility-oid";
+        userRepository.upsert(userOid, "profile-visibility@local", "Profile Visibility User");
+        orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Ordinary", 2, 8,
+            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null));
+        orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Prototype", 2, 8,
+            "orch", "rev", List.of("spec"), null, null, null, null, null, null, true, null, null));
+
+        setSecurityContext(userOid, "profile-visibility@local", "Profile Visibility User");
+        UUID convId = chatConversationService.createConversation().id();
+        var login = testUserLogin(userOid, "profile-visibility@local", "Profile Visibility User");
+
+        String html = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(optionTag(html, "IT_Vis_Prototype"))
+            .as("an unselected prototype profile must not be offered while the toggle is off")
+            .contains("hidden");
+        assertThat(optionTag(html, "IT_Vis_Ordinary")).doesNotContain("hidden");
+
+        setSecurityContext(userOid, "profile-visibility@local", "Profile Visibility User");
+        chatConversationService.updateSettings(convId,
+            Map.of("orchestrator-profile", "IT_Vis_Prototype"));
+
+        String selected = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(optionTag(selected, "IT_Vis_Prototype"))
+            .as("the conversation's own profile stays listed, or the dropdown lies about the mode")
+            .doesNotContain("hidden");
+        assertThat(optionTag(selected, "IT_Vis_Prototype")).contains("selected");
+
+        setSecurityContext(userOid, "profile-visibility@local", "Profile Visibility User");
+        chatConversationService.deleteConversation(convId);
+        orchestratorProfileRepository.delete("IT_Vis_Ordinary");
+        orchestratorProfileRepository.delete("IT_Vis_Prototype");
+    }
+
+    /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
+    private static String optionTag(String html, String profileName) {
+        Matcher m = Pattern.compile("<option[^>]*value=\"" + Pattern.quote(profileName) + "\"[^>]*>")
+            .matcher(html);
+        assertThat(m.find()).as("no <option> for profile " + profileName).isTrue();
+        return m.group();
     }
 }

@@ -29,8 +29,16 @@ public class OrchestratorProfileService {
         return repository.findAll();
     }
 
-    public List<String> listProfileNames() {
-        return repository.findAll().stream().map(OrchestratorProfile::name).toList();
+    /**
+     * The dropdown's options, mapped to a view record so the page never carries a profile's
+     * per-role model configuration. Prototype profiles are included and flagged rather than
+     * filtered out: the client decides what to show, and the conversation's own selected profile
+     * must stay in the list even when prototype visibility is off, or the dropdown reads "Single
+     * playbook" over a conversation that is still in multi-agent mode.
+     */
+    public List<OrchestratorProfileOption> listProfileOptions() {
+        return repository.findAll().stream()
+            .map(p -> new OrchestratorProfileOption(p.name(), p.prototype())).toList();
     }
 
     public Optional<OrchestratorProfile> getProfile(String name) {

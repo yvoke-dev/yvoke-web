@@ -200,3 +200,33 @@ export function chatInputDefaultPlaceholder(activePlaybookName, prompts) {
     }
     return 'Ask a question… (type "/" or click "+" to select a playbook, Shift + Enter for new line, Enter to send)';
 }
+
+/**
+ * Which orchestrator-profile options the profile dropdown may show, given the prototype toggle.
+ *
+ * `selected` is always kept visible even when it is a prototype and the toggle is off. A `<select>`
+ * whose chosen `<option>` is hidden renders as "Single playbook" while the conversation is still in
+ * multi-agent mode — the dropdown would then be lying about how the next question gets answered,
+ * and picking anything else would be the only way to make it tell the truth again.
+ *
+ * `anyVisible` is false when the deployment's only profiles are prototypes the user may not see;
+ * the caller hides the whole selector in that case rather than offering a one-entry dropdown.
+ *
+ * @param {{name: string, prototype: boolean}[]} profiles
+ * @param {boolean} showPrototypes
+ * @param {string} selected currently-selected profile name, '' for single-playbook mode
+ * @returns {{visible: string[], hidden: string[], anyVisible: boolean}}
+ */
+export function profileOptionVisibility(profiles, showPrototypes, selected) {
+    const visible = [];
+    const hidden = [];
+    (Array.isArray(profiles) ? profiles : []).forEach(function (profile) {
+        if (!profile || !profile.name) return;
+        if (!profile.prototype || showPrototypes || profile.name === selected) {
+            visible.push(profile.name);
+        } else {
+            hidden.push(profile.name);
+        }
+    });
+    return { visible: visible, hidden: hidden, anyVisible: visible.length > 0 };
+}

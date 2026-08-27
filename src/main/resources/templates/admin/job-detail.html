@@ -268,17 +268,29 @@
             });
         }
 
-        // Initialize UI with database values on load
-        // Deferred for the same reason as ingest.html: window.JobStatus comes from a module
-        // script, which runs after this one but before DOMContentLoaded.
+        // Initialize the UI from the database values, then subscribe.
+        //
+        // Both belong inside DOMContentLoaded, and the SUBSCRIPTION for a sharper reason than the
+        // repaint. `window.JobStatus` is assigned by a module script, and module scripts are always
+        // deferred, so they run after this one — while DOMContentLoaded is guaranteed to fire after
+        // them. Creating the EventSource here rather than at classic-script time is therefore what
+        // stops its first event from being dispatched during parsing, ahead of the bridge.
+        //
+        // That first event is not hypothetical: `JobApiController.progress` sends a snapshot the
+        // moment a client subscribes, so every non-terminal job page raced its own bridge on first
+        // paint. When the snapshot won, the handler's `getStatusClass` threw
+        // `Cannot read properties of undefined` and the live status badge, progress bar and step
+        // list all stopped updating for the rest of the run.
         document.addEventListener('DOMContentLoaded', function () {
             updateStepUI(initialStep, initialStatus);
-        });
 
-        // Connect SSE only if job is not terminal. Spelled out rather than delegating to
-        // window.JobStatus: this runs at classic-script time, before the deferred module script has
-        // defined it (see the module/TDZ pitfall in CLAUDE.md).
-        if (initialStatus !== 'COMPLETED' && initialStatus !== 'FAILED' && initialStatus !== 'CANCELLED') {
+            // Read the terminal rule from the one tested place. The copy that used to be spelled
+            // out here existed only because window.JobStatus was not defined yet at this point;
+            // now that it is, the second definition is just something left to drift.
+            if (window.JobStatus.isTerminalStatus(initialStatus)) {
+                return;
+            }
+
             const eventSource = new EventSource('/api/jobs/v1/' + jobId + '/progress');
 
             eventSource.addEventListener('progress', function(event) {
@@ -304,9 +316,13 @@
                 // Update step sequence UI
                 updateStepUI(data.step, data.status);
 
-                // Handle completed / failed / cancelled. This callback runs long after the deferred
-                // module script, so window.JobStatus is safe here — and keeping the terminal rule
-                // in one tested place is what stops a cancelled job holding the stream open.
+                // Handle completed / failed / cancelled. window.JobStatus is safe here because
+                // the subscription above is created from DOMContentLoaded, not because a callback
+                // is "late" — the premise this comment used to state. An EventSource created at
+                // classic-script time can have its first event dispatched before the deferred
+                // module runs, which is exactly the bug that moved the subscription. Keeping the
+                // terminal rule in one tested place is what stops a cancelled job holding the
+                // stream open.
                 if (window.JobStatus.isTerminalStatus(data.status)) {
                     eventSource.close();
                     const stopForm = document.getElementById('stopForm');
@@ -344,7 +360,7 @@
                 console.log("SSE EventSource encountered an error. Connection closed.");
                 eventSource.close();
             };
-        }
+        });
         /*]]>*/
     </script>
 </body>

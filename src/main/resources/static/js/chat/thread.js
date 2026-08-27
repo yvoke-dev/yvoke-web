@@ -21,6 +21,7 @@ import {
     describeSendFailure,
     escapeHtml,
     pollTerminalDecision,
+    profileOptionVisibility,
     promptLabel as promptLabelOf,
     syncLoaderMarkup,
 } from './thread-text.js';
@@ -451,6 +452,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 const name = orchestratorProfileSelector.value || '';
                 orchestratorMode = !!name;
                 applyOrchestratorModeUI();
+                // Selecting away from a prototype profile withdraws its exemption, so the option
+                // has to disappear again while the toggle is off.
+                applyProfileOptionVisibility();
                 const conversationId = CHAT_CONFIG.conversationId;
                 const params = new URLSearchParams();
                 if (name) params.append('name', name);
@@ -548,16 +552,36 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 const tooltipEl = showPrototypesBtn.querySelector('.custom-tooltip');
                 if (showPrototypesEnabled) {
                     showPrototypesBtn.classList.add('active');
-                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks (enabled)";
+                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks & profiles (enabled)";
                 } else {
                     showPrototypesBtn.classList.remove('active');
-                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks (disabled)";
+                    if (tooltipEl) tooltipEl.textContent = "Show prototype playbooks & profiles (disabled)";
                 }
             }
             const chips = document.querySelectorAll('#prompt-chips .chip[data-prototype="true"]');
             chips.forEach(chip => {
                 chip.style.display = showPrototypesEnabled ? '' : 'none';
             });
+            applyProfileOptionVisibility();
+        }
+
+        // The same toggle governs prototype orchestrator profiles. The profile currently selected
+        // for this conversation is never hidden — see profileOptionVisibility.
+        function applyProfileOptionVisibility() {
+            if (!orchestratorProfileSelector) return;
+            const options = Array.from(orchestratorProfileSelector.options)
+                .filter(opt => opt.value);
+            const profiles = options.map(opt => ({
+                name: opt.value,
+                prototype: opt.dataset.prototype === 'true',
+            }));
+            const decision = profileOptionVisibility(
+                profiles, showPrototypesEnabled, orchestratorProfileSelector.value || '');
+            const hidden = new Set(decision.hidden);
+            options.forEach(opt => {
+                opt.hidden = hidden.has(opt.value);
+            });
+            orchestratorProfileSelector.style.display = decision.anyVisible ? '' : 'none';
         }
         updateShowPrototypesUI();
 

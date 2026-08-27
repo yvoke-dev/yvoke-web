@@ -123,7 +123,7 @@ public class ConversationAgentRunContextIT {
 
         orchestratorProfileRepository.upsert(new OrchestratorProfile(
             "oim", 2, 5, "oim-orch", "oim-rev", List.of("oim-spec"),
-            "gemini-2.5-pro", "high", "gemini-2.5-pro", "high", "gemini-2.5-flash", "medium", null, null
+            "gemini-2.5-pro", "high", "gemini-2.5-pro", "high", "gemini-2.5-flash", "medium", false, null, null
         ));
     }
 

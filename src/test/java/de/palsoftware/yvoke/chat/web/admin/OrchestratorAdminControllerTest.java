@@ -123,6 +123,46 @@ public class OrchestratorAdminControllerTest {
         verify(profileService).saveProfile(any(OrchestratorProfile.class));
     }
 
+    /**
+     * The prototype checkbox the form posts has to arrive on the saved profile.
+     *
+     * <p>
+     * Spring binds what a handler declares and drops everything else without a warning, so a
+     * checkbox with no matching {@code @RequestParam} is a silent no-op: the admin ticks it, the
+     * page redirects with "saved successfully", and the profile stays visible to every user. That
+     * exact three-way drift between template, controller and consumer already cost this project
+     * once ({@code jsonUniqueField}), and nothing but an assertion on the SAVED profile catches it
+     * — the redirect is identical either way.
+     *
+     * <p>
+     * An unchecked box posts nothing at all, which is the second half of the contract: absent must
+     * mean {@code false}, not a 400.
+     */
+    @Test
+    void thePrototypeCheckboxOnTheFormReachesTheSavedProfile() throws Exception {
+        mockMvc.perform(post("/admin/orchestrators").param("name", "Browsing")
+            .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb")
+            .param("prototype", "true")).andExpect(status().is3xxRedirection());
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(profileService).saveProfile(saved.capture());
+        assertThat(saved.getValue().prototype()).isTrue();
+    }
+
+    @Test
+    void anUncheckedPrototypeBoxSavesAsNotAPrototype() throws Exception {
+        mockMvc
+            .perform(post("/admin/orchestrators").param("name", "OIM")
+                .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
+            .andExpect(status().is3xxRedirection());
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(profileService).saveProfile(saved.capture());
+        assertThat(saved.getValue().prototype()).isFalse();
+    }
+
     @Test
     void testExportProfile() throws Exception {
         when(profileService.exportProfileToJson("TestProfile"))
@@ -140,7 +180,7 @@ public class OrchestratorAdminControllerTest {
         MockMultipartFile file = new MockMultipartFile("file", "profile.json", "application/json",
             "{\"name\":\"TestProfile\"}".getBytes());
         OrchestratorProfile profile = new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
-            List.of(), null, null, null, null, null, null, null, null);
+            List.of(), null, null, null, null, null, null, false, null, null);
         when(profileService.importProfileFromJson("{\"name\":\"TestProfile\"}"))
             .thenReturn(profile);
 

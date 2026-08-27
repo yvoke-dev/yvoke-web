@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -121,6 +122,45 @@ class DesktopSyncControllerTest {
      * {@code {"systemPrompt":""}}, the desktop's prompt bootstrap would fail hard on a name it
      * merely has not heard of rather than running with no system prompt.
      */
+    /**
+     * A prototype profile is SENT to the desktop, flagged — never withheld.
+     *
+     * <p>
+     * Filtering here would be the reflexive reading of "hidden from the user" and it breaks two
+     * things at once. The desktop owns the setting ({@code showPrototypePlaybooks}), so a server
+     * that filters makes the setting inert for profiles while it still works for playbooks — the
+     * user ticks the box and half the feature responds. And {@code AppCore} resolves the profile a
+     * thread is bound to from this same list, so a withheld profile makes an already-configured
+     * thread fall back to single-agent with nothing to say why.
+     *
+     * <p>
+     * The yml fallback reports {@code false}: those profiles predate the flag and have nowhere to
+     * carry one, and defaulting them to hidden would empty the desktop's dropdown in exactly the
+     * deployment that has no database rows.
+     */
+    @Test
+    void aPrototypeProfileReachesTheDesktopFlaggedRatherThanWithheld() {
+        OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, systemPromptService,
+            playbookService, orchestratorProperties, profileService, orchestratorRunService);
+
+        when(profileService.listAllProfiles()).thenReturn(List.of(
+            new OrchestratorProfile("OIM", 2, 8, "oim-orch", "oim-rev", List.of("spec"), null, null,
+                null, null, null, null, false, null, null),
+            new OrchestratorProfile("OIM - Browsing", 2, 8, "oim-orch", "oim-rev", List.of("spec"),
+                null, null, null, null, null, null, true, null, null)));
+
+        assertThat(dbBacked.listOrchestratorProfiles())
+            .extracting(OrchestratorProfileDto::name, OrchestratorProfileDto::prototype)
+            .containsExactly(tuple("OIM", false), tuple("OIM - Browsing", true));
+
+        when(profileService.listAllProfiles()).thenReturn(List.of());
+
+        assertThat(dbBacked.listOrchestratorProfiles())
+            .as("a yml-configured profile has no flag to carry, so it is not a prototype")
+            .extracting(OrchestratorProfileDto::prototype).containsOnly(false);
+    }
+
     @Test
     void orchestratorProfilesComeFromTheDatabaseAndAnUnknownPromptDegradesToEmpty() {
         OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
@@ -130,7 +170,7 @@ class DesktopSyncControllerTest {
         when(profileService.listAllProfiles())
             .thenReturn(List.of(new OrchestratorProfile("OIM", 2, 8, "oim-orchestrator-edited",
                 "oim-orchestrator-reviewer-edited", List.of("oim-access-governance-edited"), null,
-                null, null, null, null, null, null, null)));
+                null, null, null, null, null, false, null, null)));
 
         assertThat(dbBacked.listOrchestratorProfiles())
             .as("the admin-edited profile wins over the yml one of the same name")

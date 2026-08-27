@@ -27,7 +27,7 @@ public class OrchestratorProfileRepository {
                     SELECT name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                            specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
                            reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
-                           created_at, updated_at
+                           prototype, created_at, updated_at
                     FROM orchestrator_profiles
                     ORDER BY name ASC
                     """)
@@ -41,7 +41,7 @@ public class OrchestratorProfileRepository {
                     SELECT name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                            specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
                            reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
-                           created_at, updated_at
+                           prototype, created_at, updated_at
                     FROM orchestrator_profiles
                     WHERE name = :name
                     """)
@@ -55,11 +55,13 @@ public class OrchestratorProfileRepository {
                     INSERT INTO orchestrator_profiles (
                         name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                         specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
-                        reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level
+                        reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
+                        prototype
                     ) VALUES (
                         :name, :maxReviewRounds, :maxSpecialistCalls, :orchestratorPlaybook, :reviewerPlaybook,
                         :specialistPlaybooks, :orchestratorModel, :orchestratorThinkingLevel,
-                        :reviewerModel, :reviewerThinkingLevel, :specialistModel, :specialistThinkingLevel
+                        :reviewerModel, :reviewerThinkingLevel, :specialistModel, :specialistThinkingLevel,
+                        :prototype
                     ) ON CONFLICT (name) DO UPDATE SET
                         max_review_rounds = EXCLUDED.max_review_rounds,
                         max_specialist_calls = EXCLUDED.max_specialist_calls,
@@ -72,6 +74,7 @@ public class OrchestratorProfileRepository {
                         reviewer_thinking_level = EXCLUDED.reviewer_thinking_level,
                         specialist_model = EXCLUDED.specialist_model,
                         specialist_thinking_level = EXCLUDED.specialist_thinking_level,
+                        prototype = EXCLUDED.prototype,
                         updated_at = CURRENT_TIMESTAMP
                     """)
             .param("name", profile.name()).param("maxReviewRounds", profile.maxReviewRounds())
@@ -87,7 +90,8 @@ public class OrchestratorProfileRepository {
             .param("reviewerModel", profile.reviewerModel())
             .param("reviewerThinkingLevel", profile.reviewerThinkingLevel())
             .param("specialistModel", profile.specialistModel())
-            .param("specialistThinkingLevel", profile.specialistThinkingLevel()).update();
+            .param("specialistThinkingLevel", profile.specialistThinkingLevel())
+            .param("prototype", profile.prototype()).update();
     }
 
     public void delete(String name) {
@@ -107,7 +111,7 @@ public class OrchestratorProfileRepository {
             rs.getString("orchestrator_model"), rs.getString("orchestrator_thinking_level"),
             rs.getString("reviewer_model"), rs.getString("reviewer_thinking_level"),
             rs.getString("specialist_model"), rs.getString("specialist_thinking_level"),
-            cat != null ? cat.toInstant() : Instant.now(),
+            rs.getBoolean("prototype"), cat != null ? cat.toInstant() : Instant.now(),
             uat != null ? uat.toInstant() : Instant.now());
     }
 }
