@@ -7,7 +7,12 @@ ARG DEB=postgresql-16-pg-search_${PG_SEARCH_VERSION}-1PARADEDB-bookworm_${TARGET
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        barman-cli-cloud \
+        python3-pip; \
+    pip3 install --no-cache-dir --break-system-packages google-cloud-storage; \
     curl -fL "https://github.com/paradedb/paradedb/releases/download/v${PG_SEARCH_VERSION}/${DEB}" \
         -o /tmp/pg_search.deb; \
     apt-get install -y --no-install-recommends /tmp/pg_search.deb; \

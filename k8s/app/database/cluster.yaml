@@ -65,4 +65,17 @@ spec:
     limits:
       cpu: "4"
       memory: 4Gi
+  backup:
+    barmanObjectStore:
+      destinationPath: "gs://yvoke-postgres-backups-prod/cnpg/"
+      googleCredentials:
+        applicationCredentials:
+          name: yvoke-postgres-backup
+          key: gcs-credentials.json
+      wal:
+        compression: gzip
+        maxParallel: 1
+      data:
+        compression: gzip
+    retentionPolicy: "7d"
 

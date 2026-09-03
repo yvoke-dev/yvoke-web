@@ -1,0 +1,10 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: yvoke-postgres-daily-backup
+  namespace: yvoke
+spec:
+  schedule: "0 0 2 * * *" # Daily at 02:00:00 UTC
+  backupOwnerReference: self
+  cluster:
+    name: yvoke-postgres

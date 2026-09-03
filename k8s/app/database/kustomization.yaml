@@ -6,6 +6,7 @@ namespace: yvoke
 resources:
   - cluster.yaml
   - configmap.yaml
+  - scheduled-backup.yaml
 
 generators:
   - ksops-secret-generator.yaml
