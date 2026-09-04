@@ -272,7 +272,7 @@ app:
     # against. The Azure deployments only answer where AZURE_OPENAI_ENDPOINT / _API_KEY are
     # set AND app.ai.model-routes maps them; without a route they reach the default route
     # (Gemini), which rejects the name at call time.
-    allowed-models: "${ALLOWED_MODELS:gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna}"
+    allowed-models: "${ALLOWED_MODELS:gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna}"
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range

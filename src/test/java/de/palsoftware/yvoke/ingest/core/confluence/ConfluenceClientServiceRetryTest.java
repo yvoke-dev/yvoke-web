@@ -34,7 +34,7 @@ import java.nio.charset.StandardCharsets;
  * <p>
  * The SSRF guard in {@code getClient} refuses loopback addresses, so a local mock {@code
  * HttpServer} cannot be reached through this service — the fetch is stubbed at the
- * (package-private) {@code fetchPageBody} seam instead, which keeps the retry policy assertions
+ * (package-private) {@code fetchPageContent} seam instead, which keeps the retry policy assertions
  * deterministic.
  */
 class ConfluenceClientServiceRetryTest {
@@ -75,7 +75,7 @@ class ConfluenceClientServiceRetryTest {
         }
 
         @Override
-        Optional<String> fetchPageBody(ConfluenceInstance instance, String pageId,
+        Optional<ConfluencePageContent> fetchPageContent(ConfluenceInstance instance, String pageId,
             String bodyType) {
             if ("storage".equals(bodyType)) {
                 storageCalls.incrementAndGet();
@@ -85,7 +85,13 @@ class ConfluenceClientServiceRetryTest {
             Object outcome = next();
             // ABSENT models a 200 whose JSON carries no body.<type>.value at all — a page whose
             // body was not expanded. A String (including "") models the field being present.
-            return outcome == ABSENT ? Optional.empty() : Optional.of((String) outcome);
+            if (outcome == ABSENT) {
+                return Optional.empty();
+            }
+            if (outcome instanceof ConfluencePageContent content) {
+                return Optional.of(content);
+            }
+            return Optional.of(new ConfluencePageContent((String) outcome, null, null, null));
         }
 
         @Override
@@ -117,7 +123,7 @@ class ConfluenceClientServiceRetryTest {
         ScriptedClient client =
             new ScriptedClient(tooManyRequests("1"), tooManyRequests(null), "<p>body</p>");
 
-        String body = client.getPageBodyStorage(INSTANCE, "page-1");
+        String body = client.getPageContent(INSTANCE, "page-1").xhtml();
 
         assertThat(body).isEqualTo("<p>body</p>");
         assertThat(client.storageCalls.get()).isEqualTo(3);
@@ -129,7 +135,7 @@ class ConfluenceClientServiceRetryTest {
         ScriptedClient client = new ScriptedClient(tooManyRequests("1"), tooManyRequests("1"),
             tooManyRequests("1"), tooManyRequests("1"));
 
-        assertThatThrownBy(() -> client.getPageBodyStorage(INSTANCE, "page-1"))
+        assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1")
             .hasMessageContaining("429");
 
@@ -142,7 +148,7 @@ class ConfluenceClientServiceRetryTest {
             new ScriptedClient(HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR,
                 "boom", HttpHeaders.EMPTY, new byte[0], null), "<p>view body</p>");
 
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1")).isEqualTo("<p>view body</p>");
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEqualTo("<p>view body</p>");
         assertThat(client.viewCalls.get()).isEqualTo(1);
     }
 
@@ -154,7 +160,7 @@ class ConfluenceClientServiceRetryTest {
             HttpClientErrorException.create(HttpStatus.NOT_FOUND, "nope", HttpHeaders.EMPTY,
                 new byte[0], null));
 
-        assertThatThrownBy(() -> client.getPageBodyStorage(INSTANCE, "page-1"))
+        assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
     }
 
@@ -166,7 +172,7 @@ class ConfluenceClientServiceRetryTest {
         // storage format the fallback exists for.
         ScriptedClient client = new ScriptedClient(ABSENT, "<p>view body</p>");
 
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1")).isEqualTo("<p>view body</p>");
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEqualTo("<p>view body</p>");
         assertThat(client.storageCalls.get()).isEqualTo(1);
         assertThat(client.viewCalls.get()).isEqualTo(1);
     }
@@ -175,7 +181,7 @@ class ConfluenceClientServiceRetryTest {
     void unexpandedBodyInBothFormatsFailsInsteadOfSilentlyIngestingNothing() {
         ScriptedClient client = new ScriptedClient(ABSENT, ABSENT);
 
-        assertThatThrownBy(() -> client.getPageBodyStorage(INSTANCE, "page-1"))
+        assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
     }
 
@@ -186,7 +192,7 @@ class ConfluenceClientServiceRetryTest {
         // That is a skip, not a failure, and must not burn a body.view round-trip either.
         ScriptedClient client = new ScriptedClient("");
 
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1")).isEmpty();
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEmpty();
         assertThat(client.storageCalls.get()).isEqualTo(1);
         assertThat(client.viewCalls.get()).isZero();
     }
@@ -195,7 +201,7 @@ class ConfluenceClientServiceRetryTest {
     void transportFailureIsNotSwallowed() {
         ScriptedClient client = new ScriptedClient(new ResourceAccessException("connection reset"));
 
-        assertThatThrownBy(() -> client.getPageBodyStorage(INSTANCE, "page-1"))
+        assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
     }
 
@@ -206,7 +212,7 @@ class ConfluenceClientServiceRetryTest {
         ScriptedClient client = new ScriptedClient(tooManyRequests("600"), "<p>body</p>");
 
         long start = System.nanoTime();
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1")).isEqualTo("<p>body</p>");
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEqualTo("<p>body</p>");
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertThat(elapsedMs).isLessThan(2_000);
@@ -224,11 +230,11 @@ class ConfluenceClientServiceRetryTest {
      * <p>
      * What breaks is not the parse — it is the RETRY. The exception is thrown from inside the
      * {@code catch} block of {@code withRateLimitRetry}, so it is not caught there; it propagates
-     * into {@code getPageBodyStorage}'s generic {@code catch (RuntimeException)} and comes back out
-     * as a hard failure of the page job. In other words the recovery path becomes the thing that
-     * kills the crawl, and it does so on precisely the response the recovery exists for: a 429 the
-     * server has told us is survivable. On a throttled site that is every in-flight page job at
-     * once, and the reported error names a number-format problem rather than rate limiting.
+     * into {@code getPageContent}'s generic {@code catch (RuntimeException)} and comes back out as
+     * a hard failure of the page job. In other words the recovery path becomes the thing that kills
+     * the crawl, and it does so on precisely the response the recovery exists for: a 429 the server
+     * has told us is survivable. On a throttled site that is every in-flight page job at once, and
+     * the reported error names a number-format problem rather than rate limiting.
      *
      * <p>
      * The assertion is that the fetch SUCCEEDS on the second attempt through the storage path — a
@@ -242,7 +248,7 @@ class ConfluenceClientServiceRetryTest {
             new ScriptedClient(tooManyRequests("Wed, 21 Oct 2026 07:28:00 GMT"), "<p>body</p>");
 
         long start = System.nanoTime();
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1"))
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml())
             .as("an HTTP-date Retry-After is ignored, so the ordinary backoff retries and succeeds")
             .isEqualTo("<p>body</p>");
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
@@ -269,7 +275,7 @@ class ConfluenceClientServiceRetryTest {
         script[script.length - 1] = "<p>body</p>";
         ScriptedClient client = new ScriptedClient(200, script);
 
-        assertThat(client.getPageBodyStorage(INSTANCE, "page-1")).isEqualTo("<p>body</p>");
+        assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEqualTo("<p>body</p>");
         assertThat(client.storageCalls.get()).isEqualTo(script.length);
     }
 
@@ -303,13 +309,13 @@ class ConfluenceClientServiceRetryTest {
     }
 
     // ---------------------------------------------------------------------
-    // Every test above replaces fetchPageBody with a script, so the parsing that DECIDES
+    // Every test above replaces fetchPageContent with a script, so the parsing that DECIDES
     // absent-vs-empty — the single point the whole contract rests on — had no coverage at all. It
     // is driven here against a local mock Confluence instead.
     // ---------------------------------------------------------------------
 
     /**
-     * Runs the real {@code fetchPageBody} against a local mock Confluence.
+     * Runs the real {@code fetchPageContent} against a local mock Confluence.
      *
      * <p>
      * Only {@code getClient(ConfluenceInstance)} is overridden: the SSRF guard on the credentials
@@ -357,12 +363,12 @@ class ConfluenceClientServiceRetryTest {
     /**
      * A 200 that never expanded the body must be ABSENT, and a 200 carrying an explicitly empty
      * value must be PRESENT-and-empty. Collapsing the two into {@code ""} is silent, permanent
-     * content loss: {@code getPageBodyStorage} only falls back from {@code storage} to {@code view}
+     * content loss: {@code getPageContent} only falls back from {@code storage} to {@code view}
      * when the storage fetch is absent, so a page whose body was simply not expanded would be
      * ingested as a completed zero-chunk document, its {@code confluence_page_version} would be
      * recorded, and the version-skip would stop any later crawl from ever retrying it — on a job
-     * that reports success. Every other test in this class overrides {@code fetchPageBody} away, so
-     * this is the only place the classification itself runs.
+     * that reports success. Every other test in this class overrides {@code fetchPageContent} away,
+     * so this is the only place the classification itself runs.
      */
     @Test
     void aResponseWithNoExpandedBodyFieldIsAbsentNotEmpty() throws IOException {
@@ -371,12 +377,13 @@ class ConfluenceClientServiceRetryTest {
 
             // No body at all, no body.storage, and a body.storage with no value: all "not
             // expanded", none of which threw, so only the Optional can tell the caller.
-            assertThat(client.fetchPageBody(INSTANCE, "page-1", "storage")).isEmpty();
-            assertThat(client.fetchPageBody(INSTANCE, "page-2", "storage")).isEmpty();
-            assertThat(client.fetchPageBody(INSTANCE, "page-3", "storage")).isEmpty();
+            assertThat(client.fetchPageContent(INSTANCE, "page-1", "storage")).isEmpty();
+            assertThat(client.fetchPageContent(INSTANCE, "page-2", "storage")).isEmpty();
+            assertThat(client.fetchPageContent(INSTANCE, "page-3", "storage")).isEmpty();
 
             // A page that genuinely has no content: present, and empty.
-            assertThat(client.fetchPageBody(INSTANCE, "page-4", "storage")).contains("");
+            assertThat(client.fetchPageContent(INSTANCE, "page-4", "storage"))
+                .map(ConfluencePageContent::xhtml).contains("");
         }
     }
 

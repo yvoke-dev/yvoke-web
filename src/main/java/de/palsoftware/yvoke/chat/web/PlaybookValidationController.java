@@ -73,13 +73,16 @@ public class PlaybookValidationController {
             List<Playbook> playbooks = playbookService.listSpecializedPlaybooks().stream()
                 .filter(p -> finalShowPrototypes || !p.prototype()).toList();
 
-            String model = null;
+            String stored = null;
             if (conversation.settings() != null) {
                 Object val = conversation.settings().get(ConversationSetting.MODEL.getValue());
                 if (val instanceof String s && !s.isBlank()) {
-                    model = s;
+                    stored = s;
                 }
             }
+            // effectiveModel also demotes a RETIRED model to the default, so the preflight runs
+            // against the same model the answer will (ChatMessageService#resolveModelToUse).
+            String model = chatConversationService.effectiveModel(stored);
             if (model == null) {
                 List<String> allowedModels = chatConversationService.getAllowedModels();
                 if (allowedModels == null || allowedModels.isEmpty()) {

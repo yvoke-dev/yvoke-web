@@ -458,10 +458,17 @@ public class ConfluenceIngestService {
 
         ctx.report(JobStep.CHUNK, 10, "Converting page to markdown: " + title);
 
-        // Get the body. A fetch/transport failure THROWS (see
-        // ConfluenceClientService#getPageBodyStorage) so a throttled or unauthorized crawl can
+        // Get the content. A fetch/transport failure THROWS (see
+        // ConfluenceClientService#getPageContent) so a throttled or unauthorized crawl can
         // never complete green with an empty corpus.
-        String xhtml = confluenceClient.getPageBodyStorage(target.instance(), pageId);
+        ConfluencePageContent content = confluenceClient.getPageContent(target.instance(), pageId);
+        String xhtml = content.xhtml();
+        String author = content.author();
+        String lastUpdated = content.lastUpdated();
+        // The fetched version wins over the crawl listing's: it is the version whose CONTENT is
+        // being stored, and the two are read from Confluence at different moments. Falls back to
+        // the listing's when the response carried no version at all.
+        Integer version = content.version() != null ? content.version() : pageVersion;
 
         // Between the (slow, remote) fetch and the equally slow embed: a stop issued while this
         // page was in flight takes effect here instead of after the whole page finishes.
@@ -475,7 +482,8 @@ public class ConfluenceIngestService {
             // bodies, a single leading H1 and pre-heading prose all survive, and applies the shared
             // oversized-section split.
             ctx.report(JobStep.CHUNK, 40, "Chunking markdown sections");
-            sections = ConfluenceSectionBuilder.build(title, markdown);
+            sections = ConfluenceSectionBuilder.build(title, markdown, sourceFile, author,
+                lastUpdated, version);
         }
 
         if (sections.isEmpty()) {
@@ -489,7 +497,7 @@ public class ConfluenceIngestService {
                 + " {} (ID: {})", title, pageId);
             ctx.report(JobStep.INJECT, 80, "Recording empty page: " + title);
             persistDocument(collection, tag, sourceFile, List.of(), List.of(), List.of(), title,
-                pageVersion);
+                version, author, lastUpdated);
             ctx.report(JobStep.INJECT, 100, "Skipped page (no ingestible content): " + title);
             return new JobCounts(1, 0, 0, 0, 0);
         }
@@ -510,7 +518,7 @@ public class ConfluenceIngestService {
         // Persist to Postgres
         ctx.report(JobStep.INJECT, 80, "Persisting document");
         UUID documentId = persistDocument(collection, tag, sourceFile, sections, chunkTexts,
-            embeddings, title, pageVersion);
+            embeddings, title, version, author, lastUpdated);
 
         // Section summaries are opt-in per instance, and both halves of that decision travel in the
         // job's own settings, snapshotted at crawl time. Page imports used to summarize
@@ -712,7 +720,7 @@ public class ConfluenceIngestService {
 
     private UUID persistDocument(String collection, String tag, String sourceFile,
         List<Section> sections, List<String> chunkTexts, List<float[]> embeddings, String title,
-        Integer pageVersion) {
+        Integer pageVersion, @Nullable String author, @Nullable String lastUpdated) {
         List<ChunkInsert> inserts = new ArrayList<>(sections.size());
         for (int i = 0; i < sections.size(); i++) {
             Section s = sections.get(i);
@@ -728,6 +736,19 @@ public class ConfluenceIngestService {
             if (pageVersion != null) {
                 documentRepository.updateMetadataKey(documentId, "confluence_page_version",
                     pageVersion);
+            }
+            // The same two facts also travel INSIDE every chunk body, in the provenance header
+            // ConfluenceSectionBuilder prepends, and the duplication is deliberate rather than an
+            // oversight: the inline copy is what makes the author and the page's recency visible
+            // to the model and reachable by search, while these columns are the queryable form —
+            // the one a "pages nobody has touched since X" report or an author filter would use.
+            // Nothing reads them yet, so a reader could otherwise reasonably take them for dead
+            // writes and delete them.
+            if (author != null) {
+                documentRepository.updateMetadataKey(documentId, "author", author);
+            }
+            if (lastUpdated != null) {
+                documentRepository.updateMetadataKey(documentId, "last_updated", lastUpdated);
             }
             // The delete always runs: a page whose content was removed must lose its old chunks.
             documentRepository.deleteContentForDocument(documentId);

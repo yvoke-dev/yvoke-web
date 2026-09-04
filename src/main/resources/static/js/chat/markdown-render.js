@@ -39,6 +39,25 @@ export function installCodeRenderer(marked) {
             }
         },
         renderer: {
+            // Raw HTML is ESCAPED rather than passed through. DOMPurify drops an unknown element
+            // while keeping its text, so `<Class Name="Group">` reached the user as nothing at all
+            // — silent content loss on a corpus full of XML, C# and VB.NET config. The cost is
+            // that an answer can no longer use HTML for formatting: <br>, <sub>, an <a> or an HTML
+            // table now show as source. That is the deliberate trade — over-rendering loses
+            // content invisibly, over-escaping is ugly but readable.
+            //
+            // A BLOCK token additionally needs a wrapper. Emitted bare it has no element around
+            // it, so the browser collapses its newlines and indentation and a multi-line schema
+            // renders as one run-on line with no margins. <pre><code> is what the code renderer
+            // emits and what index.css already styles, so the markup reads as the source it is —
+            // and mapOutsidePre then treats it like any other code block. Inline tokens (<br>
+            // mid-sentence) must NOT be wrapped, which is what token.block separates.
+            html(token) {
+                const text = typeof token === 'string' ? token : (token.text || token.raw || '');
+                return token && token.block
+                    ? `<pre><code>${escapeHtml(text)}</code></pre>`
+                    : escapeHtml(text);
+            },
             code(token) {
                 const text = token.text || '';
                 const lang = token.lang || '';
@@ -168,6 +187,30 @@ function protectUnclosedThink(safe, placeholders, isStreaming, deps) {
     return safe.substring(0, lastThinkStart) + `%%CITE_${idx}%%`;
 }
 
+/** An `<a>` opening tag whose href is http(s) — anything else is ours or in-page. */
+const EXTERNAL_ANCHOR = /<a\s([^>]*href="https?:\/\/[^"]*"[^>]*)>/gi;
+
+/**
+ * Points every external link at a new tab.
+ *
+ * <p>Runs AFTER the sanitizer, deliberately: it only ADDS `target`/`rel` to anchors DOMPurify has
+ * already approved, so it cannot reintroduce anything the sanitizer removed, and living here — a
+ * pure string -> string pass — keeps it in the node test tier. A DOMPurify hook would be the
+ * idiomatic home and is unpinnable: DOMPurify needs a DOM and the tests inject a spy for it.
+ *
+ * Gated on http(s) so `formatCitations`' own `<a href="#" class="citation-link">` is untouched —
+ * a target on those opens a blank tab instead of the citation panel. An anchor that already
+ * declares a target is left alone, which also makes the pass idempotent.
+ */
+export function openExternalLinksInNewTab(html) {
+    return html.replace(EXTERNAL_ANCHOR, function (match, attrs) {
+        if (/\btarget\s*=/i.test(attrs)) {
+            return match;
+        }
+        return `<a ${attrs} target="_blank" rel="noopener noreferrer">`;
+    });
+}
+
 /**
  * Renders one message's raw text to sanitized HTML.
  *
@@ -181,6 +224,9 @@ export function renderMarkdown(text, isStreaming, deps) {
     source = forceToolCallNewlines(source);
     source = normalizeSpacing(source);
 
+    // No unwrapBacktickedCitations() call here: it is protectTokens' own first step, because the
+    // unwrap exists solely to let it see tokens hidden inside a <code> span. Calling it here too
+    // was a no-op that made "unwrap before protect" a convention rather than a fact.
     const protectedText = protectTokens(source);
     const placeholders = protectedText.placeholders;
     let safe = protectBlocks(protectedText.safe, placeholders);
@@ -198,5 +244,7 @@ export function renderMarkdown(text, isStreaming, deps) {
 
     // Sanitize last. wrapToolCalls is deliberately NOT called here — it runs in the caller, after
     // the citation passes, exactly where it always has; moving it would reorder the whole chain.
-    return deps.sanitize(safe);
+    // openExternalLinksInNewTab only adds target/rel to anchors the sanitizer already passed, so
+    // running it afterwards cannot put back anything DOMPurify took out.
+    return openExternalLinksInNewTab(deps.sanitize(safe));
 }

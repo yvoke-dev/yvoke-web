@@ -83,7 +83,7 @@
 
 - **Environment variables**:
   - `AI_PROVIDER`: The default route — the provider for any model `AI_MODEL_ROUTES` does not map (`gemini` or `azure-openai-responses`). `cloudflare-gemini`, `openrouter` and `azure-openai` are retired and fail startup with a message naming the replacement. Pinned against `k8s/app/yvoke-app/configmap.yaml` by `ApplicationYamlInvariantsTest`, because a retired value there is a failed start rather than a degraded one.
-  - `AI_MODEL_ROUTES`: Per-model overrides as a JSON object, e.g. `{"gemini-3.6-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}`. Blank or `{}` by default; every entry is validated at startup (invalid JSON, a non-object, an unknown route, a non-string route or a duplicated model all fail).
+  - `AI_MODEL_ROUTES`: Per-model overrides as a JSON object, e.g. `{"gemini-3.8-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}`. Blank or `{}` by default; every entry is validated at startup (invalid JSON, a non-object, an unknown route, a non-string route or a duplicated model all fail).
   - `GEMINI_API_KEY`: API key for Gemini models.
   - `OPENROUTER_API_KEY`: API key for OpenRouter (DeepSeek) models. Retired — the provider is not selectable.
   - `AZURE_OPENAI_ENDPOINT`: Azure OpenAI resource endpoint. Required when the provider is `azure-openai-responses` — startup fails without it, because the SDK would otherwise target the public OpenAI service and forward the key there.
@@ -164,7 +164,13 @@
 
 - Config keys (`application.yml`, prefix `app.chat`):
   - `enabled` (default `true`) — enables or disables the web chat module.
-  - `allowed-models` — list of models that standard users can select for conversation.
+  - `allowed-models` — list of models that standard users can select for conversation. ORDER is
+    behaviour: element 0 is stamped on every new conversation and is the model the playbook
+    preflight runs against. The list is declared in THREE places — this default, `.env.example`
+    and the k8s ConfigMap — and `ApplicationYamlInvariantsTest` now compares all three, order
+    included. A conversation's stored model outlives the list: retiring a model resolves it to
+    element 0 through `ChatConversationService.effectiveModel`, which the picker, the send path
+    and the preflight all share so the displayed model is always the one that will answer.
   - `playbook-validation-enabled` (default `true`) — configures whether the LLM preflight validation runs on the first message of a conversation.
 
 ## Web & UI Layer Guidelines

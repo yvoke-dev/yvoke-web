@@ -121,9 +121,9 @@ a register of everyone's conversations.
 | **Pick a playbook** | Before asking, the user picks a named way of answering. Suggestions appear as chips on an empty conversation; typing `/` or clicking **+** opens the full list with descriptions. The active choice is shown above the input. |
 | **Ask by typing or by voice** | The input grows as you type; Enter sends, Shift+Enter adds a line. A microphone button dictates into the box — tap to start and stop, or hold to record, chosen in voice settings. |
 | **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response*, *Polishing the answer* — and names each research tool as it runs. |
-| **Read a formatted answer** | Answers render headings, tables, code blocks, mathematical formulas and drawn diagrams. In Streaming mode a diagram shows as its source text while the answer is still arriving, and is drawn once it finishes. |
+| **Read a formatted answer** | Answers render headings, tables, code blocks, mathematical formulas and drawn diagrams. Markup an answer quotes — an XML fragment, a configuration snippet, a stray HTML tag — is shown verbatim as source rather than rendered, so it survives intact instead of vanishing; a multi-line fragment is shown as a code block. A link to somewhere outside Yvoke opens in a new tab, so following one never loses the conversation. In Streaming mode a diagram shows as its source text while the answer is still arriving, and is drawn once it finishes. |
 | **Stop a running answer** | The send button becomes a stop button while an answer runs. Stopping marks the answer *[Generation stopped by user]*. In Standard mode the text so far is kept; in in-depth mode the partial answer is discarded. |
-| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel showing the section the cited passage sits in — the passage in context, not on its own — with its document title, its version, and a link to the original page where one exists. |
+| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel showing the cited passage and nothing else — deliberately, since a citation is the claim that *this* passage supports the sentence, and padding it out with neighbouring text invites confirming a claim against material the assistant never read. The panel carries the document title, its version, the passage's place in the document, and a link to the original page where one exists. |
 | **See the reasoning and tools used** | *Show thinking & tools* reveals the assistant's reasoning and every tool it called. A *View Thinking Process* button opens the full reasoning in a panel. Forced on in Streaming mode. |
 | **See how much work an answer took** | Each answer shows how much text the assistant read, re-used, thought with and wrote. Users see effort, never money — no prices appear in chat. |
 | **Answer a clarifying question** | When the assistant needs more information it posts a *Clarification Required* card, often with ready-made options. The input is locked until the user answers. The card then collapses to *Clarification Provided*. |
@@ -474,6 +474,13 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   names the offending files — up to twenty, plus a total count.
 - **A Confluence re-sync only re-imports pages whose version changed**, so repeat syncs over a large space
   are cheap. A page with no usable content is recorded as empty so it is not re-queued forever.
+- **A Confluence page is kept whole where it fits.** Neighbouring sections are grouped into one passage
+  rather than split one per heading, so a short section is never retrieved stripped of the material around
+  it, and its subheadings stay visible inside the passage. A section too large to fit is split into numbered
+  parts. The ceiling is 3,500 characters per passage, provenance line included.
+- **Every Confluence passage carries where it came from** — a link to the page, who last edited it, when, and
+  which version. It travels with the text, so it appears in the citation panel and is available to the
+  assistant when judging how current a source is.
 - **Structured records are updated in place only when a unique field is named.** The job count reports
   records parsed, not how many were new, so a re-import that duplicates everything still looks normal.
 - **Deleting a knowledge area** removes its documents, graph, records and search history. Removing one

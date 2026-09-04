@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.core.service;
 
 import de.palsoftware.yvoke.chat.core.ChatProperties;
+import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
@@ -17,6 +18,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -28,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ChatConversationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatConversationService.class);
 
     /** How many conversations the sidebar loads — and therefore how far folder names are seen. */
     private static final int SIDEBAR_LIMIT = 100;
@@ -48,6 +53,54 @@ public class ChatConversationService {
     public List<String> getAllowedModels() {
         return chatProperties.allowedModels() != null ? chatProperties.allowedModels()
             : Collections.emptyList();
+    }
+
+    /**
+     * The model a conversation actually runs on, given the whitelist in force right now.
+     *
+     * <p>
+     * A conversation's stored model outlives the whitelist: retiring one from
+     * {@code app.chat.allowed-models} leaves every conversation pinned to it still naming it. The
+     * two halves of the app then disagreed about what that meant — the picker rendered no matching
+     * option so the browser selected the FIRST, while the send path read the stored value straight
+     * out of the settings map, so the UI said one model and the answer came from another with
+     * nothing anywhere reporting the divergence. The obvious repair did not work either: the picker
+     * already displayed the default, so choosing it fired no change event and posted nothing, and
+     * the conversation could not be moved off the retired model at all.
+     *
+     * <p>
+     * A retired model therefore resolves to the default — element 0, the same value
+     * {@link #createConversation()} stamps on a new conversation. Nothing is written back: a page
+     * render must not mutate a conversation, and the stale stored value is inert from here on,
+     * overwritten by {@link #updateModel} the first time the user picks anything.
+     *
+     * <p>
+     * An EMPTY or absent whitelist passes the stored value through untouched — an empty list is a
+     * missing opinion, not a statement that every model is forbidden, and substituting a "default"
+     * from it would mean inventing a model out of nothing. A missing stored model is likewise
+     * returned unchanged: callers already handle that case, and differently (the send path throws,
+     * the preflight substitutes the default), so folding them together here would change two
+     * behaviours while fixing a third.
+     *
+     * <p>
+     * Static so the send path can resolve with the REAL rule while taking only the whitelist from
+     * its mocked {@code ChatConversationService} — a lenient stub of an instance method would let
+     * the test agree with whatever production did.
+     */
+    public static @Nullable String effectiveModel(@Nullable String storedModel,
+        @Nullable List<String> allowedModels) {
+        if (allowedModels == null || allowedModels.isEmpty() || storedModel == null
+            || storedModel.isBlank() || allowedModels.contains(storedModel)) {
+            return storedModel;
+        }
+        log.warn("Conversation model '{}' is no longer in app.chat.allowed-models; using '{}'",
+            storedModel, allowedModels.get(0));
+        return allowedModels.get(0);
+    }
+
+    /** {@link #effectiveModel(String, List)} against the configured whitelist. */
+    public @Nullable String effectiveModel(@Nullable String storedModel) {
+        return effectiveModel(storedModel, getAllowedModels());
     }
 
     public boolean isPlaybookValidationEnabled() {

@@ -447,8 +447,8 @@ public class ApplicationYamlInvariantsTest {
                 + " ORDER is behaviour, not presentation: element 0 is stamped on every new"
                 + " conversation and is the model the playbook preflight runs against, so a reorder"
                 + " changes what everybody gets by default")
-            .containsExactly("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
-                "gpt-5.4-mini", "DeepSeek-V4-Flash", "gpt-5.6-luna");
+            .containsExactly("gemini-3.8-flash", "gemini-3.5-flash-lite", "gpt-5.4-mini",
+                "DeepSeek-V4-Flash", "gpt-5.6-luna");
         assertThat(text("app", "ai", "azure-openai", "reasoning-models"))
             .as("this list REPLACES the name heuristic rather than extending it, so a half-filled"
                 + " value declassifies every deployment it omits and 400s each of them; empty means"
@@ -505,6 +505,45 @@ public class ApplicationYamlInvariantsTest {
                 routed -> assertThat(allowed.stream().anyMatch(a -> a.equalsIgnoreCase(routed)))
                     .as("routed model '%s' is absent from ALLOWED_MODELS %s", routed, allowed)
                     .isTrue());
+    }
+
+    /**
+     * {@code ALLOWED_MODELS} lives in THREE places and nothing compared them, so the deployment
+     * moved to a newer Gemini while {@code application.yml} and {@code .env.example} kept naming
+     * two models the operator had deliberately stopped using. Nothing failed: the yml default only
+     * applies where the variable is unset, which is every local stack, so the drift shows up as
+     * local dev quietly minting conversations on a retired model.
+     *
+     * <p>
+     * ORDER is compared too, for the reason
+     * {@code shippedGenerationChatAndProviderDefaultsAreTheOnesProductionActuallyRunsOn} already
+     * gives: element 0 is stamped on every new conversation and is what a retired model now falls
+     * back to, so a reorder changes what everybody gets by default.
+     */
+    @Test
+    void theModelWhitelistIsTheSameInAllThreePlacesThatDeclareIt() throws Exception {
+        List<String> yaml = splitModels(text("app", "chat", "allowed-models")
+            .replaceFirst("^\\$\\{ALLOWED_MODELS:", "").replaceFirst("\\}$", ""));
+        List<String> deployed = splitModels(deployedConfigMap().get("ALLOWED_MODELS"));
+
+        String envExample = Files.readAllLines(Path.of(".env.example"), StandardCharsets.UTF_8)
+            .stream().filter(l -> l.startsWith("ALLOWED_MODELS=")).findFirst()
+            .orElseThrow(() -> new AssertionError(".env.example declares no ALLOWED_MODELS"));
+
+        assertThat(deployed)
+            .as("the k8s ConfigMap and the application.yml default are one"
+                + " contract; the yml value is what every deployment that sets nothing runs on")
+            .containsExactlyElementsOf(yaml);
+        assertThat(splitModels(envExample.substring("ALLOWED_MODELS=".length())))
+            .as("the local Compose environment is the third declaration and drifts just as"
+                + " silently")
+            .containsExactlyElementsOf(yaml);
+    }
+
+    private static List<String> splitModels(String csv) {
+        assertThat(csv).as("ALLOWED_MODELS must be declared").isNotNull();
+        return Arrays.stream(csv.replace("\"", "").split(",")).map(String::trim)
+            .filter(m -> !m.isEmpty()).toList();
     }
 
     @SuppressWarnings("unchecked")

@@ -45,6 +45,7 @@ Your job is to perform focused reviews on Spring Boot backend changes and databa
 - **ArchUnit invariants** (`ArchitectureTest.java`): `shared` must not depend on any domain; a domain's `core` must not depend on its `api`/`web`; controllers only in `api`/`web`/`security`; slices free of cycles. Flag violations; do NOT flag legitimate domain→domain dependencies (those are allowed).
 - **DTO leakage**: Flag any raw DB entity/record returned to the web/UI layer or referenced in a Thymeleaf template — the service layer must map to DTOs.
 - **Steering drift**: A new `de.palsoftware.yvoke` package must be documented in `.antigravity/steering/structure.md` (`check_steering.py` enforces this).
+- **Spotless code formatting**: Check that modified Java files adhere to Spotless rules (`./mvnw spotless:check`). Flag any format violations as a Medium finding.
 
 ### 6. ASDD Spec Compliance
 - Validate that the implementation matches the approved requirements and design specifications passed in your task prompt.

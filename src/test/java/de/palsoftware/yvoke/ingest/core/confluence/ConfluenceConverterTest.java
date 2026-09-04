@@ -93,15 +93,36 @@ class ConfluenceConverterTest {
         List<Section> sections =
             ConfluenceSectionBuilder.build("Agent Guide", convert("123", xhtml));
 
-        assertThat(sections).extracting(Section::depth, Section::title, Section::headingPath)
-            .containsExactly(tuple(1, "Agent Guide", List.of()),
-                tuple(1, "Overview", List.of("Agent Guide")),
-                tuple(2, "Installation", List.of("Agent Guide", "Overview")),
-                tuple(3, "Prerequisites", List.of("Agent Guide", "Overview", "Installation")),
-                tuple(2, "Configuration", List.of("Agent Guide", "Overview")));
-        assertThat(sections.get(3).toChunkText())
-            .isEqualTo("> Section path: Agent Guide > Overview > Installation\n\n"
-                + "### Prerequisites\n\nJDK 25.\n");
+        assertThat(sections).hasSize(1);
+        Section chunk = sections.get(0);
+        assertThat(chunk.depth()).isEqualTo(1);
+        assertThat(chunk.title()).isEqualTo("Agent Guide");
+        assertThat(chunk.headingPath()).isEmpty();
+        assertThat(chunk.body()).contains("This page describes the agent.")
+            .contains("# Overview\n\nWhat it is.").contains("## Installation\n\nRun the installer.")
+            .contains("### Prerequisites\n\nJDK 25.")
+            .contains("## Configuration\n\nEdit application.yml.");
+        assertThat(chunk.toChunkText()).isEqualTo("""
+            # Agent Guide
+
+            This page describes the agent.
+
+            # Overview
+
+            What it is.
+
+            ## Installation
+
+            Run the installer.
+
+            ### Prerequisites
+
+            JDK 25.
+
+            ## Configuration
+
+            Edit application.yml.
+            """);
     }
 
     @Test

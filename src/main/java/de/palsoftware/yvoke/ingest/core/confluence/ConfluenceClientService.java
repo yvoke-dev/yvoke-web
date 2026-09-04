@@ -7,6 +7,14 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.DateTimeException;
+import java.time.format.DateTimeParseException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
@@ -50,6 +58,8 @@ public class ConfluenceClientService {
     private static final Logger log = LoggerFactory.getLogger(ConfluenceClientService.class);
 
     private static final int TOO_MANY_REQUESTS = 429;
+
+    private static final Pattern DATE_PREFIX_PATTERN = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})");
 
     private final SecretCipher secretCipher;
 
@@ -461,17 +471,17 @@ public class ConfluenceClientService {
      * pages used to complete green while producing an empty corpus. The thrown message deliberately
      * carries only the page id and status code — never the response body or any credential.
      */
-    public String getPageBodyStorage(ConfluenceInstance instance, String pageId) {
-        Optional<String> storage;
+    public ConfluencePageContent getPageContent(ConfluenceInstance instance, String pageId) {
+        Optional<ConfluencePageContent> storage;
         try {
             storage = withRateLimitRetry("the body fetch for page " + pageId,
-                () -> fetchPageBody(instance, pageId, "storage"));
+                () -> fetchPageContent(instance, pageId, "storage"));
         } catch (RestClientResponseException e) {
             // Some bodies are only retrievable via body.view (e.g. legacy storage formats).
             log.warn(
                 "Failed to retrieve body.storage for page {}, falling back to body.view. Status: {}",
                 pageId, e.getStatusCode());
-            return fetchViewBodyOrFail(instance, pageId, e);
+            return fetchViewContentOrFail(instance, pageId, e);
         } catch (IllegalStateException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -486,8 +496,9 @@ public class ConfluenceClientService {
         // page that looks legitimately empty and is then version-skipped forever.
         log.warn("Confluence returned no body.storage for page {}; falling back to body.view",
             pageId);
-        return fetchViewBodyOrFail(instance, pageId, null);
+        return fetchViewContentOrFail(instance, pageId, null);
     }
+
 
     /**
      * Runs {@code call}, retrying HTTP 429 with backoff (honouring {@code Retry-After}, capped by
@@ -516,12 +527,12 @@ public class ConfluenceClientService {
         }
     }
 
-    private String fetchViewBodyOrFail(ConfluenceInstance instance, String pageId,
+    private ConfluencePageContent fetchViewContentOrFail(ConfluenceInstance instance, String pageId,
         @Nullable RestClientResponseException cause) {
         String why = cause == null ? "no body.storage in the response"
             : "HTTP " + cause.getStatusCode().value() + " on body.storage";
         try {
-            return fetchPageBody(instance, pageId, "view")
+            return fetchPageContent(instance, pageId, "view")
                 .orElseThrow(() -> new IllegalStateException(
                     "Confluence returned neither body.storage nor body.view for page " + pageId
                         + " (" + why + "). Treating this as an empty page would record it as"
@@ -534,6 +545,7 @@ public class ConfluenceClientService {
                 "Failed to retrieve the body of Confluence page " + pageId + " (" + why + ")", e);
         }
     }
+
 
     /** Largest exponent the doubling backoff may use before the cap applies. */
     private static final int MAX_BACKOFF_SHIFT = 20;
@@ -568,7 +580,13 @@ public class ConfluenceClientService {
     }
 
     /**
-     * The raw body fetch, returning empty when the response carries no {@code body.<type>.value}.
+     * The raw page content and metadata fetch, returning empty when the response carries no
+     * {@code body.<type>.value}.
+     *
+     * <p>
+     * Package-private seam: keeps the retry policy testable without a live Confluence. There is no
+     * String-returning sibling on purpose — one existed, and it was a working, discoverable entry
+     * point that silently discarded the author, date and version this record exists to carry.
      *
      * <p>
      * The Optional is the whole point: an ABSENT field and an EMPTY value are different facts that
@@ -581,9 +599,10 @@ public class ConfluenceClientService {
      * green job. Callers must now decide, so the two cases can no longer be confused.
      */
     @SuppressWarnings("unchecked")
-    Optional<String> fetchPageBody(ConfluenceInstance instance, String pageId, String bodyType) {
+    Optional<ConfluencePageContent> fetchPageContent(ConfluenceInstance instance, String pageId,
+        String bodyType) {
         RestClient client = getClient(instance);
-        String uri = "/rest/api/content/" + pageId + "?expand=body." + bodyType;
+        String uri = "/rest/api/content/" + pageId + "?expand=body." + bodyType + ",version";
         Map<String, Object> response = client.get().uri(uri).retrieve()
             .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
@@ -592,11 +611,103 @@ public class ConfluenceClientService {
             if (bodyObj != null && bodyObj.get(bodyType) != null) {
                 Map<String, Object> typedBody = (Map<String, Object>) bodyObj.get(bodyType);
                 if (typedBody != null && typedBody.get("value") != null) {
-                    return Optional.of((String) typedBody.get("value"));
+                    String xhtml = (String) typedBody.get("value");
+                    Object versionObj = response.get("version");
+                    String author = extractAuthor(versionObj);
+                    String lastUpdated = extractLastUpdated(versionObj);
+                    Integer version = extractVersionNumber(versionObj);
+                    return Optional
+                        .of(new ConfluencePageContent(xhtml, author, lastUpdated, version));
                 }
             }
         }
         return Optional.empty();
+    }
+
+    static String extractAuthor(@Nullable Object versionObj) {
+        if (!(versionObj instanceof Map<?, ?> versionMap)) {
+            return null;
+        }
+        Object byObj = versionMap.get("by");
+        if (!(byObj instanceof Map<?, ?> byMap)) {
+            return null;
+        }
+        Object displayName = byMap.get("displayName");
+        if (displayName != null && !displayName.toString().isBlank()) {
+            return displayName.toString().trim();
+        }
+        Object publicName = byMap.get("publicName");
+        if (publicName != null && !publicName.toString().isBlank()) {
+            return publicName.toString().trim();
+        }
+        Object username = byMap.get("username");
+        if (username != null && !username.toString().isBlank()) {
+            return username.toString().trim();
+        }
+        return null;
+    }
+
+    static String extractLastUpdated(@Nullable Object versionObj) {
+        if (!(versionObj instanceof Map<?, ?> versionMap)) {
+            return null;
+        }
+        Object when = versionMap.get("when");
+        return formatLastUpdated(when);
+    }
+
+    static String formatLastUpdated(@Nullable Object when) {
+        if (when == null) {
+            return null;
+        }
+        if (when instanceof Number num) {
+            try {
+                return Instant.ofEpochMilli(num.longValue()).atZone(ZoneOffset.UTC).toLocalDate()
+                    .toString();
+            } catch (DateTimeException ignored) {
+                // Only reachable on an epoch value too large for an Instant. A broader catch here
+                // would also swallow a programming error and report it as "no date".
+                return null;
+            }
+        }
+        String whenStr = when.toString().trim();
+        if (whenStr.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(whenStr).toLocalDate().toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return Instant.parse(whenStr).atZone(ZoneOffset.UTC).toLocalDate().toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDate.parse(whenStr).toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        Matcher matcher = DATE_PREFIX_PATTERN.matcher(whenStr);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    static Integer extractVersionNumber(@Nullable Object versionObj) {
+        if (!(versionObj instanceof Map<?, ?> versionMap)) {
+            return null;
+        }
+        Object number = versionMap.get("number");
+        if (number == null) {
+            return null;
+        }
+        if (number instanceof Number num) {
+            return num.intValue();
+        }
+        try {
+            return Integer.parseInt(number.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

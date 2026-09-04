@@ -33,6 +33,7 @@ Your job is to make safe, simple, maintainable, and high-performance code change
 - **Migrations**: New Flyway scripts only, in `docker/db/migration/` as `V<N>__<name>.sql`. Never edit an existing script — Flyway checksums it, and every environment that already applied it must then be rebuilt rather than migrated.
 - **No inline `@Value` defaults** — defaults live in `application.yml`.
 - **No fully-qualified class names inline** — add imports and use simple names.
+- **Spotless formatting**: Always verify formatting with `./mvnw spotless:check` (or auto-format with `./mvnw spotless:apply`). Any unformatted Java file will fail Maven package/verify and `./redeploy.sh`.
 
 ## Security & Performance (build it in — don't defer to the reviewer)
 Treat request params, ingested corpus (Confluence/manuals), and LLM output as tainted.
@@ -45,7 +46,7 @@ Treat request params, ingested corpus (Confluence/manuals), and LLM output as ta
 ## Approach & Execution Protocol
 1. **Analyze**: Read the steering context in `.antigravity/steering/` and the approved requirements/tasks specified in your task prompt.
 2. **Implement & Test**: Make targeted edits directly in the active workspace. Do NOT checkout a new branch, and do NOT commit any changes.
-3. **Verify**: Check if the Docker daemon is running, then run compilation checks and the narrowest test suite first before broadening. When touching packaging, layering, or migrations, also run `ArchitectureTest` and `python3 .antigravity/scripts/check_steering.py`. Use `@MockitoBean` (not the deprecated `@MockBean`) in Spring Boot 4 tests. Never read a bare `BUILD SUCCESS` as proof new code ran — confirm the test count changed, and use `set -o pipefail` so a failure behind `| tail` cannot report as success.
+3. **Verify**: Check if the Docker daemon is running, then run compilation checks and the narrowest test suite first before broadening. When touching packaging, layering, or migrations, also run `ArchitectureTest` and `python3 .antigravity/scripts/check_steering.py`. Use `@MockitoBean` (not the deprecated `@MockBean`) in Spring Boot 4 tests. Always run `./mvnw spotless:check` (or auto-format with `./mvnw spotless:apply`) before finishing so formatting violations never break the build. Never read a bare `BUILD SUCCESS` as proof new code ran — confirm the test count changed, and use `set -o pipefail` so a failure behind `| tail` cannot report as success.
 4. **Report**: Report back with compilation/test logs and the list of modified files. Do not attempt to modify the parent's native brain directory files or write spec files to the workspace.
 
 ## Output Format

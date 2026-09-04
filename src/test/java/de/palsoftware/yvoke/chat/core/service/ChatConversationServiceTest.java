@@ -412,4 +412,62 @@ public class ChatConversationServiceTest {
             () -> chatConversationService.updateSettings(conversationId, Map.of("k", "v")));
         verify(conversationRepository, never()).updateSettings(any(), any());
     }
+
+    /**
+     * A conversation's stored model outlives the whitelist. Retiring a model from
+     * {@code app.chat.allowed-models} leaves every conversation pinned to it still naming it, and
+     * the two halves of the app then disagreed about what that meant: the picker rendered no
+     * matching option so the browser selected the FIRST one, while the send path read the stored
+     * value straight out of the settings map. The UI said one model and the answer came from
+     * another, with nothing anywhere reporting it — and the obvious repair does not work either,
+     * because the picker already displays the default, so choosing it fires no change event and
+     * posts nothing. One resolver, three callers, no hand-written fallback left to drift.
+     */
+    @Test
+    public void aRetiredModelFallsBackToTheDefaultRatherThanRunningOnSilently() {
+        List<String> allowed = List.of("gemini-3.8-flash", "gpt-5.4-mini");
+
+        assertThat(ChatConversationService.effectiveModel("gpt-5.4-mini", allowed))
+            .as("a model still on the whitelist is left exactly as stored")
+            .isEqualTo("gpt-5.4-mini");
+        assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", allowed))
+            .as("a retired model becomes the default — element 0, the same value a new"
+                + " conversation is stamped with")
+            .isEqualTo("gemini-3.8-flash");
+    }
+
+    /**
+     * An EMPTY (or absent) whitelist is a missing opinion, not a statement that every model is
+     * forbidden: {@code createConversation} already refuses to run without one, so the only callers
+     * that can see an empty list are ones whose configuration never arrived. Substituting a
+     * "default" there would mean inventing a model out of nothing.
+     */
+    @Test
+    public void anEmptyWhitelistPassesTheStoredModelThroughUntouched() {
+        assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", List.of()))
+            .isEqualTo("gemini-3.6-flash");
+        assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", null))
+            .isEqualTo("gemini-3.6-flash");
+    }
+
+    /**
+     * A missing model is NOT this method's problem — each caller already handles it differently
+     * (the send path throws, the preflight substitutes the default), and folding those together
+     * here would change two behaviours while fixing a third.
+     */
+    @Test
+    public void aMissingStoredModelIsReturnedUnchangedForTheCallerToHandle() {
+        assertThat(ChatConversationService.effectiveModel(null, List.of("gemini-3.8-flash")))
+            .isNull();
+        assertThat(ChatConversationService.effectiveModel("  ", List.of("gemini-3.8-flash")))
+            .isEqualTo("  ");
+    }
+
+    @Test
+    public void theInstanceOverloadReadsTheConfiguredWhitelist() {
+        assertThat(chatConversationService.effectiveModel("gemini-3.1-flash-lite"))
+            .isEqualTo("gemini-3.1-flash-lite");
+        assertThat(chatConversationService.effectiveModel("retired-model"))
+            .isEqualTo("gemini-3.1-flash-lite");
+    }
 }

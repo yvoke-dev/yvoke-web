@@ -140,6 +140,40 @@ const UUID_HEX =
 const CITE_ITEM = `(?:(?:chunk_id|document_id)=[a-zA-Z0-9_.-]+|${UUID_HEX})`;
 const CITE_GROUP = `\\x5B\\s*${CITE_ITEM}(?:\\s*,\\s*${CITE_ITEM})*\\s*\\x5D`;
 
+const CITE_OR_NUM_ITEM = `(?:(?:chunk_id|document_id)=[a-zA-Z0-9_.-]+|${UUID_HEX}|\\d{1,2})`;
+const CITE_OR_NUM_BRACKET =
+    `\\x5B\\s*${CITE_OR_NUM_ITEM}(?:\\s*,\\s*${CITE_OR_NUM_ITEM})*\\s*\\x5D`;
+const BACKTICK_CITE = new RegExp(
+    `(?<!\`)\`\\s*(${CITE_OR_NUM_BRACKET}(?:[\\s,]*${CITE_OR_NUM_BRACKET})*)\\s*\`(?![\`])`,
+    'g'
+);
+
+/** An id form on its own — no `\d` branch. See unwrapBacktickedCitations for why. */
+const CITE_ID_ITEM = new RegExp(CITE_ITEM);
+
+/**
+ * Strips enclosing backticks from citation tokens (e.g. `[uuid]`, `[uuid1][uuid2]`,
+ * `[chunk_id=...]`) in raw markdown, so marked treats them as plain inline prose rather than
+ * <code> chips, enabling formatCitations to turn them into clickable badges.
+ *
+ * Backticks are the author's "this is code, not a citation" signal, and the span must carry at
+ * least one ID form before that signal is overridden. A uuid or `chunk_id=` in backticks can only
+ * be a model formatting slip — nothing else looks like that. A bracketed small integer is
+ * genuinely ambiguous, and since NUMBERED_REF already badges the BARE form, backticks are the only
+ * escape hatch there is: unwrapping them turned "Use `[0]` to get the first element" into a
+ * superscript pointing at a reference that does not exist. So a span of nothing but numbers keeps
+ * its <code>, while a mixed span like `[uuid][1]` is unwrapped whole on the strength of the id.
+ * Same conservatism as isFabricated below — act only on what is provably a citation.
+ *
+ * Runs only outside fenced code blocks (```...```).
+ */
+export function unwrapBacktickedCitations(markdown) {
+    return mapOutsideFences(markdown, function (segment) {
+        return segment.replace(BACKTICK_CITE,
+            (match, inner) => (CITE_ID_ITEM.test(inner) ? inner : match));
+    });
+}
+
 /**
  * Swaps citation tokens for `%%CITE_n%%` placeholders so marked cannot reinterpret them (a bare
  * `[1]` next to a `(` would otherwise parse as a link). Returns the rewritten text plus the
@@ -149,6 +183,7 @@ const CITE_GROUP = `\\x5B\\s*${CITE_ITEM}(?:\\s*,\\s*${CITE_ITEM})*\\s*\\x5D`;
  * (`<think>`, math, …) that need its own state; this function owns only the citation forms.
  */
 export function protectTokens(text) {
+    const unbackticked = unwrapBacktickedCitations(text);
     const placeholders = [];
     const push = function (value) {
         const idx = placeholders.length;
@@ -156,11 +191,7 @@ export function protectTokens(text) {
         return `%%CITE_${idx}%%`;
     };
 
-    // [chunk_id=…], [document_id=…], bare full-uuid citations and comma-separated groups like
-    // [uuid_1, uuid_2]. The id character class matches the one used by the link passes below —
-    // a mismatch left dotted ids as dead text. A document NAME is not a citation form: it cannot
-    // identify a document unambiguously.
-    let safe = text.replace(
+    let safe = unbackticked.replace(
         new RegExp(CITE_GROUP, 'g'),
         function (match) {
             return push(match);

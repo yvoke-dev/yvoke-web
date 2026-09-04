@@ -24,7 +24,7 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **Knowledge Graph (KG)**: Combined conceptual graph (extracted from manuals/Confluence) and structural database graph (tables, FKs, procedures, scripts).
 - **Core Models**:
   - `voyage-4-large` (1024-d) via Voyage AI for embeddings.
-  - `gemini-3.7-flash` (stamped on every new conversation), `gemini-3.6-flash` and `gemini-3.5-flash-lite` on Gemini, plus the Azure OpenAI deployments `gpt-5.4-mini`, `DeepSeek-V4-Flash` and `gpt-5.6-luna`, for Q&A and RAG; `gemini-3.1-flash-lite` for KG extraction and summarization. Which provider client answers which model is deployment configuration — see [`tech.md`](tech.md); Gemini is the default route and OpenRouter is retired.
+  - `gemini-3.8-flash` (element 0 of `allowed-models`, so it is stamped on every new conversation) and `gemini-3.5-flash-lite` on Gemini, plus the Azure OpenAI deployments `gpt-5.4-mini`, `DeepSeek-V4-Flash` and `gpt-5.6-luna`, for Q&A and RAG; `gemini-3.5-flash-lite` for KG extraction and summarization in the deployment (the shipped `application.yml` default is still `gemini-3.1-flash-lite`, so a local stack runs on that unless `KG_MODEL`/`SUMMARIZE_MODEL` are set). `gemini-3.7-flash` and `gemini-3.6-flash` were retired from the picker; they still exist upstream, so conversations pinned to one keep working — see `ChatConversationService.effectiveModel`. Which provider client answers which model is deployment configuration — see [`tech.md`](tech.md); Gemini is the default route and OpenRouter is retired.
   - Voyage `rerank-2.5` for cross-encoder reranking.
 
 ## User Personas & Permissions

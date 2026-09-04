@@ -2,7 +2,9 @@ package de.palsoftware.yvoke.chat.web;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -28,6 +30,9 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -267,5 +272,51 @@ class ChatControllerTest {
     private static Message userMessage(UUID conversationId) {
         return new Message(UUID.randomUUID(), conversationId, "user", "A question.", List.of(),
             List.of(), Instant.now());
+    }
+
+    /**
+     * Both halves of one contract, because either alone passes while the bug is live.
+     *
+     * <p>
+     * A conversation pinned to a model that has since left {@code app.chat.allowed-models} has no
+     * matching {@code <option>}, so the browser selects the FIRST — the picker then displays a
+     * model the conversation is not on, and choosing that same model fires no change event, so the
+     * conversation cannot even be moved off the retired one. The send path resolves the same way
+     * now ({@code ChatMessageService#resolveModelToUse}), so the displayed model IS the one that
+     * will answer.
+     *
+     * <p>
+     * The template half is asserted on the source: {@code th:selected} must read
+     * {@code effectiveModel}, never {@code settings['model']}. A controller test alone cannot see a
+     * template that ignores the attribute, and Thymeleaf reports nothing when it does — every
+     * option simply renders unselected, which is the same visible bug.
+     */
+    @Test
+    void theModelPickerShowsTheModelThatWillActuallyAnswerNotTheRetiredStoredOne()
+        throws Exception {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("model", "gemini-3.6-flash"), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+        when(conversationService.effectiveModel("gemini-3.6-flash")).thenReturn("gemini-3.8-flash");
+
+        Model model = new ConcurrentModel();
+        assertEquals("chat/thread", controller.threadView(conversationId, model));
+
+        assertEquals("gemini-3.8-flash", model.getAttribute("effectiveModel"),
+            "the picker must be driven by the resolved model, not the raw setting");
+
+        String template = Files.readString(
+            Paths.get("src/main/resources/templates/chat/thread.html"), StandardCharsets.UTF_8);
+        int selector = template.indexOf("id=\"model-selector\"");
+        assertTrue(selector > 0, "model-selector not found in chat/thread.html");
+        String block = template.substring(selector, template.indexOf("</select>", selector));
+        assertTrue(block.contains("${effectiveModel == modelOpt}"),
+            "the model picker must select on effectiveModel: " + block);
+        assertFalse(block.contains("settings['model']"),
+            "reading the raw setting reintroduces the retired-model divergence: " + block);
     }
 }

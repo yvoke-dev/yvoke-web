@@ -108,6 +108,11 @@ public class ChatController {
         model.addAttribute("conversation", conversation);
         model.addAttribute("messages", messages);
         model.addAttribute("allowedModels", allowedModels);
+        // NOT settings['model']: a conversation pinned to a retired model has no matching option,
+        // so the browser selects the first one and the picker silently claims a model the
+        // conversation is not on. This is the value the send path will actually use.
+        model.addAttribute("effectiveModel", chatConversationService.effectiveModel(
+            (String) conversation.settings().get(ConversationSetting.MODEL.getValue())));
         model.addAttribute("settings", conversation.settings());
         model.addAttribute("feedbacks", feedbacks);
         model.addAttribute("prompts", playbookService.listSpecializedPlaybooks());

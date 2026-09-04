@@ -170,10 +170,22 @@ public final class MarkdownTree {
      * get bounded chunks.
      */
     public static List<Section> splitOversizedSection(Section section) {
-        if (section.body().length() <= CHUNK_BODY_MAX_CHARS) {
+        return splitOversizedSection(section, CHUNK_BODY_MAX_CHARS);
+    }
+
+    /**
+     * As {@link #splitOversizedSection(Section)}, but against a caller-supplied budget.
+     *
+     * <p>
+     * The Confluence builder needs this because it prepends a provenance header to every finished
+     * body: split to the full {@link #CHUNK_BODY_MAX_CHARS} and each part is then over the cap by
+     * the header's length, which varies with the page URL and the author's name.
+     */
+    public static List<Section> splitOversizedSection(Section section, int maxChars) {
+        if (section.body().length() <= maxChars) {
             return List.of(section);
         }
-        List<String> parts = splitRecursive(section.body(), CHUNK_BODY_MAX_CHARS);
+        List<String> parts = splitRecursive(section.body(), maxChars);
         if (parts.size() == 1) {
             return List.of(section);
         }

@@ -451,7 +451,13 @@ public class ChatMessageService {
     }
 
     private String resolveModelToUse(Map<String, Object> settings) {
-        String modelToUse = (String) settings.get(ConversationSetting.MODEL.getValue());
+        // Resolved against the whitelist, not read raw: a conversation pinned to a model that has
+        // since been retired must answer on the current default rather than keep calling a model
+        // the picker can no longer even display. The rule is static so this path runs the REAL one
+        // and takes only the list from the collaborator.
+        String modelToUse = ChatConversationService.effectiveModel(
+            (String) settings.get(ConversationSetting.MODEL.getValue()),
+            chatConversationService.getAllowedModels());
         if (modelToUse == null || modelToUse.isBlank()) {
             throw new IllegalStateException("No model selected in conversation settings");
         }

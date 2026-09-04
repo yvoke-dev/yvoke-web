@@ -18,6 +18,7 @@ import {
     normalizeSpacing,
     protectTokens,
     restoreTokens,
+    unwrapBacktickedCitations,
 } from '../../main/resources/static/js/chat/citation-render.js';
 
 /** Stand-in for thread.js's escapeHtml — the module takes it as a parameter. */
@@ -321,3 +322,85 @@ describe('markdown spacing normalizer', () => {
         assert.equal(normalizeSpacing(once), once);
     });
 });
+
+describe('unwrapBacktickedCitations', () => {
+    test('a single bare uuid in backticks is unwrapped', () => {
+        assert.equal(unwrapBacktickedCitations(`See \`[${UUID}]\`.`), `See [${UUID}].`);
+    });
+
+    test('adjacent brackets in a single backtick span are unwrapped', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        assert.equal(
+            unwrapBacktickedCitations(`See \`[${UUID}][${UUID2}]\`.`),
+            `See [${UUID}][${UUID2}].`
+        );
+    });
+
+    test('multiple space- or comma-separated brackets in backticks are unwrapped', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        assert.equal(
+            unwrapBacktickedCitations(`See \`[${UUID}] [${UUID2}]\`.`),
+            `See [${UUID}] [${UUID2}].`
+        );
+        assert.equal(
+            unwrapBacktickedCitations(`See \`[${UUID}], [${UUID2}]\`.`),
+            `See [${UUID}], [${UUID2}].`
+        );
+    });
+
+    test('a grouped uuid in backticks is unwrapped', () => {
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        assert.equal(
+            unwrapBacktickedCitations(`See \`[${UUID}, ${UUID2}]\`.`),
+            `See [${UUID}, ${UUID2}].`
+        );
+    });
+
+    test('chunk_id and document_id in backticks are unwrapped', () => {
+        assert.equal(unwrapBacktickedCitations('`[chunk_id=abc-123]`'), '[chunk_id=abc-123]');
+        assert.equal(unwrapBacktickedCitations('`[document_id=doc.md]`'), '[document_id=doc.md]');
+    });
+
+    test('a purely numeric backticked span keeps its backticks', () => {
+        // Backticks are the author's "this is code, not a citation" signal, and a bare [1] is
+        // genuinely ambiguous: on this corpus `[0]` is an array index far more often than a
+        // reference marker, and NUMBERED_REF already badges the bare form, so backticks are the
+        // only escape hatch there is. Overriding them here turned `[0]` into a superscript
+        // pointing at a reference that does not exist.
+        assert.equal(unwrapBacktickedCitations('See `[1]` and `[1, 2]` and `[1][2]`.'),
+            'See `[1]` and `[1, 2]` and `[1][2]`.');
+        assert.equal(unwrapBacktickedCitations('Use `[0]` for the first element.'),
+            'Use `[0]` for the first element.');
+    });
+
+    test('a span mixing an id with a number is unwrapped whole', () => {
+        // The id half is unambiguous, so the whole span is a formatting slip rather than code.
+        assert.equal(unwrapBacktickedCitations(`See \`[${UUID}][1]\`.`), `See [${UUID}][1].`);
+        assert.equal(unwrapBacktickedCitations('`[chunk_id=abc-123], [2]`'),
+            '[chunk_id=abc-123], [2]');
+    });
+
+    test('backticks with internal padding are trimmed to brackets', () => {
+        assert.equal(unwrapBacktickedCitations(`See \` [${UUID}] \`.`), `See [${UUID}].`);
+    });
+
+    test('non-citation inline code is preserved', () => {
+        assert.equal(unwrapBacktickedCitations('`config[1]`'), '`config[1]`');
+        assert.equal(unwrapBacktickedCitations('`int[] x = [1]`'), '`int[] x = [1]`');
+        assert.equal(unwrapBacktickedCitations('`items[2]`'), '`items[2]`');
+        assert.equal(unwrapBacktickedCitations('`[100]`'), '`[100]`');
+        assert.equal(unwrapBacktickedCitations('`[file=foo.md]`'), '`[file=foo.md]`');
+    });
+
+    test('citations inside fenced code blocks are not unwrapped', () => {
+        const fence = `\`\`\`sql\nSELECT \`[${UUID}]\` FROM t;\n\`\`\``;
+        assert.equal(unwrapBacktickedCitations(fence), fence);
+    });
+
+    test('unwrapping is idempotent', () => {
+        const text = `See \`[${UUID}]\` and \`config[1]\`.`;
+        const once = unwrapBacktickedCitations(text);
+        assert.equal(unwrapBacktickedCitations(once), once);
+    });
+});
+

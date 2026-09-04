@@ -19,6 +19,7 @@ import vm from 'node:vm';
 import {
     forceToolCallNewlines,
     installCodeRenderer,
+    openExternalLinksInNewTab,
     renderMarkdown,
     wrapToolCalls,
 } from '../../main/resources/static/js/chat/markdown-render.js';
@@ -391,5 +392,83 @@ describe('GFM tables survive the pipeline', () => {
         const { html } = render('The script is written in C# code.', false);
         assert.ok(html.includes('C# code'), html);
         assert.ok(!/<h1[^>]*>/.test(html), 'C# became a heading: ' + html);
+    });
+});
+
+describe('raw XML and HTML tags in text', () => {
+    test('raw XML markup outside code fences is preserved and escaped, not stripped by DOMPurify', () => {
+        const { html } = render('<Class Name="Group">\n  <Property Name="Passwd">\n</Class>', false);
+        assert.ok(html.includes('&lt;Class Name=&quot;Group&quot;&gt;'), html);
+        assert.ok(html.includes('&lt;Property Name=&quot;Passwd&quot;&gt;'), html);
+        assert.ok(html.includes('&lt;/Class&gt;'), html);
+    });
+
+    test('a raw XML BLOCK keeps its lines and indentation inside a pre', () => {
+        // Escaping alone is not enough: emitted bare, the text has no wrapping element, so the
+        // browser collapses every newline and the leading spaces and a schema renders as one
+        // run-on line with no margins. Asserting the three tags appear passes throughout that
+        // bug — the assertion that means anything is the structure.
+        const { html } = render('<Class Name="Group">\n  <Property Name="Passwd">\n</Class>', false);
+        const block = html.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
+        assert.ok(block, 'block-level raw HTML must render as a code block: ' + html);
+        assert.equal(
+            block[1],
+            '&lt;Class Name=&quot;Group&quot;&gt;\n  &lt;Property Name=&quot;Passwd&quot;&gt;\n&lt;/Class&gt;'
+        );
+    });
+
+    test('an INLINE tag is escaped in place, not turned into a code block', () => {
+        // token.block is what separates the two; inline <br> must not become a <pre>.
+        const { html } = render('Line one<br>Line two', false);
+        assert.ok(html.includes('Line one&lt;br&gt;Line two'), html);
+        assert.ok(!html.includes('<pre>'), 'inline html must stay inline: ' + html);
+    });
+});
+
+describe('backticked citations', () => {
+    test('backticked citations do not produce code tags and format to citation links', () => {
+        const UUID = '4b7b0f51-6293-4cd6-8f4b-5a66adf42742';
+        const UUID2 = '8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b';
+        const md = `Via \`Invoke-SSHCommand\` \`[${UUID}][${UUID2}]\`.`;
+        const { html } = render(md, false);
+        assert.ok(html.includes('<code>Invoke-SSHCommand</code>'), html);
+        assert.ok(!html.includes(`<code>[${UUID}]`), html);
+        assert.ok(html.includes(`[${UUID}][${UUID2}]`), html);
+    });
+
+    test('a backticked small integer keeps its code chip', () => {
+        // NUMBERED_REF badges a bare [0], so backticks are the only way to write a literal
+        // bracketed index. Unwrapping them rendered "Use `[0]` to get the first element" as a
+        // superscript pointing at a reference that does not exist.
+        const { html } = render('Use `[0]` to get the first element.', false);
+        assert.ok(html.includes('<code>[0]</code>'), html);
+    });
+});
+
+describe('external links', () => {
+    test('an http link opens in a new tab with rel=noopener', () => {
+        // Without this the citation panel's "View in Confluence" link replaces the whole chat
+        // page, and so does any link a model puts in an answer.
+        const { html } = render('See [the guide](https://wiki.example.com/x).', false);
+        assert.match(html, /<a [^>]*href="https:\/\/wiki\.example\.com\/x"[^>]*>/);
+        assert.match(html, /target="_blank"/);
+        assert.match(html, /rel="noopener noreferrer"/);
+    });
+
+    test('an in-page anchor is left alone', () => {
+        // formatCitations emits <a href="#" class="citation-link"> and handles the click itself;
+        // a target on those would open a blank tab instead of the citation panel.
+        const out = openExternalLinksInNewTab('<a href="#" class="citation-link">[1]</a>');
+        assert.equal(out, '<a href="#" class="citation-link">[1]</a>');
+    });
+
+    test('a link that already declares a target is not rewritten', () => {
+        const already = '<a href="https://x.test" target="_self">x</a>';
+        assert.equal(openExternalLinksInNewTab(already), already);
+    });
+
+    test('the pass is idempotent', () => {
+        const once = openExternalLinksInNewTab('<a href="https://x.test">x</a>');
+        assert.equal(openExternalLinksInNewTab(once), once);
     });
 });

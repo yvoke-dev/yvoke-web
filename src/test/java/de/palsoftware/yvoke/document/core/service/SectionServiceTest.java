@@ -162,4 +162,58 @@ class SectionServiceTest {
             + "Intro Text Part 1\n" + "Intro Text Part 2\n";
         assertEquals(expectedText, response.text());
     }
+
+    @Test
+    void getChunkContentDeduplicatesHeadingPathWhenItMatchesOrStartsWithDocumentTitle() {
+        String docTitle = "1IM - Build your own Unix® Connector with PowerShell";
+
+        // Case A: Root chunk whose heading is the document title -> headingPath becomes empty
+        ChunkRow rootChunk = new ChunkRow(chunkId1, docId, "Some text", List.of(), docTitle, 1, 0,
+            "?", docTitle, "confluence", "COL", null, 0.0);
+        when(chunkRepository.findByIdPrefix("root123")).thenReturn(Optional.of(rootChunk));
+
+        SectionResponse rootResponse = sectionService.getChunkContent("root123");
+        assertThat(rootResponse.documentTitle()).isEqualTo(docTitle);
+        assertThat(rootResponse.headingPath())
+            .as("root chunk matching documentTitle should have empty headingPath").isEmpty();
+
+        // Case B: Sub-section chunk whose path starts with documentTitle -> documentTitle stripped
+        ChunkRow subChunk = new ChunkRow(chunkId2, docId, "Some text", List.of(docTitle),
+            "The Connection", 2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
+        when(chunkRepository.findByIdPrefix("sub123")).thenReturn(Optional.of(subChunk));
+
+        SectionResponse subResponse = sectionService.getChunkContent("sub123");
+        assertThat(subResponse.headingPath())
+            .as("sub-section should omit the leading documentTitle from headingPath")
+            .containsExactly("The Connection");
+    }
+
+    @Test
+    void getChunkContentStripsLeadingHeadingMatchingDocumentTitleFromTextBody() {
+        String docTitle = "1IM - Build your own Unix® Connector with PowerShell";
+
+        // Case A: Text starts with # documentTitle -> stripped
+        String textWithTitle = "# 1IM - Build your own Unix® Connector with PowerShell\n\n"
+            + "🔗 Confluence Page: [View in Confluence](http://example.com)\n\n"
+            + "The Connection\n\nPosh-SSH was quickly found...";
+        ChunkRow chunkWithTitle = new ChunkRow(chunkId1, docId, textWithTitle, List.of(), docTitle,
+            1, 0, "?", docTitle, "confluence", "COL", null, 0.0);
+        when(chunkRepository.findByIdPrefix("cite123")).thenReturn(Optional.of(chunkWithTitle));
+
+        SectionResponse responseA = sectionService.getChunkContent("cite123");
+        assertThat(responseA.text())
+            .startsWith("🔗 Confluence Page: [View in Confluence](http://example.com)")
+            .doesNotContain("# 1IM - Build your own Unix® Connector with PowerShell");
+
+        // Case B: Text starts with a different section heading -> preserved
+        String textWithSubheading = "# The Connection\n\nPosh-SSH was quickly found...";
+        ChunkRow chunkWithSubheading =
+            new ChunkRow(chunkId2, docId, textWithSubheading, List.of(docTitle), "The Connection",
+                2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
+        when(chunkRepository.findByIdPrefix("cite456"))
+            .thenReturn(Optional.of(chunkWithSubheading));
+
+        SectionResponse responseB = sectionService.getChunkContent("cite456");
+        assertThat(responseB.text()).startsWith("# The Connection");
+    }
 }

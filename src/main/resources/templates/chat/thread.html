@@ -199,7 +199,7 @@
                                     <option th:each="modelOpt : ${allowedModels}"
                                             th:value="${modelOpt}"
                                             th:text="${modelOpt}"
-                                            th:selected="${settings['model'] == modelOpt}">deepseek/deepseek-v4-pro</option>
+                                            th:selected="${effectiveModel == modelOpt}">deepseek/deepseek-v4-pro</option>
                                 </select>
                                 <select id="thinking-level-selector" name="thinking-level" class="model-select-borderless">
                                     <option value="low" th:selected="${settings['thinking-level'] == 'low'}">Low</option>

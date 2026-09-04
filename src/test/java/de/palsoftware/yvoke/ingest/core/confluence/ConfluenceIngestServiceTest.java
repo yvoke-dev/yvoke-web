@@ -139,6 +139,10 @@ class ConfluenceIngestServiceTest {
 
     static final String SUMMARIZE_PROMPT = "oim-summarize";
 
+    private static ConfluencePageContent pageContent(String xhtml) {
+        return new ConfluencePageContent(xhtml, null, null, null);
+    }
+
     private void configureTag(String tag) {
         configureInstance(tag, "");
     }
@@ -609,7 +613,7 @@ class ConfluenceIngestServiceTest {
         }
 
         // ...and nothing was fetched or written on any of those three attempts.
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
         verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
             nullable(String.class), any(), any(), any());
     }
@@ -622,8 +626,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void ingestPageAbortsBeforeWritingWhenTheJobIsCancelled() {
         JobContext ctx = pageJobContext(5);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1"))
-            .thenReturn("<h1>Page 1 Content</h1>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
         // Running when the job starts, cancelled by the time the body has been fetched.
@@ -633,7 +637,7 @@ class ConfluenceIngestServiceTest {
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("cancelled");
 
-        verify(confluenceClient).getPageBodyStorage(instance, "page-1");
+        verify(confluenceClient).getPageContent(instance, "page-1");
         verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
             nullable(String.class), any(), any(), any());
         verify(documentRepository, never()).insertChunks(any(), any(), nullable(String.class),
@@ -649,7 +653,7 @@ class ConfluenceIngestServiceTest {
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
             .isInstanceOf(IllegalStateException.class);
 
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
     }
 
     @Test
@@ -664,7 +668,7 @@ class ConfluenceIngestServiceTest {
         assertThat(counts.docs()).isEqualTo(1);
         assertThat(counts.chunks()).isEqualTo(0);
 
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
         verify(embeddingService, never()).embedBatch(any());
     }
 
@@ -676,8 +680,8 @@ class ConfluenceIngestServiceTest {
             eq("confluence")))
             .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
-        when(confluenceClient.getPageBodyStorage(instance, "page-1"))
-            .thenReturn("<h1>Page 1 Content</h1>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
 
@@ -711,7 +715,8 @@ class ConfluenceIngestServiceTest {
         settings.remove(IngestPrompts.SETTING_SUMMARIZE_PROMPT);
         JobContext ctx = pageJobContext(settings);
 
-        when(confluenceClient.getPageBodyStorage(any(), eq("page-1"))).thenReturn("<p>x</p>");
+        when(confluenceClient.getPageContent(any(), eq("page-1")))
+            .thenReturn(pageContent("<p>x</p>"));
         when(confluenceConverter.convertToMarkdown(any(), anyBoolean(), eq("page-1"), anyString()))
             .thenReturn("# Heading\n\nBody prose.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -735,7 +740,8 @@ class ConfluenceIngestServiceTest {
             "", "other-coll", "v9", true, true, null, null);
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(retargeted));
 
-        when(confluenceClient.getPageBodyStorage(retargeted, "page-1")).thenReturn("<p>x</p>");
+        when(confluenceClient.getPageContent(retargeted, "page-1"))
+            .thenReturn(pageContent("<p>x</p>"));
         when(confluenceConverter.convertToMarkdown(eq(retargeted), eq(false), eq("page-1"),
             anyString())).thenReturn("Body prose.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -881,7 +887,7 @@ class ConfluenceIngestServiceTest {
             .hasMessageContaining("https://other-wiki.example.com/wiki")
             .hasMessageContaining("re-run the sync");
 
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
         verify(confluenceConverter, never()).convertToMarkdown(any(), anyBoolean(), anyString(),
             anyString());
         verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
@@ -897,6 +903,13 @@ class ConfluenceIngestServiceTest {
         when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
             eq("confluence")))
             .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+
+        // Stubbed because the page IS fetched here: this test pins the moved-site guard (casing
+        // and a trailing slash are not a move, so nothing throws), not the version skip — the
+        // skip cannot fire, because source_file is built from the raw domain while the guard
+        // compares canonical ones.
+        when(confluenceClient.getPageContent(any(), anyString()))
+            .thenReturn(pageContent("<p>body</p>"));
 
         assertThat(service.ingestPage(ctx, "page-1", "Page 1").docs()).isEqualTo(1);
     }
@@ -920,7 +933,7 @@ class ConfluenceIngestServiceTest {
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
             .hasMessageContaining("disabled").hasMessageContaining("re-enable");
 
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
         verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
             nullable(String.class), any(), any(), any());
     }
@@ -961,7 +974,7 @@ class ConfluenceIngestServiceTest {
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("old-coll")
             .hasMessageContaining("coll").hasMessageContaining("re-run the sync");
 
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
         verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
             nullable(String.class), any(), any(), any());
     }
@@ -972,7 +985,8 @@ class ConfluenceIngestServiceTest {
         settings.put("processAttachments", true);
         JobContext ctx = pageJobContext(settings);
 
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<p>x</p>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<p>x</p>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), eq(true), eq("page-1"),
             anyString())).thenReturn("Body prose.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -991,7 +1005,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void pageWithoutAnyHeadingStillProducesChunks() {
         JobContext ctx = pageJobContext((Integer) null);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<p>prose</p>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<p>prose</p>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("Plain prose with no heading whatsoever.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -1006,8 +1021,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void pageWhoseOnlyHeadingIsALeadingH1StillProducesChunks() {
         JobContext ctx = pageJobContext((Integer) null);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1"))
-            .thenReturn("<h1>Overview</h1>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<h1>Overview</h1>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("# Overview\n\nThe only body text on the page.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -1028,7 +1043,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void pageWithNoIngestibleContentIsRecordedAsACompletedZeroChunkDocument() {
         JobContext ctx = pageJobContext(3);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<p>&nbsp;</p>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<p>&nbsp;</p>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("   \n\n");
         UUID docId = UUID.randomUUID();
@@ -1057,7 +1073,7 @@ class ConfluenceIngestServiceTest {
     @Test
     void emptyPageIsSkippedByTheNextCrawlInsteadOfBeingReEnqueuedForever() {
         JobContext ctx = pageJobContext(3);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("");
+        when(confluenceClient.getPageContent(instance, "page-1")).thenReturn(pageContent(""));
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
             any(), any())).thenReturn(UUID.randomUUID());
 
@@ -1078,7 +1094,7 @@ class ConfluenceIngestServiceTest {
     @Test
     void aFetchFailureStillFailsTheJobLoudly() {
         JobContext ctx = pageJobContext(3);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1"))
+        when(confluenceClient.getPageContent(instance, "page-1"))
             .thenThrow(new IllegalStateException("Confluence rate-limited the body fetch for"
                 + " page page-1 (HTTP 429) after 3 attempts"));
 
@@ -1100,7 +1116,8 @@ class ConfluenceIngestServiceTest {
     @SuppressWarnings("unchecked")
     void embeddedTextEqualsStoredTextAndCarriesThePageTitle() {
         JobContext ctx = pageJobContext((Integer) null);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<h2>Setup</h2>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<h2>Setup</h2>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("Intro line.\n\n## Setup\n\nInstall the agent.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -1131,7 +1148,12 @@ class ConfluenceIngestServiceTest {
     void oversizedSectionIsSplitIntoBoundedChunks() {
         JobContext ctx = pageJobContext((Integer) null);
         String paragraph = "z".repeat(2_000);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<h2>Big</h2>");
+        // Real metadata, not pageContent(null, null, null): the header is prepended to every
+        // finished body, so a bound measured without it measures a configuration that no longer
+        // ships.
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(new ConfluencePageContent("<h2>Big</h2>",
+                "Alexandra Featherstonehaugh-Wolfeschlegelstein", "2026-08-15", 137));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("## Big\n\n" + (paragraph + "\n\n").repeat(8));
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -1156,7 +1178,8 @@ class ConfluenceIngestServiceTest {
     @Test
     void confluenceDocumentsAreKeyedOnSourceFileOnly() {
         JobContext ctx = pageJobContext((Integer) null);
-        when(confluenceClient.getPageBodyStorage(instance, "page-1")).thenReturn("<p>x</p>");
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(pageContent("<p>x</p>"));
         when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
             anyString())).thenReturn("Body prose.");
         when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
@@ -1186,7 +1209,7 @@ class ConfluenceIngestServiceTest {
 
         assertThat(counts.docs()).isEqualTo(1);
         assertThat(counts.chunks()).isEqualTo(0);
-        verify(confluenceClient, never()).getPageBodyStorage(any(), anyString());
+        verify(confluenceClient, never()).getPageContent(any(), anyString());
     }
 
     @Test
@@ -1202,5 +1225,48 @@ class ConfluenceIngestServiceTest {
         assertThat(requestCaptor.getValue().tags()).isEmpty();
         assertThat(requestCaptor.getValue().tag()).isNull();
         assertThat(requestCaptor.getValue().settings()).doesNotContainKey("tag");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void ingestPageEmbedsMetadataIntoChunksAndStoresAuthorAndLastUpdatedInDocumentMetadata() {
+        JobContext ctx = pageJobContext(2);
+        when(confluenceClient.getPageContent(instance, "page-1"))
+            .thenReturn(new ConfluencePageContent("<h2>Section</h2><p>Content.</p>", "John Doe",
+                "2026-08-15", 2));
+        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
+            anyString())).thenReturn("## Section\n\nContent.");
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
+            any(), any())).thenReturn(docId);
+
+        JobCounts counts = service.ingestPage(ctx, "page-1", "My Page");
+
+        assertThat(counts.docs()).isEqualTo(1);
+        assertThat(counts.chunks()).isEqualTo(1);
+
+        verify(documentRepository).updateMetadataKey(eq(docId), eq("confluence_page_version"),
+            eq(2));
+        verify(documentRepository).updateMetadataKey(eq(docId), eq("author"), eq("John Doe"));
+        verify(documentRepository).updateMetadataKey(eq(docId), eq("last_updated"),
+            eq("2026-08-15"));
+
+        ArgumentCaptor<List<ChunkInsert>> chunkCaptor = ArgumentCaptor.forClass(List.class);
+        verify(documentRepository).insertChunks(eq(docId), anyString(), nullable(String.class),
+            anyString(), anyString(), chunkCaptor.capture());
+        List<ChunkInsert> chunks = chunkCaptor.getValue();
+        assertThat(chunks).isNotEmpty();
+        for (ChunkInsert chunk : chunks) {
+            assertThat(chunk.text())
+                .contains("🔗 Confluence Page: [View in Confluence](" + SOURCE_FILE + ")");
+            assertThat(chunk.text())
+                .contains("👤 Author: John Doe | 📅 Last Updated: 2026-08-15 (v2)");
+        }
+
+        ArgumentCaptor<List<String>> embedCaptor = ArgumentCaptor.forClass(List.class);
+        verify(embeddingService).embedBatch(embedCaptor.capture());
+        List<String> embedded = embedCaptor.getValue();
+        assertThat(embedded)
+            .containsExactlyElementsOf(chunks.stream().map(ChunkInsert::text).toList());
     }
 }

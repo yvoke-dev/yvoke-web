@@ -8,6 +8,8 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.document.core.HierarchyUtils;
 import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
@@ -108,8 +110,43 @@ public class SectionService {
         // breadcrumb carried structurally in headingPath.
         String text = HierarchyUtils.stripBreadcrumb(chunk.text()).strip();
 
-        return new SectionResponse(HierarchyUtils.getChunkFullPath(chunk), documentTitle, tag, 1,
-            "this passage only", text);
+        List<String> fullPath = HierarchyUtils.getChunkFullPath(chunk);
+        List<String> cleanPath = cleanHeadingPath(fullPath, documentTitle);
+        text = stripLeadingDocumentTitleHeading(text, documentTitle);
+
+        return new SectionResponse(cleanPath, documentTitle, tag, 1, "this passage only", text);
+    }
+
+    private static final Pattern LEADING_HEADING_PATTERN =
+        Pattern.compile("^#{1,6}\\s+(.+?)\\s*(?:\\r?\\n|$)");
+
+    static List<String> cleanHeadingPath(List<String> fullPath, String documentTitle) {
+        if (fullPath == null || fullPath.isEmpty()) {
+            return List.of();
+        }
+        String normDoc = HierarchyUtils.normalizeSegment(documentTitle);
+        List<String> result = new ArrayList<>(fullPath);
+        if (!result.isEmpty() && HierarchyUtils.normalizeSegment(result.get(0)).equals(normDoc)) {
+            result.remove(0);
+        }
+        return List.copyOf(result);
+    }
+
+    static String stripLeadingDocumentTitleHeading(String text, String documentTitle) {
+        if (text == null || text.isBlank() || documentTitle == null || documentTitle.isBlank()) {
+            return text == null ? "" : text.strip();
+        }
+        // lookingAt, not find: the pattern is ^-anchored and not MULTILINE, so find() can only
+        // ever match at 0 anyway and the extra start() check read as if it could not.
+        Matcher m = LEADING_HEADING_PATTERN.matcher(text);
+        if (m.lookingAt()) {
+            String headingTitle = HierarchyUtils.stripPart(m.group(1).trim());
+            if (HierarchyUtils.normalizeSegment(headingTitle)
+                .equals(HierarchyUtils.normalizeSegment(documentTitle))) {
+                return text.substring(m.end()).stripLeading();
+            }
+        }
+        return text;
     }
 
     public SectionResponse getSectionByDocumentId(String documentIdStr,
