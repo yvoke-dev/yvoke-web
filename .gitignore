@@ -56,3 +56,6 @@ scripts/git-*
 
 # Docs (local-only, not tracked)
 docs/
+
+# Git worktrees for SDD agents
+.worktrees/

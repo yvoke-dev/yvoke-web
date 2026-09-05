@@ -47,9 +47,16 @@ Your job is to perform focused reviews on Spring Boot backend changes and databa
 - **Steering drift**: A new `de.palsoftware.yvoke` package must be documented in `.antigravity/steering/structure.md` (`check_steering.py` enforces this).
 - **Spotless code formatting**: Check that modified Java files adhere to Spotless rules (`./mvnw spotless:check`). Flag any format violations as a Medium finding.
 
-### 6. ASDD Spec Compliance
-- Validate that the implementation matches the approved requirements and design specifications passed in your task prompt.
-- Verify that the correctness properties listed in the implementation plan are covered by tests.
+### 6. Test Quality & Efficacy
+- **Meaningful assertions**: Check that tests verify actual state changes and business logic rather than trivial assertions (`assertNotNull` on an unpopulated object).
+- **LLM mocking rules**: If LLM interactions are tested, verify that `@MockitoBean(name = "llmProviderClient") LlmClient` is mocked (the provider bean), NOT the `@Primary` `AccountingLlmClient` decorator.
+- **Test placement**: Integration tests must end with `*IT.java` in `src/it/java` mirroring the production package structure.
+- **Red-Green proof**: Verify that the implementer's report demonstrates that the test actually failed before the production fix was applied.
+
+### 7. ASDD Spec & Task Compliance
+- Inspect the git diff of the wave in the worktree (`git diff HEAD` or `git status`).
+- Validate that the implementation matches the approved requirements and acceptance criteria in `task.md`.
+- Verify that no out-of-scope files were modified or untracked clutter introduced.
 
 ## Output Format
 - If there are no material findings, output: `No material findings.`

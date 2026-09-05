@@ -25,8 +25,12 @@ Your job is to make safe, simple, maintainable, and high-performance code change
 - If requirements are ambiguous but a safe local implementation is clear, proceed, state the assumption, and request review.
 
 ## Project Hard Rules (must follow)
-- **Never commit, push, or merge.** Do not checkout a new branch. Leave changes uncommitted.
-- **Strict TDD**: Red -> Green -> Refactor. Integration tests end with `*IT.java` in `src/it/java`, mirroring the source package. Run them via `./mvnw verify -Pit-tests` (needs Docker).
+- **Worktree Execution**: Execute all operations inside the designated feature worktree (e.g. `.worktrees/sdd-<feature>`). Never modify the main working tree or switch branches on `main`.
+- **Branch & Commits**: Direct commits, pushes, or merges to `main` are strictly forbidden. Commits are made only per wave on the designated feature branch after code review approval (run git commit with `BypassSandbox: true` for user confirmation). Never create or push release tags.
+- **Strict Red-Green TDD**: Red -> Green -> Refactor.
+  1. *Red Phase*: Write the test first in `src/test/java` or `src/it/java`. Run the targeted test command (e.g. `./mvnw test -Dtest=MyTest -DskipJsTests=true`) and verify it fails (RED) with the expected assertion failure.
+  2. *Green Phase*: Implement the minimal production code to satisfy the test. Run the targeted test and verify it passes (GREEN).
+  3. *Refactor Phase*: Clean up code and run `./mvnw spotless:apply`.
 - **A test does not count until you have seen it fail**: break the one thing the test pins with a minimal production edit, watch it go red, then restore by re-reading the original. A test that has only ever been green is a claim, not evidence.
 - **Data access**: Use `JdbcClient` — no ORMs.
 - **Frontend**: Thymeleaf + htmx + Vanilla CSS. No Tailwind.
@@ -44,10 +48,10 @@ Treat request params, ingested corpus (Confluence/manuals), and LLM output as ta
 - **Transactions** — read paths `@Transactional(readOnly = true)`, kept narrow; never make LLM/HTTP calls inside a DB transaction. Stream large/LLM responses via SSE.
 
 ## Approach & Execution Protocol
-1. **Analyze**: Read the steering context in `.antigravity/steering/` and the approved requirements/tasks specified in your task prompt.
-2. **Implement & Test**: Make targeted edits directly in the active workspace. Do NOT checkout a new branch, and do NOT commit any changes.
-3. **Verify**: Check if the Docker daemon is running, then run compilation checks and the narrowest test suite first before broadening. When touching packaging, layering, or migrations, also run `ArchitectureTest` and `python3 .antigravity/scripts/check_steering.py`. Use `@MockitoBean` (not the deprecated `@MockBean`) in Spring Boot 4 tests. Always run `./mvnw spotless:check` (or auto-format with `./mvnw spotless:apply`) before finishing so formatting violations never break the build. Never read a bare `BUILD SUCCESS` as proof new code ran — confirm the test count changed, and use `set -o pipefail` so a failure behind `| tail` cannot report as success.
-4. **Report**: Report back with compilation/test logs and the list of modified files. Do not attempt to modify the parent's native brain directory files or write spec files to the workspace.
+1. **Analyze**: Read the steering context in `.antigravity/steering/` and the approved wave tasks specified in your task prompt.
+2. **Implement via Red-Green TDD**: Inside the designated worktree, write the test first, see it fail (Red), implement the minimal code, see it pass (Green), and apply `./mvnw spotless:apply`.
+3. **Verify**: Check if the Docker daemon is running, then run compilation checks and the narrowest test suite first before broadening. When touching packaging, layering, or migrations, also run `ArchitectureTest` and `python3 .antigravity/scripts/check_steering.py`. Use `@MockitoBean` (not the deprecated `@MockBean`) in Spring Boot 4 tests. Always verify with `./mvnw spotless:check`. Never read a bare `BUILD SUCCESS` as proof new code ran — confirm the test count changed, and use `set -o pipefail` so a failure behind `| tail` cannot report as success.
+4. **Report**: Report back with compilation/test logs (demonstrating Red -> Green), spotless status, and the list of modified files. Do not attempt to modify the parent's native brain directory files or write spec files to the workspace.
 
 ## Output Format
 - `Summary`: What changed and why.
