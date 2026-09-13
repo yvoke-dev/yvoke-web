@@ -111,6 +111,21 @@ class K8sManifestContractTest {
             .contains("AZURE_OPENAI_API_KEY");
     }
 
+    @Test
+    void aDeclaredOpenRouterRouteShipsItsKeyInTheSameRelease() {
+        String routes = configMap.getOrDefault("AI_MODEL_ROUTES", "");
+        boolean openrouterRouted =
+            routes.contains("openrouter") || "openrouter".equals(configMap.get("AI_PROVIDER"));
+        if (!openrouterRouted) {
+            return;
+        }
+        assertThat(secretKeys)
+            .as("AI_MODEL_ROUTES sends a model to openrouter, so the "
+                + "API key must ship in the same release; add it with "
+                + "`sops k8s/app/yvoke-app/secrets/secret.sops.yaml`")
+            .contains("OPENROUTER_API_KEY");
+    }
+
     /** Nothing should hand an operator a value for a provider that refuses to start. */
     @Test
     void noRetiredProviderSettingIsShipped() {

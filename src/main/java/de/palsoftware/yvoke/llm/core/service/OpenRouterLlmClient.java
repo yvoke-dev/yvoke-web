@@ -61,7 +61,7 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     static final Set<String> BENIGN_FINISH_REASONS =
         Set.of("stop", "end_turn", "length", "tool_calls", "function_call");
     static final Pattern OPENAI_O_SERIES_PATTERN =
-        Pattern.compile("(?:^|/)o[1345](?:-mini)?(?:$|:)", Pattern.CASE_INSENSITIVE);
+        Pattern.compile("(?:^|/)o[1345](?:-[a-z0-9]+)*(?:$|:)", Pattern.CASE_INSENSITIVE);
     static final Pattern REASONING_MODEL_PATTERN = Pattern.compile(
         "(?:^|/)o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning|r1|deepseek-v4", Pattern.CASE_INSENSITIVE);
     private static final List<String> VALID_THINKING_LEVELS =
@@ -174,6 +174,12 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         return normalized;
     }
 
+    /**
+     * Executes a non-streaming completion request.
+     *
+     * @throws LlmCallFailedException if OpenRouter returns a fatal finish reason (e.g.
+     *         {@code content_filter}) or empty content
+     */
     @Override
     public LlmResponse generate(LlmRequest request) {
         if (closed) {

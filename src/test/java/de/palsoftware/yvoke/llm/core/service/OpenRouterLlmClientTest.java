@@ -253,7 +253,7 @@ class OpenRouterLlmClientTest {
     }
 
     @Test
-    void establishmentExhaustionThrowsLlmCallFailedException() throws Exception {
+    void establishmentExhaustionRethrowsProviderExceptionAfterThreeAttempts() throws Exception {
         AtomicInteger attempts = new AtomicInteger(0);
         withMockServer(exchange -> {
             attempts.incrementAndGet();
@@ -464,6 +464,21 @@ class OpenRouterLlmClientTest {
             assertTrue(body.contains("\"reasoning\"") && body.contains("\"effort\":\"high\""),
                 "reasoning.effort must be high");
         });
+    }
+
+    @Test
+    void openaiOSeriesPatternMatchesVariousSlugs() {
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("o1").find());
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("o3").find());
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("o3-mini").find());
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("openai/o3").find());
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("openai/o1-preview").find());
+        assertTrue(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("openai/o1-pro").find());
+        assertTrue(
+            OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("openai/o3-mini:free").find());
+        assertFalse(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN
+            .matcher("deepseek/deepseek-v4.1-flash").find());
+        assertFalse(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("gemini-2.5-pro").find());
     }
 
     @Test
