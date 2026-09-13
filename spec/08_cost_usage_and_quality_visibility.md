@@ -34,6 +34,10 @@ feedback triage and answer traces; every user rates answers.
 - **Spend reflects the billed cost recorded at execution time.** Historical spend in reports is read from
   the persisted cost ledger (`llm_call_logs.total_cost`), preserving the exact pricing applied when
   the call was executed rather than retroactively revaluing past calls upon price edits.
+- **Calls across all AI services maintain full token accounting and cost tracking parity.** Calls routed
+  to OpenRouter record usage identically to native providers: prompt tokens, completion tokens, cached tokens,
+  and reasoning tokens are captured and written to `llm_call_logs`, ensuring spend explorer views, effort
+  metrics, and cost calculations reflect the actual tokens consumed.
 - **A model with no price set counts as zero cost everywhere, silently** — no error, no warning.
 - **A cache-replayed call costs nothing and is reported as a saving.** Anything that cannot be positively
   confirmed as replayed is billed in full, so an unclear signal never wipes out a real charge. **No AI
