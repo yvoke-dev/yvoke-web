@@ -63,8 +63,7 @@ class EnvExampleContractTest {
      * set them, because naming the provider fails the start rather than degrading it.
      */
     private static final Set<String> RETIRED =
-        Set.of("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID", "CLOUDFLARE_GATEWAY_TOKEN",
-            "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL");
+        Set.of("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID", "CLOUDFLARE_GATEWAY_TOKEN");
 
     /** A value that is neither blank nor visibly a stand-in — i.e. something that looks real. */
     private static final Pattern SECRET_SHAPED = Pattern.compile("^[A-Za-z0-9+/_\\-]{24,}={0,2}$");

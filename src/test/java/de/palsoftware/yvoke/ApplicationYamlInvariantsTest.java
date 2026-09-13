@@ -448,7 +448,7 @@ public class ApplicationYamlInvariantsTest {
                 + " conversation and is the model the playbook preflight runs against, so a reorder"
                 + " changes what everybody gets by default")
             .containsExactly("gemini-3.8-flash", "gemini-3.5-flash-lite", "gpt-5.4-mini",
-                "DeepSeek-V4-Flash", "gpt-5.6-luna");
+                "DeepSeek-V4-Flash", "gpt-5.6-luna", "deepseek/deepseek-v4.1-flash");
         assertThat(text("app", "ai", "azure-openai", "reasoning-models"))
             .as("this list REPLACES the name heuristic rather than extending it, so a half-filled"
                 + " value declassifies every deployment it omits and 400s each of them; empty means"
@@ -495,6 +495,7 @@ public class ApplicationYamlInvariantsTest {
         assertThat(routes.routeFor("DeepSeek-V4-Flash"))
             .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
         assertThat(routes.routeFor("gpt-5.6-luna")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+        assertThat(routes.routeFor("deepseek/deepseek-v4.1-flash")).contains(LlmRouteId.OPENROUTER);
 
         List<String> allowed =
             Arrays.stream(data.get("ALLOWED_MODELS").split(",")).map(String::trim).toList();

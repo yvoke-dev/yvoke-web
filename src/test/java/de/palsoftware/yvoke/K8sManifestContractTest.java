@@ -54,7 +54,7 @@ class K8sManifestContractTest {
      * {@code application.yml} so re-enabling one is a small change, but shipping a value for them
      * in a manifest is how an operator ends up selecting a provider that stops the pod.
      */
-    private static final Set<String> RETIRED_PREFIXES = Set.of("CLOUDFLARE_", "OPENROUTER_");
+    private static final Set<String> RETIRED_PREFIXES = Set.of("CLOUDFLARE_");
 
     private static String yaml;
     private static Map<String, String> configMap;
@@ -118,7 +118,7 @@ class K8sManifestContractTest {
         Stream.concat(configMap.keySet().stream(), secretKeys.stream())
             .filter(name -> RETIRED_PREFIXES.stream().anyMatch(name::startsWith))
             .forEach(shipped::add);
-        assertThat(shipped).as("cloudflare-gemini and openrouter are rejected at startup; drop "
+        assertThat(shipped).as("cloudflare-gemini is rejected at startup; drop "
             + "these from the ConfigMap, and from the Secret with "
             + "`sops k8s/app/yvoke-app/secrets/secret.sops.yaml`").isEmpty();
     }
