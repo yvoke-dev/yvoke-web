@@ -165,7 +165,7 @@
     {
       "name": "app.ai.provider",
       "type": "java.lang.String",
-      "description": "Active LLM client provider backend, and the default route for any model app.ai.model-routes does not map ('gemini' or 'azure-openai-responses'). 'cloudflare-gemini', 'openrouter' and 'azure-openai' are retired and rejected at startup; their classes and settings remain but are not wired.",
+      "description": "Active LLM client provider backend, and the default route for any model app.ai.model-routes does not map ('gemini', 'azure-openai-responses' or 'openrouter'). 'cloudflare-gemini' and 'azure-openai' are retired and rejected at startup; their classes and settings remain but are not wired.",
       "defaultValue": "gemini"
     },
     {
@@ -185,6 +185,24 @@
       "type": "java.lang.String",
       "description": "Authentication token/API Key for OpenRouter service requests.",
       "defaultValue": "placeholder-openrouter-api-key"
+    },
+    {
+      "name": "app.ai.openrouter.enable-thinking",
+      "type": "java.lang.Boolean",
+      "description": "Whether to request OpenRouter reasoning effort for reasoning models.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.ai.openrouter.thinking-level",
+      "type": "java.lang.String",
+      "description": "Reasoning effort for OpenRouter reasoning models (low, medium, high, max).",
+      "defaultValue": "high"
+    },
+    {
+      "name": "app.ai.openrouter.reasoning-models",
+      "type": "java.lang.String",
+      "description": "Comma-separated model names that address an OpenRouter reasoning model. Empty means detect with default heuristic.",
+      "defaultValue": ""
     },
     {
       "name": "app.ai.gemini.api-key",
@@ -454,7 +472,7 @@
       "name": "app.chat.allowed-models",
       "type": "java.util.List<java.lang.String>",
       "description": "Comma-separated whitelist backing the model picker and the per-request model check. Order is behaviour: the first entry is the default for a new conversation and the model the playbook preflight runs against.",
-      "defaultValue": "gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna"
+      "defaultValue": "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash"
     },
     {
       "name": "rest-client.connect-timeout-ms",

@@ -29,10 +29,10 @@ data:
   # Azure entries below require AZURE_OPENAI_ENDPOINT (below) and AZURE_OPENAI_API_KEY (sops
   # secret) to be present in the SAME release — without them the pod does not degrade, it fails
   # to start, naming the missing setting. Models absent from this map take AI_PROVIDER above.
-  AI_MODEL_ROUTES: '{"gpt-5.4-mini":"azure-openai-responses","DeepSeek-V4-Flash":"azure-openai-responses","gpt-5.6-luna":"azure-openai-responses"}'
+  AI_MODEL_ROUTES: '{"gpt-5.4-mini":"azure-openai-responses","DeepSeek-V4-Flash":"azure-openai-responses","gpt-5.6-luna":"azure-openai-responses","deepseek/deepseek-v4.1-flash":"openrouter"}'
 
   # Models offered in the chat model picker.
-  ALLOWED_MODELS: "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna"
+  ALLOWED_MODELS: "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash"
 
   # The RESOURCE ROOT — the client appends /openai/v1 itself, so a full API path copied from the
   # Foundry portal produces a 404 that names nothing. The matching AZURE_OPENAI_API_KEY is in the

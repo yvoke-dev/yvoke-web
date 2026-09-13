@@ -136,12 +136,12 @@ app:
       resource-url: ${APP_SECURITY_MCP_RESOURCE_URL:http://localhost:8080/mcp}
       authorization-server-url: ${APP_SECURITY_MCP_AUTHORIZATION_SERVER_URL:https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0}
   ai:
-    # One of: gemini, azure-openai-responses.
+    # One of: gemini, azure-openai-responses, openrouter.
     #
-    # 'cloudflare-gemini', 'openrouter' and 'azure-openai' are RETIRED: LlmConfig rejects them at
+    # 'cloudflare-gemini' and 'azure-openai' are RETIRED: LlmConfig rejects them at
     # startup rather than letting them reach the unknown-value fallback, which answers with Gemini
-    # on a Gemini key and logs the operator's own spelling back at them. All three classes, their
-    # tests and the settings below are deliberately left in place, so re-enabling any of them is a
+    # on a Gemini key and logs the operator's own spelling back at them. Both classes, their
+    # tests and the settings below are deliberately left in place, so re-enabling either of them is a
     # branch in LlmConfig plus an entry in LlmRouteId. Note that retiring cloudflare-gemini gives up
     # the AI Gateway's response cache, its cf-aig-metadata attribution and the cost_avoided figures
     # derived from cache hits.
@@ -157,10 +157,12 @@ app:
     # route, a non-string route and a model mapped twice all fail, because each of those answers a
     # model with the wrong provider rather than erroring.
     model-routes: ${AI_MODEL_ROUTES:}
-    # Retired — not selectable; see the note on `provider` above.
     openrouter:
       base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
       api-key: ${OPENROUTER_API_KEY:placeholder-openrouter-api-key}
+      enable-thinking: true
+      thinking-level: ${OPENROUTER_THINKING_LEVEL:high}
+      reasoning-models: ${OPENROUTER_REASONING_MODELS:}
     gemini:
       base-url: ${GEMINI_API_BASE:https://generativelanguage.googleapis.com}
       api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:placeholder-gemini-api-key}}
@@ -272,7 +274,7 @@ app:
     # against. The Azure deployments only answer where AZURE_OPENAI_ENDPOINT / _API_KEY are
     # set AND app.ai.model-routes maps them; without a route they reach the default route
     # (Gemini), which rejects the name at call time.
-    allowed-models: "${ALLOWED_MODELS:gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna}"
+    allowed-models: "${ALLOWED_MODELS:gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash}"
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range

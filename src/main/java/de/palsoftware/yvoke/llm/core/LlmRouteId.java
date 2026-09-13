@@ -20,7 +20,10 @@ public enum LlmRouteId {
     GEMINI("gemini"),
 
     /** Azure OpenAI through the Responses API. */
-    AZURE_OPENAI_RESPONSES("azure-openai-responses");
+    AZURE_OPENAI_RESPONSES("azure-openai-responses"),
+
+    /** OpenRouter. */
+    OPENROUTER("openrouter");
 
     private final String wire;
 

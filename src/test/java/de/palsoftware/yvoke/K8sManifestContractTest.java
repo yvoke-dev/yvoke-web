@@ -54,7 +54,7 @@ class K8sManifestContractTest {
      * {@code application.yml} so re-enabling one is a small change, but shipping a value for them
      * in a manifest is how an operator ends up selecting a provider that stops the pod.
      */
-    private static final Set<String> RETIRED_PREFIXES = Set.of("CLOUDFLARE_", "OPENROUTER_");
+    private static final Set<String> RETIRED_PREFIXES = Set.of("CLOUDFLARE_");
 
     private static String yaml;
     private static Map<String, String> configMap;
@@ -111,6 +111,21 @@ class K8sManifestContractTest {
             .contains("AZURE_OPENAI_API_KEY");
     }
 
+    @Test
+    void aDeclaredOpenRouterRouteShipsItsKeyInTheSameRelease() {
+        String routes = configMap.getOrDefault("AI_MODEL_ROUTES", "");
+        boolean openrouterRouted =
+            routes.contains("openrouter") || "openrouter".equals(configMap.get("AI_PROVIDER"));
+        if (!openrouterRouted) {
+            return;
+        }
+        assertThat(secretKeys)
+            .as("AI_MODEL_ROUTES sends a model to openrouter, so the "
+                + "API key must ship in the same release; add it with "
+                + "`sops k8s/app/yvoke-app/secrets/secret.sops.yaml`")
+            .contains("OPENROUTER_API_KEY");
+    }
+
     /** Nothing should hand an operator a value for a provider that refuses to start. */
     @Test
     void noRetiredProviderSettingIsShipped() {
@@ -118,7 +133,7 @@ class K8sManifestContractTest {
         Stream.concat(configMap.keySet().stream(), secretKeys.stream())
             .filter(name -> RETIRED_PREFIXES.stream().anyMatch(name::startsWith))
             .forEach(shipped::add);
-        assertThat(shipped).as("cloudflare-gemini and openrouter are rejected at startup; drop "
+        assertThat(shipped).as("cloudflare-gemini is rejected at startup; drop "
             + "these from the ConfigMap, and from the Secret with "
             + "`sops k8s/app/yvoke-app/secrets/secret.sops.yaml`").isEmpty();
     }
