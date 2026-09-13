@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.llm.core.service.AzureOpenAiResponsesLlmClient;
 import de.palsoftware.yvoke.llm.core.service.GeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.service.ModelRoutingLlmClient;
+import de.palsoftware.yvoke.llm.core.service.OpenRouterLlmClient;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
@@ -84,7 +85,12 @@ public class LlmConfig {
         @Value("${app.ai.azure-openai.api-key}") String azureApiKey,
         @Value("${app.ai.azure-openai.enable-thinking}") boolean azureEnableThinking,
         @Value("${app.ai.azure-openai.thinking-level}") String azureThinkingLevel,
-        @Value("${app.ai.azure-openai.reasoning-models}") String azureReasoningModels) {
+        @Value("${app.ai.azure-openai.reasoning-models}") String azureReasoningModels,
+        @Value("${app.ai.openrouter.base-url}") String openrouterBaseUrl,
+        @Value("${app.ai.openrouter.api-key}") String openrouterApiKey,
+        @Value("${app.ai.openrouter.enable-thinking}") boolean openrouterEnableThinking,
+        @Value("${app.ai.openrouter.thinking-level}") String openrouterThinkingLevel,
+        @Value("${app.ai.openrouter.reasoning-models}") String openrouterReasoningModels) {
         log.info("Configuring LLM client with provider: {}", provider);
 
         rejectRetired(provider);
@@ -118,6 +124,14 @@ public class LlmConfig {
                     yield new AzureOpenAiResponsesLlmClient(endpoint, apiKey, azureEnableThinking,
                         azureThinkingLevel, azureReasoningModels);
                 }
+                case OPENROUTER -> {
+                    String apiKey = resolveKey(openrouterApiKey, "OPENROUTER_API_KEY");
+                    warnIfMissing(apiKey, "OpenRouter", "OPENROUTER_API_KEY");
+                    String baseUrl = resolveKey(openrouterBaseUrl, "OPENROUTER_BASE_URL");
+                    yield new OpenRouterLlmClient(baseUrl, apiKey, objectMapper,
+                        openrouterEnableThinking, openrouterThinkingLevel,
+                        openrouterReasoningModels);
+                }
             });
         }
 
@@ -134,12 +148,12 @@ public class LlmConfig {
      *
      * <p>
      * Deliberately NOT folded into the unknown-value fallback above, which returns Gemini on the
-     * grounds that a typo must not take a running deployment down. A typo never worked; these three
+     * grounds that a typo must not take a running deployment down. A typo never worked; these two
      * did, so a deployment can still be carrying one — and answering it with Gemini, on a Gemini
      * key, having logged the operator's own spelling back at them, is the silent substitution that
-     * fallback's own rationale warns about. No class is deleted: all three remain in the tree with
-     * their tests, and their {@code app.ai.*} settings remain in {@code application.yml}, so
-     * re-enabling any of them is a branch here and an entry in {@link LlmRouteId}.
+     * fallback's own rationale warns about. Both classes remain in the tree with their tests, and
+     * their {@code app.ai.*} settings remain in {@code application.yml}, so re-enabling either of
+     * them is a branch here and an entry in {@link LlmRouteId}.
      *
      * <p>
      * Case-insensitive, matching the selection. An exact match would let {@code Azure-OpenAI} — the
@@ -153,10 +167,6 @@ public class LlmConfig {
                 + "reasoning_effort together — so every agentic turn silently gave up its thinking "
                 + "level. Use azure-openai-responses, which reaches the same deployment through "
                 + "the Responses API and takes the same AZURE_OPENAI_* settings.");
-        }
-        if ("openrouter".equalsIgnoreCase(provider)) {
-            throw new IllegalStateException("app.ai.provider=openrouter is no longer wired. Valid "
-                + "values: " + LlmRouteId.wireSpellings() + ".");
         }
         if ("cloudflare-gemini".equalsIgnoreCase(provider)) {
             throw new IllegalStateException("app.ai.provider=cloudflare-gemini is no longer wired; "

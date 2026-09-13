@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.llm.core.service.AzureOpenAiResponsesLlmClient;
 import de.palsoftware.yvoke.llm.core.service.GeminiLlmClient;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.service.ModelRoutingLlmClient;
+import de.palsoftware.yvoke.llm.core.service.OpenRouterLlmClient;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 
@@ -73,11 +74,20 @@ public class LlmConfigTest {
             .as("the message must name the replacement, or the operator has nowhere to go")
             .hasMessageContaining("azure-openai-responses");
 
-        assertThatThrownBy(() -> providerFor("OpenRouter"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("openrouter");
-
         assertThatThrownBy(() -> providerFor("Cloudflare-Gemini"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("cloudflare-gemini");
+    }
+
+    @Test
+    public void openrouterProviderIsSelectedCaseInsensitively() {
+        LlmClient openRouter = providerFor("OpenRouter");
+        try {
+            assertThat(defaultClientOf(openRouter))
+                .as("mixed-case 'OpenRouter' must select the OpenRouter client")
+                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+        } finally {
+            close(openRouter);
+        }
     }
 
     /**
@@ -107,7 +117,7 @@ public class LlmConfigTest {
         LlmClient client = config().llmProviderClient("gemini", "", new ObjectMapper(),
             "placeholder-gemini-api-key", false, "low", "https://gemini.example",
             "placeholder-azure-openai-endpoint", "placeholder-azure-openai-api-key", false, "low",
-            "");
+            "", "https://openrouter.ai/api/v1", "placeholder-openrouter-api-key", true, "high", "");
         try {
             assertThat(defaultClientOf(client))
                 .as("an unconfigured dev box must still build a context")
@@ -165,6 +175,20 @@ public class LlmConfigTest {
         }
     }
 
+    @Test
+    public void aModelRouteMappedToOpenRouterRoutesToOpenRouterClient() {
+        LlmClient client = build("gemini", "{\"deepseek/deepseek-v4.1-flash\": \"openrouter\"}");
+        try {
+            assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
+            ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
+
+            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash"))
+                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+        } finally {
+            close(client);
+        }
+    }
+
     /**
      * Only the routes actually named are built. Constructing every client eagerly would fail on the
      * shipped placeholder Azure endpoint and take every Spring context — and CI — with it.
@@ -214,10 +238,27 @@ public class LlmConfigTest {
      * never reads the developer's real {@code GEMINI_API_KEY} from the environment. Neither
      * constructor performs network I/O — they build an SDK client and its connection pool.
      */
+    @Test
+    public void missingOpenRouterKeyLogsWarningAndDoesNotThrowAtStartup() {
+        LlmClient client = config().llmProviderClient("gemini",
+            "{\"deepseek/deepseek-v4.1-flash\": \"openrouter\"}", new ObjectMapper(),
+            "test-gemini-key", false, "low", "https://gemini.example", "https://azure.example",
+            "test-azure-key", false, "low", "", "https://openrouter.ai/api/v1",
+            "placeholder-openrouter-api-key", true, "high", "");
+        try {
+            assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
+            ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
+            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash"))
+                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+        } finally {
+            close(client);
+        }
+    }
+
     private static LlmClient build(String provider, String routes, String azureEndpoint) {
         return config().llmProviderClient(provider, routes, new ObjectMapper(), "test-gemini-key",
             false, "low", "https://gemini.example", azureEndpoint, "test-azure-key", false, "low",
-            "");
+            "", "https://openrouter.example", "test-openrouter-key", true, "high", "");
     }
 
     private static void close(LlmClient client) {

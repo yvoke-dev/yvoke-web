@@ -131,9 +131,19 @@ class LlmModelRoutesTest {
         assertThat(LlmRouteId.fromWire("gemini")).contains(LlmRouteId.GEMINI);
         assertThat(LlmRouteId.fromWire("Azure-OpenAI-Responses"))
             .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+        assertThat(LlmRouteId.fromWire("openrouter")).contains(LlmRouteId.OPENROUTER);
+        assertThat(LlmRouteId.fromWire("OpenRouter")).contains(LlmRouteId.OPENROUTER);
         assertThat(LlmRouteId.fromWire("cloudflare-gemini")).isEmpty();
         assertThat(LlmRouteId.fromWire(null)).isEmpty();
         assertThat(LlmRouteId.GEMINI.wire()).isEqualTo("gemini");
         assertThat(LlmRouteId.AZURE_OPENAI_RESPONSES.wire()).isEqualTo("azure-openai-responses");
+        assertThat(LlmRouteId.OPENROUTER.wire()).isEqualTo("openrouter");
+    }
+
+    @Test
+    void anInvalidRouteSpellingFailsInModelRoutesParse() {
+        assertThatThrownBy(() -> parse("{\"deepseek/deepseek-v4.1-flash\": \"open-router\"}"))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("open-router")
+            .hasMessageContaining("deepseek/deepseek-v4.1-flash");
     }
 }
