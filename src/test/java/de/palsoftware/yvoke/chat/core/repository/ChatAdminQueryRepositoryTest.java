@@ -35,29 +35,6 @@ class ChatAdminQueryRepositoryTest {
     }
 
     @Test
-    void testFeedbackFilter_parsingAndFallbacks() {
-        assertThat(FeedbackFilter.fromString("positive")).isEqualTo(FeedbackFilter.POSITIVE);
-        assertThat(FeedbackFilter.fromString("POSITIVE")).isEqualTo(FeedbackFilter.POSITIVE);
-        assertThat(FeedbackFilter.fromString("negative")).isEqualTo(FeedbackFilter.NEGATIVE);
-        assertThat(FeedbackFilter.fromString("NEGATIVE")).isEqualTo(FeedbackFilter.NEGATIVE);
-        assertThat(FeedbackFilter.fromString("any")).isEqualTo(FeedbackFilter.ANY);
-        assertThat(FeedbackFilter.fromString("ANY")).isEqualTo(FeedbackFilter.ANY);
-        assertThat(FeedbackFilter.fromString("none")).isEqualTo(FeedbackFilter.NONE);
-        assertThat(FeedbackFilter.fromString("NONE")).isEqualTo(FeedbackFilter.NONE);
-        assertThat(FeedbackFilter.fromString("all")).isEqualTo(FeedbackFilter.ALL);
-        assertThat(FeedbackFilter.fromString("ALL")).isEqualTo(FeedbackFilter.ALL);
-
-        // Fallbacks
-        assertThat(FeedbackFilter.fromString(null)).isEqualTo(FeedbackFilter.ALL);
-        assertThat(FeedbackFilter.fromString("")).isEqualTo(FeedbackFilter.ALL);
-        assertThat(FeedbackFilter.fromString("   ")).isEqualTo(FeedbackFilter.ALL);
-
-        // Rejection of unknown values
-        assertThatThrownBy(() -> FeedbackFilter.fromString("garbage-rating"))
-            .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
     void testTimeFilter_presetsWithFixedClock() {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-06-15T12:00:00Z"), ZoneOffset.UTC);
 
@@ -86,38 +63,44 @@ class ChatAdminQueryRepositoryTest {
     void testTimeFilter_customDateHalfOpenUtcWindow() {
         LocalDate from = LocalDate.of(2026, 6, 1);
         LocalDate to = LocalDate.of(2026, 6, 10);
-        TimeFilter custom = TimeFilter.of("custom", from, to);
+        TimeFilter custom = TimeFilter.custom(from, to);
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 6, 1, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 6, 11, 0, 0, 0, 0, ZoneOffset.UTC));
+        assertThat(custom.fromDate()).isEqualTo(from);
+        assertThat(custom.toDate()).isEqualTo(to);
     }
 
     @Test
     void testTimeFilter_sameDateWindowInclusive() {
         LocalDate day = LocalDate.of(2026, 7, 15);
-        TimeFilter custom = TimeFilter.of("custom", day, day);
+        TimeFilter custom = TimeFilter.custom(day, day);
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 7, 15, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 7, 16, 0, 0, 0, 0, ZoneOffset.UTC));
+        assertThat(custom.fromDate()).isEqualTo(day);
+        assertThat(custom.toDate()).isEqualTo(day);
     }
 
     @Test
     void testTimeFilter_invertsInvertedDates() {
         LocalDate from = LocalDate.of(2026, 8, 20);
         LocalDate to = LocalDate.of(2026, 8, 10);
-        TimeFilter custom = TimeFilter.of("custom", from, to);
+        TimeFilter custom = TimeFilter.custom(from, to);
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 8, 10, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 8, 21, 0, 0, 0, 0, ZoneOffset.UTC));
+        assertThat(custom.fromDate()).isEqualTo(to);
+        assertThat(custom.toDate()).isEqualTo(from);
     }
 
     @Test
@@ -144,8 +127,8 @@ class ChatAdminQueryRepositoryTest {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM conversations c WHERE 1=1");
         Map<String, Object> params = new HashMap<>();
 
-        ConversationFilter empty = new ConversationFilter(Set.of(), false,
-            TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL);
+        ConversationFilter empty =
+            new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, empty);
 
         assertThat(sql.toString()).isEqualTo("SELECT COUNT(*) FROM conversations c WHERE 1=1");
@@ -158,8 +141,8 @@ class ChatAdminQueryRepositoryTest {
         Map<String, Object> params = new HashMap<>();
         UUID uid = UUID.randomUUID();
 
-        ConversationFilter filter = new ConversationFilter(Set.of(uid), false,
-            TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL);
+        ConversationFilter filter =
+            new ConversationFilter(Set.of(uid), false, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND c.user_id IN (:userIds)");
@@ -172,8 +155,8 @@ class ChatAdminQueryRepositoryTest {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM conversations c WHERE 1=1");
         Map<String, Object> params = new HashMap<>();
 
-        ConversationFilter filter = new ConversationFilter(Set.of(), true,
-            TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL);
+        ConversationFilter filter =
+            new ConversationFilter(Set.of(), true, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND c.user_id IS NULL");
@@ -187,8 +170,8 @@ class ChatAdminQueryRepositoryTest {
         Map<String, Object> params = new HashMap<>();
         UUID uid = UUID.randomUUID();
 
-        ConversationFilter filter = new ConversationFilter(Set.of(uid), true,
-            TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL);
+        ConversationFilter filter =
+            new ConversationFilter(Set.of(uid), true, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND (c.user_id IN (:userIds) OR c.user_id IS NULL)");
@@ -219,7 +202,7 @@ class ChatAdminQueryRepositoryTest {
         for (FeedbackFilter fb : List.of(FeedbackFilter.POSITIVE, FeedbackFilter.NEGATIVE, FeedbackFilter.ANY, FeedbackFilter.NONE)) {
             StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM conversations c WHERE 1=1");
             Map<String, Object> params = new HashMap<>();
-            ConversationFilter filter = new ConversationFilter(Set.of(), false, TimeFilter.of("all", (LocalDate) null, null), fb);
+            ConversationFilter filter = new ConversationFilter(Set.of(), false, TimeFilter.all(), fb);
             repository.appendConversationFilters(sql, params, filter);
 
             switch (fb) {

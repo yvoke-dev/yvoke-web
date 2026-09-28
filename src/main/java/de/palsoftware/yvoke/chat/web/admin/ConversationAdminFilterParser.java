@@ -5,8 +5,6 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Feedba
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Collections;
@@ -63,28 +61,9 @@ public final class ConversationAdminFilterParser {
         TimeFilter timeFilter;
         if ("custom".equals(normalizedPreset)
             || (rawTimeRange == null && (fromDate != null || toDate != null))) {
-            if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
-                LocalDate temp = fromDate;
-                fromDate = toDate;
-                toDate = temp;
-            }
-            OffsetDateTime fromCutoff =
-                fromDate != null ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
-            OffsetDateTime toCutoff =
-                toDate != null ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime()
-                    : null;
-            timeFilter = new TimeFilter("custom", fromCutoff, toCutoff, fromDate, toDate);
-        } else if ("day".equals(normalizedPreset)) {
-            timeFilter =
-                new TimeFilter("day", OffsetDateTime.now(c).minusDays(1), null, null, null);
-        } else if ("week".equals(normalizedPreset)) {
-            timeFilter =
-                new TimeFilter("week", OffsetDateTime.now(c).minusWeeks(1), null, null, null);
-        } else if ("month".equals(normalizedPreset)) {
-            timeFilter =
-                new TimeFilter("month", OffsetDateTime.now(c).minusDays(30), null, null, null);
+            timeFilter = TimeFilter.custom(fromDate, toDate);
         } else {
-            timeFilter = new TimeFilter("all", null, null, null, null);
+            timeFilter = TimeFilter.preset(normalizedPreset, c);
         }
 
         FeedbackFilter feedbackFilter = parseFeedback(rawFeedback);

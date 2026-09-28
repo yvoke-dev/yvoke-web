@@ -32,17 +32,6 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
     public enum FeedbackFilter {
         ALL, ANY, POSITIVE, NEGATIVE, NONE;
-
-        public static FeedbackFilter fromString(String param) {
-            if (param == null || param.isBlank() || "all".equalsIgnoreCase(param.trim())) {
-                return ALL;
-            }
-            try {
-                return FeedbackFilter.valueOf(param.trim().toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Unknown feedback filter: " + param);
-            }
-        }
     }
 
     public record TimeFilter(
@@ -51,28 +40,6 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         OffsetDateTime toCutoff,
         LocalDate fromDate,
         LocalDate toDate) {
-
-        private static final Set<String> ALLOWED_PRESETS = Set.of("all", "day", "week", "month", "custom");
-
-        public static TimeFilter of(String preset, LocalDate fromDate, LocalDate toDate) {
-            String normalizedPreset = preset != null ? preset.trim().toLowerCase(Locale.ROOT) : "all";
-            if (!normalizedPreset.isBlank() && !ALLOWED_PRESETS.contains(normalizedPreset)) {
-                throw new IllegalArgumentException("Unknown time range preset: " + preset);
-            }
-            if ("custom".equals(normalizedPreset) || (preset == null && (fromDate != null || toDate != null))) {
-                if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
-                    LocalDate temp = fromDate;
-                    fromDate = toDate;
-                    toDate = temp;
-                }
-                OffsetDateTime fromCutoff =
-                    fromDate != null ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
-                OffsetDateTime toCutoff =
-                    toDate != null ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
-                return new TimeFilter("custom", fromCutoff, toCutoff, fromDate, toDate);
-            }
-            return preset(normalizedPreset, Clock.systemUTC());
-        }
 
         public static TimeFilter preset(String preset, Clock clock) {
             String normalized = preset != null ? preset.trim().toLowerCase(Locale.ROOT) : "all";
@@ -88,8 +55,21 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             }
         }
 
+        public static TimeFilter custom(LocalDate fromDate, LocalDate toDate) {
+            if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+                LocalDate temp = fromDate;
+                fromDate = toDate;
+                toDate = temp;
+            }
+            OffsetDateTime fromCutoff =
+                fromDate != null ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+            OffsetDateTime toCutoff =
+                toDate != null ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+            return new TimeFilter("custom", fromCutoff, toCutoff, fromDate, toDate);
+        }
+
         public static TimeFilter all() {
-            return new TimeFilter("all", null, null, null, null);
+            return preset("all", Clock.systemUTC());
         }
     }
 
@@ -109,14 +89,24 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     public record UserConversationStats(UUID userId, String userDisplayName, String userEmail,
         long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
 
-    public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
-        long totalThumbsDown, List<UserConversationStats> userStats) {
+    public record ConversationOverviewStats(
+        long totalConversations,
+        long totalThumbsUp,
+        long totalThumbsDown,
+        long registeredUserCount,
+        List<UserConversationStats> userStats) {
 
-        public long registeredUserCount() {
-            if (userStats == null) {
-                return 0;
-            }
-            return userStats.stream().filter(u -> u.userId() != null).count();
+        public ConversationOverviewStats(
+            long totalConversations,
+            long totalThumbsUp,
+            long totalThumbsDown,
+            List<UserConversationStats> userStats) {
+            this(
+                totalConversations,
+                totalThumbsUp,
+                totalThumbsDown,
+                userStats == null ? 0 : userStats.stream().filter(u -> u.userId() != null).count(),
+                userStats);
         }
     }
 
@@ -169,7 +159,11 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 SELECT c.user_id, u.display_name, u.email,
                        COUNT(DISTINCT c.id) AS conversation_count,
                        COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0) AS thumbs_up_count,
-                       COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count
+                       COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count,
+                       SUM(COUNT(DISTINCT c.id)) OVER () AS total_conversations,
+                       SUM(COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_up,
+                       SUM(COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_down,
+                       COUNT(*) FILTER (WHERE c.user_id IS NOT NULL) OVER () AS registered_user_count
                 FROM conversations c
                 LEFT JOIN users u ON c.user_id = u.id
                 LEFT JOIN (
@@ -185,25 +179,42 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             """
                  GROUP BY c.user_id, u.display_name, u.email
                  ORDER BY conversation_count DESC, thumbs_up_count DESC, u.display_name ASC NULLS LAST, c.user_id ASC NULLS LAST
+                 LIMIT 50
                 """);
 
-        List<UserConversationStats> userStats = jdbcClient.sql(sql.toString()).params(params)
-            .query((rs, rowNum) -> new UserConversationStats(rs.getObject("user_id", UUID.class),
-                rs.getString("display_name"), rs.getString("email"),
-                rs.getLong("conversation_count"), rs.getLong("thumbs_up_count"),
-                rs.getLong("thumbs_down_count")))
+        record StatRow(
+            UserConversationStats user,
+            long totalConversations,
+            long totalThumbsUp,
+            long totalThumbsDown,
+            long registeredUserCount) {}
+
+        List<StatRow> rows = jdbcClient.sql(sql.toString()).params(params)
+            .query((rs, rowNum) -> new StatRow(
+                new UserConversationStats(
+                    rs.getObject("user_id", UUID.class),
+                    rs.getString("display_name"),
+                    rs.getString("email"),
+                    rs.getLong("conversation_count"),
+                    rs.getLong("thumbs_up_count"),
+                    rs.getLong("thumbs_down_count")),
+                rs.getLong("total_conversations"),
+                rs.getLong("total_thumbs_up"),
+                rs.getLong("total_thumbs_down"),
+                rs.getLong("registered_user_count")))
             .list();
 
-        long totalConversations = 0;
-        long totalThumbsUp = 0;
-        long totalThumbsDown = 0;
-        for (UserConversationStats u : userStats) {
-            totalConversations += u.conversationCount();
-            totalThumbsUp += u.thumbsUpCount();
-            totalThumbsDown += u.thumbsDownCount();
+        if (rows.isEmpty()) {
+            return new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
         }
 
-        return new ConversationOverviewStats(totalConversations, totalThumbsUp, totalThumbsDown,
+        StatRow first = rows.get(0);
+        List<UserConversationStats> userStats = rows.stream().map(StatRow::user).toList();
+        return new ConversationOverviewStats(
+            first.totalConversations(),
+            first.totalThumbsUp(),
+            first.totalThumbsDown(),
+            first.registeredUserCount(),
             userStats);
     }
 

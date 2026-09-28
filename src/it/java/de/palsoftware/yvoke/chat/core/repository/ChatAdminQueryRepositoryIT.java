@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFi
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.UserConversationStats;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -196,7 +197,7 @@ public class ChatAdminQueryRepositoryIT {
         UUID conv = createConversation(user, "CAQR-IT Evening", evening);
 
         ConversationFilter filter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("custom", day, day), FeedbackFilter.ALL);
+            Set.of(user), false, TimeFilter.custom(day, day), FeedbackFilter.ALL);
         List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
 
         assertThat(results).hasSize(1);
@@ -214,7 +215,7 @@ public class ChatAdminQueryRepositoryIT {
         LocalDate fromInverted = day.plusDays(5);
         LocalDate toInverted = day.minusDays(5);
         ConversationFilter filter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("custom", fromInverted, toInverted), FeedbackFilter.ALL);
+            Set.of(user), false, TimeFilter.custom(fromInverted, toInverted), FeedbackFilter.ALL);
         List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
 
         assertThat(results).hasSize(1);
@@ -249,7 +250,7 @@ public class ChatAdminQueryRepositoryIT {
         ConversationFilter filter = new ConversationFilter(
             Set.of(userA),
             false,
-            TimeFilter.of("month", null, null),
+            TimeFilter.preset("month", Clock.systemUTC()),
             FeedbackFilter.POSITIVE);
 
         List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
@@ -314,7 +315,7 @@ public class ChatAdminQueryRepositoryIT {
     void testGetConversationStats_aggregatesAccuratelyAndRespectsFilters() {
         LocalDate statsDay = LocalDate.of(2035, 6, 1);
         OffsetDateTime statsTime = OffsetDateTime.of(2035, 6, 1, 10, 0, 0, 0, ZoneOffset.UTC);
-        TimeFilter scopedTime = TimeFilter.of("custom", statsDay, statsDay);
+        TimeFilter scopedTime = TimeFilter.custom(statsDay, statsDay);
 
         // User 1 (Alice): 2 convs
         UUID alice = createUser("caqr-it-alice@example.com", "CAQR Alice");
