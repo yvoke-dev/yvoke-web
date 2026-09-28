@@ -11,6 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -205,15 +208,32 @@ public class ConversationsAdminIT {
     @Test
     public void testConversationsAdminPerUserStatsTruncationHint() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
+        OffsetDateTime statsTime = OffsetDateTime.of(2037, 2, 20, 12, 0, 0, 0, ZoneOffset.UTC);
         for (int i = 1; i <= 50; i++) {
             UUID uid = createUser("cait-stats50-" + i + "-oid", "cait-stats50-" + i + "@local", "CAIT User " + i);
-            conversationRepository.create(UUID.randomUUID(), uid, "CAIT-Stats50-" + i, Map.of(), "web");
+            UUID convId = UUID.randomUUID();
+            conversationRepository.create(convId, uid, "CAIT-Stats50-" + i, Map.of(), "web");
+            jdbcTemplate.update(
+                "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
+                Timestamp.from(statsTime.toInstant()),
+                Timestamp.from(statsTime.toInstant()),
+                convId);
         }
         // 50 registered users + 1 anonymous conversation = 51 groups total
-        conversationRepository.create(UUID.randomUUID(), null, "CAIT-Stats50-Anon", Map.of(), "web");
+        UUID anonConvId = UUID.randomUUID();
+        conversationRepository.create(anonConvId, null, "CAIT-Stats50-Anon", Map.of(), "web");
+        jdbcTemplate.update(
+            "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
+            Timestamp.from(statsTime.toInstant()),
+            Timestamp.from(statsTime.toInstant()),
+            anonConvId);
 
-        mockMvc.perform(get("/admin/conversations").with(adminUser()))
+        mockMvc.perform(get("/admin/conversations")
+                .param("timeRange", "custom")
+                .param("fromDate", "2037-02-20")
+                .param("toDate", "2037-02-20")
+                .with(adminUser()))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("(Top 50 of 51 users)")));
+            .andExpect(content().string(containsString("(Top 50 of 51 users incl. anonymous)")));
     }
 }
