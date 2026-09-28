@@ -114,7 +114,9 @@ public class ConversationsAdminIT {
     public void testConversationsAdminHtmlElements_FiltersAndColspan() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
 
-        mockMvc.perform(get("/admin/conversations").with(adminUser()))
+        mockMvc.perform(get("/admin/conversations")
+                .param("userIds", UUID.randomUUID().toString())
+                .with(adminUser()))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("filters-panel")))
             .andExpect(content().string(containsString("name=\"userIds\"")))
