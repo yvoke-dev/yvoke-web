@@ -15,6 +15,59 @@
                 </div>
             </div>
 
+            <!-- Filter Panel -->
+            <div class="filters-panel">
+                <form th:action="@{/admin/conversations}" method="get" id="filter-form">
+                    <div class="filters-grid">
+                        <div class="form-group">
+                            <label for="userIds" class="form-label">User</label>
+                            <select name="userIds" id="userIds" multiple size="3" class="form-select">
+                                <option value="anonymous" th:selected="${selectedUserIds != null && selectedUserIds.contains('anonymous')}">👤 Anonymous / Deleted</option>
+                                <option th:each="user : ${userOptions}" th:value="${user.id}" th:text="${user.displayName != null && !user.displayName.isBlank() ? user.displayName + ' (' + user.email + ')' : user.email}" th:selected="${selectedUserIds != null && selectedUserIds.contains(user.id.toString())}"></option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="timeRange" class="form-label">Time Range</label>
+                            <select name="timeRange" id="timeRange" class="form-select">
+                                <option value="all" th:selected="${selectedTimeRange == 'all'}">All Time</option>
+                                <option value="day" th:selected="${selectedTimeRange == 'day'}">Last 24 Hours</option>
+                                <option value="week" th:selected="${selectedTimeRange == 'week'}">Last 7 Days</option>
+                                <option value="month" th:selected="${selectedTimeRange == 'month'}">Last 30 Days</option>
+                                <option value="custom" th:selected="${selectedTimeRange == 'custom'}">Custom Range</option>
+                            </select>
+                        </div>
+
+                        <div id="custom-date-container" th:style="${selectedTimeRange == 'custom' ? 'display: flex; gap: 0.75rem;' : 'display: none; gap: 0.75rem;'}">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fromDate" class="form-label">From Date</label>
+                                <input type="date" name="fromDate" id="fromDate" class="form-input" th:value="${fromDate}" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="toDate" class="form-label">To Date</label>
+                                <input type="date" name="toDate" id="toDate" class="form-input" th:value="${toDate}" />
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="feedback" class="form-label">Feedback</label>
+                            <select name="feedback" id="feedback" class="form-select">
+                                <option value="all" th:selected="${selectedFeedback == 'all'}">All Conversations</option>
+                                <option value="any" th:selected="${selectedFeedback == 'any'}">Has Any Feedback</option>
+                                <option value="positive" th:selected="${selectedFeedback == 'positive'}">👍 Helpful Answers</option>
+                                <option value="negative" th:selected="${selectedFeedback == 'negative'}">👎 Unhelpful Answers</option>
+                                <option value="none" th:selected="${selectedFeedback == 'none'}">Unrated / No Feedback</option>
+                            </select>
+                        </div>
+
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                            <button type="submit" class="btn btn-primary">Apply Filters</button>
+                            <a th:href="@{/admin/conversations}" class="btn btn-secondary">Reset</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
             <!-- Table Card -->
             <div class="card">
                 <h2 class="card-title">All Conversations</h2>
@@ -27,6 +80,7 @@
                                 <th>User</th>
                                 <th>Conversation ID</th>
                                 <th>Title</th>
+                                <th>Feedback</th>
                                 <th>Source</th>
                                 <th>Last Updated</th>
                             </tr>
@@ -46,12 +100,17 @@
                                 </td>
                                 <td th:text="${conv.title}"></td>
                                 <td>
+                                    <span th:if="${conv.thumbsUpCount > 0}" class="badge badge-success">👍 <span th:text="${conv.thumbsUpCount}"></span></span>
+                                    <span th:if="${conv.thumbsDownCount > 0}" class="badge badge-danger">👎 <span th:text="${conv.thumbsDownCount}"></span></span>
+                                    <span th:if="${conv.thumbsUpCount == 0 && conv.thumbsDownCount == 0}">—</span>
+                                </td>
+                                <td>
                                     <span class="badge badge-muted" th:text="${conv.source}"></span>
                                 </td>
                                 <td th:text="${conv.updatedAt != null ? #temporals.format(conv.updatedAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC' : ''}"></td>
                             </tr>
                             <tr th:if="${#lists.isEmpty(conversations)}">
-                                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No conversations found in the system.</td>
+                                <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No conversations found in the system.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -63,12 +122,34 @@
                         Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${totalCount}"></span> total conversations)
                     </div>
                     <div class="pagination-controls">
-                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1})}" class="btn btn-secondary">&laquo; Previous</a>
-                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1})}" class="btn btn-secondary">Next &raquo;</a>
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">Next &raquo;</a>
                     </div>
                 </div>
             </div>
         </main>
     </div>
+
+    <script>
+        (function () {
+            var timeRangeSelect = document.getElementById('timeRange');
+            var customDateContainer = document.getElementById('custom-date-container');
+
+            function toggleCustomDates() {
+                if (!timeRangeSelect || !customDateContainer) {
+                    return;
+                }
+                if (timeRangeSelect.value === 'custom') {
+                    customDateContainer.style.display = 'flex';
+                } else {
+                    customDateContainer.style.display = 'none';
+                }
+            }
+
+            if (timeRangeSelect) {
+                timeRangeSelect.addEventListener('change', toggleCustomDates);
+            }
+        })();
+    </script>
 </body>
 </html>

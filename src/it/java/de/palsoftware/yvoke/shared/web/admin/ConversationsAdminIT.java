@@ -3,8 +3,10 @@ package de.palsoftware.yvoke.shared.web.admin;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import java.util.Map;
 import java.util.UUID;
@@ -106,5 +108,41 @@ public class ConversationsAdminIT {
         // Admin tries to update model of another user's conversation -> 403 Forbidden
         mockMvc.perform(post("/chat/" + convId + "/model").with(csrf()).param("model", "gpt-4o")
             .with(adminUser())).andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testConversationsAdminHtmlElements_FiltersAndColspan() throws Exception {
+        createUser("mock-admin-oid", "admin@local", "Admin User");
+
+        mockMvc.perform(get("/admin/conversations").with(adminUser()))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("filters-panel")))
+            .andExpect(content().string(containsString("name=\"userIds\"")))
+            .andExpect(content().string(containsString("value=\"anonymous\"")))
+            .andExpect(content().string(containsString("name=\"timeRange\"")))
+            .andExpect(content().string(containsString("name=\"fromDate\"")))
+            .andExpect(content().string(containsString("name=\"toDate\"")))
+            .andExpect(content().string(containsString("name=\"feedback\"")))
+            .andExpect(content().string(containsString("<th>Feedback</th>")))
+            .andExpect(content().string(containsString("colspan=\"7\"")));
+    }
+
+    @Test
+    public void testConversationsAdminPaginationPreservesFilterParams() throws Exception {
+        createUser("mock-admin-oid", "admin@local", "Admin User");
+        UUID userAId = createUser("user-e-oid", "user-e@local", "User E");
+
+        for (int i = 0; i < 25; i++) {
+            conversationRepository.create(UUID.randomUUID(), userAId, "Conversation " + i, Map.of(), "web");
+        }
+
+        mockMvc.perform(get("/admin/conversations")
+                .param("timeRange", "month")
+                .param("feedback", "all")
+                .param("size", "20")
+                .with(adminUser()))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("timeRange=month")))
+            .andExpect(content().string(containsString("feedback=all")));
     }
 }
