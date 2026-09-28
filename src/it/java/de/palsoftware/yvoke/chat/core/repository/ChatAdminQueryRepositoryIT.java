@@ -405,4 +405,55 @@ public class ChatAdminQueryRepositoryIT {
         assertThat(negativeOnly.userStats()).extracting(UserConversationStats::userId).containsExactlyInAnyOrder(alice, bob);
         assertThat(negativeOnly.registeredUserCount()).isEqualTo(2);
     }
+
+    @Test
+    void testGetConversationStats_moreThan50Users_capsUserListAt50WhileTotalsCoverAll() {
+        LocalDate statsDay = LocalDate.of(2036, 1, 15);
+        OffsetDateTime statsTime = OffsetDateTime.of(2036, 1, 15, 12, 0, 0, 0, ZoneOffset.UTC);
+        TimeFilter scopedTime = TimeFilter.custom(statsDay, statsDay);
+
+        // Create 55 registered users, each with 1 conversation
+        for (int i = 1; i <= 55; i++) {
+            String padded = String.format("%03d", i);
+            UUID uid = createUser("caqr-it-stats50-" + padded + "@example.com", "CAQR-Stats50-User-" + padded);
+            UUID conv = createConversation(uid, "CAQR-IT Stats50 Conv " + padded, statsTime);
+            if (i == 1) {
+                // User 1 gets 2 thumbs up and 1 thumbs down
+                createMessageWithFeedback(conv, 1);
+                createMessageWithFeedback(conv, 1);
+                createMessageWithFeedback(conv, -1);
+            } else if (i == 2) {
+                // User 2 gets 1 thumbs down
+                createMessageWithFeedback(conv, -1);
+            } else if (i <= 10) {
+                // Users 3..10 get 1 thumbs up each (8 thumbs up)
+                createMessageWithFeedback(conv, 1);
+            }
+        }
+
+        // Add 1 anonymous conversation in the same scoped window with 1 thumbs up
+        UUID anonConv = createConversation(null, "CAQR-IT Stats50 Anon Conv", statsTime);
+        createMessageWithFeedback(anonConv, 1);
+
+        ConversationFilter overallFilter =
+            new ConversationFilter(Set.of(), false, scopedTime, FeedbackFilter.ALL);
+        ConversationOverviewStats stats = chatAdminQueryRepository.getConversationStats(overallFilter);
+
+        assertThat(stats).isNotNull();
+        // Grand totals cover all 56 conversations and 55 registered users across the entire window
+        assertThat(stats.totalConversations()).isEqualTo(56);
+        assertThat(stats.registeredUserCount()).isEqualTo(55);
+        assertThat(stats.totalThumbsUp()).isEqualTo(11);
+        assertThat(stats.totalThumbsDown()).isEqualTo(2);
+
+        // The returned per-user breakdown list must be capped at exactly 50 rows
+        List<UserConversationStats> userStats = stats.userStats();
+        assertThat(userStats).hasSize(50);
+
+        // The sum of conversations across the capped 50 rows must be strictly less than the total
+        long listedConversations = userStats.stream().mapToLong(UserConversationStats::conversationCount).sum();
+        assertThat(listedConversations).isEqualTo(50);
+        assertThat(stats.totalConversations()).isGreaterThan(listedConversations);
+        assertThat(stats.registeredUserCount()).isGreaterThan(userStats.size());
+    }
 }

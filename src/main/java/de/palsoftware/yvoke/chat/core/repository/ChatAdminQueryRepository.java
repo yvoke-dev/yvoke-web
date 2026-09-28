@@ -89,26 +89,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     public record UserConversationStats(UUID userId, String userDisplayName, String userEmail,
         long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
 
-    public record ConversationOverviewStats(
-        long totalConversations,
-        long totalThumbsUp,
-        long totalThumbsDown,
-        long registeredUserCount,
-        List<UserConversationStats> userStats) {
-
-        public ConversationOverviewStats(
-            long totalConversations,
-            long totalThumbsUp,
-            long totalThumbsDown,
-            List<UserConversationStats> userStats) {
-            this(
-                totalConversations,
-                totalThumbsUp,
-                totalThumbsDown,
-                userStats == null ? 0 : userStats.stream().filter(u -> u.userId() != null).count(),
-                userStats);
-        }
-    }
+    public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
+        long totalThumbsDown, long registeredUserCount, List<UserConversationStats> userStats) {}
 
     public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
         String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,

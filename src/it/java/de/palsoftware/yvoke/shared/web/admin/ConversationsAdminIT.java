@@ -201,4 +201,18 @@ public class ConversationsAdminIT {
         mockMvc.perform(get("/admin/conversations").param("timeRange", "unknown-range").with(adminUser()))
             .andExpect(status().isBadRequest());
     }
+
+    @Test
+    public void testConversationsAdminPerUserStatsTruncationHint() throws Exception {
+        createUser("mock-admin-oid", "admin@local", "Admin User");
+        for (int i = 1; i <= 51; i++) {
+            UUID uid = createUser("cait-stats50-" + i + "-oid", "cait-stats50-" + i + "@local", "CAIT User " + i);
+            conversationRepository.create(UUID.randomUUID(), uid, "CAIT-Stats50-" + i, Map.of(), "web");
+        }
+
+        mockMvc.perform(get("/admin/conversations").with(adminUser()))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("(Top 50 of ")))
+            .andExpect(content().string(containsString("users)")));
+    }
 }

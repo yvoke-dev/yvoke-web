@@ -104,7 +104,10 @@
                     <!-- Right: Per-User Statistics (Max 3 users visible, scrollable for more) -->
                     <div style="flex: 1; min-width: 320px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                            <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Per-User Statistics</span>
+                            <div>
+                                <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Per-User Statistics</span>
+                                <span th:if="${stats.registeredUserCount > #lists.size(stats.userStats)}" style="font-size: 0.75em; color: var(--text-secondary); margin-left: 0.4rem;">(Top 50 of <span th:text="${stats.registeredUserCount}"></span> users)</span>
+                            </div>
                             <span style="font-size: 0.75em; color: #777;" th:if="${#lists.size(stats.userStats) > 3}">Scroll for more</span>
                         </div>
                         <div style="max-height: 135px; overflow-y: auto; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; background: rgba(13, 17, 23, 0.6);">

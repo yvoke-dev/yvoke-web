@@ -104,7 +104,7 @@ class ChatAdminQueryRepositoryTest {
     }
 
     @Test
-    void testConversationOverviewStats_registeredUserCount() {
+    void testConversationOverviewStats_recordProperties() {
         UserConversationStats regUser1 =
             new UserConversationStats(UUID.randomUUID(), "Alice", "alice@example.com", 5, 2, 0);
         UserConversationStats regUser2 =
@@ -113,13 +113,13 @@ class ChatAdminQueryRepositoryTest {
             new UserConversationStats(null, "Anonymous / Deleted", null, 10, 3, 2);
 
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(18, 6, 3, List.of(regUser1, regUser2, anonUser));
+            new ConversationOverviewStats(18, 6, 3, 2, List.of(regUser1, regUser2, anonUser));
 
-        // registeredUserCount must exclude the anonymous row (userId == null)
+        assertThat(stats.totalConversations()).isEqualTo(18);
+        assertThat(stats.totalThumbsUp()).isEqualTo(6);
+        assertThat(stats.totalThumbsDown()).isEqualTo(3);
         assertThat(stats.registeredUserCount()).isEqualTo(2);
-
-        ConversationOverviewStats nullStats = new ConversationOverviewStats(0, 0, 0, null);
-        assertThat(nullStats.registeredUserCount()).isEqualTo(0);
+        assertThat(stats.userStats()).hasSize(3);
     }
 
     @Test

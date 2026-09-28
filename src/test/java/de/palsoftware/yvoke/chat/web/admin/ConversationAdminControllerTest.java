@@ -57,7 +57,7 @@ class ConversationAdminControllerTest {
         ConversationUserOption userOption =
             new ConversationUserOption(userId, "Alice", "alice@example.com");
 
-        ConversationOverviewStats stats = new ConversationOverviewStats(1L, 2L, 0L, List.of());
+        ConversationOverviewStats stats = new ConversationOverviewStats(1L, 2L, 0L, 0L, List.of());
         ConversationAdminView mockView = new ConversationAdminView(List.of(sampleConv),
             List.of(userOption), stats, 0, 1, 1L, 20);
 
@@ -92,7 +92,8 @@ class ConversationAdminControllerTest {
     @Test
     void testFilteringByUsers_AnonymousAndUuid() throws Exception {
         UUID validUserId = UUID.randomUUID();
-        ConversationOverviewStats emptyStats = new ConversationOverviewStats(0L, 0L, 0L, List.of());
+        ConversationOverviewStats emptyStats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
             new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
         when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
@@ -114,7 +115,8 @@ class ConversationAdminControllerTest {
 
     @Test
     void testFilteringByCustomDates_Valid() throws Exception {
-        ConversationOverviewStats emptyStats = new ConversationOverviewStats(0L, 0L, 0L, List.of());
+        ConversationOverviewStats emptyStats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
             new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
         when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
@@ -138,7 +140,8 @@ class ConversationAdminControllerTest {
 
     @Test
     void testFilteringByInvertedCustomDates_NormalizedInModelAndFilter() throws Exception {
-        ConversationOverviewStats emptyStats = new ConversationOverviewStats(0L, 0L, 0L, List.of());
+        ConversationOverviewStats emptyStats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
             new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
         when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
@@ -185,7 +188,8 @@ class ConversationAdminControllerTest {
 
     @Test
     void testFeedbackFilterOptions_Valid() throws Exception {
-        ConversationOverviewStats emptyStats = new ConversationOverviewStats(0L, 0L, 0L, List.of());
+        ConversationOverviewStats emptyStats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
             new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
         when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
@@ -209,7 +213,7 @@ class ConversationAdminControllerTest {
     @Test
     void testPaginationParametersDelegatedToService() throws Exception {
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(100L, 0L, 0L, List.of());
+            new ConversationOverviewStats(100L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
             new ConversationAdminView(List.of(), List.of(), emptyStats, 2, 4, 100L, 30);
         when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(2),

@@ -71,7 +71,8 @@ feedback triage and answer traces; every user rates answers.
   threads. Active filters persist across pagination.
 - **Conversation register statistics reflect the active filter criteria.** The summary header displays
   total conversations, helpful (👍) and unhelpful (👎) answer totals, and distinct user counts in the
-  active filter scope. A per-user breakdown displays conversation volume and thumbs up/down counts.
+  active filter scope. A per-user breakdown displays conversation volume and thumbs up/down counts for
+  up to the top 50 active users.
 
 ## Limits
 
@@ -100,8 +101,10 @@ feedback triage and answer traces; every user rates answers.
   admin screens.
 - **The conversation register user filter lists up to 200 users who have initiated conversations**, plus
   any currently selected filter accounts.
-- **The conversation register per-user statistics panel displays up to 3 users simultaneously**, scrolling
-  vertically to show additional users when more than 3 accounts match the active filter.
+- **The conversation register per-user statistics panel is capped at the top 50 active users by conversation volume**
+  (while the summary header totals and registered user count cover all users matching the filter). The panel
+  displays up to 3 users simultaneously, scrolling vertically to show additional users when more than 3 accounts
+  match the active filter.
 - **Conversations filtering operates on the conversation creation date (`created_at`)**, not the
   last-active date.
 
