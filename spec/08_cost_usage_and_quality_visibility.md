@@ -20,7 +20,7 @@ feedback triage and answer traces; every user rates answers.
 | **Open the conversation behind any row** | Conversation and message rows link into the conversation, so an expensive turn can be read in full. Rows also show the user, models, in-depth profile and playbooks involved. |
 | **Cache savings reported separately** | Where a call was answered by replaying an earlier identical request instead of running the model, it is billed at zero and its list price is reported as *Saved by Cache*, with a hit rate. **No AI service currently in use replays**, so this figure covers past usage only and no longer grows. |
 | **Editable model prices, with a coverage check** | Administrators set the four rates per model. The list exports and imports as a file. A companion view lists every model actually used beside every priced one and counts those still missing a price. |
-| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, whether it came from web chat or the desktop app, and its feedback summary. Filter by multi-selected users (including anonymous/deleted), time periods (presets or custom date range on start time), and feedback rating status (any, positive, negative, or unrated). Conversations open read-only. |
+| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, whether it came from web chat or the desktop app, and its feedback summary. Filter by multi-selected users (including anonymous/deleted), time periods (presets or custom date range on start time), and feedback rating status (any, positive, negative, or unrated). Conversations open read-only. An overview header displays aggregated conversation and feedback counts, alongside a scrollable per-user statistics breakdown. |
 | **Effort shown on every answer** | Each answer shows how much text it read, re-used, thought with and wrote. Users see effort, never money. |
 | **Rate an answer with a comment** | Thumbs up and down on every answer; choosing one opens a comment box. |
 | **Feedback dashboard** | The satisfaction ratio and counts of helpful and unhelpful ratings, then filter by rating, review status and time. Each entry shows the comment and links to its conversation. |
@@ -69,6 +69,9 @@ feedback triage and answer traces; every user rates answers.
   supports multi-selecting registered users as well as anonymous or deleted accounts. Feedback filtering
   matches conversations containing helpful (👍) or unhelpful (👎) answers, any feedback, or unrated
   threads. Active filters persist across pagination.
+- **Conversation register statistics reflect the active filter criteria.** The summary header displays
+  total conversations, helpful (👍) and unhelpful (👎) answer totals, and distinct user counts in the
+  active filter scope. A per-user breakdown displays conversation volume and thumbs up/down counts.
 
 ## Limits
 
@@ -97,6 +100,8 @@ feedback triage and answer traces; every user rates answers.
   admin screens.
 - **The conversation register user filter lists up to 200 users who have initiated conversations**, plus
   any currently selected filter accounts.
+- **The conversation register per-user statistics panel displays up to 3 users simultaneously**, scrolling
+  vertically to show additional users when more than 3 accounts match the active filter.
 - **Conversations filtering operates on the conversation creation date (`created_at`)**, not the
   last-active date.
 

@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.AdminConversation;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationUserOption;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.UserConversationStats;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -305,5 +307,91 @@ public class ChatAdminQueryRepositoryIT {
         assertThat(options).hasSize(201);
         assertThat(options).extracting(ConversationUserOption::id).contains(user205Id);
         assertThat(options).extracting(ConversationUserOption::displayName).contains("AAA-CAQR-User-205");
+    }
+
+    @Test
+    void testGetConversationStats_aggregatesAccuratelyAndRespectsFilters() {
+        // User 1 (Alice): 2 convs
+        UUID alice = createUser("caqr-it-alice@example.com", "CAQR Alice");
+        UUID aliceConv1 = createConversation(alice, "CAQR-IT Alice 1", OffsetDateTime.now(ZoneOffset.UTC));
+        createMessageWithFeedback(aliceConv1, 1);
+        createMessageWithFeedback(aliceConv1, 1);
+        createMessageWithFeedback(aliceConv1, -1);
+        createMessageWithoutFeedback(aliceConv1);
+
+        UUID aliceConv2 = createConversation(alice, "CAQR-IT Alice 2", OffsetDateTime.now(ZoneOffset.UTC));
+        createMessageWithFeedback(aliceConv2, 1);
+
+        // User 2 (Bob): 2 convs
+        UUID bob = createUser("caqr-it-bob@example.com", "CAQR Bob");
+        UUID bobConv1 = createConversation(bob, "CAQR-IT Bob 1", OffsetDateTime.now(ZoneOffset.UTC));
+        createMessageWithFeedback(bobConv1, -1);
+
+        UUID bobConv2 = createConversation(bob, "CAQR-IT Bob 2", OffsetDateTime.now(ZoneOffset.UTC));
+        createMessageWithoutFeedback(bobConv2);
+
+        // Anonymous User (userId = null): 1 conv
+        UUID anonConv = createConversation(null, "CAQR-IT Anon 1", OffsetDateTime.now(ZoneOffset.UTC));
+        createMessageWithFeedback(anonConv, 1);
+
+        // 1. Overall stats (no filter)
+        ConversationOverviewStats overall = chatAdminQueryRepository.getConversationStats(ConversationFilter.empty());
+        assertThat(overall).isNotNull();
+        assertThat(overall.totalConversations()).isEqualTo(5);
+        assertThat(overall.totalThumbsUp()).isEqualTo(4); // Alice: 3, Bob: 0, Anon: 1
+        assertThat(overall.totalThumbsDown()).isEqualTo(2); // Alice: 1, Bob: 1, Anon: 0
+
+        List<UserConversationStats> userStats = overall.userStats();
+        assertThat(userStats).hasSize(3);
+
+        UserConversationStats aliceStats = userStats.stream()
+            .filter(u -> alice.equals(u.userId()))
+            .findFirst()
+            .orElseThrow();
+        assertThat(aliceStats.userDisplayName()).isEqualTo("CAQR Alice");
+        assertThat(aliceStats.userEmail()).isEqualTo("caqr-it-alice@example.com");
+        assertThat(aliceStats.conversationCount()).isEqualTo(2);
+        assertThat(aliceStats.thumbsUpCount()).isEqualTo(3);
+        assertThat(aliceStats.thumbsDownCount()).isEqualTo(1);
+
+        UserConversationStats bobStats = userStats.stream()
+            .filter(u -> bob.equals(u.userId()))
+            .findFirst()
+            .orElseThrow();
+        assertThat(bobStats.conversationCount()).isEqualTo(2);
+        assertThat(bobStats.thumbsUpCount()).isEqualTo(0);
+        assertThat(bobStats.thumbsDownCount()).isEqualTo(1);
+
+        UserConversationStats anonStats = userStats.stream()
+            .filter(u -> u.userId() == null)
+            .findFirst()
+            .orElseThrow();
+        assertThat(anonStats.conversationCount()).isEqualTo(1);
+        assertThat(anonStats.thumbsUpCount()).isEqualTo(1);
+        assertThat(anonStats.thumbsDownCount()).isEqualTo(0);
+
+        // 2. Filtered by User (Alice only)
+        ConversationFilter aliceFilter = new ConversationFilter(
+            Set.of(alice),
+            false,
+            TimeFilter.of("all", (LocalDate) null, null),
+            FeedbackFilter.ALL);
+        ConversationOverviewStats aliceOnly = chatAdminQueryRepository.getConversationStats(aliceFilter);
+        assertThat(aliceOnly.totalConversations()).isEqualTo(2);
+        assertThat(aliceOnly.totalThumbsUp()).isEqualTo(3);
+        assertThat(aliceOnly.totalThumbsDown()).isEqualTo(1);
+        assertThat(aliceOnly.userStats()).hasSize(1);
+        assertThat(aliceOnly.userStats().get(0).userId()).isEqualTo(alice);
+
+        // 3. Filtered by Feedback (Negative only)
+        ConversationFilter negativeFilter = new ConversationFilter(
+            Set.of(),
+            false,
+            TimeFilter.of("all", (LocalDate) null, null),
+            FeedbackFilter.NEGATIVE);
+        ConversationOverviewStats negativeOnly = chatAdminQueryRepository.getConversationStats(negativeFilter);
+        // Only Alice Conv 1 and Bob Conv 1 contain negative feedback
+        assertThat(negativeOnly.totalConversations()).isEqualTo(2);
+        assertThat(negativeOnly.userStats()).extracting(UserConversationStats::userId).containsExactlyInAnyOrder(alice, bob);
     }
 }

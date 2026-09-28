@@ -125,6 +125,10 @@ public class ConversationsAdminIT {
             .andExpect(content().string(containsString("name=\"fromDate\"")))
             .andExpect(content().string(containsString("name=\"toDate\"")))
             .andExpect(content().string(containsString("name=\"feedback\"")))
+            .andExpect(content().string(containsString("Total Conversations")))
+            .andExpect(content().string(containsString("Per-User Statistics")))
+            .andExpect(content().string(containsString("Helpful (👍)")))
+            .andExpect(content().string(containsString("Unhelpful (👎)")))
             .andExpect(content().string(containsString("<th>Feedback</th>")))
             .andExpect(content().string(containsString("colspan=\"7\"")));
     }

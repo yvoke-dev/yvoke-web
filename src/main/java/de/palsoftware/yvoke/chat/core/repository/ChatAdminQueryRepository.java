@@ -148,6 +148,12 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
     public record ConversationUserOption(UUID id, String displayName, String email) {}
 
+    public record UserConversationStats(UUID userId, String userDisplayName, String userEmail,
+        long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
+
+    public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
+        long totalThumbsDown, List<UserConversationStats> userStats) {}
+
     public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
         String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
         int thumbsUpCount, int thumbsDownCount) {}
@@ -207,6 +213,47 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 rs.getObject("updated_at", OffsetDateTime.class), rs.getInt("thumbs_up_count"),
                 rs.getInt("thumbs_down_count")))
             .list();
+    }
+
+    public ConversationOverviewStats getConversationStats(ConversationFilter filter) {
+        StringBuilder sql = new StringBuilder(
+            """
+                SELECT c.user_id, u.display_name, u.email,
+                       COUNT(DISTINCT c.id) AS conversation_count,
+                       COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0) AS thumbs_up_count,
+                       COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count
+                FROM conversations c
+                LEFT JOIN users u ON c.user_id = u.id
+                LEFT JOIN messages msg ON msg.conversation_id = c.id
+                LEFT JOIN message_feedback fbk ON fbk.message_id = msg.id
+                WHERE 1=1
+                """);
+        Map<String, Object> params = new HashMap<>();
+        appendConversationFilters(sql, params, filter);
+        sql.append(
+            """
+                 GROUP BY c.user_id, u.display_name, u.email
+                 ORDER BY conversation_count DESC, thumbs_up_count DESC, u.display_name ASC NULLS LAST, c.user_id ASC NULLS LAST
+                """);
+
+        List<UserConversationStats> userStats = jdbcClient.sql(sql.toString()).params(params)
+            .query((rs, rowNum) -> new UserConversationStats(rs.getObject("user_id", UUID.class),
+                rs.getString("display_name"), rs.getString("email"),
+                rs.getLong("conversation_count"), rs.getLong("thumbs_up_count"),
+                rs.getLong("thumbs_down_count")))
+            .list();
+
+        long totalConversations = 0;
+        long totalThumbsUp = 0;
+        long totalThumbsDown = 0;
+        for (UserConversationStats u : userStats) {
+            totalConversations += u.conversationCount();
+            totalThumbsUp += u.thumbsUpCount();
+            totalThumbsDown += u.thumbsDownCount();
+        }
+
+        return new ConversationOverviewStats(totalConversations, totalThumbsUp, totalThumbsDown,
+            userStats);
     }
 
     public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds) {

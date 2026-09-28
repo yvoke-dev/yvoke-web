@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.AdminConversation;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationUserOption;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import java.time.OffsetDateTime;
@@ -56,12 +57,16 @@ class ConversationAdminControllerTest {
         ConversationUserOption userOption =
             new ConversationUserOption(userId, "Alice", "alice@example.com");
 
+        ConversationOverviewStats stats = new ConversationOverviewStats(1L, 2L, 0L, List.of());
+
         when(chatAdminQueryRepository.countFilteredConversations(any(ConversationFilter.class)))
             .thenReturn(1L);
         when(chatAdminQueryRepository.listFilteredConversations(any(ConversationFilter.class),
             eq(20), eq(0))).thenReturn(List.of(sampleConv));
         when(chatAdminQueryRepository.listConversationUserOptions(any()))
             .thenReturn(List.of(userOption));
+        when(chatAdminQueryRepository.getConversationStats(any(ConversationFilter.class)))
+            .thenReturn(stats);
 
         mockMvc.perform(get("/admin/conversations")).andExpect(status().isOk())
             .andExpect(view().name("admin/conversations"))
@@ -74,7 +79,8 @@ class ConversationAdminControllerTest {
             .andExpect(model().attribute("fromDate", "")).andExpect(model().attribute("toDate", ""))
             .andExpect(model().attribute("selectedUserIds", Set.of()))
             .andExpect(model().attribute("conversations", List.of(sampleConv)))
-            .andExpect(model().attribute("userOptions", List.of(userOption)));
+            .andExpect(model().attribute("userOptions", List.of(userOption)))
+            .andExpect(model().attribute("stats", stats));
 
         ArgumentCaptor<ConversationFilter> captor =
             ArgumentCaptor.forClass(ConversationFilter.class);

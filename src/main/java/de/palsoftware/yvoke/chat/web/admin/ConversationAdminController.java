@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.AdminConversation;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationUserOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -60,6 +61,7 @@ public class ConversationAdminController {
         int totalPages = (int) Math.ceil((double) totalCount / size);
         List<AdminConversation> conversations =
             chatAdminQueryRepository.listFilteredConversations(filter, size, page * size);
+        ConversationOverviewStats stats = chatAdminQueryRepository.getConversationStats(filter);
 
         Set<String> selectedUserIds = new LinkedHashSet<>();
         if (filter.includeAnonymous()) {
@@ -81,6 +83,7 @@ public class ConversationAdminController {
         model.addAttribute("currentPage", page);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
+        model.addAttribute("stats", stats);
         model.addAttribute("activeTab", "conversations");
 
         return "admin/conversations";
