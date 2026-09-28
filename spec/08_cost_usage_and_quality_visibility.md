@@ -20,7 +20,7 @@ feedback triage and answer traces; every user rates answers.
 | **Open the conversation behind any row** | Conversation and message rows link into the conversation, so an expensive turn can be read in full. Rows also show the user, models, in-depth profile and playbooks involved. |
 | **Cache savings reported separately** | Where a call was answered by replaying an earlier identical request instead of running the model, it is billed at zero and its list price is reported as *Saved by Cache*, with a hit rate. **No AI service currently in use replays**, so this figure covers past usage only and no longer grows. |
 | **Editable model prices, with a coverage check** | Administrators set the four rates per model. The list exports and imports as a file. A companion view lists every model actually used beside every priced one and counts those still missing a price. |
-| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, and whether it came from web chat or the desktop app. Conversations open read-only. |
+| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, whether it came from web chat or the desktop app, and its feedback summary. Filter by multi-selected users (including anonymous/deleted), time periods (presets or custom date range on start time), and feedback rating status (any, positive, negative, or unrated). Conversations open read-only. |
 | **Effort shown on every answer** | Each answer shows how much text it read, re-used, thought with and wrote. Users see effort, never money. |
 | **Rate an answer with a comment** | Thumbs up and down on every answer; choosing one opens a comment box. |
 | **Feedback dashboard** | The satisfaction ratio and counts of helpful and unhelpful ratings, then filter by rating, review status and time. Each entry shows the comment and links to its conversation. |
@@ -63,6 +63,12 @@ feedback triage and answer traces; every user rates answers.
   administration console — so a report about an answer, a behaviour or a cost can name the build it
   came from without the reporter needing admin access. It is never shown before sign-in, and a build
   that is not a release says so rather than showing the last release's number.
+- **Filtering the conversation register** combines active filters using logical AND. Time filtering
+  operates on the conversation's creation timestamp (`created_at`) using UTC boundaries with presets or
+  an inclusive custom date range. Inverted date ranges are automatically normalized. Person filtering
+  supports multi-selecting registered users as well as anonymous or deleted accounts. Feedback filtering
+  matches conversations containing helpful (👍) or unhelpful (👎) answers, any feedback, or unrated
+  threads. Active filters persist across pagination.
 
 ## Limits
 
@@ -89,6 +95,10 @@ feedback triage and answer traces; every user rates answers.
   only the most recent runs.
 - **Imports started through the integration interface are not audited** — only those started from the
   admin screens.
+- **The conversation register user filter lists up to 200 users who have initiated conversations**, plus
+  any currently selected filter accounts.
+- **Conversations filtering operates on the conversation creation date (`created_at`)**, not the
+  last-active date.
 
 ## Not supported
 
@@ -101,5 +111,9 @@ feedback triage and answer traces; every user rates answers.
   whole workflow.
 - Replying to a user who left feedback.
 - Automatic quality scoring. The only quality signals are user ratings and the reviewer verdict.
+- **Filtering conversations by model or playbook.** Model and playbook filters are available in the spend
+  explorer, not in the conversation register.
+- **Cross-conversation full-text message content search from the register.** Individual conversations must
+  be opened to inspect message text.
 
 ---
