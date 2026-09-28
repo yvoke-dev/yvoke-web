@@ -205,14 +205,15 @@ public class ConversationsAdminIT {
     @Test
     public void testConversationsAdminPerUserStatsTruncationHint() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
-        for (int i = 1; i <= 51; i++) {
+        for (int i = 1; i <= 50; i++) {
             UUID uid = createUser("cait-stats50-" + i + "-oid", "cait-stats50-" + i + "@local", "CAIT User " + i);
             conversationRepository.create(UUID.randomUUID(), uid, "CAIT-Stats50-" + i, Map.of(), "web");
         }
+        // 50 registered users + 1 anonymous conversation = 51 groups total
+        conversationRepository.create(UUID.randomUUID(), null, "CAIT-Stats50-Anon", Map.of(), "web");
 
         mockMvc.perform(get("/admin/conversations").with(adminUser()))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("(Top 50 of ")))
-            .andExpect(content().string(containsString("users)")));
+            .andExpect(content().string(containsString("(Top 50 of 51 users)")));
     }
 }

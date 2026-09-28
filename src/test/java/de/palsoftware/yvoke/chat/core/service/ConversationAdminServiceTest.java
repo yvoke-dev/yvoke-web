@@ -47,7 +47,7 @@ class ConversationAdminServiceTest {
         UserConversationStats userStats =
             new UserConversationStats(userId, "Alice", "alice@example.com", 1L, 1L, 0L);
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(1L, 1L, 0L, 1L, List.of(userStats));
+            new ConversationOverviewStats(1L, 1L, 0L, 1L, 1L, List.of(userStats));
 
         ConversationFilter filter = ConversationFilter.empty();
         when(chatAdminQueryRepository.getConversationStats(filter)).thenReturn(stats);
@@ -76,7 +76,7 @@ class ConversationAdminServiceTest {
     void testGetConversationAdminView_clampingAndZeroItems() {
         ConversationFilter filter = ConversationFilter.empty();
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         when(chatAdminQueryRepository.getConversationStats(filter)).thenReturn(emptyStats);
         when(chatAdminQueryRepository.listFilteredConversations(eq(filter), eq(20), eq(0L)))
             .thenReturn(List.of());

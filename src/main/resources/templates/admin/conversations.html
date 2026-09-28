@@ -106,7 +106,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                             <div>
                                 <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Per-User Statistics</span>
-                                <span th:if="${stats.registeredUserCount > #lists.size(stats.userStats)}" style="font-size: 0.75em; color: var(--text-secondary); margin-left: 0.4rem;">(Top 50 of <span th:text="${stats.registeredUserCount}"></span> users)</span>
+                                <span th:if="${stats.totalUserCount > #lists.size(stats.userStats)}" style="font-size: 0.75em; color: var(--text-secondary); margin-left: 0.4rem;" th:text="'(Top ' + ${#lists.size(stats.userStats)} + ' of ' + ${stats.totalUserCount} + ' users)'"></span>
                             </div>
                             <span style="font-size: 0.75em; color: #777;" th:if="${#lists.size(stats.userStats) > 3}">Scroll for more</span>
                         </div>

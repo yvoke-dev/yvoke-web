@@ -349,6 +349,7 @@ public class ChatAdminQueryRepositoryIT {
         assertThat(overall.totalThumbsUp()).isEqualTo(4); // Alice: 3, Bob: 0, Anon: 1
         assertThat(overall.totalThumbsDown()).isEqualTo(2); // Alice: 1, Bob: 1, Anon: 0
         assertThat(overall.registeredUserCount()).isEqualTo(2); // Excludes anonymous bucket
+        assertThat(overall.totalUserCount()).isEqualTo(3); // Includes anonymous bucket
 
         List<UserConversationStats> userStats = overall.userStats();
         assertThat(userStats).hasSize(3);
@@ -443,6 +444,7 @@ public class ChatAdminQueryRepositoryIT {
         // Grand totals cover all 56 conversations and 55 registered users across the entire window
         assertThat(stats.totalConversations()).isEqualTo(56);
         assertThat(stats.registeredUserCount()).isEqualTo(55);
+        assertThat(stats.totalUserCount()).isEqualTo(56);
         assertThat(stats.totalThumbsUp()).isEqualTo(11);
         assertThat(stats.totalThumbsDown()).isEqualTo(2);
 

@@ -113,12 +113,13 @@ class ChatAdminQueryRepositoryTest {
             new UserConversationStats(null, "Anonymous / Deleted", null, 10, 3, 2);
 
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(18, 6, 3, 2, List.of(regUser1, regUser2, anonUser));
+            new ConversationOverviewStats(18, 6, 3, 2, 3, List.of(regUser1, regUser2, anonUser));
 
         assertThat(stats.totalConversations()).isEqualTo(18);
         assertThat(stats.totalThumbsUp()).isEqualTo(6);
         assertThat(stats.totalThumbsDown()).isEqualTo(3);
         assertThat(stats.registeredUserCount()).isEqualTo(2);
+        assertThat(stats.totalUserCount()).isEqualTo(3);
         assertThat(stats.userStats()).hasSize(3);
     }
 

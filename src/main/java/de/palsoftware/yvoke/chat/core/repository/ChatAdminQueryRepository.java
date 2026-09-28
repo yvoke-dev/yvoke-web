@@ -90,7 +90,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
 
     public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
-        long totalThumbsDown, long registeredUserCount, List<UserConversationStats> userStats) {}
+        long totalThumbsDown, long registeredUserCount, long totalUserCount,
+        List<UserConversationStats> userStats) {}
 
     public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
         String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
@@ -145,7 +146,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                        SUM(COUNT(DISTINCT c.id)) OVER () AS total_conversations,
                        SUM(COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_up,
                        SUM(COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_down,
-                       COUNT(*) FILTER (WHERE c.user_id IS NOT NULL) OVER () AS registered_user_count
+                       COUNT(*) FILTER (WHERE c.user_id IS NOT NULL) OVER () AS registered_user_count,
+                       COUNT(*) OVER () AS total_user_count
                 FROM conversations c
                 LEFT JOIN users u ON c.user_id = u.id
                 LEFT JOIN (
@@ -169,7 +171,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             long totalConversations,
             long totalThumbsUp,
             long totalThumbsDown,
-            long registeredUserCount) {}
+            long registeredUserCount,
+            long totalUserCount) {}
 
         List<StatRow> rows = jdbcClient.sql(sql.toString()).params(params)
             .query((rs, rowNum) -> new StatRow(
@@ -183,11 +186,12 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 rs.getLong("total_conversations"),
                 rs.getLong("total_thumbs_up"),
                 rs.getLong("total_thumbs_down"),
-                rs.getLong("registered_user_count")))
+                rs.getLong("registered_user_count"),
+                rs.getLong("total_user_count")))
             .list();
 
         if (rows.isEmpty()) {
-            return new ConversationOverviewStats(0L, 0L, 0L, 0L, List.of());
+            return new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         }
 
         StatRow first = rows.get(0);
@@ -197,6 +201,7 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             first.totalThumbsUp(),
             first.totalThumbsDown(),
             first.registeredUserCount(),
+            first.totalUserCount(),
             userStats);
     }
 
