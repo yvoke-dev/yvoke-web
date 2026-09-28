@@ -4,7 +4,7 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Conver
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.ConversationAdminView;
-import java.time.LocalDate;
+import java.time.Clock;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -27,9 +28,16 @@ public class ConversationAdminController {
     private static final Logger log = LoggerFactory.getLogger(ConversationAdminController.class);
 
     private final ConversationAdminService conversationAdminService;
+    private final Clock clock;
 
+    @Autowired
     public ConversationAdminController(ConversationAdminService conversationAdminService) {
+        this(conversationAdminService, Clock.systemUTC());
+    }
+
+    ConversationAdminController(ConversationAdminService conversationAdminService, Clock clock) {
         this.conversationAdminService = conversationAdminService;
+        this.clock = clock;
     }
 
     @GetMapping("/conversations")
@@ -45,13 +53,9 @@ public class ConversationAdminController {
         log.info("ConversationAdminController: Accessing Conversations view");
 
         ConversationFilter filter;
-        LocalDate parsedFromDate;
-        LocalDate parsedToDate;
         try {
-            parsedFromDate = TimeFilter.parseDate(rawFromDate);
-            parsedToDate = TimeFilter.parseDate(rawToDate);
-            filter = ConversationFilter.of(rawUserIds, timeRange, parsedFromDate, parsedToDate,
-                feedback);
+            filter = ConversationAdminFilterParser.parse(rawUserIds, timeRange, rawFromDate,
+                rawToDate, feedback, clock);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
@@ -72,9 +76,13 @@ public class ConversationAdminController {
         model.addAttribute("selectedUserIds", selectedUserIds);
         model.addAttribute("selectedTimeRange", filter.timeFilter().preset());
         model.addAttribute("fromDate",
-            parsedFromDate != null ? parsedFromDate.format(DateTimeFormatter.ISO_LOCAL_DATE) : "");
+            filter.timeFilter().fromDate() != null
+                ? filter.timeFilter().fromDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                : "");
         model.addAttribute("toDate",
-            parsedToDate != null ? parsedToDate.format(DateTimeFormatter.ISO_LOCAL_DATE) : "");
+            filter.timeFilter().toDate() != null
+                ? filter.timeFilter().toDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                : "");
         model.addAttribute("selectedFeedback",
             filter.feedbackFilter().name().toLowerCase(Locale.ROOT));
         model.addAttribute("currentPage", view.currentPage());

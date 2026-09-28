@@ -58,7 +58,7 @@ public class ConversationsAdminIT {
         jdbcTemplate.update("DELETE FROM message_feedback WHERE message_id IN (SELECT id FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%'))");
         jdbcTemplate.update("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%')");
         jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAIT-%'");
-        jdbcTemplate.update("DELETE FROM users WHERE entra_oid LIKE 'cait-%' OR entra_oid = 'mock-admin-oid'");
+        jdbcTemplate.update("DELETE FROM users WHERE entra_oid LIKE 'cait-%'");
     }
 
     private UUID createUser(String entraOid, String email, String displayName) {

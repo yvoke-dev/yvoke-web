@@ -105,9 +105,9 @@ public class ChatAdminQueryRepositoryIT {
         createMessageWithoutFeedback(conv);
 
         List<AdminConversation> convs = chatAdminQueryRepository.listFilteredConversations(
-            new ConversationFilter(Set.of(user), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL),
+            new ConversationFilter(Set.of(user), false, TimeFilter.all(), FeedbackFilter.ALL),
             10,
-            0);
+            0L);
 
         assertThat(convs).hasSize(1);
         assertThat(convs.get(0).thumbsUpCount()).isEqualTo(2);
@@ -131,11 +131,11 @@ public class ChatAdminQueryRepositoryIT {
         ConversationFilter filter = new ConversationFilter(
             Set.of(user),
             false,
-            TimeFilter.of("all", (LocalDate) null, null),
+            TimeFilter.all(),
             FeedbackFilter.ALL);
 
-        long count = chatAdminQueryRepository.countFilteredConversations(filter);
-        List<AdminConversation> list = chatAdminQueryRepository.listFilteredConversations(filter, 100, 0);
+        long count = chatAdminQueryRepository.getConversationStats(filter).totalConversations();
+        List<AdminConversation> list = chatAdminQueryRepository.listFilteredConversations(filter, 100, 0L);
 
         assertThat(count).isEqualTo(3);
         assertThat(list).hasSize(3);
@@ -161,31 +161,31 @@ public class ChatAdminQueryRepositoryIT {
 
         // POSITIVE filter: convPos and convBoth
         ConversationFilter posFilter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.POSITIVE);
-        List<AdminConversation> posList = chatAdminQueryRepository.listFilteredConversations(posFilter, 10, 0);
+            Set.of(user), false, TimeFilter.all(), FeedbackFilter.POSITIVE);
+        List<AdminConversation> posList = chatAdminQueryRepository.listFilteredConversations(posFilter, 10, 0L);
         assertThat(posList).extracting(AdminConversation::id).containsExactlyInAnyOrder(convPos, convBoth);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(posFilter)).isEqualTo(2);
+        assertThat(chatAdminQueryRepository.getConversationStats(posFilter).totalConversations()).isEqualTo(2);
 
         // NEGATIVE filter: convNeg and convBoth
         ConversationFilter negFilter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.NEGATIVE);
-        List<AdminConversation> negList = chatAdminQueryRepository.listFilteredConversations(negFilter, 10, 0);
+            Set.of(user), false, TimeFilter.all(), FeedbackFilter.NEGATIVE);
+        List<AdminConversation> negList = chatAdminQueryRepository.listFilteredConversations(negFilter, 10, 0L);
         assertThat(negList).extracting(AdminConversation::id).containsExactlyInAnyOrder(convNeg, convBoth);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(negFilter)).isEqualTo(2);
+        assertThat(chatAdminQueryRepository.getConversationStats(negFilter).totalConversations()).isEqualTo(2);
 
         // ANY filter: convPos, convNeg, convBoth
         ConversationFilter anyFilter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ANY);
-        List<AdminConversation> anyList = chatAdminQueryRepository.listFilteredConversations(anyFilter, 10, 0);
+            Set.of(user), false, TimeFilter.all(), FeedbackFilter.ANY);
+        List<AdminConversation> anyList = chatAdminQueryRepository.listFilteredConversations(anyFilter, 10, 0L);
         assertThat(anyList).extracting(AdminConversation::id).containsExactlyInAnyOrder(convPos, convNeg, convBoth);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(anyFilter)).isEqualTo(3);
+        assertThat(chatAdminQueryRepository.getConversationStats(anyFilter).totalConversations()).isEqualTo(3);
 
         // NONE filter: convNone
         ConversationFilter noneFilter = new ConversationFilter(
-            Set.of(user), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.NONE);
-        List<AdminConversation> noneList = chatAdminQueryRepository.listFilteredConversations(noneFilter, 10, 0);
+            Set.of(user), false, TimeFilter.all(), FeedbackFilter.NONE);
+        List<AdminConversation> noneList = chatAdminQueryRepository.listFilteredConversations(noneFilter, 10, 0L);
         assertThat(noneList).extracting(AdminConversation::id).containsExactlyInAnyOrder(convNone);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(noneFilter)).isEqualTo(1);
+        assertThat(chatAdminQueryRepository.getConversationStats(noneFilter).totalConversations()).isEqualTo(1);
     }
 
     @Test
@@ -195,12 +195,13 @@ public class ChatAdminQueryRepositoryIT {
         OffsetDateTime evening = OffsetDateTime.of(2026, 7, 20, 22, 30, 0, 0, ZoneOffset.UTC);
         UUID conv = createConversation(user, "CAQR-IT Evening", evening);
 
-        ConversationFilter filter = ConversationFilter.of(List.of(user.toString()), "custom", day, day, "all");
-        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0);
+        ConversationFilter filter = new ConversationFilter(
+            Set.of(user), false, TimeFilter.of("custom", day, day), FeedbackFilter.ALL);
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(conv);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(filter)).isEqualTo(1);
+        assertThat(chatAdminQueryRepository.getConversationStats(filter).totalConversations()).isEqualTo(1);
     }
 
     @Test
@@ -212,13 +213,13 @@ public class ChatAdminQueryRepositoryIT {
 
         LocalDate fromInverted = day.plusDays(5);
         LocalDate toInverted = day.minusDays(5);
-        ConversationFilter filter = ConversationFilter.of(
-            List.of(user.toString()), "custom", fromInverted, toInverted, "all");
-        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0);
+        ConversationFilter filter = new ConversationFilter(
+            Set.of(user), false, TimeFilter.of("custom", fromInverted, toInverted), FeedbackFilter.ALL);
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(conv);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(filter)).isEqualTo(1);
+        assertThat(chatAdminQueryRepository.getConversationStats(filter).totalConversations()).isEqualTo(1);
     }
 
     @Test
@@ -248,12 +249,12 @@ public class ChatAdminQueryRepositoryIT {
         ConversationFilter filter = new ConversationFilter(
             Set.of(userA),
             false,
-            TimeFilter.of("month", (LocalDate) null, null),
+            TimeFilter.of("month", null, null),
             FeedbackFilter.POSITIVE);
 
-        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0);
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
         assertThat(results).extracting(AdminConversation::id).containsExactly(conv1);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(filter)).isEqualTo(1);
+        assertThat(chatAdminQueryRepository.getConversationStats(filter).totalConversations()).isEqualTo(1);
     }
 
     @Test
@@ -265,12 +266,12 @@ public class ChatAdminQueryRepositoryIT {
         ConversationFilter filter = new ConversationFilter(
             Set.of(),
             false,
-            TimeFilter.of("all", (LocalDate) null, null),
+            TimeFilter.all(),
             FeedbackFilter.ALL);
 
-        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0);
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
         assertThat(results).extracting(AdminConversation::id).contains(convUser, convAnon);
-        assertThat(chatAdminQueryRepository.countFilteredConversations(filter)).isGreaterThanOrEqualTo(2);
+        assertThat(chatAdminQueryRepository.getConversationStats(filter).totalConversations()).isGreaterThanOrEqualTo(2);
     }
 
     @Test
@@ -282,10 +283,10 @@ public class ChatAdminQueryRepositoryIT {
         ConversationFilter filter = new ConversationFilter(
             Set.of(),
             true,
-            TimeFilter.of("all", (LocalDate) null, null),
+            TimeFilter.all(),
             FeedbackFilter.ALL);
 
-        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0);
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(filter, 10, 0L);
         assertThat(results).extracting(AdminConversation::id).contains(convAnon);
         assertThat(results).extracting(AdminConversation::id).doesNotContain(convUser);
     }
@@ -304,7 +305,7 @@ public class ChatAdminQueryRepositoryIT {
 
         List<ConversationUserOption> options = chatAdminQueryRepository.listConversationUserOptions(Set.of(user205Id));
 
-        assertThat(options.size()).isGreaterThanOrEqualTo(200);
+        assertThat(options).hasSizeBetween(200, 201);
         assertThat(options).extracting(ConversationUserOption::id).contains(user205Id);
         assertThat(options).extracting(ConversationUserOption::displayName).contains("AAA-CAQR-User-205");
     }

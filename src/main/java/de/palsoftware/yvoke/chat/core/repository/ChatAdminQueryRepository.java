@@ -1,17 +1,14 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
 import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,13 +43,14 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 throw new IllegalArgumentException("Unknown feedback filter: " + param);
             }
         }
-
-        public static FeedbackFilter fromParam(String param) {
-            return fromString(param);
-        }
     }
 
-    public record TimeFilter(String preset, OffsetDateTime fromCutoff, OffsetDateTime toCutoff) {
+    public record TimeFilter(
+        String preset,
+        OffsetDateTime fromCutoff,
+        OffsetDateTime toCutoff,
+        LocalDate fromDate,
+        LocalDate toDate) {
 
         private static final Set<String> ALLOWED_PRESETS = Set.of("all", "day", "week", "month", "custom");
 
@@ -71,33 +69,27 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                     fromDate != null ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
                 OffsetDateTime toCutoff =
                     toDate != null ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
-                return new TimeFilter("custom", fromCutoff, toCutoff);
-            } else if ("day".equals(normalizedPreset)) {
-                return new TimeFilter("day", OffsetDateTime.now(ZoneOffset.UTC).minusDays(1), null);
-            } else if ("week".equals(normalizedPreset)) {
-                return new TimeFilter("week", OffsetDateTime.now(ZoneOffset.UTC).minusWeeks(1), null);
-            } else if ("month".equals(normalizedPreset)) {
-                return new TimeFilter("month", OffsetDateTime.now(ZoneOffset.UTC).minusDays(30), null);
+                return new TimeFilter("custom", fromCutoff, toCutoff, fromDate, toDate);
+            }
+            return preset(normalizedPreset, Clock.systemUTC());
+        }
+
+        public static TimeFilter preset(String preset, Clock clock) {
+            String normalized = preset != null ? preset.trim().toLowerCase(Locale.ROOT) : "all";
+            Clock c = clock != null ? clock : Clock.systemUTC();
+            if ("day".equals(normalized)) {
+                return new TimeFilter("day", OffsetDateTime.now(c).minusDays(1), null, null, null);
+            } else if ("week".equals(normalized)) {
+                return new TimeFilter("week", OffsetDateTime.now(c).minusWeeks(1), null, null, null);
+            } else if ("month".equals(normalized)) {
+                return new TimeFilter("month", OffsetDateTime.now(c).minusDays(30), null, null, null);
             } else {
-                return new TimeFilter("all", null, null);
+                return new TimeFilter("all", null, null, null, null);
             }
         }
 
-        public static TimeFilter of(String preset, String rawFromDate, String rawToDate) {
-            LocalDate from = parseDate(rawFromDate);
-            LocalDate to = parseDate(rawToDate);
-            return of(preset, from, to);
-        }
-
-        public static LocalDate parseDate(String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            try {
-                return LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-            } catch (DateTimeParseException e) {
-                throw new IllegalArgumentException("Invalid date format: " + raw + ". Expected yyyy-MM-dd");
-            }
+        public static TimeFilter all() {
+            return new TimeFilter("all", null, null, null, null);
         }
     }
 
@@ -107,49 +99,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         TimeFilter timeFilter,
         FeedbackFilter feedbackFilter) {
 
-        public static ConversationFilter of(
-            List<String> rawUserIds,
-            String timeRangePreset,
-            LocalDate fromDate,
-            LocalDate toDate,
-            String rawFeedback) {
-            Set<UUID> userIds = new LinkedHashSet<>();
-            boolean includeAnonymous = false;
-            if (rawUserIds != null) {
-                for (String raw : rawUserIds) {
-                    if (raw == null || raw.isBlank()) {
-                        continue;
-                    }
-                    String trimmed = raw.trim();
-                    if ("anonymous".equalsIgnoreCase(trimmed)) {
-                        includeAnonymous = true;
-                    } else {
-                        try {
-                            userIds.add(UUID.fromString(trimmed));
-                        } catch (IllegalArgumentException e) {
-                            throw new IllegalArgumentException("Invalid user ID: " + trimmed);
-                        }
-                    }
-                }
-            }
-            TimeFilter timeFilter = TimeFilter.of(timeRangePreset, fromDate, toDate);
-            FeedbackFilter feedbackFilter = FeedbackFilter.fromString(rawFeedback);
-            return new ConversationFilter(Collections.unmodifiableSet(userIds), includeAnonymous, timeFilter, feedbackFilter);
-        }
-
-        public static ConversationFilter of(
-            List<String> rawUserIds,
-            String timeRange,
-            String rawFromDate,
-            String rawToDate,
-            String feedback) {
-            LocalDate from = TimeFilter.parseDate(rawFromDate);
-            LocalDate to = TimeFilter.parseDate(rawToDate);
-            return of(rawUserIds, timeRange, from, to, feedback);
-        }
-
         public static ConversationFilter empty() {
-            return new ConversationFilter(Set.of(), false, TimeFilter.of("all", (LocalDate) null, null), FeedbackFilter.ALL);
+            return new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL);
         }
     }
 
@@ -177,40 +128,22 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         OffsetDateTime createdAt, String queryText, String conversationId, boolean reviewed,
         String notes) {}
 
-    public long countConversations() {
-        return countFilteredConversations(ConversationFilter.empty());
-    }
-
-    public List<AdminConversation> listConversations(int limit, int offset) {
-        return listFilteredConversations(ConversationFilter.empty(), limit, offset);
-    }
-
-    public long countFilteredConversations(ConversationFilter filter) {
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM conversations c WHERE 1=1");
-        Map<String, Object> params = new HashMap<>();
-        appendConversationFilters(sql, params, filter);
-        return jdbcClient.sql(sql.toString()).params(params).query(Long.class).single();
-    }
-
     public List<AdminConversation> listFilteredConversations(ConversationFilter filter, int limit,
         long offset) {
         StringBuilder sql = new StringBuilder(
             """
                 SELECT c.id, c.user_id, u.display_name, u.email, c.title, c.source, c.created_at, c.updated_at,
-                       COALESCE((
-                           SELECT COUNT(*)
-                           FROM messages m
-                           JOIN message_feedback mf ON mf.message_id = m.id
-                           WHERE m.conversation_id = c.id AND mf.rating = 1
-                       ), 0) AS thumbs_up_count,
-                       COALESCE((
-                           SELECT COUNT(*)
-                           FROM messages m
-                           JOIN message_feedback mf ON mf.message_id = m.id
-                           WHERE m.conversation_id = c.id AND mf.rating = -1
-                       ), 0) AS thumbs_down_count
+                       COALESCE(fb.thumbs_up_count, 0) AS thumbs_up_count,
+                       COALESCE(fb.thumbs_down_count, 0) AS thumbs_down_count
                 FROM conversations c
                 LEFT JOIN users u ON c.user_id = u.id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) FILTER (WHERE mf.rating = 1) AS thumbs_up_count,
+                           COUNT(*) FILTER (WHERE mf.rating = -1) AS thumbs_down_count
+                    FROM messages m
+                    JOIN message_feedback mf ON mf.message_id = m.id
+                    WHERE m.conversation_id = c.id
+                ) fb ON true
                 WHERE 1=1
                 """);
         Map<String, Object> params = new HashMap<>();
@@ -228,11 +161,6 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 rs.getObject("updated_at", OffsetDateTime.class), rs.getInt("thumbs_up_count"),
                 rs.getInt("thumbs_down_count")))
             .list();
-    }
-
-    public List<AdminConversation> listFilteredConversations(ConversationFilter filter, int limit,
-        int offset) {
-        return listFilteredConversations(filter, limit, (long) offset);
     }
 
     public ConversationOverviewStats getConversationStats(ConversationFilter filter) {
@@ -280,48 +208,50 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds) {
-        String sql = """
-            SELECT u.id, u.display_name, u.email
-            FROM users u
-            WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id)
-            ORDER BY COALESCE(u.display_name, u.email) ASC NULLS LAST, u.email ASC, u.id ASC
-            LIMIT 200
-            """;
-        List<ConversationUserOption> options = new ArrayList<>(jdbcClient.sql(sql)
-            .query((rs, rowNum) -> new ConversationUserOption(rs.getObject("id", UUID.class),
-                rs.getString("display_name"), rs.getString("email")))
-            .list());
-
+        StringBuilder sql = new StringBuilder(
+            """
+                SELECT opt.id, opt.display_name, opt.email FROM (
+                    (
+                        SELECT u.id, u.display_name, u.email
+                        FROM users u
+                        WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id)
+                        ORDER BY COALESCE(NULLIF(TRIM(u.display_name), ''), u.email) ASC NULLS LAST, u.email ASC, u.id ASC
+                        LIMIT 200
+                    )
+                """);
+        Map<String, Object> params = new HashMap<>();
         if (additionalUserIds != null && !additionalUserIds.isEmpty()) {
-            Set<UUID> loadedIds = new HashSet<>();
-            for (ConversationUserOption opt : options) {
-                loadedIds.add(opt.id());
-            }
-            Set<UUID> missingIds = new HashSet<>();
-            for (UUID uid : additionalUserIds) {
-                if (uid != null && !loadedIds.contains(uid)) {
-                    missingIds.add(uid);
-                }
-            }
-            if (!missingIds.isEmpty()) {
-                String missingSql = """
+            sql.append("""
+                UNION
+                (
                     SELECT u.id, u.display_name, u.email
                     FROM users u
-                    WHERE u.id IN (:missingIds)
-                    """;
-                List<ConversationUserOption> missingOptions =
-                    jdbcClient.sql(missingSql).param("missingIds", missingIds)
-                        .query((rs, rowNum) -> new ConversationUserOption(
-                            rs.getObject("id", UUID.class), rs.getString("display_name"),
-                            rs.getString("email")))
-                        .list();
-                options.addAll(missingOptions);
-                options.sort(Comparator.comparing((ConversationUserOption opt) -> {
-                    String name = opt.displayName() != null && !opt.displayName().isBlank()
-                        ? opt.displayName()
-                        : (opt.email() != null ? opt.email() : "");
-                    return name.toLowerCase();
-                }).thenComparing(ConversationUserOption::id));
+                    WHERE u.id IN (:additionalUserIds)
+                )
+                """);
+            params.put("additionalUserIds", additionalUserIds);
+        }
+        sql.append(
+            """
+                ) opt
+                ORDER BY COALESCE(NULLIF(TRIM(opt.display_name), ''), opt.email) ASC NULLS LAST, opt.email ASC, opt.id ASC
+                """);
+
+        List<ConversationUserOption> options =
+            new ArrayList<>(jdbcClient.sql(sql.toString()).params(params)
+                .query((rs, rowNum) -> new ConversationUserOption(rs.getObject("id", UUID.class),
+                    rs.getString("display_name"), rs.getString("email")))
+                .list());
+
+        if (additionalUserIds != null && !additionalUserIds.isEmpty()) {
+            Set<UUID> returnedIds = new HashSet<>();
+            for (ConversationUserOption opt : options) {
+                returnedIds.add(opt.id());
+            }
+            for (UUID uid : additionalUserIds) {
+                if (uid != null && !returnedIds.contains(uid)) {
+                    options.add(new ConversationUserOption(uid, "Unknown (" + uid + ")", ""));
+                }
             }
         }
 
@@ -489,17 +419,12 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             sql.append(" AND f.reviewed = :reviewed");
             params.put("reviewed", reviewed);
         }
-        OffsetDateTime cutoff = null;
-        if ("day".equalsIgnoreCase(timeRange)) {
-            cutoff = OffsetDateTime.now().minusDays(1);
-        } else if ("week".equalsIgnoreCase(timeRange)) {
-            cutoff = OffsetDateTime.now().minusWeeks(1);
-        } else if ("month".equalsIgnoreCase(timeRange)) {
-            cutoff = OffsetDateTime.now().minusMonths(1);
-        }
-        if (cutoff != null) {
-            sql.append(" AND f.created_at >= :timeCutoff");
-            params.put("timeCutoff", cutoff);
+        if (timeRange != null && !timeRange.isBlank() && !"all".equalsIgnoreCase(timeRange)) {
+            TimeFilter tf = TimeFilter.preset(timeRange, Clock.systemUTC());
+            if (tf.fromCutoff() != null) {
+                sql.append(" AND f.created_at >= :timeCutoff");
+                params.put("timeCutoff", tf.fromCutoff());
+            }
         }
     }
 }

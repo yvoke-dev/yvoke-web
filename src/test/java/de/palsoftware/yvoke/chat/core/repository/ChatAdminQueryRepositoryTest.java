@@ -9,6 +9,8 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Conver
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.UserConversationStats;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -53,31 +55,30 @@ class ChatAdminQueryRepositoryTest {
         // Rejection of unknown values
         assertThatThrownBy(() -> FeedbackFilter.fromString("garbage-rating"))
             .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> FeedbackFilter.fromParam("invalid"))
-            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void testTimeFilter_presets() {
-        TimeFilter all = TimeFilter.of("all", (LocalDate) null, null);
+    void testTimeFilter_presetsWithFixedClock() {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-06-15T12:00:00Z"), ZoneOffset.UTC);
+
+        TimeFilter all = TimeFilter.preset("all", fixedClock);
         assertThat(all.preset()).isEqualTo("all");
         assertThat(all.fromCutoff()).isNull();
         assertThat(all.toCutoff()).isNull();
 
-        TimeFilter day = TimeFilter.of("day", (LocalDate) null, null);
+        TimeFilter day = TimeFilter.preset("day", fixedClock);
         assertThat(day.preset()).isEqualTo("day");
-        assertThat(day.fromCutoff()).isNotNull();
-        assertThat(day.fromCutoff()).isBefore(OffsetDateTime.now(ZoneOffset.UTC));
+        assertThat(day.fromCutoff()).isEqualTo(OffsetDateTime.parse("2026-06-14T12:00:00Z"));
         assertThat(day.toCutoff()).isNull();
 
-        TimeFilter week = TimeFilter.of("week", (LocalDate) null, null);
+        TimeFilter week = TimeFilter.preset("week", fixedClock);
         assertThat(week.preset()).isEqualTo("week");
-        assertThat(week.fromCutoff()).isNotNull();
+        assertThat(week.fromCutoff()).isEqualTo(OffsetDateTime.parse("2026-06-08T12:00:00Z"));
         assertThat(week.toCutoff()).isNull();
 
-        TimeFilter month = TimeFilter.of("month", (LocalDate) null, null);
+        TimeFilter month = TimeFilter.preset("month", fixedClock);
         assertThat(month.preset()).isEqualTo("month");
-        assertThat(month.fromCutoff()).isNotNull();
+        assertThat(month.fromCutoff()).isEqualTo(OffsetDateTime.parse("2026-05-16T12:00:00Z"));
         assertThat(month.toCutoff()).isNull();
     }
 
@@ -117,63 +118,6 @@ class ChatAdminQueryRepositoryTest {
             .isEqualTo(OffsetDateTime.of(2026, 8, 10, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 8, 21, 0, 0, 0, 0, ZoneOffset.UTC));
-    }
-
-    @Test
-    void testTimeFilter_stringParsingAndValidation() {
-        TimeFilter custom = TimeFilter.of("custom", "2026-05-01", "2026-05-05");
-        assertThat(custom.fromCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 5, 1, 0, 0, 0, 0, ZoneOffset.UTC));
-        assertThat(custom.toCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 5, 6, 0, 0, 0, 0, ZoneOffset.UTC));
-
-        // Blank dates are allowed and resolve to null cutoffs
-        TimeFilter blankDates = TimeFilter.of("custom", "", "  ");
-        assertThat(blankDates.fromCutoff()).isNull();
-        assertThat(blankDates.toCutoff()).isNull();
-
-        // Malformed dates throw IllegalArgumentException (fail-closed)
-        assertThatThrownBy(() -> TimeFilter.of("custom", "not-a-date", "2026-05-05"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Invalid date format");
-        assertThatThrownBy(() -> TimeFilter.of("custom", "2026-05-01", "garbage"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Invalid date format");
-    }
-
-    @Test
-    void testConversationFilter_extractsUserIdsAndAnonymousSafely() {
-        UUID uid1 = UUID.randomUUID();
-        UUID uid2 = UUID.randomUUID();
-        List<String> rawUsers =
-            List.of(uid1.toString(), "anonymous", "ANONYMOUS", uid2.toString(), "", "   ");
-
-        ConversationFilter filter =
-            ConversationFilter.of(rawUsers, "day", (LocalDate) null, (LocalDate) null, "positive");
-
-        assertThat(filter.userIds()).containsExactlyInAnyOrder(uid1, uid2);
-        assertThat(filter.includeAnonymous()).isTrue();
-        assertThat(filter.timeFilter().preset()).isEqualTo("day");
-        assertThat(filter.feedbackFilter()).isEqualTo(FeedbackFilter.POSITIVE);
-
-        // Malformed UUID throws IllegalArgumentException (fail-closed)
-        assertThatThrownBy(() -> ConversationFilter.of(List.of("not-a-uuid"), "day",
-            (LocalDate) null, (LocalDate) null, "positive"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Invalid user ID");
-    }
-
-    @Test
-    void testConversationFilter_stringDateOverload() {
-        ConversationFilter filter = ConversationFilter.of(List.of("anonymous"), "custom",
-            "2026-09-01", "2026-09-10", "negative");
-
-        assertThat(filter.userIds()).isEmpty();
-        assertThat(filter.includeAnonymous()).isTrue();
-        assertThat(filter.timeFilter().fromCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 9, 1, 0, 0, 0, 0, ZoneOffset.UTC));
-        assertThat(filter.timeFilter().toCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 9, 11, 0, 0, 0, 0, ZoneOffset.UTC));
-        assertThat(filter.feedbackFilter()).isEqualTo(FeedbackFilter.NEGATIVE);
     }
 
     @Test
@@ -258,7 +202,7 @@ class ChatAdminQueryRepositoryTest {
 
         OffsetDateTime from = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
         OffsetDateTime to = OffsetDateTime.of(2026, 1, 2, 0, 0, 0, 0, ZoneOffset.UTC);
-        TimeFilter timeFilter = new TimeFilter("custom", from, to);
+        TimeFilter timeFilter = new TimeFilter("custom", from, to, null, null);
         ConversationFilter filter =
             new ConversationFilter(Set.of(), false, timeFilter, FeedbackFilter.ALL);
 

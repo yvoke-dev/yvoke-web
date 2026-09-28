@@ -80,7 +80,7 @@
                     <div style="min-width: 220px; flex-shrink: 0;">
                         <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Total Conversations</span>
                         <div style="font-size: 2em; font-weight: 800; color: var(--color-accent, #007bff); margin-top: 0.2rem;">
-                            <span th:text="${stats != null ? stats.totalConversations : totalCount}">0</span>
+                            <span th:text="${stats.totalConversations}">0</span>
                         </div>
                         <div style="font-size: 0.75em; color: #777; margin-top: 0.2rem;">
                             Matching active filter criteria
@@ -88,15 +88,15 @@
                         <div style="margin-top: 0.85rem; display: flex; gap: 1.25rem; font-size: 0.85em;">
                             <div>
                                 <span style="color: #888; display: block; font-size: 0.8em;">Helpful</span>
-                                <span style="color: #28a745; font-weight: 700;">👍 <span th:text="${stats != null ? stats.totalThumbsUp : 0}">0</span></span>
+                                <span style="color: #28a745; font-weight: 700;">👍 <span th:text="${stats.totalThumbsUp}">0</span></span>
                             </div>
                             <div>
                                 <span style="color: #888; display: block; font-size: 0.8em;">Unhelpful</span>
-                                <span style="color: #dc3545; font-weight: 700;">👎 <span th:text="${stats != null ? stats.totalThumbsDown : 0}">0</span></span>
+                                <span style="color: #dc3545; font-weight: 700;">👎 <span th:text="${stats.totalThumbsDown}">0</span></span>
                             </div>
                             <div>
                                 <span style="color: #888; display: block; font-size: 0.8em;">Users</span>
-                                <span style="color: #fff; font-weight: 700;"><span th:text="${stats != null ? stats.registeredUserCount() : 0}">0</span></span>
+                                <span style="color: #fff; font-weight: 700;"><span th:text="${stats.registeredUserCount()}">0</span></span>
                             </div>
                         </div>
                     </div>
@@ -105,7 +105,7 @@
                     <div style="flex: 1; min-width: 320px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                             <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Per-User Statistics</span>
-                            <span style="font-size: 0.75em; color: #777;" th:if="${stats != null && stats.userStats != null && #lists.size(stats.userStats) > 3}">Scroll for more</span>
+                            <span style="font-size: 0.75em; color: #777;" th:if="${#lists.size(stats.userStats) > 3}">Scroll for more</span>
                         </div>
                         <div style="max-height: 135px; overflow-y: auto; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; background: rgba(13, 17, 23, 0.6);">
                             <table class="data-table" style="margin: 0; font-size: 0.85em;">
@@ -118,7 +118,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr th:each="u : ${stats != null ? stats.userStats : null}">
+                                    <tr th:each="u : ${stats.userStats}">
                                         <td style="padding: 0.4rem 0.6rem;">
                                             <div th:if="${u.userId != null}">
                                                 <strong th:text="${u.userDisplayName != null && !u.userDisplayName.isBlank() ? u.userDisplayName : (u.userEmail != null ? u.userEmail : 'Unknown User')}"></strong>
@@ -136,7 +136,7 @@
                                             <span th:if="${u.thumbsDownCount == 0}">0</span>
                                         </td>
                                     </tr>
-                                    <tr th:if="${stats == null || stats.userStats == null || #lists.isEmpty(stats.userStats)}">
+                                    <tr th:if="${#lists.isEmpty(stats.userStats)}">
                                         <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1rem;">No user statistics available for the selected filters.</td>
                                     </tr>
                                 </tbody>
@@ -214,33 +214,12 @@
             var fromDateInput = document.getElementById('fromDate');
             var toDateInput = document.getElementById('toDate');
 
-            function pad(n) {
-                return n < 10 ? '0' + n : '' + n;
-            }
-
-            function formatDate(d) {
-                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-            }
-
             function onTimeRangeChange() {
                 if (!timeRangeSelect) return;
                 var val = timeRangeSelect.value;
-                var now = new Date();
-                if (val === 'all') {
+                if (val !== 'custom') {
                     if (fromDateInput) fromDateInput.value = '';
                     if (toDateInput) toDateInput.value = '';
-                } else if (val === 'day') {
-                    var yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    if (fromDateInput) fromDateInput.value = formatDate(yesterday);
-                    if (toDateInput) toDateInput.value = formatDate(now);
-                } else if (val === 'week') {
-                    var lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    if (fromDateInput) fromDateInput.value = formatDate(lastWeek);
-                    if (toDateInput) toDateInput.value = formatDate(now);
-                } else if (val === 'month') {
-                    var lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    if (fromDateInput) fromDateInput.value = formatDate(lastMonth);
-                    if (toDateInput) toDateInput.value = formatDate(now);
                 }
             }
 

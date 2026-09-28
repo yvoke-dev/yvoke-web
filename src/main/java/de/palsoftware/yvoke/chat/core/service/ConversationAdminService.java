@@ -7,15 +7,16 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Conver
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationUserOption;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Service orchestrating conversation administration views under a single read-only transaction.
  * Enforces layering (Controllers → Services → Repositories) and guarantees a consistent snapshot
- * across statistics, conversation list, and user filter options.
+ * under REPEATABLE READ across statistics, conversation list, and user filter options.
  */
 @Service
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class ConversationAdminService {
 
     private final ChatAdminQueryRepository chatAdminQueryRepository;

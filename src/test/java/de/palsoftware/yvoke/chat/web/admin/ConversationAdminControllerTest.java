@@ -17,6 +17,7 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Conver
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.ConversationAdminView;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -133,6 +134,29 @@ class ConversationAdminControllerTest {
         assertThat(filter.timeFilter().preset()).isEqualTo("custom");
         assertThat(filter.timeFilter().fromCutoff()).isNotNull();
         assertThat(filter.timeFilter().toCutoff()).isNotNull();
+    }
+
+    @Test
+    void testFilteringByInvertedCustomDates_NormalizedInModelAndFilter() throws Exception {
+        ConversationOverviewStats emptyStats = new ConversationOverviewStats(0L, 0L, 0L, List.of());
+        ConversationAdminView mockView =
+            new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
+            eq(20))).thenReturn(mockView);
+
+        mockMvc
+            .perform(get("/admin/conversations").param("timeRange", "custom")
+                .param("fromDate", "2026-09-20").param("toDate", "2026-09-10"))
+            .andExpect(status().isOk()).andExpect(model().attribute("selectedTimeRange", "custom"))
+            .andExpect(model().attribute("fromDate", "2026-09-10"))
+            .andExpect(model().attribute("toDate", "2026-09-20"));
+
+        ArgumentCaptor<ConversationFilter> captor =
+            ArgumentCaptor.forClass(ConversationFilter.class);
+        verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
+        ConversationFilter filter = captor.getValue();
+        assertThat(filter.timeFilter().fromDate()).isEqualTo(LocalDate.of(2026, 9, 10));
+        assertThat(filter.timeFilter().toDate()).isEqualTo(LocalDate.of(2026, 9, 20));
     }
 
     @Test
