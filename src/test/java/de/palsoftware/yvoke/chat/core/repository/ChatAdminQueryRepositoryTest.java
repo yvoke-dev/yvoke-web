@@ -2,10 +2,13 @@ package de.palsoftware.yvoke.chat.core.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.UserConversationStats;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -46,11 +49,12 @@ class ChatAdminQueryRepositoryTest {
         assertThat(FeedbackFilter.fromString(null)).isEqualTo(FeedbackFilter.ALL);
         assertThat(FeedbackFilter.fromString("")).isEqualTo(FeedbackFilter.ALL);
         assertThat(FeedbackFilter.fromString("   ")).isEqualTo(FeedbackFilter.ALL);
-        assertThat(FeedbackFilter.fromString("garbage-rating")).isEqualTo(FeedbackFilter.ALL);
 
-        // fromParam alias
-        assertThat(FeedbackFilter.fromParam("positive")).isEqualTo(FeedbackFilter.POSITIVE);
-        assertThat(FeedbackFilter.fromParam("invalid")).isEqualTo(FeedbackFilter.ALL);
+        // Rejection of unknown values
+        assertThatThrownBy(() -> FeedbackFilter.fromString("garbage-rating"))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> FeedbackFilter.fromParam("invalid"))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -116,27 +120,33 @@ class ChatAdminQueryRepositoryTest {
     }
 
     @Test
-    void testTimeFilter_stringParsingAndSafeFallbacks() {
+    void testTimeFilter_stringParsingAndValidation() {
         TimeFilter custom = TimeFilter.of("custom", "2026-05-01", "2026-05-05");
         assertThat(custom.fromCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 5, 1, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 5, 6, 0, 0, 0, 0, ZoneOffset.UTC));
 
-        // Malformed dates do not throw
-        assertThatCode(() -> {
-            TimeFilter fallback = TimeFilter.of("custom", "not-a-date", "garbage");
-            assertThat(fallback.fromCutoff()).isNull();
-            assertThat(fallback.toCutoff()).isNull();
-        }).doesNotThrowAnyException();
+        // Blank dates are allowed and resolve to null cutoffs
+        TimeFilter blankDates = TimeFilter.of("custom", "", "  ");
+        assertThat(blankDates.fromCutoff()).isNull();
+        assertThat(blankDates.toCutoff()).isNull();
+
+        // Malformed dates throw IllegalArgumentException (fail-closed)
+        assertThatThrownBy(() -> TimeFilter.of("custom", "not-a-date", "2026-05-05"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid date format");
+        assertThatThrownBy(() -> TimeFilter.of("custom", "2026-05-01", "garbage"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid date format");
     }
 
     @Test
     void testConversationFilter_extractsUserIdsAndAnonymousSafely() {
         UUID uid1 = UUID.randomUUID();
         UUID uid2 = UUID.randomUUID();
-        List<String> rawUsers = List.of(uid1.toString(), "anonymous", "ANONYMOUS", uid2.toString(),
-            "not-a-uuid", "", "   ");
+        List<String> rawUsers =
+            List.of(uid1.toString(), "anonymous", "ANONYMOUS", uid2.toString(), "", "   ");
 
         ConversationFilter filter =
             ConversationFilter.of(rawUsers, "day", (LocalDate) null, (LocalDate) null, "positive");
@@ -145,6 +155,11 @@ class ChatAdminQueryRepositoryTest {
         assertThat(filter.includeAnonymous()).isTrue();
         assertThat(filter.timeFilter().preset()).isEqualTo("day");
         assertThat(filter.feedbackFilter()).isEqualTo(FeedbackFilter.POSITIVE);
+
+        // Malformed UUID throws IllegalArgumentException (fail-closed)
+        assertThatThrownBy(() -> ConversationFilter.of(List.of("not-a-uuid"), "day",
+            (LocalDate) null, (LocalDate) null, "positive"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Invalid user ID");
     }
 
     @Test
@@ -159,6 +174,25 @@ class ChatAdminQueryRepositoryTest {
         assertThat(filter.timeFilter().toCutoff())
             .isEqualTo(OffsetDateTime.of(2026, 9, 11, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(filter.feedbackFilter()).isEqualTo(FeedbackFilter.NEGATIVE);
+    }
+
+    @Test
+    void testConversationOverviewStats_registeredUserCount() {
+        UserConversationStats regUser1 =
+            new UserConversationStats(UUID.randomUUID(), "Alice", "alice@example.com", 5, 2, 0);
+        UserConversationStats regUser2 =
+            new UserConversationStats(UUID.randomUUID(), "Bob", "bob@example.com", 3, 1, 1);
+        UserConversationStats anonUser =
+            new UserConversationStats(null, "Anonymous / Deleted", null, 10, 3, 2);
+
+        ConversationOverviewStats stats =
+            new ConversationOverviewStats(18, 6, 3, List.of(regUser1, regUser2, anonUser));
+
+        // registeredUserCount must exclude the anonymous row (userId == null)
+        assertThat(stats.registeredUserCount()).isEqualTo(2);
+
+        ConversationOverviewStats nullStats = new ConversationOverviewStats(0, 0, 0, null);
+        assertThat(nullStats.registeredUserCount()).isEqualTo(0);
     }
 
     @Test

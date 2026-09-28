@@ -96,7 +96,7 @@
                             </div>
                             <div>
                                 <span style="color: #888; display: block; font-size: 0.8em;">Users</span>
-                                <span style="color: #fff; font-weight: 700;"><span th:text="${stats != null && stats.userStats != null ? #lists.size(stats.userStats) : 0}">0</span></span>
+                                <span style="color: #fff; font-weight: 700;"><span th:text="${stats != null ? stats.registeredUserCount() : 0}">0</span></span>
                             </div>
                         </div>
                     </div>
@@ -200,8 +200,8 @@
                         Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${totalCount}"></span> total conversations)
                     </div>
                     <div class="pagination-controls">
-                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">&laquo; Previous</a>
-                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">Next &raquo;</a>
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1}, size=${pageSize}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1}, size=${pageSize}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">Next &raquo;</a>
                     </div>
                 </div>
             </div>

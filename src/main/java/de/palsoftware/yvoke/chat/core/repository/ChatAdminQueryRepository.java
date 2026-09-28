@@ -4,6 +4,7 @@ import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -35,13 +37,13 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         ALL, ANY, POSITIVE, NEGATIVE, NONE;
 
         public static FeedbackFilter fromString(String param) {
-            if (param == null || param.isBlank()) {
+            if (param == null || param.isBlank() || "all".equalsIgnoreCase(param.trim())) {
                 return ALL;
             }
             try {
-                return FeedbackFilter.valueOf(param.trim().toUpperCase());
+                return FeedbackFilter.valueOf(param.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                return ALL;
+                throw new IllegalArgumentException("Unknown feedback filter: " + param);
             }
         }
 
@@ -52,8 +54,13 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
     public record TimeFilter(String preset, OffsetDateTime fromCutoff, OffsetDateTime toCutoff) {
 
+        private static final Set<String> ALLOWED_PRESETS = Set.of("all", "day", "week", "month", "custom");
+
         public static TimeFilter of(String preset, LocalDate fromDate, LocalDate toDate) {
-            String normalizedPreset = preset != null ? preset.trim().toLowerCase() : "all";
+            String normalizedPreset = preset != null ? preset.trim().toLowerCase(Locale.ROOT) : "all";
+            if (!normalizedPreset.isBlank() && !ALLOWED_PRESETS.contains(normalizedPreset)) {
+                throw new IllegalArgumentException("Unknown time range preset: " + preset);
+            }
             if ("custom".equals(normalizedPreset) || (preset == null && (fromDate != null || toDate != null))) {
                 if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
                     LocalDate temp = fromDate;
@@ -82,14 +89,14 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             return of(preset, from, to);
         }
 
-        private static LocalDate parseDate(String raw) {
+        public static LocalDate parseDate(String raw) {
             if (raw == null || raw.isBlank()) {
                 return null;
             }
             try {
-                return LocalDate.parse(raw.trim());
+                return LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
             } catch (DateTimeParseException e) {
-                return null;
+                throw new IllegalArgumentException("Invalid date format: " + raw + ". Expected yyyy-MM-dd");
             }
         }
     }
@@ -119,8 +126,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                     } else {
                         try {
                             userIds.add(UUID.fromString(trimmed));
-                        } catch (IllegalArgumentException ignored) {
-                            // ignore malformed UUIDs without throwing
+                        } catch (IllegalArgumentException e) {
+                            throw new IllegalArgumentException("Invalid user ID: " + trimmed);
                         }
                     }
                 }
@@ -152,7 +159,15 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
 
     public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
-        long totalThumbsDown, List<UserConversationStats> userStats) {}
+        long totalThumbsDown, List<UserConversationStats> userStats) {
+
+        public long registeredUserCount() {
+            if (userStats == null) {
+                return 0;
+            }
+            return userStats.stream().filter(u -> u.userId() != null).count();
+        }
+    }
 
     public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
         String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
@@ -178,7 +193,7 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public List<AdminConversation> listFilteredConversations(ConversationFilter filter, int limit,
-        int offset) {
+        long offset) {
         StringBuilder sql = new StringBuilder(
             """
                 SELECT c.id, c.user_id, u.display_name, u.email, c.title, c.source, c.created_at, c.updated_at,
@@ -215,6 +230,11 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             .list();
     }
 
+    public List<AdminConversation> listFilteredConversations(ConversationFilter filter, int limit,
+        int offset) {
+        return listFilteredConversations(filter, limit, (long) offset);
+    }
+
     public ConversationOverviewStats getConversationStats(ConversationFilter filter) {
         StringBuilder sql = new StringBuilder(
             """
@@ -224,8 +244,11 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                        COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count
                 FROM conversations c
                 LEFT JOIN users u ON c.user_id = u.id
-                LEFT JOIN messages msg ON msg.conversation_id = c.id
-                LEFT JOIN message_feedback fbk ON fbk.message_id = msg.id
+                LEFT JOIN (
+                    SELECT m.conversation_id, mf.rating
+                    FROM messages m
+                    JOIN message_feedback mf ON mf.message_id = m.id
+                ) fbk ON fbk.conversation_id = c.id
                 WHERE 1=1
                 """);
         Map<String, Object> params = new HashMap<>();

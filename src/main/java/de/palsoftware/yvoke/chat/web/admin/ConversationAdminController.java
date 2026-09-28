@@ -1,24 +1,24 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
-import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository;
-import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.AdminConversation;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
-import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
-import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationUserOption;
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
+import de.palsoftware.yvoke.chat.core.service.ConversationAdminService;
+import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.ConversationAdminView;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 @RequestMapping("/admin")
@@ -26,10 +26,10 @@ public class ConversationAdminController {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationAdminController.class);
 
-    private final ChatAdminQueryRepository chatAdminQueryRepository;
+    private final ConversationAdminService conversationAdminService;
 
-    public ConversationAdminController(ChatAdminQueryRepository chatAdminQueryRepository) {
-        this.chatAdminQueryRepository = chatAdminQueryRepository;
+    public ConversationAdminController(ConversationAdminService conversationAdminService) {
+        this.conversationAdminService = conversationAdminService;
     }
 
     @GetMapping("/conversations")
@@ -44,26 +44,22 @@ public class ConversationAdminController {
 
         log.info("ConversationAdminController: Accessing Conversations view");
 
-        page = Math.max(0, page);
-        if (size <= 0 || size > 100) {
-            size = 20;
+        ConversationFilter filter;
+        LocalDate parsedFromDate;
+        LocalDate parsedToDate;
+        try {
+            parsedFromDate = TimeFilter.parseDate(rawFromDate);
+            parsedToDate = TimeFilter.parseDate(rawToDate);
+            filter = ConversationFilter.of(rawUserIds, timeRange, parsedFromDate, parsedToDate,
+                feedback);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
 
-        LocalDate parsedFromDate = parseDate(rawFromDate);
-        LocalDate parsedToDate = parseDate(rawToDate);
+        ConversationAdminView view =
+            conversationAdminService.getConversationAdminView(filter, page, size);
 
-        ConversationFilter filter =
-            ConversationFilter.of(rawUserIds, timeRange, parsedFromDate, parsedToDate, feedback);
-
-        List<ConversationUserOption> userOptions =
-            chatAdminQueryRepository.listConversationUserOptions(filter.userIds());
-        long totalCount = chatAdminQueryRepository.countFilteredConversations(filter);
-        int totalPages = (int) Math.ceil((double) totalCount / size);
-        List<AdminConversation> conversations =
-            chatAdminQueryRepository.listFilteredConversations(filter, size, page * size);
-        ConversationOverviewStats stats = chatAdminQueryRepository.getConversationStats(filter);
-
-        Set<String> selectedUserIds = new LinkedHashSet<>();
+        List<String> selectedUserIds = new ArrayList<>();
         if (filter.includeAnonymous()) {
             selectedUserIds.add("anonymous");
         }
@@ -71,32 +67,23 @@ public class ConversationAdminController {
             selectedUserIds.add(uid.toString());
         }
 
-        model.addAttribute("conversations", conversations);
-        model.addAttribute("userOptions", userOptions);
+        model.addAttribute("conversations", view.conversations());
+        model.addAttribute("userOptions", view.userOptions());
         model.addAttribute("selectedUserIds", selectedUserIds);
         model.addAttribute("selectedTimeRange", filter.timeFilter().preset());
         model.addAttribute("fromDate",
             parsedFromDate != null ? parsedFromDate.format(DateTimeFormatter.ISO_LOCAL_DATE) : "");
         model.addAttribute("toDate",
             parsedToDate != null ? parsedToDate.format(DateTimeFormatter.ISO_LOCAL_DATE) : "");
-        model.addAttribute("selectedFeedback", filter.feedbackFilter().name().toLowerCase());
-        model.addAttribute("currentPage", page);
-        model.addAttribute("totalPages", totalPages);
-        model.addAttribute("totalCount", totalCount);
-        model.addAttribute("stats", stats);
+        model.addAttribute("selectedFeedback",
+            filter.feedbackFilter().name().toLowerCase(Locale.ROOT));
+        model.addAttribute("currentPage", view.currentPage());
+        model.addAttribute("totalPages", view.totalPages());
+        model.addAttribute("totalCount", view.totalCount());
+        model.addAttribute("pageSize", view.pageSize());
+        model.addAttribute("stats", view.stats());
         model.addAttribute("activeTab", "conversations");
 
         return "admin/conversations";
-    }
-
-    private LocalDate parseDate(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException e) {
-            return null;
-        }
     }
 }

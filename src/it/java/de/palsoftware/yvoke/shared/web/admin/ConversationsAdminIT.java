@@ -1,26 +1,29 @@
 package de.palsoftware.yvoke.shared.web.admin;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
-import de.palsoftware.yvoke.shared.user.repository.UserRepository;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -35,11 +38,27 @@ public class ConversationsAdminIT {
     @Autowired
     private ConversationRepository conversationRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        cleanup();
+    }
+
+    @AfterEach
+    public void tearDown() {
+        cleanup();
+    }
+
+    private void cleanup() {
+        jdbcTemplate.update("DELETE FROM message_feedback WHERE message_id IN (SELECT id FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%'))");
+        jdbcTemplate.update("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%')");
+        jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAIT-%'");
+        jdbcTemplate.update("DELETE FROM users WHERE entra_oid LIKE 'cait-%' OR entra_oid = 'mock-admin-oid'");
     }
 
     private UUID createUser(String entraOid, String email, String displayName) {
@@ -47,7 +66,7 @@ public class ConversationsAdminIT {
         return userRepository.findByEntraOid(entraOid).orElseThrow().id();
     }
 
-    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor adminUser() {
+    private static OidcLoginRequestPostProcessor adminUser() {
         return oidcLogin().idToken(token -> token.claim("oid", "mock-admin-oid")).authorities(
             new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
     }
@@ -67,9 +86,9 @@ public class ConversationsAdminIT {
 
     @Test
     public void testAdminCanReadAnotherUserConversation() throws Exception {
-        UUID userAId = createUser("user-a-oid", "user-a@local", "User A");
+        UUID userAId = createUser("cait-user-a-oid", "user-a@local", "User A");
         UUID convId = UUID.randomUUID();
-        conversationRepository.create(convId, userAId, "Conversation A", Map.of(), "web");
+        conversationRepository.create(convId, userAId, "CAIT-Conversation A", Map.of(), "web");
 
         // Ensure admin user is synced/exists in DB
         createUser("mock-admin-oid", "admin@local", "Admin User");
@@ -80,9 +99,9 @@ public class ConversationsAdminIT {
 
     @Test
     public void testAdminCannotSendMessageOrDeleteAnotherUserConversation() throws Exception {
-        UUID userAId = createUser("user-b-oid", "user-b@local", "User B");
+        UUID userAId = createUser("cait-user-b-oid", "user-b@local", "User B");
         UUID convId = UUID.randomUUID();
-        conversationRepository.create(convId, userAId, "Conversation B", Map.of(), "web");
+        conversationRepository.create(convId, userAId, "CAIT-Conversation B", Map.of(), "web");
 
         // Ensure admin user is synced/exists in DB
         createUser("mock-admin-oid", "admin@local", "Admin User");
@@ -98,9 +117,9 @@ public class ConversationsAdminIT {
 
     @Test
     public void testAdminCannotUpdateModelOrSettingsOfAnotherUserConversation() throws Exception {
-        UUID userAId = createUser("user-c-oid", "user-c@local", "User C");
+        UUID userAId = createUser("cait-user-c-oid", "user-c@local", "User C");
         UUID convId = UUID.randomUUID();
-        conversationRepository.create(convId, userAId, "Conversation C", Map.of(), "web");
+        conversationRepository.create(convId, userAId, "CAIT-Conversation C", Map.of(), "web");
 
         // Ensure admin user is synced/exists in DB
         createUser("mock-admin-oid", "admin@local", "Admin User");
@@ -136,19 +155,50 @@ public class ConversationsAdminIT {
     @Test
     public void testConversationsAdminPaginationPreservesFilterParams() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
-        UUID userAId = createUser("user-e-oid", "user-e@local", "User E");
+        UUID userAId = createUser("cait-user-e1-oid", "user-e1@local", "User E1");
+        UUID userBId = createUser("cait-user-e2-oid", "user-e2@local", "User E2");
 
-        for (int i = 0; i < 25; i++) {
-            conversationRepository.create(UUID.randomUUID(), userAId, "Conversation " + i, Map.of(), "web");
+        for (int i = 0; i < 15; i++) {
+            conversationRepository.create(UUID.randomUUID(), userAId, "CAIT-Pagination-" + i, Map.of(), "web");
+        }
+        for (int i = 15; i < 25; i++) {
+            conversationRepository.create(UUID.randomUUID(), userBId, "CAIT-Pagination-" + i, Map.of(), "web");
         }
 
         mockMvc.perform(get("/admin/conversations")
-                .param("timeRange", "month")
+                .param("userIds", userAId.toString(), userBId.toString())
+                .param("timeRange", "custom")
+                .param("fromDate", "2026-01-01")
+                .param("toDate", "2026-12-31")
                 .param("feedback", "all")
                 .param("size", "20")
+                .param("page", "0")
                 .with(adminUser()))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("timeRange=month")))
+            .andExpect(content().string(containsString("page=1")))
+            .andExpect(content().string(containsString("size=20")))
+            .andExpect(content().string(containsString("userIds=" + userAId)))
+            .andExpect(content().string(containsString("userIds=" + userBId)))
+            .andExpect(content().string(containsString("timeRange=custom")))
+            .andExpect(content().string(containsString("fromDate=2026-01-01")))
+            .andExpect(content().string(containsString("toDate=2026-12-31")))
             .andExpect(content().string(containsString("feedback=all")));
+    }
+
+    @Test
+    public void testMalformedFilterParametersRejectedWith400() throws Exception {
+        createUser("mock-admin-oid", "admin@local", "Admin User");
+
+        mockMvc.perform(get("/admin/conversations").param("fromDate", "not-a-valid-date").with(adminUser()))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/admin/conversations").param("userIds", "not-a-valid-uuid").with(adminUser()))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/admin/conversations").param("feedback", "unknown-rating").with(adminUser()))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/admin/conversations").param("timeRange", "unknown-range").with(adminUser()))
+            .andExpect(status().isBadRequest());
     }
 }
