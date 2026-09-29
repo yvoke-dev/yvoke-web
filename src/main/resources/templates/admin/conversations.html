@@ -15,6 +15,140 @@
                 </div>
             </div>
 
+            <!-- Filter Options Card -->
+            <form th:action="@{/admin/conversations}" method="get" id="filter-form">
+                <div class="card filters-panel" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+                    <h2 class="card-title" style="margin-bottom: 1rem;">Filter Options</h2>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; align-items: start;">
+                        
+                        <!-- 1. Time Presets & Dates -->
+                        <div>
+                            <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Time Period</label>
+                            <select name="timeRange" id="timeRange" class="input-field" style="width: 100%; padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid var(--border-color, #3a3f50); background-color: var(--input-bg, #0d1117); color: #fff;">
+                                <option value="all" th:selected="${selectedTimeRange == 'all'}">🌐 All Time</option>
+                                <option value="day" th:selected="${selectedTimeRange == 'day'}">📅 Last 24 Hours</option>
+                                <option value="week" th:selected="${selectedTimeRange == 'week'}">📅 Last 7 Days</option>
+                                <option value="month" th:selected="${selectedTimeRange == 'month'}">📅 Last 30 Days</option>
+                                <option value="custom" th:selected="${selectedTimeRange == 'custom'}">⚙️ Custom Range</option>
+                            </select>
+                            
+                            <div id="custom-date-container" style="display: flex; gap: 0.4rem; margin-top: 0.5rem;">
+                                <input type="date" name="fromDate" id="fromDate" th:value="${fromDate}" placeholder="From" class="input-field" style="flex: 1; height: 33px; padding: 0.4rem 0.5rem; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; box-sizing: border-box;">
+                                <input type="date" name="toDate" id="toDate" th:value="${toDate}" placeholder="To" class="input-field" style="flex: 1; height: 33px; padding: 0.4rem 0.5rem; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <!-- 2. User Filter (Multiselect) -->
+                        <div>
+                            <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Users (Multiselect)</label>
+                            <select name="userIds" id="userIds" multiple size="3" class="input-field" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
+                                <option value="anonymous" th:selected="${selectedUserIds != null && selectedUserIds.contains('anonymous')}">👤 Anonymous / Deleted Users</option>
+                                <option th:each="user : ${userOptions}" th:value="${user.id}" th:text="${user.displayName != null && !user.displayName.isBlank() ? user.displayName : user.email}" th:selected="${selectedUserIds != null && selectedUserIds.contains(user.id.toString())}"></option>
+                            </select>
+                        </div>
+
+                        <!-- 3. Feedback Filter -->
+                        <div>
+                            <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Feedback</label>
+                            <select name="feedback" id="feedback" class="input-field" style="width: 100%; padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid var(--border-color, #3a3f50); background-color: var(--input-bg, #0d1117); color: #fff;">
+                                <option value="all" th:selected="${selectedFeedback == 'all'}">All Conversations</option>
+                                <option value="any" th:selected="${selectedFeedback == 'any'}">Has Any Feedback</option>
+                                <option value="positive" th:selected="${selectedFeedback == 'positive'}">👍 Helpful Answers</option>
+                                <option value="negative" th:selected="${selectedFeedback == 'negative'}">👎 Unhelpful Answers</option>
+                                <option value="none" th:selected="${selectedFeedback == 'none'}">Unrated / No Feedback</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Action Row -->
+                    <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                        <a th:href="@{/admin/conversations}" 
+                           class="btn" 
+                           style="padding: 0.5rem 1.5rem; background-color: transparent; color: #aaa; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center;">
+                            🧹 Clear Filters
+                        </a>
+                        <button type="submit" class="btn" style="padding: 0.5rem 2rem; background-color: var(--color-accent, #007bff); color: #fff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">🔍 Apply Filter</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Summary & User Statistics Header Card -->
+            <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(0,123,255,0.05), rgba(40,167,69,0.05)); border: 1px solid var(--border-color, #3a3f50);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+                    <!-- Left: Overall Totals -->
+                    <div style="min-width: 220px; flex-shrink: 0;">
+                        <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Total Conversations</span>
+                        <div style="font-size: 2em; font-weight: 800; color: var(--color-accent, #007bff); margin-top: 0.2rem;">
+                            <span th:text="${stats.totalConversations}">0</span>
+                        </div>
+                        <div style="font-size: 0.75em; color: #777; margin-top: 0.2rem;">
+                            Matching active filter criteria
+                        </div>
+                        <div style="margin-top: 0.85rem; display: flex; gap: 1.25rem; font-size: 0.85em;">
+                            <div>
+                                <span style="color: #888; display: block; font-size: 0.8em;">Helpful</span>
+                                <span style="color: #28a745; font-weight: 700;">👍 <span th:text="${stats.totalThumbsUp}">0</span></span>
+                            </div>
+                            <div>
+                                <span style="color: #888; display: block; font-size: 0.8em;">Unhelpful</span>
+                                <span style="color: #dc3545; font-weight: 700;">👎 <span th:text="${stats.totalThumbsDown}">0</span></span>
+                            </div>
+                            <div>
+                                <span style="color: #888; display: block; font-size: 0.8em;">Users</span>
+                                <span style="color: #fff; font-weight: 700;"><span th:text="${stats.registeredUserCount()}">0</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Per-User Statistics (Max 3 users visible, scrollable for more) -->
+                    <div style="flex: 1; min-width: 320px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <div>
+                                <span style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Per-User Statistics</span>
+                                <span th:if="${stats.totalUserCount > #lists.size(stats.userStats)}" style="font-size: 0.75em; color: var(--text-secondary); margin-left: 0.4rem;" th:text="'(Top ' + ${#lists.size(stats.userStats)} + ' of ' + ${stats.totalUserCount} + ' users' + (${stats.totalUserCount > stats.registeredUserCount} ? ' incl. anonymous' : '') + ')'"></span>
+                            </div>
+                            <span style="font-size: 0.75em; color: #777;" th:if="${#lists.size(stats.userStats) > 3}">Scroll for more</span>
+                        </div>
+                        <div style="max-height: 135px; overflow-y: auto; border: 1px solid var(--border-color, #3a3f50); border-radius: 4px; background: rgba(13, 17, 23, 0.6);">
+                            <table class="data-table" style="margin: 0; font-size: 0.85em;">
+                                <thead style="position: sticky; top: 0; background: #161b22; z-index: 1;">
+                                    <tr>
+                                        <th style="padding: 0.4rem 0.6rem;">User</th>
+                                        <th style="padding: 0.4rem 0.6rem; text-align: right;">Conversations</th>
+                                        <th style="padding: 0.4rem 0.6rem; text-align: right;">Helpful (👍)</th>
+                                        <th style="padding: 0.4rem 0.6rem; text-align: right;">Unhelpful (👎)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr th:each="u : ${stats.userStats}">
+                                        <td style="padding: 0.4rem 0.6rem;">
+                                            <div th:if="${u.userId != null}">
+                                                <strong th:text="${u.userDisplayName != null && !u.userDisplayName.isBlank() ? u.userDisplayName : (u.userEmail != null ? u.userEmail : 'Unknown User')}"></strong>
+                                                <span th:if="${u.userDisplayName != null && u.userEmail != null}" style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.3rem;" th:text="'(' + ${u.userEmail} + ')'"></span>
+                                            </div>
+                                            <span th:if="${u.userId == null}" class="text-secondary" style="font-style: italic;">👤 Anonymous / Deleted</span>
+                                        </td>
+                                        <td style="padding: 0.4rem 0.6rem; text-align: right; font-weight: 600;" th:text="${u.conversationCount}">0</td>
+                                        <td style="padding: 0.4rem 0.6rem; text-align: right; color: #28a745; font-weight: 600;">
+                                            <span th:if="${u.thumbsUpCount > 0}">👍 <span th:text="${u.thumbsUpCount}"></span></span>
+                                            <span th:if="${u.thumbsUpCount == 0}">0</span>
+                                        </td>
+                                        <td style="padding: 0.4rem 0.6rem; text-align: right; color: #dc3545; font-weight: 600;">
+                                            <span th:if="${u.thumbsDownCount > 0}">👎 <span th:text="${u.thumbsDownCount}"></span></span>
+                                            <span th:if="${u.thumbsDownCount == 0}">0</span>
+                                        </td>
+                                    </tr>
+                                    <tr th:if="${#lists.isEmpty(stats.userStats)}">
+                                        <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1rem;">No user statistics available for the selected filters.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Table Card -->
             <div class="card">
                 <h2 class="card-title">All Conversations</h2>
@@ -27,6 +161,7 @@
                                 <th>User</th>
                                 <th>Conversation ID</th>
                                 <th>Title</th>
+                                <th>Feedback</th>
                                 <th>Source</th>
                                 <th>Last Updated</th>
                             </tr>
@@ -46,12 +181,17 @@
                                 </td>
                                 <td th:text="${conv.title}"></td>
                                 <td>
+                                    <span th:if="${conv.thumbsUpCount > 0}" class="badge badge-success">👍 <span th:text="${conv.thumbsUpCount}"></span></span>
+                                    <span th:if="${conv.thumbsDownCount > 0}" class="badge badge-danger">👎 <span th:text="${conv.thumbsDownCount}"></span></span>
+                                    <span th:if="${conv.thumbsUpCount == 0 && conv.thumbsDownCount == 0}">—</span>
+                                </td>
+                                <td>
                                     <span class="badge badge-muted" th:text="${conv.source}"></span>
                                 </td>
                                 <td th:text="${conv.updatedAt != null ? #temporals.format(conv.updatedAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC' : ''}"></td>
                             </tr>
                             <tr th:if="${#lists.isEmpty(conversations)}">
-                                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No conversations found in the system.</td>
+                                <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No conversations found in the system.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -63,12 +203,45 @@
                         Showing page <span th:text="${currentPage + 1}"></span> of <span th:text="${totalPages}"></span> (<span th:text="${totalCount}"></span> total conversations)
                     </div>
                     <div class="pagination-controls">
-                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1})}" class="btn btn-secondary">&laquo; Previous</a>
-                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1})}" class="btn btn-secondary">Next &raquo;</a>
+                        <a th:if="${currentPage > 0}" th:href="@{/admin/conversations(page=${currentPage - 1}, size=${pageSize}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">&laquo; Previous</a>
+                        <a th:if="${currentPage < totalPages - 1}" th:href="@{/admin/conversations(page=${currentPage + 1}, size=${pageSize}, userIds=${selectedUserIds}, timeRange=${selectedTimeRange}, fromDate=${fromDate}, toDate=${toDate}, feedback=${selectedFeedback})}" class="btn btn-secondary">Next &raquo;</a>
                     </div>
                 </div>
             </div>
         </main>
     </div>
+
+    <script>
+        (function () {
+            var timeRangeSelect = document.getElementById('timeRange');
+            var fromDateInput = document.getElementById('fromDate');
+            var toDateInput = document.getElementById('toDate');
+
+            function onTimeRangeChange() {
+                if (!timeRangeSelect) return;
+                var val = timeRangeSelect.value;
+                if (val !== 'custom') {
+                    if (fromDateInput) fromDateInput.value = '';
+                    if (toDateInput) toDateInput.value = '';
+                }
+            }
+
+            function onManualDateChange() {
+                if (timeRangeSelect) {
+                    timeRangeSelect.value = 'custom';
+                }
+            }
+
+            if (timeRangeSelect) {
+                timeRangeSelect.addEventListener('change', onTimeRangeChange);
+            }
+            if (fromDateInput) {
+                fromDateInput.addEventListener('change', onManualDateChange);
+            }
+            if (toDateInput) {
+                toDateInput.addEventListener('change', onManualDateChange);
+            }
+        })();
+    </script>
 </body>
 </html>
