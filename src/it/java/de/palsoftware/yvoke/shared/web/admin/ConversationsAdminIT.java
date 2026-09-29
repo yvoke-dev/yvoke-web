@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.shared.web.admin;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -235,5 +236,30 @@ public class ConversationsAdminIT {
                 .with(adminUser()))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("(Top 50 of 51 users incl. anonymous)")));
+    }
+
+    @Test
+    public void testConversationsAdminPerUserStatsTruncationHint_noAnonymousUsers() throws Exception {
+        createUser("mock-admin-oid", "admin@local", "Admin User");
+        OffsetDateTime statsTime = OffsetDateTime.of(2037, 2, 21, 12, 0, 0, 0, ZoneOffset.UTC);
+        for (int i = 1; i <= 51; i++) {
+            UUID uid = createUser("cait-stats51-" + i + "-oid", "cait-stats51-" + i + "@local", "CAIT User 51-" + i);
+            UUID convId = UUID.randomUUID();
+            conversationRepository.create(convId, uid, "CAIT-Stats51-" + i, Map.of(), "web");
+            jdbcTemplate.update(
+                "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
+                Timestamp.from(statsTime.toInstant()),
+                Timestamp.from(statsTime.toInstant()),
+                convId);
+        }
+
+        mockMvc.perform(get("/admin/conversations")
+                .param("timeRange", "custom")
+                .param("fromDate", "2037-02-21")
+                .param("toDate", "2037-02-21")
+                .with(adminUser()))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("(Top 50 of 51 users)")))
+            .andExpect(content().string(not(containsString("incl. anonymous"))));
     }
 }
