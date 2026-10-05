@@ -154,4 +154,76 @@ class SystemPromptServiceTest {
             assertThrows(IllegalArgumentException.class, () -> service.requirePrompt(null, null));
         assertTrue(e.getMessage().contains("(no type given)"), e.getMessage());
     }
+
+    /**
+     * {@code findChatPrompt} is what an MCP client (the Claude plugin) receives as its base
+     * instructions. It resolves a name the way the desktop's {@code GET /prompts/system/{name}}
+     * does — a stored prompt by that name first, then {@code default-chat} as the admin's chosen
+     * default — but returns only CHAT prompts: KG and SUMMARIZE prompts share the namespace and are
+     * not base instructions, so handing them out would give every signed-in client the ingest
+     * prompts for no use.
+     */
+    @Test
+    void findChatPromptReturnsAStoredChatPromptByName() {
+        SystemPrompt prompt =
+            new SystemPrompt("custom-chat", SystemPromptType.CHAT, "Be brief.", "");
+        when(repository.findByName("custom-chat")).thenReturn(Optional.of(prompt));
+
+        assertEquals(Optional.of(prompt), service.findChatPrompt("custom-chat"));
+    }
+
+    @Test
+    void findChatPromptResolvesDefaultChatToTheAdminsActivePrompt() {
+        SystemPrompt active =
+            new SystemPrompt("active-chat", SystemPromptType.CHAT, "Cite every claim.", "");
+        when(repository.findByName("default-chat")).thenReturn(Optional.empty());
+        when(appConfigRepository.get(eq("default-chat-prompt"), anyString()))
+            .thenReturn("active-chat");
+        when(repository.findByName("active-chat")).thenReturn(Optional.of(active));
+
+        assertEquals(Optional.of(active), service.findChatPrompt("default-chat"));
+    }
+
+    @Test
+    void findChatPromptTreatsABlankOrMissingNameAsDefaultChat() {
+        SystemPrompt shipped =
+            new SystemPrompt("default-chat", SystemPromptType.CHAT, "Cite every claim.", "");
+        when(repository.findByName("default-chat")).thenReturn(Optional.of(shipped));
+
+        assertEquals(Optional.of(shipped), service.findChatPrompt(null));
+        assertEquals(Optional.of(shipped), service.findChatPrompt("  "));
+    }
+
+    @Test
+    void findChatPromptIsEmptyForAnUnknownName() {
+        when(repository.findByName("no-such-prompt")).thenReturn(Optional.empty());
+
+        assertTrue(service.findChatPrompt("no-such-prompt").isEmpty());
+    }
+
+    @Test
+    void findChatPromptNeverReturnsAnIngestPrompt() {
+        when(repository.findByName("kg-extract")).thenReturn(Optional
+            .of(new SystemPrompt("kg-extract", SystemPromptType.KG, "Extract entities.", "")));
+        when(repository.findByName("summarize")).thenReturn(Optional
+            .of(new SystemPrompt("summarize", SystemPromptType.SUMMARIZE, "Summarize.", "")));
+
+        assertTrue(service.findChatPrompt("kg-extract").isEmpty());
+        assertTrue(service.findChatPrompt("summarize").isEmpty());
+    }
+
+    /**
+     * The admin's active default is itself only a name, and nothing stops it naming a non-CHAT
+     * prompt; the type rule must hold on the fallback path too, not just for a direct name.
+     */
+    @Test
+    void findChatPromptNeverReturnsAnIngestPromptThroughTheDefaultChatFallback() {
+        when(repository.findByName("default-chat")).thenReturn(Optional.empty());
+        when(appConfigRepository.get(eq("default-chat-prompt"), anyString()))
+            .thenReturn("summarize");
+        when(repository.findByName("summarize")).thenReturn(Optional
+            .of(new SystemPrompt("summarize", SystemPromptType.SUMMARIZE, "Summarize.", "")));
+
+        assertTrue(service.findChatPrompt("default-chat").isEmpty());
+    }
 }

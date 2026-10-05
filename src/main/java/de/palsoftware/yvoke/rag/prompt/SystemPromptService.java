@@ -12,6 +12,9 @@ import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 @Service
 public class SystemPromptService {
 
+    /** The name clients ask for to mean "the admin's active chat prompt". */
+    public static final String DEFAULT_CHAT = "default-chat";
+
     private final SystemPromptRepository systemPromptRepository;
     private final String defaultPromptName;
     private final AppConfigRepository appConfigRepository;
@@ -97,6 +100,25 @@ public class SystemPromptService {
 
         // Try database
         return systemPromptRepository.findByName(name.trim());
+    }
+
+    /**
+     * The base instructions an MCP client asked for by name, or empty.
+     *
+     * <p>
+     * Resolves the name as {@code DesktopSyncController.getSystemPrompt} does: a prompt stored
+     * under that name wins, and {@code default-chat} otherwise means the prompt an admin picked as
+     * the default. A blank name means {@code default-chat}. Unlike that endpoint it returns only
+     * CHAT prompts, on both paths: KG and SUMMARIZE prompts share the namespace but are not base
+     * instructions, and nothing a client does needs them.
+     */
+    public Optional<SystemPrompt> findChatPrompt(String name) {
+        String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
+        Optional<SystemPrompt> prompt = getPrompt(requested);
+        if (prompt.isEmpty() && DEFAULT_CHAT.equals(requested)) {
+            prompt = getPrompt(getDefaultChatPromptName());
+        }
+        return prompt.filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",

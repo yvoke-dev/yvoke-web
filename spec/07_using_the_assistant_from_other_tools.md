@@ -21,6 +21,7 @@ running corpus scripts and the evaluation harness.
 | **Query structured records** | Read the declared field structure first, then filter records, pick fields, count matches, or group counts by a field. |
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
 | **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
+| **Fetch the base instructions** | A client asks for the base instructions by name, or for the active default when it names none, and gets the same text the web chat and the desktop app use. This is how the Claude plugin gets them. They are deliberately **not** sent to a client when it connects, so a connected coding session that is not using the knowledge base never receives them. |
 | **Keep desktop conversations in the account** | The desktop app creates conversations, appends each turn, retitles, changes settings and deletes. They appear in the web sidebar marked *Desktop*. Ratings are stored too and appear in the same feedback screens. |
 | **Same behaviour across surfaces** | The desktop app reads the same playbook library, the same in-depth profiles and the same base instructions the web chat uses, so a change made once reaches both. |
 | **Record in-depth runs the desktop app performed** | The desktop app reports the steps it ran locally, and those runs appear in the admin trace screens alongside web runs. |
@@ -41,6 +42,9 @@ running corpus scripts and the evaluation harness.
 - **Any result that hit its ceiling says so**, so a client never mistakes a capped list for a complete one.
 - **Citation checking proves the cited source exists.** It does not check that the source supports the
   claim, and the tool says so in its own output.
+- **Asking for base instructions that do not exist is an error**, not an empty answer, so a client can
+  refuse to start without them rather than run with none. Only chat instructions are handed out; the
+  prompts used to import content are not.
 - **The desktop app lists only the conversations it created.** Web chat conversations, and conversations
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second
