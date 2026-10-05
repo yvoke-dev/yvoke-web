@@ -11,6 +11,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,7 +57,13 @@ public class PlaybookTools {
     private final PlaybookService playbookService;
     private final ObjectMapper objectMapper;
 
-    public PlaybookTools(PlaybookService playbookService, ObjectMapper objectMapper) {
+    /**
+     * {@code @Lazy} breaks a startup cycle: {@code PlaybookService} needs the
+     * {@code McpSyncServer}, which needs the tool list that {@code McpToolsConfig} builds from this
+     * bean. Without it the bean fails to build and {@code McpToolsConfig} only logs that, so both
+     * tools silently vanish from {@code tools/list}.
+     */
+    public PlaybookTools(@Lazy PlaybookService playbookService, ObjectMapper objectMapper) {
         this.playbookService = playbookService;
         this.objectMapper = objectMapper;
     }
