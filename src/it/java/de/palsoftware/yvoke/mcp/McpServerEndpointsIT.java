@@ -599,7 +599,10 @@ public class McpServerEndpointsIT {
             assertTrue(unknown.contains("ERROR: playbook 'no-such-playbook' not found."),
                     "an unknown name is an ERROR: body — BODY=" + unknown);
 
-            playbookService.deletePlaybook(name);
+            // Straight to the row, as the exports tooling or another replica would do. Going
+            // through deletePlaybook would also push prompts/list_changed down this session's
+            // open SSE stream, which nothing here reads, and closing the client then waits on it.
+            playbookRepository.delete(name);
             String afterDelete = callTool(session, "11", "list_playbooks", "{}").body();
             assertFalse(afterDelete.contains(name),
                     "a deleted playbook leaves the list at once — BODY=" + afterDelete);
