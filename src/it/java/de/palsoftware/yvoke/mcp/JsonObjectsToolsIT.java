@@ -182,7 +182,8 @@ public class JsonObjectsToolsIT {
 
         assertThat(names).containsExactlyInAnyOrder("search_corpus", "ask_clarifying_question",
             "get_toc", "get_section", "list_documents", "get_graph_neighbors",
-            "search_graph_entities", "get_json_schema", "query_json_objects", "verify_citations");
+            "search_graph_entities", "get_json_schema", "query_json_objects", "verify_citations",
+            "list_playbooks", "get_playbook");
     }
 
     @Test
