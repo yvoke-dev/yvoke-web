@@ -40,7 +40,7 @@ public class OrchestratorProfileRepositoryIT {
             false,
             null,
             null
-        );
+        ).withArea("OIM");
 
         repository.upsert(profile);
 
@@ -71,7 +71,7 @@ public class OrchestratorProfileRepositoryIT {
     void thePrototypeFlagRoundTripsAndIsRefreshedByTheUpsertsConflictBranch() {
         String profileName = "IT_Prototype_Profile";
         repository.upsert(new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev",
-            List.of("it-spec"), null, null, null, null, null, null, true, null, null));
+            List.of("it-spec"), null, null, null, null, null, null, true, null, null).withArea("OIM"));
 
         assertThat(repository.findByName(profileName)).get()
             .extracting(OrchestratorProfile::prototype).isEqualTo(true);
@@ -79,7 +79,7 @@ public class OrchestratorProfileRepositoryIT {
             .extracting(OrchestratorProfile::prototype).containsExactly(true);
 
         repository.upsert(new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev",
-            List.of("it-spec"), null, null, null, null, null, null, false, null, null));
+            List.of("it-spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
 
         assertThat(repository.findByName(profileName)).get()
             .extracting(OrchestratorProfile::prototype)

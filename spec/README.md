@@ -91,7 +91,8 @@ system and watch what it costs.
 
 | Word | What it means | Also called |
 | --- | --- | --- |
-| **Knowledge area** | A body of content on one topic, e.g. *OIM Docs*, *OIM Database*. The unit users and imports target. | "collection" in the admin screens |
+| **Area** | Everything that belongs to one subject, e.g. *OIM*: its knowledge areas, base instructions, playbooks and in-depth profiles. Each of those belongs to exactly one area. Not to be confused with a knowledge area, which is one body of content inside an area. |  |
+| **Knowledge area** | A body of content on one topic, e.g. *OIM Docs*, *OIM Database*. The unit users and imports target. Belongs to one area. | "collection" in the admin screens |
 | **Tag** | A label on content, e.g. `9.3.1`, `10.0`. Usually a product version — but a tag can carry any meaning, which is why the product calls it a tag rather than a version. One knowledge area holds several. |  |
 | **Document** | One imported file or Confluence page. |  |
 | **Passage** | The piece a document is split into, so the assistant can quote an exact place and cite it. | "chunk" in the admin screens |

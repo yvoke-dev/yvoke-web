@@ -223,7 +223,7 @@ class ChatControlsE2EIT extends AbstractE2E {
             null,
             false,
             null,
-            null));
+            null).withArea("OIM"));
 
     try {
       loginAs("user");

@@ -11,6 +11,7 @@ preview behind a citation.
 
 | Capability | What happens |
 | --- | --- |
+| **Group content into areas** | The Areas page creates, edits, renames and deletes areas (such as *OIM*) and picks each one's defaults: its base instructions, the playbook a session starts with, and its default in-depth profile. A default can only be one of the area's own members. Renaming an area carries over to everything in it. Each knowledge area, playbook, base instruction and in-depth profile is put into its area on its own page, and a knowledge area can be moved to another area from its card. |
 | **Browse everything imported** | The corpus browser lists every document with its area, type, number of passages, import status, versions, and whether graph extraction has run. Filters by area, type and version; searches by title or id; pages twenty at a time. |
 | **Open a document and see how it was split** | Shows area, type, versions, import status, passage count, creation date, section summaries, its properties, and the full ordered list of passages with heading breadcrumb, text preview and whether each is searchable. |
 | **Inspect a passage and see where it was used** | Full text, heading breadcrumb, position and depth, whether it is searchable, and a list of the conversations where the assistant used it as evidence — conversation title, message text and time. |
@@ -99,6 +100,15 @@ preview behind a citation.
   filter is refused with an explanation of how to rewrite it. One divergence is left: the assistant's own
   record listing insists on a whole-record expression and reports an error, while a count of the very
   same filter quietly returns a plain-text match.
+
+- **An area that still has anything in it cannot be deleted.** Move or delete its members first; the
+  page says so.
+- **Everything that existed before areas were introduced was put into the area *OIM*.** Anything that
+  belongs elsewhere has to be moved by hand.
+- **An imported playbook or base instruction file goes into the area it names**, or the one chosen on the
+  form when it names none. A file naming an area that does not exist is refused, naming it.
+- **An area does not yet restrict anything.** A playbook in one area can still search knowledge areas of
+  another; areas only group and list.
 
 ## Not supported
 

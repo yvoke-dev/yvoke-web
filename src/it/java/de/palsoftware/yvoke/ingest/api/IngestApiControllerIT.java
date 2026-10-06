@@ -52,6 +52,10 @@ public class IngestApiControllerIT {
                 .apply(springSecurity())
                 .build();
         cleanup();
+        // The KG prompt the requests name; seeded here so the class does not depend on running
+        // after another IT that happens to insert it.
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt) VALUES (?, ?, ?)"
+            + " ON CONFLICT (name) DO NOTHING", "it-kg", "KG", "Return STRICT JSON only.");
     }
 
     private void cleanup() {
@@ -75,6 +79,7 @@ public class IngestApiControllerIT {
         mockMvc.perform(post("/api/ingest/v1/process-kg")
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
+                        .param("area", "OIM")
                         .param("tag", "v2.0")
                         .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
@@ -104,6 +109,7 @@ public class IngestApiControllerIT {
         String firstBody = mockMvc.perform(post("/api/ingest/v1/process-kg")
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
+                        .param("area", "OIM")
                         .param("tag", "v2.0")
                         .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
@@ -113,6 +119,7 @@ public class IngestApiControllerIT {
         mockMvc.perform(post("/api/ingest/v1/process-kg")
                         .param("documentId", docId.toString())
                         .param("collection", "target-col")
+                        .param("area", "OIM")
                         .param("tag", "v2.0")
                         .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
@@ -212,6 +219,7 @@ public class IngestApiControllerIT {
                         .param("sourceCollection", "source-col")
                         .param("sourceTag", "v1.0")
                         .param("collection", "target-col")
+                        .param("area", "OIM")
                         .param("tag", "v2.0")
                         .param("kgPrompt", "it-kg")
                         .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))

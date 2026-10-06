@@ -77,7 +77,8 @@ public class CollectionAdminWriteIT {
     private UUID createCollection() throws Exception {
         mockMvc
             .perform(post("/admin/collections").with(csrf()).with(admin())
-                .param("name", COLLECTION).param("description", "created by IT"))
+                .param("name", COLLECTION).param("description", "created by IT")
+                .param("area", "OIM"))
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("/admin/collections"));
         return jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?", UUID.class,
