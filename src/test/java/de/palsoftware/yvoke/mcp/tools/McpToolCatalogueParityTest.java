@@ -26,8 +26,8 @@ class McpToolCatalogueParityTest {
 
     private static final List<Class<?>> TOOLS = List.of(GetGraphNeighborsTool.class,
         GetJsonSchemaTool.class, GetSectionTool.class, GetTocTool.class, ListDocumentsTool.class,
-        QueryJsonObjectsTool.class, SearchCorpusTool.class, SearchGraphEntitiesTool.class,
-        VerifyCitationsTool.class, GetSystemPromptTool.class);
+        PlaybookTools.class, QueryJsonObjectsTool.class, SearchCorpusTool.class,
+        SearchGraphEntitiesTool.class, VerifyCitationsTool.class, GetSystemPromptTool.class);
 
     @Test
     void everyToolMethodDeclaresBothCatalogues() {

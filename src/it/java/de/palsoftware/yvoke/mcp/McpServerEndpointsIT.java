@@ -295,7 +295,7 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "get_system_prompt");
+                    "get_system_prompt", "list_playbooks", "get_playbook");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
@@ -614,6 +614,84 @@ public class McpServerEndpointsIT {
             // Clean up the seeded playbook
             try {
                 playbookService.deletePlaybook("test-endpoints-it-playbook");
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private HttpResponse<String> callTool(McpSession session, String id, String tool,
+            String argumentsJson) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/mcp"))
+                .header("Authorization", "Bearer mock-jwt-token")
+                .header("Mcp-Session-Id", session.getSessionId())
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString("""
+                        {
+                          "jsonrpc": "2.0",
+                          "method": "tools/call",
+                          "params": { "name": "%s", "arguments": %s },
+                          "id": "%s"
+                        }
+                        """.formatted(tool, argumentsJson, id)))
+                .build();
+        HttpResponse<String> response =
+                session.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println("DEBUG TOOLS CALL " + tool + " RESPONSE: STATUS="
+                + response.statusCode() + ", BODY=" + response.body());
+        assertEquals(200, response.statusCode());
+        return response;
+    }
+
+    /**
+     * The Yvoke plugin's mod can call MCP tools but cannot read MCP prompts, so it reaches the
+     * playbook library only through {@code list_playbooks} and {@code get_playbook}. Unlike the
+     * prompt list, which keeps a deleted playbook until a restart, both read the table on every
+     * call: a deletion must be visible on the very next {@code list_playbooks}.
+     */
+    @Test
+    public void playbookToolsServeTheLiveLibraryOverMcp() throws Exception {
+        String name = "test-endpoints-it-playbook-tools";
+        playbookService.savePlaybook(name, "Playbook Tools IT", "Served by the playbook tools",
+                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false);
+
+        try (McpSession session = establishSession()) {
+            String listed = callTool(session, "8", "list_playbooks", "{}").body();
+            assertTrue(listed.contains(name), "list_playbooks must list it — BODY=" + listed);
+            assertFalse(listed.contains("PLAYBOOK TOOLS instructions"),
+                    "the list carries metadata, not text — BODY=" + listed);
+
+            String fetched = callTool(session, "9", "get_playbook",
+                    "{ \"name\": \"" + name + "\" }").body();
+            assertTrue(fetched.contains("PLAYBOOK TOOLS instructions"),
+                    "get_playbook must return the text — BODY=" + fetched);
+            assertTrue(fetched.contains("search_corpus"),
+                    "get_playbook must return the tools — BODY=" + fetched);
+
+            String unknown = callTool(session, "10", "get_playbook",
+                    "{ \"name\": \"no-such-playbook\" }").body();
+            assertTrue(unknown.contains("ERROR: playbook 'no-such-playbook' not found."),
+                    "an unknown name is an ERROR: body — BODY=" + unknown);
+
+            // Straight to the row, as the exports tooling or another replica would do. Going
+            // through deletePlaybook would also push prompts/list_changed down this session's
+            // open SSE stream, which nothing here reads, and closing the client then waits on it.
+            playbookRepository.delete(name);
+            String afterDelete = callTool(session, "11", "list_playbooks", "{}").body();
+            assertFalse(afterDelete.contains(name),
+                    "a deleted playbook leaves the list at once — BODY=" + afterDelete);
+
+            // get_playbook already served this name above, so a read through the @Cacheable
+            // PlaybookService.getPlaybook would still hand back the deleted text here.
+            String fetchedAfterDelete = callTool(session, "12", "get_playbook",
+                    "{ \"name\": \"" + name + "\" }").body();
+            assertTrue(fetchedAfterDelete.contains("ERROR: playbook '" + name + "' not found."),
+                    "a deleted playbook cannot be fetched any more — BODY=" + fetchedAfterDelete);
+            assertFalse(fetchedAfterDelete.contains("PLAYBOOK TOOLS instructions"),
+                    "no stale text from a cache — BODY=" + fetchedAfterDelete);
+        } finally {
+            try {
+                playbookService.deletePlaybook(name);
             } catch (Exception ignored) {}
         }
     }

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -20,12 +21,33 @@ public class PlaybookService {
     private static final Logger log = LoggerFactory.getLogger(PlaybookService.class);
 
     private final PlaybookRepository playbookRepository;
-    private final McpSyncServer mcpSyncServer;
+    /**
+     * Resolved when a playbook changes, not at construction: the server is built from the tool
+     * list, and a tool that reads playbooks would otherwise close a startup cycle. A failed tool
+     * bean is only logged by {@code McpToolsConfig}, so the cycle would silently drop the tool.
+     */
+    private final ObjectProvider<McpSyncServer> mcpSyncServer;
 
+    @Autowired
     public PlaybookService(PlaybookRepository playbookRepository,
-        @Autowired(required = false) McpSyncServer mcpSyncServer) {
+        ObjectProvider<McpSyncServer> mcpSyncServer) {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
+    }
+
+    /** For callers outside the container; {@code null} means no MCP server to notify. */
+    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer) {
+        this(playbookRepository, new ObjectProvider<>() {
+            @Override
+            public McpSyncServer getObject() {
+                return mcpSyncServer;
+            }
+
+            @Override
+            public McpSyncServer getIfAvailable() {
+                return mcpSyncServer;
+            }
+        });
     }
 
     public List<Playbook> listAllPlaybooks() {
@@ -84,8 +106,9 @@ public class PlaybookService {
             description != null ? description.trim() : "", templateText.trim(), tools,
             codeExecution, agent, prototype);
 
-        if (mcpSyncServer != null) {
-            registerPlaybookWithMcp(name.trim());
+        McpSyncServer server = mcpSyncServer.getIfAvailable();
+        if (server != null) {
+            registerPlaybookWithMcp(name.trim(), server);
         }
     }
 
@@ -110,9 +133,10 @@ public class PlaybookService {
         }
 
         playbookRepository.delete(name.trim());
-        if (mcpSyncServer != null) {
+        McpSyncServer server = mcpSyncServer.getIfAvailable();
+        if (server != null) {
             try {
-                mcpSyncServer.notifyPromptsListChanged();
+                server.notifyPromptsListChanged();
                 log.info("Deleted playbook and notified MCP: {}", name);
             } catch (Exception e) {
                 log.warn("Failed to notify prompt changes after delete for {}: {}", name,
@@ -137,13 +161,11 @@ public class PlaybookService {
         }
     }
 
-    private void registerPlaybookWithMcp(String name) {
-        if (mcpSyncServer == null)
-            return;
+    private void registerPlaybookWithMcp(String name, McpSyncServer server) {
         getPlaybook(name).ifPresent(playbook -> {
-            doRegister(playbook, mcpSyncServer);
+            doRegister(playbook, server);
             try {
-                mcpSyncServer.notifyPromptsListChanged();
+                server.notifyPromptsListChanged();
             } catch (Exception e) {
                 log.debug("No MCP client connected yet to receive list change notification.");
             }
