@@ -310,15 +310,24 @@ public class McpServerEndpointsIT {
     /**
      * The Claude plugin's base instructions (P1-01): a {@code tools/call} of
      * {@code get_system_prompt} with no arguments returns the chat prompt an admin made active,
-     * end to end through the MCP transport. The prompt is stored under a name of its own and made
-     * the active default for the duration, so the text can only have come from that resolution;
-     * the previous default is restored afterwards because {@code app_config} is shared by the
-     * whole context. The handshake itself asserts that no server {@code instructions} are sent.
+     * end to end through the MCP transport, exactly as the web chat resolves it. A stored row
+     * literally named {@code default-chat} is present too, as it is in every real deployment, and
+     * must NOT win: following it would leave the plugin on the generic prompt after an admin
+     * switched the web chat to another one. The previous default is restored afterwards because
+     * {@code app_config} is shared by the whole context. The handshake itself asserts that no
+     * server {@code instructions} are sent.
      */
     @Test
-    public void getSystemPromptReturnsTheActiveDefaultChatPrompt() throws Exception {
+    public void getSystemPromptReturnsTheAdminsActiveChatPromptOverAStoredDefaultChatRow()
+            throws Exception {
         String name = "test-endpoints-it-active-chat";
         String previousDefault = systemPromptService.getDefaultChatPromptName();
+        boolean createdDefaultChatRow =
+                systemPromptService.getPrompt(SystemPromptService.DEFAULT_CHAT).isEmpty();
+        if (createdDefaultChatRow) {
+            systemPromptService.savePrompt(SystemPromptService.DEFAULT_CHAT, SystemPromptType.CHAT,
+                    "IT generic default-chat row.", "P1-01 IT");
+        }
         systemPromptService.savePrompt(name, SystemPromptType.CHAT,
                 "IT base instructions: cite every claim.", "P1-01 IT");
         systemPromptService.setDefaultChatPromptName(name);
@@ -345,21 +354,21 @@ public class McpServerEndpointsIT {
 
             HttpResponse<String> response = session.getHttpClient().send(callRequest,
                     HttpResponse.BodyHandlers.ofString());
-            System.out.println("DEBUG GET_SYSTEM_PROMPT RESPONSE: STATUS=" + response.statusCode()
-                    + ", BODY=" + response.body());
             assertEquals(200, response.statusCode());
             assertTrue(response.body().contains("IT base instructions: cite every claim."),
-                    "the active default chat prompt must be returned — BODY=" + response.body());
+                    "the admin's active chat prompt must be returned — BODY=" + response.body());
             assertFalse(response.body().contains("\"isError\":true"),
                     "the call must succeed — BODY=" + response.body());
         } finally {
             systemPromptService.setDefaultChatPromptName(previousDefault);
             try {
                 systemPromptService.deletePrompt(name);
+                if (createdDefaultChatRow) {
+                    systemPromptService.deletePrompt(SystemPromptService.DEFAULT_CHAT);
+                }
             } catch (Exception ignored) {}
         }
     }
-
 
     /**
      * {@code doRegister} captures the {@link de.palsoftware.yvoke.rag.prompt.Playbook} object in its

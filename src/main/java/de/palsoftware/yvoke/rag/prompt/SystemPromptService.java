@@ -106,19 +106,22 @@ public class SystemPromptService {
      * The base instructions an MCP client asked for by name, or empty.
      *
      * <p>
-     * Resolves the name as {@code DesktopSyncController.getSystemPrompt} does: a prompt stored
-     * under that name wins, and {@code default-chat} otherwise means the prompt an admin picked as
-     * the default. A blank name means {@code default-chat}. Unlike that endpoint it returns only
-     * CHAT prompts, on both paths: KG and SUMMARIZE prompts share the namespace but are not base
-     * instructions, and nothing a client does needs them.
+     * {@code default-chat}, or a blank name, means the prompt an admin made active, resolved
+     * exactly as the web chat resolves it ({@code RagService.loadAgenticSystemPrompt}), so the two
+     * surfaces answer under the same instructions. Any other name is looked up as given. This
+     * deliberately differs from {@code DesktopSyncController.getSystemPrompt}, where a stored row
+     * literally named {@code default-chat} wins over the admin's choice; since that row ships in
+     * every deployment, following it would leave the plugin on the generic prompt after an admin
+     * switched.
+     *
+     * <p>
+     * Only CHAT prompts are returned, on both paths: KG and SUMMARIZE prompts share the namespace
+     * but are not base instructions, and nothing a client does needs them.
      */
     public Optional<SystemPrompt> findChatPrompt(String name) {
         String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
-        Optional<SystemPrompt> prompt = getPrompt(requested);
-        if (prompt.isEmpty() && DEFAULT_CHAT.equals(requested)) {
-            prompt = getPrompt(getDefaultChatPromptName());
-        }
-        return prompt.filter(p -> p.type() == SystemPromptType.CHAT);
+        String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
+        return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
