@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.mcp.prompts;
 
+import io.modelcontextprotocol.server.McpSyncServer;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -14,7 +15,7 @@ public class PromptsService {
     private final PlaybookService playbookService;
 
     public PromptsService(PlaybookRepository playbookRepository) {
-        this(new PlaybookService(playbookRepository, null));
+        this(new PlaybookService(playbookRepository, (McpSyncServer) null));
     }
 
     @Autowired

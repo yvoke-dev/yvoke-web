@@ -680,6 +680,15 @@ public class McpServerEndpointsIT {
             String afterDelete = callTool(session, "11", "list_playbooks", "{}").body();
             assertFalse(afterDelete.contains(name),
                     "a deleted playbook leaves the list at once — BODY=" + afterDelete);
+
+            // get_playbook already served this name above, so a read through the @Cacheable
+            // PlaybookService.getPlaybook would still hand back the deleted text here.
+            String fetchedAfterDelete = callTool(session, "12", "get_playbook",
+                    "{ \"name\": \"" + name + "\" }").body();
+            assertTrue(fetchedAfterDelete.contains("ERROR: playbook '" + name + "' not found."),
+                    "a deleted playbook cannot be fetched any more — BODY=" + fetchedAfterDelete);
+            assertFalse(fetchedAfterDelete.contains("PLAYBOOK TOOLS instructions"),
+                    "no stale text from a cache — BODY=" + fetchedAfterDelete);
         } finally {
             try {
                 playbookService.deletePlaybook(name);

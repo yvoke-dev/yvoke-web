@@ -2,13 +2,20 @@ package de.palsoftware.yvoke.mcp.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,7 +28,11 @@ class PlaybookToolsTest {
 
     private final ObjectMapper json = new ObjectMapper();
     private PlaybookService playbookService;
+    private PlaybookRepository playbookRepository;
     private PlaybookTools tools;
+
+    private static final Set<String> META_KEYS = Set.of("name", "title", "description", "tools",
+        "codeExecution", "targetAgent", "prototype");
 
     private static final Playbook FULL =
         new Playbook("oim-full", "OIM full", "Everything OIM", "You are the OIM assistant.",
@@ -34,7 +45,8 @@ class PlaybookToolsTest {
     @BeforeEach
     void setUp() {
         playbookService = mock(PlaybookService.class);
-        tools = new PlaybookTools(playbookService, json);
+        playbookRepository = mock(PlaybookRepository.class);
+        tools = new PlaybookTools(playbookService, playbookRepository, json);
     }
 
     @Test
@@ -46,6 +58,8 @@ class PlaybookToolsTest {
         assertThat(list.isArray()).isTrue();
         assertThat(list).hasSize(2);
         JsonNode full = list.get(0);
+        // The plugin parses these keys; pin the exact set so a new field is a deliberate change.
+        assertThat(keys(full)).isEqualTo(new TreeSet<>(META_KEYS));
         assertThat(full.get("name").asText()).isEqualTo("oim-full");
         assertThat(full.get("title").asText()).isEqualTo("OIM full");
         assertThat(full.get("description").asText()).isEqualTo("Everything OIM");
@@ -75,9 +89,13 @@ class PlaybookToolsTest {
 
     @Test
     void aKnownPlaybookComesBackWithItsTextAndMetadata() throws Exception {
-        when(playbookService.getPlaybook("oim-full")).thenReturn(Optional.of(FULL));
+        when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL));
 
         JsonNode pb = json.readTree(tools.getPlaybook("oim-full"));
+
+        Set<String> expected = new TreeSet<>(META_KEYS);
+        expected.add("text");
+        assertThat(keys(pb)).isEqualTo(expected);
 
         assertThat(pb.get("name").asText()).isEqualTo("oim-full");
         assertThat(pb.get("title").asText()).isEqualTo("OIM full");
@@ -91,8 +109,21 @@ class PlaybookToolsTest {
     }
 
     @Test
+    void getReadsTheTableOnEveryCallSoADeletedPlaybookIsGoneAtOnce() throws Exception {
+        when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL),
+            Optional.empty());
+
+        assertThat(json.readTree(tools.getPlaybook("oim-full")).get("name").asText())
+            .isEqualTo("oim-full");
+        assertThat(tools.getPlaybook("oim-full")).startsWith("ERROR:").contains("not found");
+        verify(playbookRepository, times(2)).findByName("oim-full");
+        // Not the cached PlaybookService.getPlaybook, which would keep a deleted playbook for 60s.
+        verifyNoInteractions(playbookService);
+    }
+
+    @Test
     void theNameIsTrimmed() throws Exception {
-        when(playbookService.getPlaybook("oim-full")).thenReturn(Optional.of(FULL));
+        when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL));
 
         assertThat(json.readTree(tools.getPlaybook("  oim-full ")).get("name").asText())
             .isEqualTo("oim-full");
@@ -100,7 +131,8 @@ class PlaybookToolsTest {
 
     @Test
     void anyPlaybookCanBeFetchedByNameNotOnlyListedOnes() throws Exception {
-        when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(ORCHESTRATOR));
+        when(playbookRepository.findByName("oim-orchestrator"))
+            .thenReturn(Optional.of(ORCHESTRATOR));
 
         assertThat(json.readTree(tools.getPlaybook("oim-orchestrator")).get("targetAgent").asText())
             .isEqualTo("orchestrator");
@@ -108,7 +140,7 @@ class PlaybookToolsTest {
 
     @Test
     void anUnknownNameIsAnErrorBodyNamingIt() {
-        when(playbookService.getPlaybook("nope")).thenReturn(Optional.empty());
+        when(playbookRepository.findByName("nope")).thenReturn(Optional.empty());
 
         assertThat(tools.getPlaybook("nope")).startsWith("ERROR:").contains("'nope'")
             .contains("not found");
@@ -125,11 +157,18 @@ class PlaybookToolsTest {
     void anInfrastructureFailureIsAGenericErrorWithNoExceptionDetail() {
         when(playbookService.listSpecializedPlaybooks())
             .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
-        when(playbookService.getPlaybook("oim-full"))
+        when(playbookRepository.findByName("oim-full"))
             .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
 
         assertThat(tools.listPlaybooks()).startsWith("ERROR:").doesNotContain("secret-host");
         assertThat(tools.getPlaybook("oim-full")).startsWith("ERROR:")
             .doesNotContain("secret-host");
+    }
+
+    private static Set<String> keys(JsonNode node) {
+        Set<String> keys = new TreeSet<>();
+        Iterator<String> names = node.fieldNames();
+        names.forEachRemaining(keys::add);
+        return keys;
     }
 }

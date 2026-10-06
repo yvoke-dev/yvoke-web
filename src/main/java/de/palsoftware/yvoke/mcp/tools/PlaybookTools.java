@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.api.model.PlaybookDto;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.List;
 import java.util.Optional;
@@ -11,7 +12,6 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -55,16 +55,13 @@ public class PlaybookTools {
     }
 
     private final PlaybookService playbookService;
+    private final PlaybookRepository playbookRepository;
     private final ObjectMapper objectMapper;
 
-    /**
-     * {@code @Lazy} breaks a startup cycle: {@code PlaybookService} needs the
-     * {@code McpSyncServer}, which needs the tool list that {@code McpToolsConfig} builds from this
-     * bean. Without it the bean fails to build and {@code McpToolsConfig} only logs that, so both
-     * tools silently vanish from {@code tools/list}.
-     */
-    public PlaybookTools(@Lazy PlaybookService playbookService, ObjectMapper objectMapper) {
+    public PlaybookTools(PlaybookService playbookService, PlaybookRepository playbookRepository,
+        ObjectMapper objectMapper) {
         this.playbookService = playbookService;
+        this.playbookRepository = playbookRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -88,7 +85,9 @@ public class PlaybookTools {
         }
         String trimmed = name.trim();
         try {
-            Optional<Playbook> playbook = playbookService.getPlaybook(trimmed);
+            // The repository, not PlaybookService.getPlaybook: that one is cached for 60s, so a
+            // deleted or edited playbook would linger.
+            Optional<Playbook> playbook = playbookRepository.findByName(trimmed);
             if (playbook.isEmpty()) {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
