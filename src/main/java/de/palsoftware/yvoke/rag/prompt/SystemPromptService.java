@@ -12,6 +12,9 @@ import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 @Service
 public class SystemPromptService {
 
+    /** The name clients ask for to mean "the admin's active chat prompt". */
+    public static final String DEFAULT_CHAT = "default-chat";
+
     private final SystemPromptRepository systemPromptRepository;
     private final String defaultPromptName;
     private final AppConfigRepository appConfigRepository;
@@ -97,6 +100,28 @@ public class SystemPromptService {
 
         // Try database
         return systemPromptRepository.findByName(name.trim());
+    }
+
+    /**
+     * The base instructions an MCP client asked for by name, or empty.
+     *
+     * <p>
+     * {@code default-chat}, or a blank name, means the prompt an admin made active, resolved
+     * exactly as the web chat resolves it ({@code RagService.loadAgenticSystemPrompt}), so the two
+     * surfaces answer under the same instructions. Any other name is looked up as given. This
+     * deliberately differs from {@code DesktopSyncController.getSystemPrompt}, where a stored row
+     * literally named {@code default-chat} wins over the admin's choice; since that row ships in
+     * every deployment, following it would leave the plugin on the generic prompt after an admin
+     * switched.
+     *
+     * <p>
+     * Only CHAT prompts are returned, on both paths: KG and SUMMARIZE prompts share the namespace
+     * but are not base instructions, and nothing a client does needs them.
+     */
+    public Optional<SystemPrompt> findChatPrompt(String name) {
+        String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
+        String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
+        return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",

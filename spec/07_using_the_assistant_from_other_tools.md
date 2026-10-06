@@ -21,6 +21,7 @@ running corpus scripts and the evaluation harness.
 | **Query structured records** | Read the declared field structure first, then filter records, pick fields, count matches, or group counts by a field. |
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
 | **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
+| **Fetch the base instructions** | A client asks for the base instructions by name, or for the active default when it names none. The active default is the chat prompt an administrator has made active, the same one a single-agent answer in the web app runs under, so switching it changes both. This is how the Claude plugin gets them. They are deliberately **not** sent to a client when it connects, so a connected coding session that is not using the knowledge base never receives them. |
 | **Fetch playbooks as tools** | Two tools hand a client the playbook library directly, for clients that cannot read prompts (the Yvoke plugin for Claude) or whose playbook skills tell the model to fetch the playbook first (Claude Chat and Cowork). One lists the playbooks a user can pick, with each one's tools, code execution, target agent and prototype flag, leaving out the orchestrator and reviewer ones as the chat picker does. The other returns one playbook's full text and the same details, by name, for any playbook. Both read the library on every call, so a new, edited or deleted playbook shows at once. An unknown name is refused, naming it. |
 | **Keep desktop conversations in the account** | The desktop app creates conversations, appends each turn, retitles, changes settings and deletes. They appear in the web sidebar marked *Desktop*. Ratings are stored too and appear in the same feedback screens. |
 | **Same behaviour across surfaces** | The desktop app reads the same playbook library, the same in-depth profiles and the same base instructions the web chat uses, so a change made once reaches both. |
@@ -42,6 +43,9 @@ running corpus scripts and the evaluation harness.
 - **Any result that hit its ceiling says so**, so a client never mistakes a capped list for a complete one.
 - **Citation checking proves the cited source exists.** It does not check that the source supports the
   claim, and the tool says so in its own output.
+- **Asking for base instructions that do not exist is an error**, not an empty answer, so a client can
+  refuse to start without them rather than run with none. Only chat instructions are handed out; the
+  prompts used to import content are not.
 - **The desktop app lists only the conversations it created.** Web chat conversations, and conversations
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second

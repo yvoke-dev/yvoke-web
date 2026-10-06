@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.mcp;
 
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,9 @@ public class McpServerEndpointsIT {
 
     @Autowired
     private PlaybookRepository playbookRepository;
+
+    @Autowired
+    private SystemPromptService systemPromptService;
 
     /**
      * Present only because the build-info goal writes META-INF/build-info.properties; the bean is
@@ -140,6 +145,12 @@ public class McpServerEndpointsIT {
         }
         assertEquals(200, initResponse.statusCode());
         assertTrue(initResponse.body().contains("protocolVersion"), "Initialize response should negotiate protocolVersion");
+        // D-12 of the Claude plugin: base instructions travel only through get_system_prompt. Sent
+        // as the server's MCP "instructions" they would reach every session that connects —
+        // including users' ordinary coding sessions — and a Yvoke session would get them twice.
+        // Asserted on every handshake, so no test can establish a session that carries them.
+        assertFalse(initResponse.body().contains("\"instructions\""),
+                "the initialize result must carry no server instructions — BODY=" + initResponse.body());
 
         // The version an external MCP client is actually handed, asserted on the wire rather than
         // in configuration. The unit tier already pins that application.yml resolves to the build
@@ -284,7 +295,7 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "list_playbooks", "get_playbook");
+                    "get_system_prompt", "list_playbooks", "get_playbook");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
@@ -293,6 +304,69 @@ public class McpServerEndpointsIT {
                     expected.stream().filter(name -> !body.contains("\"" + name + "\"")).toList();
             assertTrue(missing.isEmpty(),
                     "tools/list is missing " + missing + " — BODY=" + body);
+        }
+    }
+
+    /**
+     * The Claude plugin's base instructions (P1-01): a {@code tools/call} of
+     * {@code get_system_prompt} with no arguments returns the chat prompt an admin made active,
+     * end to end through the MCP transport, exactly as the web chat resolves it. A stored row
+     * literally named {@code default-chat} is present too, as it is in every real deployment, and
+     * must NOT win: following it would leave the plugin on the generic prompt after an admin
+     * switched the web chat to another one. The previous default is restored afterwards because
+     * {@code app_config} is shared by the whole context. The handshake itself asserts that no
+     * server {@code instructions} are sent.
+     */
+    @Test
+    public void getSystemPromptReturnsTheAdminsActiveChatPromptOverAStoredDefaultChatRow()
+            throws Exception {
+        String name = "test-endpoints-it-active-chat";
+        String previousDefault = systemPromptService.getDefaultChatPromptName();
+        boolean createdDefaultChatRow =
+                systemPromptService.getPrompt(SystemPromptService.DEFAULT_CHAT).isEmpty();
+        if (createdDefaultChatRow) {
+            systemPromptService.savePrompt(SystemPromptService.DEFAULT_CHAT, SystemPromptType.CHAT,
+                    "IT generic default-chat row.", "P1-01 IT");
+        }
+        systemPromptService.savePrompt(name, SystemPromptType.CHAT,
+                "IT base instructions: cite every claim.", "P1-01 IT");
+        systemPromptService.setDefaultChatPromptName(name);
+
+        try (McpSession session = establishSession()) {
+            HttpRequest callRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + port + "/mcp"))
+                    .header("Authorization", "Bearer mock-jwt-token")
+                    .header("Mcp-Session-Id", session.getSessionId())
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json, text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofString("""
+                            {
+                              "jsonrpc": "2.0",
+                              "method": "tools/call",
+                              "params": {
+                                  "name": "get_system_prompt",
+                                  "arguments": {}
+                              },
+                              "id": "8"
+                            }
+                            """))
+                    .build();
+
+            HttpResponse<String> response = session.getHttpClient().send(callRequest,
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("IT base instructions: cite every claim."),
+                    "the admin's active chat prompt must be returned — BODY=" + response.body());
+            assertFalse(response.body().contains("\"isError\":true"),
+                    "the call must succeed — BODY=" + response.body());
+        } finally {
+            systemPromptService.setDefaultChatPromptName(previousDefault);
+            try {
+                systemPromptService.deletePrompt(name);
+                if (createdDefaultChatRow) {
+                    systemPromptService.deletePrompt(SystemPromptService.DEFAULT_CHAT);
+                }
+            } catch (Exception ignored) {}
         }
     }
 
