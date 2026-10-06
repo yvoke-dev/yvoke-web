@@ -36,6 +36,8 @@ running corpus scripts and the evaluation harness.
   document kind list the valid values back; an unknown knowledge area or tag says only that it does
   not exist. *Reading a table of contents, reading a section, or checking a citation works from an id
   and needs neither.*
+- **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
+  switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
 - **Anyone who can connect reads every knowledge area.** Access control is the sign-in, not the content.
 - **When a name matches several different things, the client is handed the candidates** to choose between

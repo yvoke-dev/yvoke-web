@@ -44,6 +44,8 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
@@ -76,6 +78,9 @@ public class SecurityConfig {
         "img-src 'self' data:",
         "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
         "connect-src 'self'", "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'");
+
+    static final String PLUGIN_DEV_MODE_HEADER = "X-Yvoke-Dev-Mode";
+    private static final String PLUGIN_DEV_MODE_TOKEN = "yvoke-plugin-dev-mode";
 
     private final UserService userService;
     private final boolean mockAuth;
@@ -165,7 +170,7 @@ public class SecurityConfig {
             // session (from the cookie chain) cannot carry its authorities into MCP (SEC-13).
             .sessionManagement(
                 session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .oauth2ResourceServer(oauth2 -> oauth2
+            .oauth2ResourceServer(oauth2 -> oauth2.bearerTokenResolver(mcpBearerTokenResolver())
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 .authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -176,6 +181,29 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable());
 
         return http.build();
+    }
+
+    /**
+     * The Claude Code plugin's dev switch (yvoke-claude-plugin P0-11). Its {@code .mcp.json} cannot
+     * send a dev {@code Authorization} header, because Claude Code turns its OAuth sign-in off as
+     * soon as one is configured, even an empty one. So the plugin always sends
+     * {@code X-Yvoke-Dev-Mode}, reading {@code true} only while its {@code devMode} setting is on.
+     * In mock mode, which already trusts any bearer token, that header stands in for one; outside
+     * mock mode the default resolver is used and the header is never read, since its value is
+     * public.
+     */
+    BearerTokenResolver mcpBearerTokenResolver() {
+        DefaultBearerTokenResolver bearer = new DefaultBearerTokenResolver();
+        if (!mockAuth) {
+            return bearer;
+        }
+        return request -> {
+            String token = bearer.resolve(request);
+            if (token == null && "true".equals(request.getHeader(PLUGIN_DEV_MODE_HEADER))) {
+                return PLUGIN_DEV_MODE_TOKEN;
+            }
+            return token;
+        };
     }
 
     @Order(2)

@@ -333,4 +333,30 @@ public class McpSecurityGatingIT {
                         .header("Authorization", "Bearer mock-jwt-token"))
                 .andExpect(status().isBadRequest());
     }
+
+    /**
+     * The Claude Code plugin's dev switch (yvoke-claude-plugin P0-11). Its {@code .mcp.json} cannot
+     * carry a dev {@code Authorization} header: Claude Code turns its OAuth sign-in off whenever one
+     * is configured, even an empty one. So the plugin always sends {@code X-Yvoke-Dev-Mode}, reading
+     * {@code true} only while its {@code devMode} setting is on, and in mock mode that header stands
+     * in for the bearer token any value of which this mode already trusts. 400 is the MCP servlet
+     * answering a GET with no Mcp-Session-Id, i.e. the request got past security.
+     */
+    @Test
+    public void thePluginDevModeHeaderReachesMcpInMockMode() throws Exception {
+        mockMvc.perform(get("/mcp").header("X-Yvoke-Dev-Mode", "true"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * The switch's OFF position is the same header reading {@code false}, sent on every connection
+     * with the setting off. It must leave the request exactly as unauthenticated as no header at
+     * all, challenge included, or the plugin's normal sign-in never starts against a mock server.
+     */
+    @Test
+    public void thePluginDevModeHeaderSwitchedOffStillGetsThe401Challenge() throws Exception {
+        mockMvc.perform(get("/mcp").header("X-Yvoke-Dev-Mode", "false"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", containsString("Bearer realm=\"mcp\"")));
+    }
 }
