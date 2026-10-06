@@ -717,4 +717,15 @@ public class SecurityGatingIT {
                     .as("a plain ROLE_USER session must be refused at %s", path).isEqualTo(403));
         }
     }
+
+    /**
+     * The Claude Code plugin's dev-mode header is public (the plugin repository is), so it must be
+     * worth nothing outside mock mode: with mock off, the MCP chain never reads it and the request is
+     * as anonymous as one with no header.
+     */
+    @Test
+    public void thePluginDevModeHeaderIsIgnoredOutsideMockMode() throws Exception {
+        mockMvc.perform(get("/mcp").header("X-Yvoke-Dev-Mode", "true"))
+                .andExpect(status().isUnauthorized());
+    }
 }

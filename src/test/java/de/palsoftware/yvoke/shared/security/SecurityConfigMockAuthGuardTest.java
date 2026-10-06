@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.mock.web.MockHttpServletRequest;
 import java.lang.reflect.Method;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -524,5 +525,24 @@ class SecurityConfigMockAuthGuardTest {
     void realAuthOutsideDevProfilesIsAllowed() {
         SecurityConfig config = build(false, "prod");
         assertThat(config).isNotNull();
+    }
+
+    /**
+     * The plugin's {@code X-Yvoke-Dev-Mode} header is public, so outside mock mode the MCP chain
+     * must not read it at all. {@code SecurityGatingIT} sees only the end result (401), which the
+     * real Entra decoder would produce anyway by rejecting the placeholder token; this pins that
+     * the header never becomes a token in the first place.
+     */
+    @Test
+    void thePluginDevModeHeaderBecomesATokenOnlyInMockMode() {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/mcp");
+        request.addHeader("X-Yvoke-Dev-Mode", "true");
+
+        assertThat(build(false, "prod").mcpBearerTokenResolver().resolve(request)).isNull();
+        assertThat(build(true, "local").mcpBearerTokenResolver().resolve(request)).isNotNull();
+
+        MockHttpServletRequest off = new MockHttpServletRequest("GET", "/mcp");
+        off.addHeader("X-Yvoke-Dev-Mode", "false");
+        assertThat(build(true, "local").mcpBearerTokenResolver().resolve(off)).isNull();
     }
 }
