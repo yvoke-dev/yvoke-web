@@ -5,12 +5,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaMembers;
 import de.palsoftware.yvoke.area.core.AreaRepository;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,9 @@ class GetSystemPromptToolTest {
             .thenReturn(List.of(new Area("OIM", "OIM", null, false, null, null, null, null, null),
                 new Area("PingID", "PingID", null, false, "ping-chat", null, null, null, null),
                 new Area("Moved", "Moved", null, false, "oim-chat", null, null, null, null)));
+        when(areaRepository.findAllMembers()).thenReturn(
+            Map.of("OIM", new AreaMembers(List.of("oim-chat"), List.of(), List.of(), List.of()),
+                "PingID", new AreaMembers(List.of("ping-chat"), List.of(), List.of(), List.of())));
         tool = new GetSystemPromptTool(systemPromptService, new AreaService(areaRepository));
     }
 

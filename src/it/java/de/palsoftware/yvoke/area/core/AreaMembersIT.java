@@ -121,4 +121,35 @@ class AreaMembersIT {
         return new OrchestratorProfile("it-members-prof", 2, 8, "orch", "rev", List.of(), null,
             null, null, null, null, null, false, null, null, area);
     }
+
+    /**
+     * One membership query feeds list_areas, get_system_prompt's area default and the area admin
+     * page. Its playbook rule must match list_playbooks (PlaybookService.listSpecializedPlaybooks):
+     * orchestrator and reviewer playbooks are left out, any other role or none is pickable.
+     */
+    @Test
+    void membersAreListedPerAreaWithOnlyChatPromptsAndPickablePlaybooks() {
+        systemPromptRepository.upsert("it-members-chat", SystemPromptType.CHAT, "t", null, OTHER);
+        systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
+        collectionRepository.create("it-members-col", "", OTHER);
+        playbookRepository.upsert("it-members-spec", "S", "", "t", List.of(), false, "specialist",
+            false, OTHER);
+        playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false,
+            "Orchestrator", false, OTHER);
+        playbookRepository.upsert("it-members-rev", "R", "", "t", List.of(), false, "reviewer",
+            false, OTHER);
+        jdbcClient.sql("""
+            INSERT INTO playbooks (name, title, template_text, target_agent, area)
+            VALUES ('it-members-none', 'N', 't', '', :area)""").param("area", OTHER).update();
+        profileRepository.upsert(profile(OTHER));
+
+        AreaMembers members = areaRepository.findAllMembers().get(OTHER);
+
+        assertThat(members.systemPrompts()).containsExactly("it-members-chat");
+        assertThat(members.collections()).containsExactly("it-members-col");
+        assertThat(members.playbooks()).containsExactly("it-members-none", "it-members-spec");
+        assertThat(members.profiles()).containsExactly("it-members-prof");
+        assertThat(areaRepository.findAllMembers().getOrDefault("OIM", AreaMembers.NONE).playbooks())
+            .doesNotContain("it-members-spec");
+    }
 }

@@ -226,6 +226,7 @@
                                     <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${playbook.name}">oim-ask</span>
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
+                                    <span th:if="${playbook.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${playbook.area}">OIM</span>
                                     <span th:if="${playbook.codeExecution}" title="Gemini server-side code execution is enabled for this playbook" style="font-size: 0.75rem; background-color: var(--color-accent-dim, rgba(59,130,246,0.15)); color: var(--color-accent); border: 1px solid var(--color-accent); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">⚙ Code Execution</span>
                                     <span th:if="${playbook.prototype}" title="Marked as prototype — hidden from normal chat users" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
@@ -272,7 +273,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary" 
-                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}"
+                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
                                     Edit
@@ -325,6 +326,13 @@
                             <div class="form-group">
                                 <label for="description" class="form-label">Description</label>
                                 <input type="text" id="description" name="description" class="form-input" placeholder="Brief explanation of what this playbook does..." />
+                            </div>
+                            <div class="form-group">
+                                <label for="area" class="form-label">Area</label>
+                                <select id="area" name="area" class="form-input" required>
+                                    <option th:each="a : ${areas}" th:value="${a}" th:text="${a}"></option>
+                                </select>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">The area (knowledge base) this playbook belongs to. Areas are managed on the Areas page.</span>
                             </div>
                             <div class="form-group">
                                 <label for="targetAgent" class="form-label">Target Agent / Role</label>
@@ -440,6 +448,22 @@
             });
         });
 
+        // Selects the area a loaded file or an edited item names. A file naming an area that does
+        // not exist yet keeps the current choice and says so; the save would be refused anyway.
+        function applyArea(value) {
+            if (!value) {
+                return;
+            }
+            const select = document.getElementById('area');
+            const options = Array.from(select.options).map(o => o.value);
+            const match = window.AreaSelect.matchArea(options, value);
+            if (match) {
+                select.value = match;
+            } else {
+                alert('Area "' + value + '" does not exist. Create it on the Areas page first.');
+            }
+        }
+
         function loadTemplateFile() {
             const fileInput = document.getElementById('template-file-input');
             const file = fileInput.files[0];
@@ -461,6 +485,7 @@
                 let tools = [];
                 let codeExecution = false;
                 let prototype = false;
+                let area = null;
                 let templateText = content;
 
                 // Parse frontmatter
@@ -496,6 +521,9 @@
                                 const colonIdx = trimmed.indexOf(':');
                                 const valStr = trimmed.substring(colonIdx + 1).trim();
                                 codeExecution = valStr === 'true';
+                                inTools = false;
+                            } else if (trimmed.startsWith('area:')) {
+                                area = trimmed.substring(5).trim();
                                 inTools = false;
                             } else if (trimmed.startsWith('tools:')) {
                                 const valStr = trimmed.substring(6).trim();
@@ -542,6 +570,9 @@
                 protoCheckbox.checked = prototype;
                 protoCheckbox.disabled = false;
 
+                document.getElementById('area').disabled = false;
+                applyArea(area);
+
                 // Set value in EasyMDE
                 if (easyMDE) {
                     easyMDE.value(templateText);
@@ -587,6 +618,9 @@
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = targetAgent;
             targetAgentSelect.disabled = isReadOnly;
+
+            applyArea(button.getAttribute('data-area'));
+            document.getElementById('area').disabled = isReadOnly;
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
@@ -641,6 +675,8 @@
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
+
+            document.getElementById('area').disabled = false;
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
@@ -701,5 +737,6 @@
             document.getElementById('view-modal').style.display = 'none';
         }
     </script>
+    <script type="module" th:src="@{/js/admin/area-select-bootstrap.js}"></script>
 </body>
 </html>

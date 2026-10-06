@@ -1,5 +1,19 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import static org.mockito.Mockito.verify;
+
+import static org.mockito.ArgumentMatchers.eq;
+
+import static org.mockito.ArgumentMatchers.any;
+
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -114,5 +128,20 @@ class CollectionAdminControllerTest {
         controller.viewCollections(model);
 
         assertThat(model.getAttribute("allTags")).isEqualTo(List.of("10.0", "9.3.1", "content"));
+    }
+
+    /** P1-12: the area chosen on the create form and on a card's move form reaches the service. */
+    @Test
+    void thePostedAreaReachesCreateAndMove() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/admin/collections").param("name", "Ping - Docs").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(collectionService).createCollection(eq("Ping - Docs"), any(), eq("PingID"));
+
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(collectionService).moveCollection("OIM - Docs", "PingID");
     }
 }

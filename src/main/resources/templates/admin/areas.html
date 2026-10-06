@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: header('Areas')}"></head>
+<body>
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside th:replace="~{admin/layout :: sidebar('areas')}"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content animate-fade-in">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Areas</h1>
+                    <p class="page-subtitle">An area is a knowledge base such as OIM: its system prompts, collections, playbooks and multi-agent profiles. Every one of those belongs to exactly one area; you choose it on that item's own page.</p>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div th:if="${success}" class="card animate-fade-in" style="background-color: var(--color-success-dim); border-color: var(--color-success); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-success" style="font-weight: 500;" th:text="${success}"></p>
+            </div>
+            <div th:if="${error}" class="card animate-fade-in" style="background-color: var(--color-danger-dim); border-color: var(--color-danger); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+                <p class="text-danger" style="font-weight: 500;" th:text="${error}"></p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 2rem; align-items: start;">
+                <!-- Areas List -->
+                <div>
+                    <div th:if="${#lists.isEmpty(areas)}" class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+                        <p style="font-size: 1.1rem; font-weight: 500;">No Areas</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--text-muted);">Create one on the right.</p>
+                    </div>
+
+                    <div th:each="a : ${areas}" class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="flex: 1; margin-right: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${a.area.name}">OIM</span>
+                                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${a.area.title}">Title</h3>
+                                    <span th:if="${a.area.prototype}" title="Marked as prototype" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
+                                </div>
+                                <p th:if="${a.area.description != null}" style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.5rem;" th:text="${a.area.description}">Description</p>
+
+                                <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-secondary); display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem;">
+                                    <span style="color: var(--text-muted);">Default system prompt</span>
+                                    <span th:text="${a.defaultSystemPrompt() != null ? a.defaultSystemPrompt() : 'Active default chat prompt'}"></span>
+                                    <span style="color: var(--text-muted);">Default playbook</span>
+                                    <span th:text="${a.defaultPlaybook() != null ? a.defaultPlaybook() : 'None'}"></span>
+                                    <span style="color: var(--text-muted);">Default profile</span>
+                                    <span th:text="${a.defaultProfile() != null ? a.defaultProfile() : 'None'}"></span>
+                                </div>
+
+                                <details style="margin-top: 0.75rem; font-size: 0.85rem;">
+                                    <summary style="cursor: pointer; color: var(--text-muted);"
+                                             th:text="|Members: ${#lists.size(a.members.systemPrompts)} chat prompts, ${#lists.size(a.members.collections)} collections, ${#lists.size(a.members.playbooks)} playbooks, ${#lists.size(a.members.profiles)} profiles|">Members</summary>
+                                    <div style="margin-top: 0.5rem; display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; color: var(--text-secondary);">
+                                        <span style="color: var(--text-muted);">Chat prompts</span><span th:text="${#strings.listJoin(a.members.systemPrompts, ', ')}"></span>
+                                        <span style="color: var(--text-muted);">Collections</span><span th:text="${#strings.listJoin(a.members.collections, ', ')}"></span>
+                                        <span style="color: var(--text-muted);">Playbooks</span><span th:text="${#strings.listJoin(a.members.playbooks, ', ')}"></span>
+                                        <span style="color: var(--text-muted);">Profiles</span><span th:text="${#strings.listJoin(a.members.profiles, ', ')}"></span>
+                                    </div>
+                                </details>
+                            </div>
+
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button type="button" class="btn btn-secondary" onclick="editArea(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
+                                        th:attr="data-name=${a.area.name}, data-title=${a.area.title}, data-description=${a.area.description}, data-prototype=${a.area.prototype}, data-default-system-prompt=${a.area.defaultSystemPrompt}, data-default-playbook=${a.area.defaultPlaybook}, data-default-profile=${a.area.defaultProfile}, data-prompts=${#strings.listJoin(a.members.systemPrompts, '|')}, data-playbooks=${#strings.listJoin(a.members.playbooks, '|')}, data-profiles=${#strings.listJoin(a.members.profiles, '|')}">
+                                    Edit
+                                </button>
+                                <form th:action="@{/admin/areas/delete}" method="post" onsubmit="return confirm('Delete this area? Only an area with no members can be deleted.');" style="display: inline;">
+                                    <input type="hidden" name="name" th:value="${a.area.name}" />
+                                    <button type="submit" class="btn btn-icon btn-icon-danger" title="Delete Area">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create/Edit Form Card -->
+                <div class="card" style="position: sticky; top: 2rem; padding: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h2 class="card-title" id="form-title" style="margin: 0;">Create Area</h2>
+                        <button type="button" id="clear-btn" class="btn btn-secondary" onclick="resetAreaForm()" style="display: none; padding: 0.25rem 0.5rem; font-size: 0.75rem;">New</button>
+                    </div>
+
+                    <form id="area-form" th:action="@{/admin/areas}" method="post">
+                        <input type="hidden" id="originalName" name="originalName" value="" />
+                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div class="form-group">
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" id="name" name="name" class="form-input" placeholder="e.g. OIM" required />
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Renaming an area carries over to all of its members.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="title" class="form-label">Title</label>
+                                <input type="text" id="title" name="title" class="form-input" placeholder="Defaults to the name" />
+                            </div>
+                            <div class="form-group">
+                                <label for="description" class="form-label">Description</label>
+                                <input type="text" id="description" name="description" class="form-input" />
+                            </div>
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                    <input type="checkbox" id="prototype" name="prototype" value="true" style="width: auto; margin: 0;" />
+                                    <span class="form-label" style="margin: 0;">Prototype area</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultSystemPrompt" class="form-label">Default system prompt</label>
+                                <select id="defaultSystemPrompt" name="defaultSystemPrompt" class="form-input"><option value="">Active default chat prompt</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultPlaybook" class="form-label">Default playbook</label>
+                                <select id="defaultPlaybook" name="defaultPlaybook" class="form-input"><option value="">None</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultProfile" class="form-label">Default multi-agent profile</label>
+                                <select id="defaultProfile" name="defaultProfile" class="form-input"><option value="">None</option></select>
+                                <span class="help-text" id="defaults-help" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Defaults are picked from the area's own members, so a new area gets them once it has members.</span>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button type="submit" class="btn btn-primary w-100" id="submit-btn">Create Area</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Fills a default select with the area's members, keeping its first (empty) option.
+        function fillDefaults(select, joined, chosen) {
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+            const names = joined ? joined.split('|') : [];
+            for (const name of names) {
+                select.add(new Option(name, name));
+            }
+            select.value = names.includes(chosen) ? chosen : '';
+        }
+
+        function editArea(button) {
+            const d = button.dataset;
+            document.getElementById('originalName').value = d.name;
+            document.getElementById('name').value = d.name;
+            document.getElementById('title').value = d.title || '';
+            document.getElementById('description').value = d.description || '';
+            document.getElementById('prototype').checked = d.prototype === 'true';
+            fillDefaults(document.getElementById('defaultSystemPrompt'), d.prompts, d.defaultSystemPrompt);
+            fillDefaults(document.getElementById('defaultPlaybook'), d.playbooks, d.defaultPlaybook);
+            fillDefaults(document.getElementById('defaultProfile'), d.profiles, d.defaultProfile);
+            document.getElementById('form-title').textContent = 'Edit Area';
+            document.getElementById('submit-btn').textContent = 'Save Changes';
+            document.getElementById('clear-btn').style.display = 'inline-block';
+        }
+
+        function resetAreaForm() {
+            document.getElementById('area-form').reset();
+            document.getElementById('originalName').value = '';
+            for (const id of ['defaultSystemPrompt', 'defaultPlaybook', 'defaultProfile']) {
+                fillDefaults(document.getElementById(id), '', '');
+            }
+            document.getElementById('form-title').textContent = 'Create Area';
+            document.getElementById('submit-btn').textContent = 'Create Area';
+            document.getElementById('clear-btn').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

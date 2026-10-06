@@ -7,20 +7,12 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaMembers;
 import de.palsoftware.yvoke.area.core.AreaRepository;
 import de.palsoftware.yvoke.area.core.AreaService;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.rag.prompt.Playbook;
-import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptRepository;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,26 +24,14 @@ class AreaToolsTest {
 
     private final ObjectMapper json = new ObjectMapper();
     private AreaRepository areaRepository;
-    private PlaybookService playbookService;
-    private SystemPromptRepository systemPromptRepository;
-    private CollectionRepository collectionRepository;
-    private OrchestratorProfileRepository profileRepository;
     private AreaTools tools;
 
     @BeforeEach
     void setUp() {
         areaRepository = mock(AreaRepository.class);
-        playbookService = mock(PlaybookService.class);
-        systemPromptRepository = mock(SystemPromptRepository.class);
-        collectionRepository = mock(CollectionRepository.class);
-        profileRepository = mock(OrchestratorProfileRepository.class);
         when(areaRepository.findAll()).thenReturn(List.of());
-        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of());
-        when(systemPromptRepository.findByType(SystemPromptType.CHAT)).thenReturn(List.of());
-        when(collectionRepository.findAll()).thenReturn(List.of());
-        when(profileRepository.findAll()).thenReturn(List.of());
-        tools = new AreaTools(new AreaService(areaRepository), playbookService,
-            systemPromptRepository, collectionRepository, profileRepository, json);
+        when(areaRepository.findAllMembers()).thenReturn(Map.of());
+        tools = new AreaTools(new AreaService(areaRepository), json);
     }
 
     @Test
@@ -64,12 +44,9 @@ class AreaToolsTest {
     void oneAreaCarriesItsFieldsDefaultsAndMembers() throws Exception {
         when(areaRepository.findAll()).thenReturn(List.of(new Area("OIM", "Oracle Identity",
             "OIM docs", true, "oim-chat", "oim-full", "OIM", null, null)));
-        when(systemPromptRepository.findByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(prompt("oim-chat", "OIM")));
-        when(collectionRepository.findAll()).thenReturn(List.of(collection("OIM - Docs", "OIM")));
-        when(playbookService.listSpecializedPlaybooks())
-            .thenReturn(List.of(playbook("oim-full", "OIM")));
-        when(profileRepository.findAll()).thenReturn(List.of(profile("OIM", "OIM")));
+        when(areaRepository.findAllMembers())
+            .thenReturn(Map.of("OIM", new AreaMembers(List.of("oim-chat"), List.of("OIM - Docs"),
+                List.of("oim-full"), List.of("OIM"))));
 
         JsonNode area = single(json.readTree(tools.listAreas()));
 
@@ -92,14 +69,11 @@ class AreaToolsTest {
     @Test
     void twoAreasEachListOnlyTheirOwnMembers() throws Exception {
         when(areaRepository.findAll()).thenReturn(List.of(area("OIM"), area("PingID")));
-        when(systemPromptRepository.findByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(prompt("oim-chat", "OIM"), prompt("ping-chat", "PingID")));
-        when(collectionRepository.findAll()).thenReturn(
-            List.of(collection("OIM - Docs", "OIM"), collection("Ping - Docs", "PingID")));
-        when(playbookService.listSpecializedPlaybooks())
-            .thenReturn(List.of(playbook("oim-full", "OIM"), playbook("ping-full", "PingID")));
-        when(profileRepository.findAll())
-            .thenReturn(List.of(profile("OIM", "OIM"), profile("Ping", "PingID")));
+        when(areaRepository.findAllMembers()).thenReturn(Map.of("OIM",
+            new AreaMembers(List.of("oim-chat"), List.of("OIM - Docs"), List.of("oim-full"),
+                List.of("OIM")),
+            "PingID", new AreaMembers(List.of("ping-chat"), List.of("Ping - Docs"),
+                List.of("ping-full"), List.of("Ping"))));
 
         JsonNode list = json.readTree(tools.listAreas());
 
@@ -119,7 +93,7 @@ class AreaToolsTest {
     }
 
     @Test
-    void anUnsetDefaultIsNull() throws Exception {
+    void anUnsetDefaultIsNullAndAnAreaWithNoMembersHasEmptyLists() throws Exception {
         when(areaRepository.findAll()).thenReturn(List.of(area("OIM")));
 
         JsonNode area = single(json.readTree(tools.listAreas()));
@@ -128,6 +102,8 @@ class AreaToolsTest {
         assertThat(area.get("defaultPlaybook").isNull()).isTrue();
         assertThat(area.get("defaultProfile").isNull()).isTrue();
         assertThat(area.get("description").isNull()).isTrue();
+        assertThat(area.get("playbooks").isArray()).isTrue();
+        assertThat(area.get("playbooks")).isEmpty();
     }
 
     /**
@@ -139,9 +115,8 @@ class AreaToolsTest {
     void aDefaultThatIsNotAPickableMemberOfTheAreaIsNull() throws Exception {
         when(areaRepository.findAll()).thenReturn(List.of(new Area("OIM", "OIM", null, false,
             "ping-chat", "oim-orchestrator", "Ping", null, null), area("PingID")));
-        when(systemPromptRepository.findByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(prompt("ping-chat", "PingID")));
-        when(profileRepository.findAll()).thenReturn(List.of(profile("Ping", "PingID")));
+        when(areaRepository.findAllMembers()).thenReturn(Map.of("PingID",
+            new AreaMembers(List.of("ping-chat"), List.of(), List.of(), List.of("Ping"))));
 
         JsonNode oim = json.readTree(tools.listAreas()).get(0);
 
@@ -177,23 +152,5 @@ class AreaToolsTest {
 
     private static Area area(String name) {
         return new Area(name, name, null, false, null, null, null, null, null);
-    }
-
-    private static SystemPrompt prompt(String name, String area) {
-        return new SystemPrompt(name, SystemPromptType.CHAT, "text", "", null, null, false, area);
-    }
-
-    private static Collection collection(String name, String area) {
-        return new Collection(UUID.randomUUID(), name, "", List.of(), null, area);
-    }
-
-    private static Playbook playbook(String name, String area) {
-        return new Playbook(name, name, "", "text", List.of(), false, "specialist", false, null,
-            null, false, area);
-    }
-
-    private static OrchestratorProfile profile(String name, String area) {
-        return new OrchestratorProfile(name, 2, 8, null, null, List.of(), null, null, null, null,
-            null, null, false, null, null, area);
     }
 }

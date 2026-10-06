@@ -17,6 +17,8 @@ import { fileSizeError, MAX_UPLOAD_BYTES, panelsFor }
     from '../../main/resources/static/js/admin/ingest-form.js';
 import { tagOptionsFor }
     from '../../main/resources/static/js/admin/corpus-tag-filter.js';
+import { matchArea }
+    from '../../main/resources/static/js/admin/area-select.js';
 
 describe('date presets', () => {
     // 15 Jul 2026, local midnight. Under Europe/Berlin the old toISOString() formatting turned
@@ -280,5 +282,29 @@ describe('corpus browser tag filter', () => {
         assert.deepEqual(tagOptionsFor({}, '', ''), { options: [], selected: '' });
         assert.deepEqual(tagOptionsFor(undefined, 'Anything', 'x'),
             { options: [], selected: '' });
+    });
+});
+
+describe('area select', () => {
+    const areas = ['OIM', 'PingID'];
+
+    test('a file\'s area matches its option ignoring case and spaces', () => {
+        assert.equal(matchArea(areas, ' oim '), 'OIM');
+        assert.equal(matchArea(areas, 'PINGID'), 'PingID');
+    });
+
+    test('quotes around the frontmatter value are ignored', () => {
+        assert.equal(matchArea(areas, '"OIM"'), 'OIM');
+        assert.equal(matchArea(areas, "'PingID'"), 'PingID');
+    });
+
+    test('an unknown area matches nothing', () => {
+        assert.equal(matchArea(areas, 'SAP'), null);
+    });
+
+    test('no area matches nothing', () => {
+        assert.equal(matchArea(areas, null), null);
+        assert.equal(matchArea(areas, undefined), null);
+        assert.equal(matchArea(areas, '  '), null);
     });
 });

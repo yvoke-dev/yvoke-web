@@ -4,8 +4,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -41,6 +47,51 @@ public class AreaRepository {
     public List<String> findAllNames() {
         return jdbcClient.sql("SELECT name FROM areas ORDER BY name ASC").query(String.class)
             .list();
+    }
+
+    /**
+     * Every area's members by area name, in four queries whatever the number of areas. An area with
+     * no members is absent from the map.
+     *
+     * <p>
+     * The playbook rule must stay the one {@code PlaybookService.listSpecializedPlaybooks} applies
+     * for {@code list_playbooks}: orchestrator and reviewer playbooks are left out, any other role
+     * (or a blank one, read as specialist) is pickable. {@code upper(type)} because the type column
+     * has producers that disagree on case (see {@code SystemPromptRepository.findByType}).
+     */
+    public Map<String, AreaMembers> findAllMembers() {
+        Map<String, List<String>> prompts = namesByArea(
+            "SELECT area, name FROM system_prompts WHERE upper(type) = 'CHAT' ORDER BY name");
+        Map<String, List<String>> collections =
+            namesByArea("SELECT area, name FROM collections ORDER BY name");
+        Map<String, List<String>> playbooks = namesByArea("""
+            SELECT area, name FROM playbooks
+            WHERE lower(target_agent) NOT IN ('orchestrator', 'reviewer')
+            ORDER BY name""");
+        Map<String, List<String>> profiles =
+            namesByArea("SELECT area, name FROM orchestrator_profiles ORDER BY name");
+
+        Set<String> areas = new TreeSet<>();
+        areas.addAll(prompts.keySet());
+        areas.addAll(collections.keySet());
+        areas.addAll(playbooks.keySet());
+        areas.addAll(profiles.keySet());
+        Map<String, AreaMembers> members = new HashMap<>();
+        for (String area : areas) {
+            members.put(area, new AreaMembers(prompts.getOrDefault(area, List.of()),
+                collections.getOrDefault(area, List.of()), playbooks.getOrDefault(area, List.of()),
+                profiles.getOrDefault(area, List.of())));
+        }
+        return members;
+    }
+
+    private Map<String, List<String>> namesByArea(String sql) {
+        Map<String, List<String>> byArea = new HashMap<>();
+        jdbcClient.sql(sql)
+            .query((RowCallbackHandler) rs -> byArea
+                .computeIfAbsent(rs.getString("area"), a -> new ArrayList<>())
+                .add(rs.getString("name")));
+        return byArea;
     }
 
     public void upsert(Area area) {

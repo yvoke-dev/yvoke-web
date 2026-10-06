@@ -62,6 +62,20 @@ public class OrchestratorAdminControllerTest {
      * {@code OrchestratorProperties}, not that it equals any particular literal — a test naming 3
      * here would just be a fifth copy of the number.
      */
+    /** P1-12: the area chosen on the form reaches the saved profile. */
+    @Test
+    void thePostedAreaReachesTheSavedProfile() throws Exception {
+        mockMvc
+            .perform(post("/admin/orchestrators").param("area", "PingID").param("name", "Ping")
+                .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
+            .andExpect(status().is3xxRedirection());
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(profileService).saveProfile(saved.capture());
+        assertThat(saved.getValue().area()).isEqualTo("PingID");
+    }
+
     @Test
     void aProfileSavedWithoutAReviewRoundLimitGetsTheConfiguredDefaultNotAStaleLiteral()
         throws Exception {

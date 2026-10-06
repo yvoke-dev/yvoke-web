@@ -1,7 +1,7 @@
 package de.palsoftware.yvoke.mcp.tools;
 
-import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
@@ -65,11 +65,13 @@ public class GetSystemPromptTool {
             if (name != null && !name.isBlank()) {
                 requested = name.trim();
             } else if (area != null && !area.isBlank()) {
-                Optional<Area> found = areaService.findArea(area);
+                Optional<AreaWithMembers> found = areaService.findAreaWithMembers(area);
                 if (found.isEmpty()) {
                     return "ERROR: area '" + area.trim() + "' does not exist.";
                 }
-                requested = areaDefault(found.get());
+                // D-16: an area that sets no usable default follows the admin's active prompt.
+                String preferred = found.get().defaultSystemPrompt();
+                requested = preferred != null ? preferred : SystemPromptService.DEFAULT_CHAT;
             } else {
                 requested = SystemPromptService.DEFAULT_CHAT;
             }
@@ -82,17 +84,4 @@ public class GetSystemPromptTool {
         }
     }
 
-    /**
-     * The area's default prompt, or {@code default-chat} (D-16, the admin's active prompt) when it
-     * sets none. As in {@code list_areas}, a default that is not one of the area's chat prompts is
-     * no default.
-     */
-    private String areaDefault(Area area) {
-        String preferred = area.defaultSystemPrompt();
-        if (preferred != null && systemPromptService.findChatPrompt(preferred)
-            .filter(p -> area.name().equals(p.area())).isPresent()) {
-            return preferred;
-        }
-        return SystemPromptService.DEFAULT_CHAT;
-    }
 }

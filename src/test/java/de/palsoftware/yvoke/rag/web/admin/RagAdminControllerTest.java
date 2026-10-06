@@ -1,5 +1,25 @@
 package de.palsoftware.yvoke.rag.web.admin;
 
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import org.springframework.test.web.servlet.MockMvc;
+
+import org.springframework.mock.web.MockMultipartFile;
+
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
+
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+
+import static org.mockito.ArgumentMatchers.anyBoolean;
+
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -179,5 +199,45 @@ class RagAdminControllerTest {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getHeaders().getFirst("Content-Disposition"))
             .contains("filename=\"test-prompt.md\"");
+    }
+
+    /**
+     * P1-12: the area chosen on each form reaches the save. A form field no controller binds is a
+     * silent no-op, so this goes through MockMvc and the real parameter names.
+     */
+    @Test
+    void thePostedAreaReachesTheSavedPlaybookAndPrompt() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
+            .param("templateText", "text").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
+            anyBoolean(), any(), anyBoolean(), eq("PingID"));
+
+        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "CHAT")
+            .param("systemPrompt", "text").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(systemPromptService).savePrompt(eq("p"), eq(SystemPromptType.CHAT), eq("text"),
+            any(), eq("PingID"));
+    }
+
+    @Test
+    void theImportFormsPassTheirAreaAsTheFallback() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        when(playbookService.importPlaybookFromMarkdown(any(), any(), any())).thenReturn(
+            new Playbook("pb", "PB", "", "text", List.of(), false, null, false, null, null));
+        when(systemPromptService.importPromptFromMarkdown(any(), any(), any()))
+            .thenReturn(new SystemPrompt("p", SystemPromptType.CHAT, "text", ""));
+
+        mvc.perform(multipart("/admin/playbooks/import")
+            .file(new MockMultipartFile("file", "pb.md", "text/markdown", "text".getBytes()))
+            .param("area", "PingID")).andExpect(status().is3xxRedirection());
+        verify(playbookService).importPlaybookFromMarkdown("text", "pb", "PingID");
+
+        mvc.perform(multipart("/admin/prompts/import")
+            .file(new MockMultipartFile("file", "p.md", "text/markdown", "text".getBytes()))
+            .param("area", "PingID")).andExpect(status().is3xxRedirection());
+        verify(systemPromptService).importPromptFromMarkdown("text", "p", "PingID");
     }
 }

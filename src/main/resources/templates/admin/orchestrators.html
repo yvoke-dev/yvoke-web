@@ -40,6 +40,7 @@
                             <div style="flex: 1; margin-right: 1.5rem;">
                                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${profile.name}">OIM</h3>
+                                    <span th:if="${profile.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${profile.area}">OIM</span>
                                     <span style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;">
                                         Max Review Rounds: <strong th:text="${profile.maxReviewRounds}" style="color: var(--text-primary);">2</strong>
                                     </span>
@@ -57,7 +58,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary btn-edit-profile" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
-                                        th:attr="data-name=${profile.name}, data-max-review=${profile.maxReviewRounds}, data-max-calls=${profile.maxSpecialistCalls}, data-orch-pb=${profile.orchestratorPlaybook}, data-rev-pb=${profile.reviewerPlaybook}, data-spec-pbs=${profile.specialistPlaybooks != null ? #strings.listJoin(profile.specialistPlaybooks, ',') : ''}, data-orch-model=${profile.orchestratorModel}, data-orch-thinking=${profile.orchestratorThinkingLevel}, data-rev-model=${profile.reviewerModel}, data-rev-thinking=${profile.reviewerThinkingLevel}, data-spec-model=${profile.specialistModel}, data-spec-thinking=${profile.specialistThinkingLevel}, data-prototype=${profile.prototype}">
+                                        th:attr="data-name=${profile.name}, data-max-review=${profile.maxReviewRounds}, data-max-calls=${profile.maxSpecialistCalls}, data-orch-pb=${profile.orchestratorPlaybook}, data-rev-pb=${profile.reviewerPlaybook}, data-spec-pbs=${profile.specialistPlaybooks != null ? #strings.listJoin(profile.specialistPlaybooks, ',') : ''}, data-orch-model=${profile.orchestratorModel}, data-orch-thinking=${profile.orchestratorThinkingLevel}, data-rev-model=${profile.reviewerModel}, data-rev-thinking=${profile.reviewerThinkingLevel}, data-spec-model=${profile.specialistModel}, data-spec-thinking=${profile.specialistThinkingLevel}, data-prototype=${profile.prototype}, data-area=${profile.area}">
                                     Edit
                                 </button>
                                 
@@ -125,6 +126,14 @@
                         <div class="form-group">
                             <label for="name" class="form-label">Profile Name</label>
                             <input type="text" name="name" id="name" required class="form-input" placeholder="e.g. OIM" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="area" class="form-label">Area</label>
+                            <select id="area" name="area" class="form-input" required>
+                                <option th:each="a : ${areas}" th:value="${a}" th:text="${a}"></option>
+                            </select>
+                            <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">The area (knowledge base) this profile belongs to. Areas are managed on the Areas page.</span>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -277,6 +286,7 @@
                     specModelInput.value = this.dataset.specModel || '';
                     specThinkingInput.value = this.dataset.specThinking || '';
                     prototypeInput.checked = this.dataset.prototype === 'true';
+                    applyArea(this.dataset.area);
 
                     const specPbs = (this.dataset.specPbs || '').split(',').map(s => s.trim());
                     specCheckboxes.forEach(cb => {
@@ -295,6 +305,22 @@
                 btnReset.style.display = 'none';
             });
         });
+
+        // Selects the area a loaded file or an edited item names. A file naming an area that does
+        // not exist yet keeps the current choice and says so; the save would be refused anyway.
+        function applyArea(value) {
+            if (!value) {
+                return;
+            }
+            const select = document.getElementById('area');
+            const options = Array.from(select.options).map(o => o.value);
+            const match = window.AreaSelect.matchArea(options, value);
+            if (match) {
+                select.value = match;
+            } else {
+                alert('Area "' + value + '" does not exist. Create it on the Areas page first.');
+            }
+        }
 
         function loadProfileFile() {
             const fileInput = document.getElementById('profile-file-input');
@@ -329,6 +355,7 @@
                     document.getElementById('specialistModel').value = profile.specialistModel || '';
                     document.getElementById('specialistThinkingLevel').value = profile.specialistThinkingLevel || '';
                     document.getElementById('prototype').checked = profile.prototype === true;
+                    applyArea(profile.area);
 
                     const specPbs = profile.specialistPlaybooks || [];
                     document.querySelectorAll('.spec-checkbox').forEach(cb => {
@@ -343,5 +370,6 @@
             reader.readAsText(file);
         }
     </script>
+    <script type="module" th:src="@{/js/admin/area-select-bootstrap.js}"></script>
 </body>
 </html>

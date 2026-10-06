@@ -230,6 +230,7 @@
                                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                                     <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${prompt.name}">default-rag</span>
                                     <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background-color: var(--bg-surface-elevated); color: var(--color-accent); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm);" th:text="${prompt.type}">RAG</span>
+                                    <span th:if="${prompt.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${prompt.area}">OIM</span>
                                 </div>
                                 <p style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.75rem;" th:text="${prompt.description}">Description</p>
                             </div>
@@ -249,7 +250,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary" 
-                                        th:attr="data-name=${prompt.name}, data-type=${prompt.type}, data-description=${prompt.description}, data-system-prompt=${prompt.systemPrompt}, data-readonly=${prompt.readOnly}"
+                                        th:attr="data-name=${prompt.name}, data-type=${prompt.type}, data-description=${prompt.description}, data-system-prompt=${prompt.systemPrompt}, data-readonly=${prompt.readOnly}, data-area=${prompt.area}"
                                         onclick="editPrompt(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${prompt.readOnly} ? 'View Code' : 'Edit'">
                                     Edit
@@ -306,6 +307,13 @@
                             <div class="form-group">
                                 <label for="description" class="form-label">Description</label>
                                 <input type="text" id="description" name="description" class="form-input" placeholder="Brief explanation of what this prompt is for..." />
+                            </div>
+                            <div class="form-group">
+                                <label for="area" class="form-label">Area</label>
+                                <select id="area" name="area" class="form-input" required>
+                                    <option th:each="a : ${areas}" th:value="${a}" th:text="${a}"></option>
+                                </select>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">The area (knowledge base) this prompt belongs to. Areas are managed on the Areas page.</span>
                             </div>
                             <div class="form-group">
                                 <label for="systemPrompt" class="form-label">Prompt Content (Markdown)</label>
@@ -424,6 +432,8 @@
             document.getElementById('type').disabled = isReadOnly;
             document.getElementById('description').value = description;
             document.getElementById('description').readOnly = isReadOnly;
+            applyArea(button.getAttribute('data-area'));
+            document.getElementById('area').disabled = isReadOnly;
 
             if (easyMDE) {
                 easyMDE.value(systemPrompt);
@@ -448,6 +458,7 @@
             document.getElementById('name').readOnly = false;
             document.getElementById('type').disabled = false;
             document.getElementById('description').readOnly = false;
+            document.getElementById('area').disabled = false;
 
             if (easyMDE) {
                 easyMDE.value('');
@@ -460,6 +471,22 @@
             
             document.getElementById('form-title').textContent = 'Create System Prompt';
             document.getElementById('clear-btn').style.display = 'none';
+        }
+
+        // Selects the area a loaded file or an edited item names. A file naming an area that does
+        // not exist yet keeps the current choice and says so; the save would be refused anyway.
+        function applyArea(value) {
+            if (!value) {
+                return;
+            }
+            const select = document.getElementById('area');
+            const options = Array.from(select.options).map(o => o.value);
+            const match = window.AreaSelect.matchArea(options, value);
+            if (match) {
+                select.value = match;
+            } else {
+                alert('Area "' + value + '" does not exist. Create it on the Areas page first.');
+            }
         }
 
         function loadPromptFile() {
@@ -479,6 +506,7 @@
                 let name = nameWithoutExt;
                 let typeStr = 'CHAT'; // default to CHAT
                 let description = '';
+                let area = null;
                 let promptText = content;
 
                 // Parse frontmatter
@@ -495,6 +523,8 @@
                                 name = line.substring(5).trim().replace(/^['"]|['"]$/g, '');
                             } else if (line.startsWith('type:')) {
                                 typeStr = line.substring(5).trim().replace(/^['"]|['"]$/g, '').toUpperCase();
+                            } else if (line.startsWith('area:')) {
+                                area = line.substring(5).trim();
                             } else if (line.startsWith('description:')) {
                                 description = line.substring(12).trim().replace(/^['"]|['"]$/g, '');
                             } else if (line.startsWith('title:') && !description) {
@@ -519,6 +549,7 @@
                 document.getElementById('name').value = name;
                 document.getElementById('type').value = selectedType;
                 document.getElementById('description').value = description;
+                applyArea(area);
                 if (easyMDE) {
                     easyMDE.value(promptText);
                 }
@@ -526,5 +557,6 @@
             reader.readAsText(file);
         }
     </script>
+    <script type="module" th:src="@{/js/admin/area-select-bootstrap.js}"></script>
 </body>
 </html>

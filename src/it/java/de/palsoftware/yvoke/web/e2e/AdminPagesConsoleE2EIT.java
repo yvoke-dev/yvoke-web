@@ -40,7 +40,8 @@ class AdminPagesConsoleE2EIT extends AbstractE2E {
           "/admin/agent-runs",
           "/admin/costs",
           "/admin/pricing",
-          "/admin/orchestrators");
+          "/admin/orchestrators",
+          "/admin/areas");
 
   @Test
   void adminPagesLoadWithoutUncaughtJsErrors() {
