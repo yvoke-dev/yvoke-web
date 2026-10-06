@@ -44,15 +44,15 @@ public class IngestApiControllerTest {
     public void processDocumentKgDelegatesAndWraps202() {
         UUID jobId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
-        when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null))
+        when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null, null))
             .thenReturn(EnqueueResult.created(jobId));
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null);
+            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
-        verify(ingestService).processKg(docId, null, null, null, "OIM", "v1", null);
+        verify(ingestService).processKg(docId, null, null, null, "OIM", "v1", null, null);
     }
 
     /**
@@ -65,11 +65,11 @@ public class IngestApiControllerTest {
     public void processDocumentKgReports409WhenItAdoptedAnInFlightJob() {
         UUID activeJobId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
-        when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null))
+        when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null, null))
             .thenReturn(EnqueueResult.adopted(activeJobId));
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null);
+            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).containsEntry("id", activeJobId);
@@ -96,11 +96,11 @@ public class IngestApiControllerTest {
         UUID jobId = UUID.randomUUID();
         MockMultipartFile file =
             new MockMultipartFile("file", "d.md", "text/markdown", "d".getBytes());
-        when(ingestService.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null))
+        when(ingestService.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null, null))
             .thenReturn(jobId);
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null);
+            controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
@@ -134,7 +134,8 @@ public class IngestApiControllerTest {
         MockMultipartFile file = tinyFile();
 
         assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-import", null, null, null)).isInstanceOf(ResponseStatusException.class)
+            "confluence-import", null, null, null, null))
+            .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
 
@@ -147,7 +148,7 @@ public class IngestApiControllerTest {
         MockMultipartFile file = tinyFile();
 
         assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-page-import:oim", null, null, null))
+            "confluence-page-import:oim", null, null, null, null))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
@@ -161,7 +162,8 @@ public class IngestApiControllerTest {
         MockMultipartFile file = tinyFile();
 
         assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-import", null, null, null)).isInstanceOf(ResponseStatusException.class)
+            "confluence-import", null, null, null, null))
+            .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN));
 

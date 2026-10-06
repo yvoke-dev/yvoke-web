@@ -74,7 +74,7 @@ public class IngestService {
      */
     public EnqueueResult processKg(UUID documentId, String sourceFile, String sourceCollection,
         String sourceTag, String targetCollectionName, String targetTag,
-        @Nullable String kgPromptName) {
+        @Nullable String kgPromptName, @Nullable String area) {
 
         UUID targetDocId = documentId;
         if (targetDocId == null) {
@@ -100,9 +100,7 @@ public class IngestService {
 
         // Validate target collection exists
         String trimmedTargetCol = targetCollectionName.trim();
-        if (collectionService.getCollection(trimmedTargetCol).isEmpty()) {
-            collectionService.createCollection(trimmedTargetCol, "Auto-created by KG process API");
-        }
+        ensureCollection(trimmedTargetCol, "Auto-created by KG process API", area);
 
         // Ensure tag is added to the collection
         String trimmedTargetTag = targetTag.trim();
@@ -186,7 +184,7 @@ public class IngestService {
      */
     public UUID uploadAndEnqueue(MultipartFile file, String collectionName, String tag, String kind,
         String jsonUniqueField, @Nullable Boolean buildSectionSummaries,
-        @Nullable String summarizePromptName) {
+        @Nullable String summarizePromptName, @Nullable String area) {
 
         String normalizedKind = kind == null ? "" : kind.trim();
         if (!UPLOAD_KINDS.contains(normalizedKind)) {
@@ -201,9 +199,7 @@ public class IngestService {
         try {
             // 1. Ensure collection exists
             String trimmedCollection = collectionName.trim();
-            if (collectionService.getCollection(trimmedCollection).isEmpty()) {
-                collectionService.createCollection(trimmedCollection, "Auto-created by upload API");
-            }
+            ensureCollection(trimmedCollection, "Auto-created by upload API", area);
 
             // 2. Ensure tag is added to the collection as a tag
             if (tag != null && !tag.isBlank()) {
@@ -272,5 +268,26 @@ public class IngestService {
         }
         Path namePart = Path.of(rawName).getFileName();
         return namePart != null ? namePart.toString() : "export.zip";
+    }
+
+    /**
+     * Creates a missing collection in {@code area}. Every collection belongs to an area, so a
+     * request that would create one without naming an area is refused; a request for an existing
+     * collection needs no area.
+     */
+    private void ensureCollection(String collectionName, String description,
+        @Nullable String area) {
+        if (collectionService.getCollection(collectionName).isPresent()) {
+            return;
+        }
+        if (area == null || area.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Collection '"
+                + collectionName + "' does not exist; pass 'area' to create it in an area.");
+        }
+        try {
+            collectionService.createCollection(collectionName, description, area);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 }

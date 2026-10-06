@@ -161,6 +161,24 @@ class DesktopSyncControllerTest {
             .extracting(OrchestratorProfileDto::prototype).containsOnly(false);
     }
 
+    /** P1-12: the desktop's lists carry each item's area; an added field does not break it. */
+    @Test
+    void theDesktopListsCarryTheArea() {
+        OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, systemPromptService,
+            playbookService, orchestratorProperties, profileService, orchestratorRunService);
+        when(profileService.listAllProfiles())
+            .thenReturn(List.of(new OrchestratorProfile("Ping", 2, 8, "o", "r", List.of(), null,
+                null, null, null, null, null, false, null, null, "PingID")));
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(new Playbook("pb", "PB",
+            "", "t", List.of(), false, "specialist", false, null, null, false, "PingID")));
+
+        assertThat(dbBacked.listOrchestratorProfiles()).extracting(OrchestratorProfileDto::area)
+            .containsExactly("PingID");
+        assertThat(dbBacked.listPlaybooks()).extracting(PlaybookDto::area)
+            .containsExactly("PingID");
+    }
+
     @Test
     void orchestratorProfilesComeFromTheDatabaseAndAnUnknownPromptDegradesToEmpty() {
         OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);

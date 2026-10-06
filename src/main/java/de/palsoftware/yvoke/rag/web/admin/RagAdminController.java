@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.rag.web.admin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
@@ -76,13 +77,16 @@ public class RagAdminController {
      */
     private final int maxLimit;
 
+    private final AreaService areaService;
+
     public RagAdminController(HybridSearch hybridSearch,
         RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
         CollectionService collectionService, PlaybookService playbookService,
         SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
         RetrievalTelemetryService telemetryService,
         @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars,
-        @Value("${app.retrieval.max-limit}") int maxLimit) {
+        @Value("${app.retrieval.max-limit}") int maxLimit, AreaService areaService) {
+        this.areaService = areaService;
         this.hybridSearch = hybridSearch;
         this.telemetryService = telemetryService;
         this.retrievalLogRepository = retrievalLogRepository;
@@ -221,6 +225,7 @@ public class RagAdminController {
     public String viewPlaybooks(Model model) {
         log.info("RagAdminController: Accessing Playbooks view");
         model.addAttribute("playbooks", playbookService.listAllPlaybooks());
+        model.addAttribute("areas", areaService.listAreaNames());
         model.addAttribute("availableTools",
             ragService.getToolRegistry().keySet().stream().sorted().collect(Collectors.toList()));
         return "admin/playbooks";
@@ -233,9 +238,9 @@ public class RagAdminController {
         @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
         @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        RedirectAttributes redirectAttributes) {
+        @RequestParam String area, RedirectAttributes redirectAttributes) {
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent, prototype);
+            targetAgent, prototype, area);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";
@@ -254,7 +259,8 @@ public class RagAdminController {
 
     @PostMapping("/playbooks/import")
     public String importPlaybook(@RequestParam("file") MultipartFile file,
-        RedirectAttributes redirectAttributes) throws IOException {
+        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
+        throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
         }
@@ -263,7 +269,7 @@ public class RagAdminController {
         String fallbackName = originalFilename != null && originalFilename.contains(".")
             ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
             : originalFilename;
-        Playbook imported = playbookService.importPlaybookFromMarkdown(content, fallbackName);
+        Playbook imported = playbookService.importPlaybookFromMarkdown(content, fallbackName, area);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + imported.title() + "' imported successfully.");
         return "redirect:/admin/playbooks";
@@ -279,6 +285,7 @@ public class RagAdminController {
     @GetMapping("/prompts")
     public String viewPrompts(Model model) {
         model.addAttribute("prompts", systemPromptService.listAllPrompts());
+        model.addAttribute("areas", areaService.listAreaNames());
         model.addAttribute("chatPrompts",
             systemPromptService.listPromptsByType(SystemPromptType.CHAT));
         model.addAttribute("activeChatPrompt", systemPromptService.getDefaultChatPromptName());
@@ -298,8 +305,9 @@ public class RagAdminController {
     @PostMapping("/prompts")
     public String createOrUpdatePrompt(@RequestParam String name,
         @RequestParam SystemPromptType type, @RequestParam(required = false) String description,
-        @RequestParam String systemPrompt, RedirectAttributes redirectAttributes) {
-        systemPromptService.savePrompt(name, type, systemPrompt, description);
+        @RequestParam String systemPrompt, @RequestParam String area,
+        RedirectAttributes redirectAttributes) {
+        systemPromptService.savePrompt(name, type, systemPrompt, description, area);
         redirectAttributes.addFlashAttribute("success",
             "System prompt '" + name + "' saved successfully.");
         return "redirect:/admin/prompts";
@@ -325,7 +333,8 @@ public class RagAdminController {
 
     @PostMapping("/prompts/import")
     public String importPrompt(@RequestParam("file") MultipartFile file,
-        RedirectAttributes redirectAttributes) throws IOException {
+        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
+        throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
         }
@@ -334,7 +343,8 @@ public class RagAdminController {
         String fallbackName = originalFilename != null && originalFilename.contains(".")
             ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
             : originalFilename;
-        SystemPrompt imported = systemPromptService.importPromptFromMarkdown(content, fallbackName);
+        SystemPrompt imported =
+            systemPromptService.importPromptFromMarkdown(content, fallbackName, area);
         redirectAttributes.addFlashAttribute("success",
             "System prompt '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/prompts";

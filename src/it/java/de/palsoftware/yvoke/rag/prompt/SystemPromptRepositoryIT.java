@@ -95,7 +95,7 @@ public class SystemPromptRepositoryIT {
     /** Whatever case {@code upsert} chooses, its own read path must find the row back. */
     @Test
     public void aPromptSavedThroughTheRepositoryIsFoundByItsType() {
-        repository.upsert(SAVED, SystemPromptType.SUMMARIZE, "body", "round trip");
+        repository.upsert(SAVED, SystemPromptType.SUMMARIZE, "body", "round trip", "OIM");
 
         assertThat(repository.findByType(SystemPromptType.SUMMARIZE)).extracting(SystemPrompt::name)
             .contains(SAVED);

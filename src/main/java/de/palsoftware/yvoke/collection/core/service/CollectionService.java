@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.collection.core.service;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 
@@ -13,9 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class CollectionService {
 
     private final CollectionRepository collectionRepository;
+    private final AreaService areaService;
 
-    public CollectionService(CollectionRepository collectionRepository) {
+    public CollectionService(CollectionRepository collectionRepository, AreaService areaService) {
         this.collectionRepository = collectionRepository;
+        this.areaService = areaService;
     }
 
     public List<Collection> listCollections() {
@@ -49,7 +52,7 @@ public class CollectionService {
     }
 
     @Transactional
-    public Collection createCollection(String name, String description) {
+    public Collection createCollection(String name, String description, String area) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Collection name cannot be empty.");
         }
@@ -64,6 +67,14 @@ public class CollectionService {
             throw new IllegalArgumentException("Collection '" + trimmedName + "' already exists.");
         }
 
-        return collectionRepository.create(trimmedName, description);
+        return collectionRepository.create(trimmedName, description, areaService.requireArea(area));
+    }
+
+    /** Moves an existing collection to another area. */
+    @Transactional
+    public void moveCollection(String name, String area) {
+        Collection collection = getCollection(name).orElseThrow(
+            () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
+        collectionRepository.updateArea(collection.name(), areaService.requireArea(area));
     }
 }

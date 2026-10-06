@@ -126,7 +126,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -153,8 +153,8 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false);
-        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook", "Suggested Playbook Desc", "template", List.of(), false);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
+        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook", "Suggested Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"This question is about user setup.\", \"suggestedPlaybookName\": \"suggested-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -254,7 +254,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -318,7 +318,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Bad selection.\", \"suggestedPlaybookName\": \"non-existent-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));

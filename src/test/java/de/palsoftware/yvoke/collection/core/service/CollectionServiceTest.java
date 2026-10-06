@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.collection.core.service;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 
@@ -20,7 +21,7 @@ public class CollectionServiceTest {
     @BeforeEach
     public void setUp() {
         collectionRepository = mock(CollectionRepository.class);
-        collectionService = new CollectionService(collectionRepository);
+        collectionService = new CollectionService(collectionRepository, TestAreas.withAreas("OIM"));
     }
 
     @Test
@@ -53,23 +54,23 @@ public class CollectionServiceTest {
         Collection col = new Collection(UUID.randomUUID(), "Test", "Desc", Collections.emptyList(),
             OffsetDateTime.now());
         when(collectionRepository.findByName("Test")).thenReturn(Optional.empty());
-        when(collectionRepository.create("Test", "Desc")).thenReturn(col);
+        when(collectionRepository.create("Test", "Desc", "OIM")).thenReturn(col);
 
-        Collection created = collectionService.createCollection("Test", "Desc");
+        Collection created = collectionService.createCollection("Test", "Desc", "OIM");
         assertThat(created).isNotNull();
         assertThat(created.name()).isEqualTo("Test");
-        verify(collectionRepository).create("Test", "Desc");
+        verify(collectionRepository).create("Test", "Desc", "OIM");
     }
 
     @Test
     public void testCreateCollectionInvalidNames() {
-        assertThatThrownBy(() -> collectionService.createCollection(null, "desc"))
+        assertThatThrownBy(() -> collectionService.createCollection(null, "desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> collectionService.createCollection("   ", "desc"))
+        assertThatThrownBy(() -> collectionService.createCollection("   ", "desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> collectionService.createCollection("Both", "desc"))
+        assertThatThrownBy(() -> collectionService.createCollection("Both", "desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> collectionService.createCollection("All", "desc"))
+        assertThatThrownBy(() -> collectionService.createCollection("All", "desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -94,12 +95,12 @@ public class CollectionServiceTest {
     @Test
     public void theReservedCollectionNamesAreRejectedInAnyCasing() {
         for (String reserved : List.of("both", "ALL", " all ", "BoTh")) {
-            assertThatThrownBy(() -> collectionService.createCollection(reserved, "desc"))
+            assertThatThrownBy(() -> collectionService.createCollection(reserved, "desc", "OIM"))
                 .as("'%s' is a reserved collection name whatever the casing", reserved)
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reserved");
         }
 
-        verify(collectionRepository, never()).create(any(), any());
+        verify(collectionRepository, never()).create(any(), any(), any());
     }
 
     @Test
@@ -108,7 +109,7 @@ public class CollectionServiceTest {
             Collections.emptyList(), OffsetDateTime.now());
         when(collectionRepository.findByName("Test")).thenReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> collectionService.createCollection("Test", "New Desc"))
+        assertThatThrownBy(() -> collectionService.createCollection("Test", "New Desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already exists");
     }
 

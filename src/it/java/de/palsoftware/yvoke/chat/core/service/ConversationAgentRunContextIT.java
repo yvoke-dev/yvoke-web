@@ -117,9 +117,9 @@ public class ConversationAgentRunContextIT {
                 new LlmUsage(100, 20, 120, 0, 0))
         );
 
-        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false);
-        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false);
-        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false);
+        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM");
+        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM");
+        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM");
 
         orchestratorProfileRepository.upsert(new OrchestratorProfile(
             "oim", 2, 5, "oim-orch", "oim-rev", List.of("oim-spec"),
@@ -320,7 +320,7 @@ public class ConversationAgentRunContextIT {
             Map.of("model", "gemini-2.5-flash", "chat-prompt", "oim-access-governance"));
 
         playbookService.savePlaybook("oim-access-governance", "OIM Access Governance", "",
-            "Access governance prompt", List.of(), false);
+            "Access governance prompt", List.of(), false, "specialist", false, "OIM");
 
         UUID assistantMessageId = UUID.randomUUID();
         ChatMessageService.PreparedChat prepared = chatMessageService.prepare(convId,

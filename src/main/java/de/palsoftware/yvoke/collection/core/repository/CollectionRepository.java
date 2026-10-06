@@ -18,7 +18,7 @@ public class CollectionRepository {
 
     public List<Collection> findAll() {
         String sql = """
-            SELECT id, name, description, created_at, tags
+            SELECT id, name, description, created_at, tags, area
             FROM collections
             ORDER BY name ASC
             """;
@@ -27,7 +27,7 @@ public class CollectionRepository {
             UUID id = rs.getObject("id", UUID.class);
             List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
             return new Collection(id, rs.getString("name"), rs.getString("description"), tags,
-                rs.getObject("created_at", OffsetDateTime.class));
+                rs.getObject("created_at", OffsetDateTime.class), rs.getString("area"));
         }).list();
     }
 
@@ -56,7 +56,7 @@ public class CollectionRepository {
 
     public Optional<Collection> findByName(String name) {
         String sql = """
-            SELECT id, name, description, created_at, tags
+            SELECT id, name, description, created_at, tags, area
             FROM collections
             WHERE LOWER(name) = LOWER(:name)
             """;
@@ -65,13 +65,13 @@ public class CollectionRepository {
             UUID id = rs.getObject("id", UUID.class);
             List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
             return new Collection(id, rs.getString("name"), rs.getString("description"), tags,
-                rs.getObject("created_at", OffsetDateTime.class));
+                rs.getObject("created_at", OffsetDateTime.class), rs.getString("area"));
         }).optional();
     }
 
     public Optional<Collection> findById(UUID id) {
         String sql = """
-            SELECT id, name, description, created_at, tags
+            SELECT id, name, description, created_at, tags, area
             FROM collections
             WHERE id = :id
             """;
@@ -79,20 +79,27 @@ public class CollectionRepository {
         return jdbcClient.sql(sql).param("id", id).query((rs, rowNum) -> {
             List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
             return new Collection(id, rs.getString("name"), rs.getString("description"), tags,
-                rs.getObject("created_at", OffsetDateTime.class));
+                rs.getObject("created_at", OffsetDateTime.class), rs.getString("area"));
         }).optional();
     }
 
-    public Collection create(String name, String description) {
+    public Collection create(String name, String description, String area) {
         UUID id = UUID.randomUUID();
         String sql = """
-            INSERT INTO collections (id, name, description, created_at, tags)
-            VALUES (:id, :name, :description, CURRENT_TIMESTAMP, '{}'::TEXT[])
+            INSERT INTO collections (id, name, description, created_at, tags, area)
+            VALUES (:id, :name, :description, CURRENT_TIMESTAMP, '{}'::TEXT[], :area)
             """;
         jdbcClient.sql(sql).param("id", id).param("name", name.trim())
-            .param("description", description != null ? description.trim() : null).update();
+            .param("description", description != null ? description.trim() : null)
+            .param("area", area).update();
 
         return findByName(name.trim()).orElseThrow();
+    }
+
+    /** Moves a collection to another area. */
+    public void updateArea(String name, String area) {
+        jdbcClient.sql("UPDATE collections SET area = :area WHERE LOWER(name) = LOWER(:name)")
+            .param("name", name.trim()).param("area", area).update();
     }
 
     public void delete(String name) {

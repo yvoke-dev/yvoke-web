@@ -30,7 +30,7 @@ class ChatControlsE2EIT extends AbstractE2E {
 
   /** New conversation with a selected playbook — the client blocks sending until one is chosen. */
   private void newChatWithPlaybook(String playbook) {
-    playbookService.savePlaybook(playbook, "E2E Playbook", "desc", "Answer.", List.of(), false);
+    playbookService.savePlaybook(playbook, "E2E Playbook", "desc", "Answer.", List.of(), false, "specialist", false, "OIM");
     loginAs("user");
     newConversation();
     selectPlaybookChip(playbook);
@@ -200,11 +200,11 @@ class ChatControlsE2EIT extends AbstractE2E {
   void selectingAnOrchestratorProfileDisablesStreamingAndPlaybookSelection() {
     stubAssistantReply("Irrelevant — this test asserts the transport, not the answer.");
     playbookService.savePlaybook(
-        "e2e-mas-orchestrator", "MAS Orchestrator", "desc", "Delegate.", List.of(), false);
+        "e2e-mas-orchestrator", "MAS Orchestrator", "desc", "Delegate.", List.of(), false, "specialist", false, "OIM");
     playbookService.savePlaybook(
-        "e2e-mas-reviewer", "MAS Reviewer", "desc", "Review.", List.of(), false);
+        "e2e-mas-reviewer", "MAS Reviewer", "desc", "Review.", List.of(), false, "specialist", false, "OIM");
     playbookService.savePlaybook(
-        "e2e-mas-specialist", "MAS Specialist", "desc", "Answer.", List.of(), false);
+        "e2e-mas-specialist", "MAS Specialist", "desc", "Answer.", List.of(), false, "specialist", false, "OIM");
     // The selector renders only when the DB holds at least one profile (thread.html:177), so it is
     // seeded here and removed afterwards — every e2e class shares one Spring context and one DB.
     orchestratorProfileService.saveProfile(

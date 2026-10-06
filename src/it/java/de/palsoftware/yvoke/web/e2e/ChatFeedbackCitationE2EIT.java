@@ -33,7 +33,7 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
 
   @Test
   void thumbsDownSwapsInCommentFormAndPersistsComment() {
-    playbookService.savePlaybook("e2e-fb", "E2E FB", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook("e2e-fb", "E2E FB", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     stubAssistantReply("A plain assistant answer.");
 
     roundTrip("e2e-fb", "hi");
@@ -87,7 +87,7 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
                 1,
                 0)));
 
-    playbookService.savePlaybook("e2e-cite", "E2E Cite", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook("e2e-cite", "E2E Cite", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     stubAssistantReply(
         "According to the manual [document_id=" + docId + "], OIM means One Identity Manager.");
 
@@ -110,7 +110,7 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
     // Models put several sources on one claim as [1, 2]. thread.js only ever matched a single
     // number, so a grouped marker survived as unstyled literal text next to properly badged
     // single ones — visibly inconsistent in the same answer.
-    playbookService.savePlaybook("e2e-numref", "E2E Numref", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook("e2e-numref", "E2E Numref", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     stubAssistantReply(
         "Stored in DialogObject [1]. Evaluated in memory [1, 2]. Compiled by DBCompiler [1, 2, 3].");
 

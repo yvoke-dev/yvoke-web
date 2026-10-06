@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,7 +38,8 @@ class CollectionAdminControllerTest {
     @BeforeEach
     void setUp() {
         collectionService = mock(CollectionService.class);
-        controller = new CollectionAdminController(collectionService, mock(TagService.class));
+        controller = new CollectionAdminController(collectionService, mock(TagService.class),
+            TestAreas.withAreas("OIM"));
 
         when(collectionService.getCollection("OIM - Docs")).thenReturn(
             Optional.of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null)));

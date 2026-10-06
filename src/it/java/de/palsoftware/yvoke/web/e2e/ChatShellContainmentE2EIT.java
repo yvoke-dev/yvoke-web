@@ -64,7 +64,7 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
 
   /** Sends one question and renders an answer containing an unbreakable single-line code block. */
   private void receiveWideAnswer() {
-    playbookService.savePlaybook(PLAYBOOK, "E2E Shell", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook(PLAYBOOK, "E2E Shell", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     stubAssistantReply("Here is the key:\n\n```\n" + UNBREAKABLE + "\n```\n");
 
     loginAs("user");

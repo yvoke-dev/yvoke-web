@@ -128,7 +128,7 @@ public class RetrievalTelemetryServiceTest {
         // The persist runs on the telemetry executor, so `after` (which waits out the window)
         // is required here — a bare `never()` would pass before the task had even run.
         verify(collectionRepository, Mockito.after(1000).never()).create(Mockito.anyString(),
-            Mockito.anyString());
+            Mockito.anyString(), Mockito.any());
         verify(retrievalLogRepository, Mockito.never()).saveTelemetry(Mockito.any(),
             Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.anyString(),
             Mockito.anyString(), Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(),

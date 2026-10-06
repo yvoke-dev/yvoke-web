@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.ingest.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -100,7 +101,7 @@ public class IngestServiceTest {
                     .contains("GHOST-COLLECTION");
             });
 
-        verify(collectionService, never()).createCollection(any(), any());
+        verify(collectionService, never()).createCollection(any(), any(), any());
         verify(tagService, never()).addTagToCollection(any(), any());
     }
 
@@ -191,9 +192,9 @@ public class IngestServiceTest {
         when(jobService.enqueue(captor.capture())).thenReturn(EnqueueResult.created(jobId));
 
         EnqueueResult omitted = ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", null, " OIM ", " 10.0 ", null);
+            "  OIM-Install  ", null, " OIM ", " 10.0 ", null, null);
         EnqueueResult blank = ingestService.processKg(null, "install-kit.md", "OIM-Install", "   ",
-            "OIM", "10.0", null);
+            "OIM", "10.0", null, null);
 
         assertThat(omitted.jobId()).as("a null sourceTag must resolve the document, not 404")
             .isEqualTo(jobId);
@@ -226,7 +227,7 @@ public class IngestServiceTest {
         MockMultipartFile file =
             new MockMultipartFile("file", "m.md", "text/markdown", "data".getBytes());
 
-        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null, null);
+        ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null, null, null);
 
         InOrder inOrder = Mockito.inOrder(tagService, jobService);
         inOrder.verify(tagService).addTagToCollection(colId, "10.0");
@@ -270,7 +271,7 @@ public class IngestServiceTest {
         when(jobService.enqueue(captor.capture()))
             .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
-        ingestService.processKg(docId, null, null, null, " OIM ", " 10.0 ", null);
+        ingestService.processKg(docId, null, null, null, " OIM ", " 10.0 ", null, null);
 
         InOrder inOrder = inOrder(tagService, jobService);
         inOrder.verify(tagService).addTagToCollection(colId, "10.0");
@@ -279,7 +280,7 @@ public class IngestServiceTest {
         // protects nothing.
         assertThat(captor.getValue().collection()).isEqualTo("OIM");
         assertThat(captor.getValue().tags()).containsExactly("10.0");
-        verify(collectionService, never()).createCollection(any(), any());
+        verify(collectionService, never()).createCollection(any(), any(), any());
     }
 
     @Test
@@ -293,7 +294,7 @@ public class IngestServiceTest {
             new MockMultipartFile("file", "../../../evil.md", "text/markdown", "data".getBytes());
 
         UUID jobId =
-            ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null, null);
+            ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null, null, "OIM");
 
         assertThat(jobId).isNotNull();
 
@@ -304,6 +305,46 @@ public class IngestServiceTest {
         assertThat(staged.startsWith(root)).isTrue();
         assertThat(staged.getParent()).isEqualTo(root);
         assertThat(staged.getFileName().toString()).endsWith("-evil.md");
+    }
+
+    /** Nothing exists outside an area, so a collection created on the fly must be given one. */
+    @Test
+    public void uploadAndEnqueueRefusesToCreateACollectionWithoutAnArea() {
+        when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null,
+            null, null, "  ")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
+                ResponseStatusException rse = (ResponseStatusException) e;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(rse.getReason()).contains("'NEW'").contains("area");
+            });
+        verify(collectionService, never()).createCollection(any(), any(), any());
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void uploadAndEnqueueCreatesAMissingCollectionInTheGivenArea() {
+        when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
+        when(jobService.enqueue(any())).thenReturn(EnqueueResult.created(UUID.randomUUID()));
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null, null, null, "PingID");
+
+        verify(collectionService).createCollection(eq("NEW"), any(), eq("PingID"));
+    }
+
+    @Test
+    public void processKgRefusesToCreateACollectionWithoutAnArea() {
+        when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
+            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(collectionService, never()).createCollection(any(), any(), any());
     }
 
     /**
@@ -326,14 +367,12 @@ public class IngestServiceTest {
     @Test
     public void processKgWithoutDocumentIdDemandsBothSourceFieldsAndReportsAMissingDocument() {
         // Half a key is not a key: neither field alone may be accepted.
-        assertThatThrownBy(
-            () -> ingestService.processKg(null, "install-kit.md", null, null, "OIM", "10.0", null))
-            .isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(() -> ingestService.processKg(null, "install-kit.md", null, null, "OIM",
+            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
-        assertThatThrownBy(
-            () -> ingestService.processKg(null, null, "OIM-Install", null, "OIM", "10.0", null))
-            .isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(() -> ingestService.processKg(null, null, "OIM-Install", null, "OIM",
+            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
 
@@ -341,7 +380,7 @@ public class IngestServiceTest {
             .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", "  9.3.1  ", "OIM", "10.0", null))
+            "  OIM-Install  ", "  9.3.1  ", "OIM", "10.0", null, null))
             .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
                 ResponseStatusException ex = (ResponseStatusException) e;
                 assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -367,9 +406,8 @@ public class IngestServiceTest {
 
         for (String kind : new String[] {"confluence-import", "confluence-page-import", "custom",
             "kg-extract", "manual", ""}) {
-            assertThatThrownBy(
-                () -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null))
-                .as("kind=%s", kind).isInstanceOf(ResponseStatusException.class)
+            assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null,
+                null, null, "OIM")).as("kind=%s", kind).isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                     .isEqualTo(HttpStatus.BAD_REQUEST));
         }
@@ -396,9 +434,8 @@ public class IngestServiceTest {
         MockMultipartFile empty =
             new MockMultipartFile("file", "corpus.zip", "application/zip", new byte[0]);
 
-        assertThatThrownBy(
-            () -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard", null, null, null))
-            .isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard",
+            null, null, null, null)).isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
 
@@ -426,7 +463,8 @@ public class IngestServiceTest {
         for (String kind : new String[] {"standard", "hierarchical", "json-import"}) {
             MockMultipartFile file =
                 new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
-            assertThat(ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null))
+            assertThat(
+                ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null, "OIM"))
                 .isNotNull();
         }
 

@@ -1,8 +1,6 @@
 package de.palsoftware.yvoke.mcp.prompts;
 
-import io.modelcontextprotocol.server.McpSyncServer;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
-import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -13,10 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class PromptsService {
 
     private final PlaybookService playbookService;
-
-    public PromptsService(PlaybookRepository playbookRepository) {
-        this(new PlaybookService(playbookRepository, (McpSyncServer) null));
-    }
 
     @Autowired
     public PromptsService(PlaybookService playbookService) {

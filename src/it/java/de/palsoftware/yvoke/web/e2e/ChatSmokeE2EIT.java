@@ -32,7 +32,7 @@ class ChatSmokeE2EIT extends AbstractE2E {
   void mockedAssistantAnswerRendersInChat() {
     playbookService.savePlaybook(
         "e2e-playbook", "E2E Playbook", "Smoke-test playbook", "Answer the question.", List.of(),
-        false);
+        false, "specialist", false, "OIM");
     stubAssistantReply("Mocked answer from the fake LlmClient.");
 
     loginAs("user");

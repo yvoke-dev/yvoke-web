@@ -1,8 +1,11 @@
 package de.palsoftware.yvoke.mcp.tools;
 
+import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -38,25 +41,58 @@ public class GetSystemPromptTool {
     private static final String NAME_PARAM =
         "Prompt name. Omit for 'default-chat', the instructions an administrator has made active.";
 
-    private final SystemPromptService systemPromptService;
+    private static final String AREA_PARAM =
+        "Optional area name, e.g. 'OIM' (see list_areas). With no prompt name, returns that area's "
+            + "default instructions.";
 
-    public GetSystemPromptTool(SystemPromptService systemPromptService) {
+    private final SystemPromptService systemPromptService;
+    private final AreaService areaService;
+
+    public GetSystemPromptTool(SystemPromptService systemPromptService, AreaService areaService) {
         this.systemPromptService = systemPromptService;
+        this.areaService = areaService;
     }
 
     @McpTool(name = "get_system_prompt", description = DESCRIPTION)
     @Tool(name = "get_system_prompt", description = DESCRIPTION)
-    public String getSystemPrompt(@McpToolParam(description = NAME_PARAM, required = false)
-    @ToolParam(description = NAME_PARAM, required = false) String name) {
-        String requested =
-            (name == null || name.isBlank()) ? SystemPromptService.DEFAULT_CHAT : name.trim();
-        log.info("GetSystemPromptTool: fetching system prompt '{}'", requested);
+    public String getSystemPrompt(
+        @McpToolParam(description = NAME_PARAM, required = false)
+        @ToolParam(description = NAME_PARAM, required = false) String name,
+        @McpToolParam(description = AREA_PARAM, required = false)
+        @ToolParam(description = AREA_PARAM, required = false) String area) {
         try {
+            String requested;
+            if (name != null && !name.isBlank()) {
+                requested = name.trim();
+            } else if (area != null && !area.isBlank()) {
+                Optional<Area> found = areaService.findArea(area);
+                if (found.isEmpty()) {
+                    return "ERROR: area '" + area.trim() + "' does not exist.";
+                }
+                requested = areaDefault(found.get());
+            } else {
+                requested = SystemPromptService.DEFAULT_CHAT;
+            }
+            log.info("GetSystemPromptTool: fetching system prompt '{}'", requested);
             return systemPromptService.findChatPrompt(requested).map(SystemPrompt::systemPrompt)
                 .filter(text -> !text.isBlank())
                 .orElse("ERROR: system prompt '" + requested + "' does not exist.");
         } catch (Exception e) {
             return McpToolUtils.toolError("get_system_prompt", e);
         }
+    }
+
+    /**
+     * The area's default prompt, or {@code default-chat} (D-16, the admin's active prompt) when it
+     * sets none. As in {@code list_areas}, a default that is not one of the area's chat prompts is
+     * no default.
+     */
+    private String areaDefault(Area area) {
+        String preferred = area.defaultSystemPrompt();
+        if (preferred != null && systemPromptService.findChatPrompt(preferred)
+            .filter(p -> area.name().equals(p.area())).isPresent()) {
+            return preferred;
+        }
+        return SystemPromptService.DEFAULT_CHAT;
     }
 }

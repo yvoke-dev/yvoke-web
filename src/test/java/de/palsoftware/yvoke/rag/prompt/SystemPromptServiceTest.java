@@ -1,5 +1,8 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import static org.mockito.ArgumentMatchers.eq;
+
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -19,7 +22,8 @@ class SystemPromptServiceTest {
     void setUp() {
         repository = mock(SystemPromptRepository.class);
         appConfigRepository = mock(AppConfigRepository.class);
-        service = new SystemPromptService(repository, "default-chat", appConfigRepository);
+        service = new SystemPromptService(repository, "default-chat", appConfigRepository,
+            TestAreas.withAreas("OIM"));
     }
 
     /**
@@ -79,13 +83,13 @@ class SystemPromptServiceTest {
         assertTrue(exportedMd.contains("System instruction content"));
 
         when(repository.findByName("test-prompt")).thenReturn(Optional.of(prompt));
-        SystemPrompt imported = service.importPromptFromMarkdown(exportedMd, "test-prompt");
+        SystemPrompt imported = service.importPromptFromMarkdown(exportedMd, "test-prompt", "OIM");
         assertEquals("test-prompt", imported.name());
         assertEquals(SystemPromptType.CHAT, imported.type());
         assertEquals("System instruction content", imported.systemPrompt());
         assertEquals("Test Description", imported.description());
         verify(repository).upsert("test-prompt", SystemPromptType.CHAT,
-            "System instruction content", "Test Description");
+            "System instruction content", "Test Description", "OIM");
     }
 
     // ---- requirePrompt --------------------------------------------------
@@ -247,5 +251,49 @@ class SystemPromptServiceTest {
             .of(new SystemPrompt("summarize", SystemPromptType.SUMMARIZE, "Summarize.", "")));
 
         assertTrue(service.findChatPrompt("default-chat").isEmpty());
+    }
+
+    @Test
+    void savePromptStoresTheAreasStoredNameAndRefusesAnUnknownOne() {
+        service.savePrompt("p", SystemPromptType.CHAT, "text", null, " oim ");
+        verify(repository).upsert("p", SystemPromptType.CHAT, "text", "", "OIM");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> service.savePrompt("q", SystemPromptType.CHAT, "text", null, "SAP"));
+        assertEquals("Area 'SAP' does not exist.", e.getMessage());
+        verify(repository, never()).upsert(eq("q"), any(), any(), any(), any());
+    }
+
+    @Test
+    void importReadsTheAreaFromTheFrontmatterOverTheFallback() {
+        SystemPromptService twoAreas = new SystemPromptService(repository, "default-chat",
+            appConfigRepository, TestAreas.withAreas("OIM", "PingID"));
+        twoAreas.importPromptFromMarkdown("""
+            ---
+            name: p
+            type: CHAT
+            area: PingID
+            ---
+            text
+            """, null, "OIM");
+        verify(repository).upsert("p", SystemPromptType.CHAT, "text", "", "PingID");
+    }
+
+    @Test
+    void importPutsAFileWithoutAnAreaIntoTheFallback() {
+        service.importPromptFromMarkdown("""
+            ---
+            name: p
+            ---
+            text
+            """, null, "OIM");
+        verify(repository).upsert("p", SystemPromptType.CHAT, "text", "", "OIM");
+    }
+
+    @Test
+    void exportWritesTheArea() {
+        when(repository.findByName("p")).thenReturn(Optional.of(
+            new SystemPrompt("p", SystemPromptType.CHAT, "text", "", null, null, false, "PingID")));
+        assertTrue(service.exportPromptToMarkdown("p").contains("area: PingID"));
     }
 }

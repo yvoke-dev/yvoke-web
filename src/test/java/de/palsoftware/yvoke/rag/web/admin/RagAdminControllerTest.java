@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.web.admin;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -64,7 +65,7 @@ class RagAdminControllerTest {
 
         controller = new RagAdminController(hybridSearch, retrievalLogRepository,
             ragAdminViewService, collectionService, playbookService, systemPromptService,
-            ragService, objectMapper, telemetryService, 100, MAX_LIMIT);
+            ragService, objectMapper, telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM"));
 
         model = mock(Model.class);
     }

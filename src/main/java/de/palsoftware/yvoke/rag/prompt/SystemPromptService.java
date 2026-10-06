@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import java.util.*;
 import org.yaml.snakeyaml.Yaml;
@@ -18,10 +19,12 @@ public class SystemPromptService {
     private final SystemPromptRepository systemPromptRepository;
     private final String defaultPromptName;
     private final AppConfigRepository appConfigRepository;
+    private final AreaService areaService;
 
     public SystemPromptService(SystemPromptRepository systemPromptRepository,
         @Value("${app.ai.rag.default-prompt-name}") String defaultPromptName,
-        AppConfigRepository appConfigRepository) {
+        AppConfigRepository appConfigRepository, AreaService areaService) {
+        this.areaService = areaService;
         this.systemPromptRepository = systemPromptRepository;
         this.defaultPromptName = defaultPromptName;
         this.appConfigRepository = appConfigRepository;
@@ -127,7 +130,7 @@ public class SystemPromptService {
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
         condition = "#name != null && !#name.isBlank()")
     public void savePrompt(String name, SystemPromptType type, String systemPrompt,
-        String description) {
+        String description, String area) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Prompt name cannot be empty.");
         }
@@ -137,8 +140,9 @@ public class SystemPromptService {
         if (systemPrompt == null || systemPrompt.isBlank()) {
             throw new IllegalArgumentException("System prompt content cannot be empty.");
         }
+        String storedArea = areaService.requireArea(area);
         systemPromptRepository.upsert(name.trim(), type, systemPrompt.trim(),
-            description != null ? description.trim() : "");
+            description != null ? description.trim() : "", storedArea);
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
@@ -157,6 +161,9 @@ public class SystemPromptService {
         sb.append("---\n");
         sb.append("name: ").append(prompt.name()).append("\n");
         sb.append("type: ").append(prompt.type().name()).append("\n");
+        if (prompt.area() != null) {
+            sb.append("area: ").append(prompt.area()).append("\n");
+        }
         if (prompt.description() != null && !prompt.description().isBlank()) {
             sb.append("description: ").append(prompt.description()).append("\n");
         }
@@ -165,7 +172,12 @@ public class SystemPromptService {
         return sb.toString();
     }
 
-    public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName) {
+    /**
+     * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
+     * into {@code fallbackArea}, the area picked on the import form.
+     */
+    public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
+        String fallbackArea) {
         if (mdContent == null) {
             mdContent = "";
         }
@@ -183,6 +195,7 @@ public class SystemPromptService {
         String name = fallbackName != null ? fallbackName : "";
         SystemPromptType type = SystemPromptType.CHAT;
         String description = "";
+        String area = fallbackArea;
 
         if (!yamlFrontmatter.isBlank()) {
             try {
@@ -193,6 +206,9 @@ public class SystemPromptService {
                     }
                     if (map.get("description") != null) {
                         description = String.valueOf(map.get("description")).trim();
+                    }
+                    if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
+                        area = String.valueOf(map.get("area")).trim();
                     }
                     Object typeObj = map.get("type");
                     if (typeObj != null) {
@@ -207,7 +223,7 @@ public class SystemPromptService {
             }
         }
 
-        savePrompt(name, type, body, description);
+        savePrompt(name, type, body, description, area);
         return getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
     }
 }

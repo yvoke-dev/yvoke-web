@@ -27,7 +27,7 @@ public class OrchestratorProfileRepository {
                     SELECT name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                            specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
                            reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
-                           prototype, created_at, updated_at
+                           prototype, created_at, updated_at, area
                     FROM orchestrator_profiles
                     ORDER BY name ASC
                     """)
@@ -41,7 +41,7 @@ public class OrchestratorProfileRepository {
                     SELECT name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                            specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
                            reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
-                           prototype, created_at, updated_at
+                           prototype, created_at, updated_at, area
                     FROM orchestrator_profiles
                     WHERE name = :name
                     """)
@@ -56,12 +56,12 @@ public class OrchestratorProfileRepository {
                         name, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook,
                         specialist_playbooks, orchestrator_model, orchestrator_thinking_level,
                         reviewer_model, reviewer_thinking_level, specialist_model, specialist_thinking_level,
-                        prototype
+                        prototype, area
                     ) VALUES (
                         :name, :maxReviewRounds, :maxSpecialistCalls, :orchestratorPlaybook, :reviewerPlaybook,
                         :specialistPlaybooks, :orchestratorModel, :orchestratorThinkingLevel,
                         :reviewerModel, :reviewerThinkingLevel, :specialistModel, :specialistThinkingLevel,
-                        :prototype
+                        :prototype, :area
                     ) ON CONFLICT (name) DO UPDATE SET
                         max_review_rounds = EXCLUDED.max_review_rounds,
                         max_specialist_calls = EXCLUDED.max_specialist_calls,
@@ -75,6 +75,7 @@ public class OrchestratorProfileRepository {
                         specialist_model = EXCLUDED.specialist_model,
                         specialist_thinking_level = EXCLUDED.specialist_thinking_level,
                         prototype = EXCLUDED.prototype,
+                        area = EXCLUDED.area,
                         updated_at = CURRENT_TIMESTAMP
                     """)
             .param("name", profile.name()).param("maxReviewRounds", profile.maxReviewRounds())
@@ -91,7 +92,7 @@ public class OrchestratorProfileRepository {
             .param("reviewerThinkingLevel", profile.reviewerThinkingLevel())
             .param("specialistModel", profile.specialistModel())
             .param("specialistThinkingLevel", profile.specialistThinkingLevel())
-            .param("prototype", profile.prototype()).update();
+            .param("prototype", profile.prototype()).param("area", profile.area()).update();
     }
 
     public void delete(String name) {
@@ -112,6 +113,6 @@ public class OrchestratorProfileRepository {
             rs.getString("reviewer_model"), rs.getString("reviewer_thinking_level"),
             rs.getString("specialist_model"), rs.getString("specialist_thinking_level"),
             rs.getBoolean("prototype"), cat != null ? cat.toInstant() : Instant.now(),
-            uat != null ? uat.toInstant() : Instant.now());
+            uat != null ? uat.toInstant() : Instant.now(), rs.getString("area"));
     }
 }

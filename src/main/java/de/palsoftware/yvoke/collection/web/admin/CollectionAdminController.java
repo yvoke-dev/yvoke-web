@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
@@ -27,8 +28,11 @@ public class CollectionAdminController {
 
     private final CollectionService collectionService;
     private final TagService tagService;
+    private final AreaService areaService;
 
-    public CollectionAdminController(CollectionService collectionService, TagService tagService) {
+    public CollectionAdminController(CollectionService collectionService, TagService tagService,
+        AreaService areaService) {
+        this.areaService = areaService;
         this.collectionService = collectionService;
         this.tagService = tagService;
     }
@@ -38,15 +42,26 @@ public class CollectionAdminController {
         log.info("CollectionAdminController: Accessing Collections view");
         model.addAttribute("collections", collectionService.listCollections());
         model.addAttribute("allTags", collectionService.listAllTags());
+        model.addAttribute("areas", areaService.listAreaNames());
         return "admin/collections";
     }
 
     @PostMapping("/collections")
     public String createCollection(@RequestParam String name,
-        @RequestParam(required = false) String description, RedirectAttributes redirectAttributes) {
-        collectionService.createCollection(name, description);
+        @RequestParam(required = false) String description, @RequestParam String area,
+        RedirectAttributes redirectAttributes) {
+        collectionService.createCollection(name, description, area);
         redirectAttributes.addFlashAttribute("success",
             "Collection '" + name + "' created successfully.");
+        return "redirect:/admin/collections";
+    }
+
+    @PostMapping("/collections/area")
+    public String moveCollection(@RequestParam String name, @RequestParam String area,
+        RedirectAttributes redirectAttributes) {
+        collectionService.moveCollection(name, area);
+        redirectAttributes.addFlashAttribute("success",
+            "Collection '" + name + "' moved to area '" + area + "'.");
         return "redirect:/admin/collections";
     }
 
