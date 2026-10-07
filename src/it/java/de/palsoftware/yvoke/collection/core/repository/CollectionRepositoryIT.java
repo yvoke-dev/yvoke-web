@@ -70,7 +70,7 @@ public class CollectionRepositoryIT {
     public void emptyTagArrayMapsToEmptyList() {
         // create() seeds tags as '{}'::TEXT[]; the mapper must yield an empty list, not a
         // singleton list containing "" and not null.
-        Collection created = repository.create(PREFIX + "EMPTY", "  trimmed desc  ");
+        Collection created = repository.create(PREFIX + "EMPTY", "  trimmed desc  ", "OIM");
 
         assertThat(created.tags()).isEmpty();
         assertThat(created.description()).isEqualTo("trimmed desc");

@@ -51,8 +51,9 @@ class ArchitectureTest {
         new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("de.palsoftware.yvoke");
 
-    private static final String[] DOMAIN_PACKAGES = {"..chat..", "..collection..", "..document..",
-        "..ingest..", "..kg..", "..llm..", "..mcp..", "..rag..", "..tag..", "..lifecycle.."};
+    private static final String[] DOMAIN_PACKAGES =
+        {"..area..", "..chat..", "..collection..", "..document..", "..ingest..", "..kg..",
+            "..llm..", "..mcp..", "..rag..", "..tag..", "..lifecycle.."};
 
     /** The core architectural guarantee of the whole restructure: shared is infra-only. */
     @Test

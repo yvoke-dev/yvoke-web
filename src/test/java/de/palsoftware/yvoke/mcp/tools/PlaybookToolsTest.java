@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -32,13 +33,13 @@ class PlaybookToolsTest {
     private PlaybookTools tools;
 
     private static final Set<String> META_KEYS = Set.of("name", "title", "description", "tools",
-        "codeExecution", "targetAgent", "prototype");
+        "codeExecution", "targetAgent", "prototype", "area");
 
-    private static final Playbook FULL =
-        new Playbook("oim-full", "OIM full", "Everything OIM", "You are the OIM assistant.",
-            List.of("search_corpus", "get_section"), true, "specialist", true, null, null);
-    private static final Playbook BARE =
-        new Playbook("bare", "Bare", null, "Bare text", null, false, null, false, null, null);
+    private static final Playbook FULL = new Playbook("oim-full", "OIM full", "Everything OIM",
+        "You are the OIM assistant.", List.of("search_corpus", "get_section"), true, "specialist",
+        true, null, null, false, "OIM");
+    private static final Playbook BARE = new Playbook("bare", "Bare", null, "Bare text", null,
+        false, null, false, null, null, false, "PingID");
     private static final Playbook ORCHESTRATOR = new Playbook("oim-orchestrator", "Lead", "Leads",
         "You lead.", List.of(), false, "orchestrator", false, null, null);
 
@@ -46,14 +47,15 @@ class PlaybookToolsTest {
     void setUp() {
         playbookService = mock(PlaybookService.class);
         playbookRepository = mock(PlaybookRepository.class);
-        tools = new PlaybookTools(playbookService, playbookRepository, json);
+        tools = new PlaybookTools(playbookService, playbookRepository,
+            TestAreas.withAreas("OIM", "PingID"), json);
     }
 
     @Test
     void theListCarriesEveryPickablePlaybookWithItsMetadata() throws Exception {
         when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(FULL, BARE));
 
-        JsonNode list = json.readTree(tools.listPlaybooks());
+        JsonNode list = json.readTree(tools.listPlaybooks(null));
 
         assertThat(list.isArray()).isTrue();
         assertThat(list).hasSize(2);
@@ -68,6 +70,7 @@ class PlaybookToolsTest {
         assertThat(full.get("codeExecution").asBoolean()).isTrue();
         assertThat(full.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(full.get("prototype").asBoolean()).isTrue();
+        assertThat(full.get("area").asText()).isEqualTo("OIM");
         // The list is metadata only; the text costs a get_playbook call.
         assertThat(full.has("text")).isFalse();
 
@@ -83,8 +86,8 @@ class PlaybookToolsTest {
     void anEmptyLibraryIsAnEmptyArrayNotAnError() throws Exception {
         when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of());
 
-        assertThat(json.readTree(tools.listPlaybooks()).isArray()).isTrue();
-        assertThat(json.readTree(tools.listPlaybooks())).isEmpty();
+        assertThat(json.readTree(tools.listPlaybooks(null)).isArray()).isTrue();
+        assertThat(json.readTree(tools.listPlaybooks(null))).isEmpty();
     }
 
     @Test
@@ -106,6 +109,7 @@ class PlaybookToolsTest {
         assertThat(pb.get("codeExecution").asBoolean()).isTrue();
         assertThat(pb.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(pb.get("prototype").asBoolean()).isTrue();
+        assertThat(pb.get("area").asText()).isEqualTo("OIM");
     }
 
     @Test
@@ -160,9 +164,34 @@ class PlaybookToolsTest {
         when(playbookRepository.findByName("oim-full"))
             .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
 
-        assertThat(tools.listPlaybooks()).startsWith("ERROR:").doesNotContain("secret-host");
+        assertThat(tools.listPlaybooks(null)).startsWith("ERROR:").doesNotContain("secret-host");
         assertThat(tools.getPlaybook("oim-full")).startsWith("ERROR:")
             .doesNotContain("secret-host");
+    }
+
+    /** The area is matched leniently, then compared with the stored name each playbook holds. */
+    @Test
+    void anAreaListsOnlyThatAreasPlaybooks() throws Exception {
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(FULL, BARE));
+
+        JsonNode oim = json.readTree(tools.listPlaybooks(" oim "));
+        JsonNode ping = json.readTree(tools.listPlaybooks("PingID"));
+
+        assertThat(oim).hasSize(1);
+        assertThat(oim.get(0).get("name").asText()).isEqualTo("oim-full");
+        assertThat(ping).hasSize(1);
+        assertThat(ping.get(0).get("name").asText()).isEqualTo("bare");
+        assertThat(json.readTree(tools.listPlaybooks("  "))).hasSize(2);
+    }
+
+    @Test
+    void anUnknownAreaIsAnEmptyArray() throws Exception {
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(FULL, BARE));
+
+        JsonNode list = json.readTree(tools.listPlaybooks("SAP"));
+
+        assertThat(list.isArray()).isTrue();
+        assertThat(list).isEmpty();
     }
 
     private static Set<String> keys(JsonNode node) {

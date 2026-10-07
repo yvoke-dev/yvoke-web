@@ -14,7 +14,11 @@ import java.util.List;
  * Prototype profiles are sent flagged rather than withheld, exactly as {@link PlaybookDto} sends
  * prototype playbooks: the desktop owns the visibility setting, and a thread already bound to a
  * prototype profile must still resolve it.
+ *
+ * <p>
+ * {@code area} is the area the profile belongs to; {@code null} for a yml-configured profile, which
+ * has no area to carry.
  */
-public record OrchestratorProfileDto(String name,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,boolean prototype){public static OrchestratorProfileDto from(Profile profile){return new OrchestratorProfileDto(profile.name(),profile.orchestratorPlaybook(),profile.reviewerPlaybook(),profile.specialistPlaybooks()!=null?profile.specialistPlaybooks():List.of(),false);}
+public record OrchestratorProfileDto(String name,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,boolean prototype,String area){public static OrchestratorProfileDto from(Profile profile){return new OrchestratorProfileDto(profile.name(),profile.orchestratorPlaybook(),profile.reviewerPlaybook(),profile.specialistPlaybooks()!=null?profile.specialistPlaybooks():List.of(),false,null);}
 
-public static OrchestratorProfileDto fromDbProfile(OrchestratorProfile profile){return new OrchestratorProfileDto(profile.name(),profile.orchestratorPlaybook(),profile.reviewerPlaybook(),profile.specialistPlaybooks()!=null?profile.specialistPlaybooks():List.of(),profile.prototype());}}
+public static OrchestratorProfileDto fromDbProfile(OrchestratorProfile profile){return new OrchestratorProfileDto(profile.name(),profile.orchestratorPlaybook(),profile.reviewerPlaybook(),profile.specialistPlaybooks()!=null?profile.specialistPlaybooks():List.of(),profile.prototype(),profile.area());}}

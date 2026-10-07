@@ -1,10 +1,13 @@
 package de.palsoftware.yvoke.mcp.prompts;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import io.modelcontextprotocol.server.McpSyncServer;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +21,8 @@ public class PromptsServiceTest {
     @BeforeEach
     public void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
-        prompts = new PromptsService(playbookRepository);
+        prompts = new PromptsService(new PlaybookService(playbookRepository, (McpSyncServer) null,
+            TestAreas.withAreas("OIM")));
     }
 
     @Test

@@ -33,6 +33,7 @@ public class PlaybookMarkdownParser {
         List<String> tools = new ArrayList<>();
         boolean codeExecution = false;
         boolean prototype = false;
+        String area = null;
 
         if (!yamlFrontmatter.isBlank()) {
             try {
@@ -57,6 +58,10 @@ public class PlaybookMarkdownParser {
                         agentObj = map.get("type");
                     if (agentObj != null) {
                         targetAgent = String.valueOf(agentObj).trim();
+                    }
+
+                    if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
+                        area = String.valueOf(map.get("area")).trim();
                     }
 
                     Object protoObj = map.get("prototype");
@@ -98,7 +103,7 @@ public class PlaybookMarkdownParser {
         }
 
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
-            prototype, null, null);
+            prototype, null, null, false, area);
     }
 
     public static String toMarkdown(Playbook playbook) {
@@ -113,6 +118,9 @@ public class PlaybookMarkdownParser {
             .append(playbook.targetAgent() != null ? playbook.targetAgent() : "specialist")
             .append("\n");
         sb.append("prototype: ").append(playbook.prototype()).append("\n");
+        if (playbook.area() != null) {
+            sb.append("area: ").append(playbook.area()).append("\n");
+        }
         if (playbook.tools() != null && !playbook.tools().isEmpty()) {
             sb.append("tools:\n");
             for (String tool : playbook.tools()) {

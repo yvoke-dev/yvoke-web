@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -19,7 +20,8 @@ class PlaybookServiceTest {
     void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
         mcpSyncServer = mock(McpSyncServer.class);
-        playbookService = new PlaybookService(playbookRepository, mcpSyncServer);
+        playbookService =
+            new PlaybookService(playbookRepository, mcpSyncServer, TestAreas.withAreas("OIM"));
     }
 
     @Test
@@ -88,9 +90,9 @@ class PlaybookServiceTest {
     @Test
     void testSavePlaybookSuccess() {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true);
+            false, "orchestrator", true, "OIM");
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true);
+            false, "orchestrator", true, "OIM");
     }
 
     @Test
@@ -105,7 +107,8 @@ class PlaybookServiceTest {
         assertTrue(exportedMd.contains("code_execution: true"));
 
         when(playbookRepository.findByName("test-export")).thenReturn(Optional.of(pb));
-        Playbook imported = playbookService.importPlaybookFromMarkdown(exportedMd, "test-export");
+        Playbook imported =
+            playbookService.importPlaybookFromMarkdown(exportedMd, "test-export", "OIM");
         assertEquals("test-export", imported.name());
         assertEquals("orchestrator", imported.targetAgent());
         assertTrue(imported.prototype());
@@ -163,5 +166,55 @@ class PlaybookServiceTest {
     void testDeletePlaybookSuccess() {
         playbookService.deletePlaybook("db-playbook");
         verify(playbookRepository).delete("db-playbook");
+    }
+
+    @Test
+    void savePlaybookStoresTheAreasStoredName() {
+        playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false,
+            " oim ");
+        verify(playbookRepository).upsert("pb", "PB", "", "Body", List.of(), false, "specialist",
+            false, "OIM");
+    }
+
+    @Test
+    void savePlaybookRefusesAnUnknownOrMissingArea() {
+        IllegalArgumentException unknown =
+            assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb",
+                "PB", "", "Body", List.of(), false, null, false, "SAP"));
+        assertEquals("Area 'SAP' does not exist.", unknown.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb", "PB",
+            "", "Body", List.of(), false, null, false, null));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any());
+    }
+
+    /** The file's own area wins over the one picked on the import form. */
+    @Test
+    void importUsesTheFilesAreaOverTheFallback() {
+        PlaybookService twoAreas = new PlaybookService(playbookRepository, mcpSyncServer,
+            TestAreas.withAreas("OIM", "PingID"));
+        twoAreas.importPlaybookFromMarkdown("""
+            ---
+            name: pb
+            title: PB
+            area: PingID
+            ---
+            Body
+            """, null, "OIM");
+        verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
+            anyBoolean(), eq("PingID"));
+    }
+
+    @Test
+    void importPutsAFileWithoutAnAreaIntoTheFallback() {
+        playbookService.importPlaybookFromMarkdown("""
+            ---
+            name: pb
+            title: PB
+            ---
+            Body
+            """, null, "OIM");
+        verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
+            anyBoolean(), eq("OIM"));
     }
 }

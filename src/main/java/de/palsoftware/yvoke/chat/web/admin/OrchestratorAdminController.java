@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
@@ -35,10 +36,12 @@ public class OrchestratorAdminController {
     private final PlaybookService playbookService;
     private final ChatConversationService chatConversationService;
     private final OrchestratorProperties properties;
+    private final AreaService areaService;
 
     public OrchestratorAdminController(OrchestratorProfileService profileService,
         PlaybookService playbookService, ChatConversationService chatConversationService,
-        OrchestratorProperties properties) {
+        OrchestratorProperties properties, AreaService areaService) {
+        this.areaService = areaService;
         this.profileService = profileService;
         this.playbookService = playbookService;
         this.chatConversationService = chatConversationService;
@@ -59,6 +62,7 @@ public class OrchestratorAdminController {
         List<Playbook> specialistPlaybooks = playbookService.listSpecializedPlaybooks();
 
         model.addAttribute("profiles", profileService.listAllProfiles());
+        model.addAttribute("areas", areaService.listAreaNames());
         model.addAttribute("playbooks", allPlaybooks);
         model.addAttribute("orchestratorPlaybooks",
             orchestratorPlaybooks.isEmpty() ? allPlaybooks : orchestratorPlaybooks);
@@ -95,7 +99,7 @@ public class OrchestratorAdminController {
         @RequestParam(required = false) String specialistModel,
         @RequestParam(required = false) String specialistThinkingLevel,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        RedirectAttributes redirectAttributes) {
+        @RequestParam String area, RedirectAttributes redirectAttributes) {
 
         int rounds =
             maxReviewRounds != null ? maxReviewRounds : properties.resolvedMaxReviewRounds();
@@ -106,7 +110,7 @@ public class OrchestratorAdminController {
             new OrchestratorProfile(name, rounds, calls, orchestratorPlaybook, reviewerPlaybook,
                 specialistPlaybooks != null ? specialistPlaybooks : List.of(), orchestratorModel,
                 orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel,
-                specialistThinkingLevel, prototype, null, null);
+                specialistThinkingLevel, prototype, null, null, area);
         profileService.saveProfile(profile);
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + name + "' saved successfully.");
@@ -125,12 +129,13 @@ public class OrchestratorAdminController {
 
     @PostMapping("/import")
     public String importProfile(@RequestParam("file") MultipartFile file,
-        RedirectAttributes redirectAttributes) throws IOException {
+        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
+        throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
         }
         String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-        OrchestratorProfile imported = profileService.importProfileFromJson(content);
+        OrchestratorProfile imported = profileService.importProfileFromJson(content, area);
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/orchestrators";

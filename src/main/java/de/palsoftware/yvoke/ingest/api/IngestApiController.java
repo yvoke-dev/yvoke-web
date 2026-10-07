@@ -35,10 +35,11 @@ public class IngestApiController {
         @RequestParam(value = "sourceTag", required = false) String sourceTag,
         @RequestParam("collection") String targetCollectionName,
         @RequestParam("tag") String targetTag,
-        @RequestParam(value = "kgPrompt", required = false) String kgPrompt) {
+        @RequestParam(value = "kgPrompt", required = false) String kgPrompt,
+        @RequestParam(value = "area", required = false) String area) {
 
         EnqueueResult result = ingestService.processKg(documentId, sourceFile, sourceCollection,
-            sourceTag, targetCollectionName, targetTag, kgPrompt);
+            sourceTag, targetCollectionName, targetTag, kgPrompt, area);
         HttpStatus status = result.created() ? HttpStatus.ACCEPTED : HttpStatus.CONFLICT;
         return ResponseEntity.status(status).body(Map.of("id", result.jobId()));
     }
@@ -68,7 +69,8 @@ public class IngestApiController {
         @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
         @RequestParam(value = "buildSectionSummaries",
             required = false) Boolean buildSectionSummaries,
-        @RequestParam(value = "summarizePrompt", required = false) String summarizePrompt) {
+        @RequestParam(value = "summarizePrompt", required = false) String summarizePrompt,
+        @RequestParam(value = "area", required = false) String area) {
 
         // Same gate as POST /api/jobs/v1: this endpoint names the job kind from a request param and
         // shares the ROLE_INGEST/USER/ADMIN chain, so without it a plain user could POST a 1-byte
@@ -76,7 +78,7 @@ public class IngestApiController {
         // IngestService additionally allowlists the kinds this endpoint actually serves.
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(kind);
         UUID jobId = ingestService.uploadAndEnqueue(file, collectionName, tag, kind,
-            jsonUniqueField, buildSectionSummaries, summarizePrompt);
+            jsonUniqueField, buildSectionSummaries, summarizePrompt, area);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", jobId));
     }
 }

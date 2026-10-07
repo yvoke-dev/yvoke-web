@@ -94,7 +94,7 @@ public class RagAdminWriteIT {
     @Test
     public void savingAPlaybookBindsToolsAndCodeExecutionAndRedirects() throws Exception {
         mockMvc
-            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM").param("name", PLAYBOOK)
                 .param("title", "IT Write Playbook").param("description", "d")
                 .param("templateText", "Answer carefully.").param("tools", "search_corpus")
                 .param("tools", "get_section").param("codeExecution", "true")
@@ -123,7 +123,7 @@ public class RagAdminWriteIT {
      */
     @Test
     public void aSpecialistPlaybookWithNoToolsIsFlaggedInTheList() throws Exception {
-        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM").param("name", PLAYBOOK)
             .param("title", "IT Write Playbook").param("templateText", "Answer carefully.")
             .param("targetAgent", "specialist")).andExpect(status().is3xxRedirection());
 
@@ -147,7 +147,7 @@ public class RagAdminWriteIT {
     @Test
     public void toolsChosenOnAReviewerPlaybookAreFlaggedAsIgnored() throws Exception {
         mockMvc
-            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM").param("name", PLAYBOOK)
                 .param("title", "IT Write Playbook").param("templateText", "Review carefully.")
                 .param("tools", "search_corpus").param("targetAgent", "reviewer"))
             .andExpect(status().is3xxRedirection());
@@ -165,7 +165,7 @@ public class RagAdminWriteIT {
      */
     @Test
     public void omittedCheckboxAndToolsDefaultToDisabledAndEmpty() throws Exception {
-        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("name", PLAYBOOK)
+        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM").param("name", PLAYBOOK)
             .param("title", "IT Write Playbook").param("templateText", "Answer carefully."))
             .andExpect(status().is3xxRedirection());
 
@@ -274,7 +274,7 @@ public class RagAdminWriteIT {
     @Test
     public void savingASystemPromptCoercesTheTypeAndPersists() throws Exception {
         mockMvc
-            .perform(post("/admin/prompts").with(csrf()).with(admin()).param("name", PROMPT)
+            .perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
                 .param("type", "CHAT").param("description", "d")
                 .param("systemPrompt", "You are terse."))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
@@ -294,7 +294,7 @@ public class RagAdminWriteIT {
 
     @Test
     public void anUnknownPromptTypeIsRejectedRatherThanStored() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("name", PROMPT)
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
             .param("type", "NOT_A_TYPE").param("systemPrompt", "x"))
             .andExpect(status().is4xxClientError());
 
@@ -308,7 +308,7 @@ public class RagAdminWriteIT {
      */
     @Test
     public void settingTheActiveChatPromptPersistsAndIsReadBackByThePage() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("name", PROMPT)
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
             .param("type", "CHAT").param("systemPrompt", "You are terse."))
             .andExpect(status().is3xxRedirection());
 
@@ -323,7 +323,7 @@ public class RagAdminWriteIT {
 
     @Test
     public void deletingASystemPromptRemovesTheRow() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("name", PROMPT)
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
             .param("type", "KG").param("systemPrompt", "Extract entities."))
             .andExpect(status().is3xxRedirection());
 
@@ -338,10 +338,10 @@ public class RagAdminWriteIT {
     /** The {@code <option>} list the Extract-KG modal fetches; never requested by any test before. */
     @Test
     public void kgPromptOptionsListsOnlyKgPrompts() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("name", PROMPT)
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
             .param("type", "KG").param("systemPrompt", "Extract entities."))
             .andExpect(status().is3xxRedirection());
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin())
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
             .param("name", PROMPT + "-chat").param("type", "CHAT").param("systemPrompt", "Chat."))
             .andExpect(status().is3xxRedirection());
 

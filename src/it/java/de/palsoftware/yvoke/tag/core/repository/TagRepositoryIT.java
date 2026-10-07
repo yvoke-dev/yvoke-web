@@ -37,7 +37,7 @@ public class TagRepositoryIT {
     @BeforeEach
     public void setUp() {
         cleanup();
-        collectionRepository.create(COLLECTION_NAME, "Test Collection for Tag Deletion");
+        collectionRepository.create(COLLECTION_NAME, "Test Collection for Tag Deletion", "OIM");
         collectionId = collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
         
         // Add tags to the collection

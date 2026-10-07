@@ -10,7 +10,7 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 
 | Capability | What happens |
 | --- | --- |
-| **Create knowledge areas** | An administrator registers an area with a name and description; it then appears wherever content can be targeted. Names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
+| **Create knowledge areas** | An administrator registers a knowledge area with a name, a description and the area it belongs to; it then appears wherever content can be targeted. It can be moved to another area later without touching its content. Names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
 | **Declare the versions an area holds** | Versions are declared on the area first, then chosen at import. One area holds several side by side; content, graph and records never mix between them. |
 | **Import documents and archives** | Upload a document or a zipped tree, pick the area, version and pipeline, and start. The upload returns immediately and the work runs in the background. Oversized sections are split into numbered parts automatically. |
 | **Ask the searchable pipeline for section summaries too** | *Standard* imports offer **Generate section summaries**, off by default. Switching it on requires choosing the summarisation instructions to use. It writes the same per-section summaries the *Hierarchical* pipeline produces, so a searchable document can also be browsed by its table of contents. Summaries are reused across imports whenever a section's text is unchanged, so a manual already imported for browsing usually costs nothing to summarise again. |
@@ -128,7 +128,9 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   characters.
 - **Integration imports are throttled per caller** (twenty requests a minute by default). Two of the
   import routes **create a missing knowledge area on the fly**, so a typo in an automated import quietly
-  mints an empty area instead of failing.
+  mints an empty knowledge area instead of failing. Such an import must name the area the new knowledge
+  area goes into; without one it is refused, saying so. An import into an existing knowledge area needs
+  no area.
 
 ## Not supported
 

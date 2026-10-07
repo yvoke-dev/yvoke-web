@@ -43,7 +43,7 @@ public class LifecycleTagRemovalIT {
     @BeforeEach
     public void setUp() {
         cleanup();
-        collectionRepository.create(COLLECTION_NAME, "Tag removal IT");
+        collectionRepository.create(COLLECTION_NAME, "Tag removal IT", "OIM");
         collectionId =
             collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
         tagRepository.addTagToCollection(collectionId, "v1");

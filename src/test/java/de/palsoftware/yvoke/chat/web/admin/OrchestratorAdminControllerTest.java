@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -45,7 +46,7 @@ public class OrchestratorAdminControllerTest {
         properties = new OrchestratorProperties(null, null, null, null);
 
         controller = new OrchestratorAdminController(profileService, playbookService,
-            chatConversationService, properties);
+            chatConversationService, properties, TestAreas.withAreas("OIM"));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -61,11 +62,25 @@ public class OrchestratorAdminControllerTest {
      * {@code OrchestratorProperties}, not that it equals any particular literal — a test naming 3
      * here would just be a fifth copy of the number.
      */
+    /** P1-12: the area chosen on the form reaches the saved profile. */
+    @Test
+    void thePostedAreaReachesTheSavedProfile() throws Exception {
+        mockMvc
+            .perform(post("/admin/orchestrators").param("area", "PingID").param("name", "Ping")
+                .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
+            .andExpect(status().is3xxRedirection());
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(profileService).saveProfile(saved.capture());
+        assertThat(saved.getValue().area()).isEqualTo("PingID");
+    }
+
     @Test
     void aProfileSavedWithoutAReviewRoundLimitGetsTheConfiguredDefaultNotAStaleLiteral()
         throws Exception {
         mockMvc
-            .perform(post("/admin/orchestrators").param("name", "TestProfile")
+            .perform(post("/admin/orchestrators").param("area", "OIM").param("name", "TestProfile")
                 .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
             .andExpect(status().is3xxRedirection());
 
@@ -113,7 +128,7 @@ public class OrchestratorAdminControllerTest {
     @Test
     void testCreateOrUpdateProfile() throws Exception {
         mockMvc
-            .perform(post("/admin/orchestrators").param("name", "TestProfile")
+            .perform(post("/admin/orchestrators").param("area", "OIM").param("name", "TestProfile")
                 .param("maxReviewRounds", "3").param("maxSpecialistCalls", "10")
                 .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb")
                 .param("specialistPlaybooks", "spec-pb1", "spec-pb2"))
@@ -140,7 +155,7 @@ public class OrchestratorAdminControllerTest {
      */
     @Test
     void thePrototypeCheckboxOnTheFormReachesTheSavedProfile() throws Exception {
-        mockMvc.perform(post("/admin/orchestrators").param("name", "Browsing")
+        mockMvc.perform(post("/admin/orchestrators").param("area", "OIM").param("name", "Browsing")
             .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb")
             .param("prototype", "true")).andExpect(status().is3xxRedirection());
 
@@ -153,7 +168,7 @@ public class OrchestratorAdminControllerTest {
     @Test
     void anUncheckedPrototypeBoxSavesAsNotAPrototype() throws Exception {
         mockMvc
-            .perform(post("/admin/orchestrators").param("name", "OIM")
+            .perform(post("/admin/orchestrators").param("area", "OIM").param("name", "OIM")
                 .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
             .andExpect(status().is3xxRedirection());
 
@@ -181,14 +196,14 @@ public class OrchestratorAdminControllerTest {
             "{\"name\":\"TestProfile\"}".getBytes());
         OrchestratorProfile profile = new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
             List.of(), null, null, null, null, null, null, false, null, null);
-        when(profileService.importProfileFromJson("{\"name\":\"TestProfile\"}"))
+        when(profileService.importProfileFromJson("{\"name\":\"TestProfile\"}", "OIM"))
             .thenReturn(profile);
 
-        mockMvc.perform(multipart("/admin/orchestrators/import").file(file))
+        mockMvc.perform(multipart("/admin/orchestrators/import").file(file).param("area", "OIM"))
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("/admin/orchestrators"));
 
-        verify(profileService).importProfileFromJson("{\"name\":\"TestProfile\"}");
+        verify(profileService).importProfileFromJson("{\"name\":\"TestProfile\"}", "OIM");
     }
 
     @Test

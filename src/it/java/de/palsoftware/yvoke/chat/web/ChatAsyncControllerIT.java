@@ -155,7 +155,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM");
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch releaseCall = new CountDownLatch(1);
@@ -379,7 +379,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM");
 
         String userBOid = "user-b-async-test-oid";
         userRepository.upsert(userBOid, "user-b-async@local", "User B");
@@ -425,7 +425,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
         playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false);
+            List.of(), false, "specialist", false, "OIM");
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
@@ -540,7 +540,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM");
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch cancellationHandled = new CountDownLatch(1);
@@ -621,7 +621,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("failure-playbook", "Failure Playbook", "Desc", "Template",
-            List.of(), false);
+            List.of(), false, "specialist", false, "OIM");
 
         doAnswer(inv -> {
             throw new IllegalStateException("simulated provider fault");
@@ -778,7 +778,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM");
 
         // 1. Insert a user message
         UUID userMsgId = UUID.randomUUID();
@@ -865,7 +865,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM");
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);

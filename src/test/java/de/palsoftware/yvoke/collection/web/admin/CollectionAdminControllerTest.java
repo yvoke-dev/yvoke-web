@@ -1,5 +1,21 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import static org.mockito.Mockito.verify;
+
+import static org.mockito.ArgumentMatchers.eq;
+
+import static org.mockito.ArgumentMatchers.any;
+
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,7 +53,8 @@ class CollectionAdminControllerTest {
     @BeforeEach
     void setUp() {
         collectionService = mock(CollectionService.class);
-        controller = new CollectionAdminController(collectionService, mock(TagService.class));
+        controller = new CollectionAdminController(collectionService, mock(TagService.class),
+            TestAreas.withAreas("OIM"));
 
         when(collectionService.getCollection("OIM - Docs")).thenReturn(
             Optional.of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null)));
@@ -112,5 +129,38 @@ class CollectionAdminControllerTest {
         controller.viewCollections(model);
 
         assertThat(model.getAttribute("allTags")).isEqualTo(List.of("10.0", "9.3.1", "content"));
+    }
+
+    /** P1-12: the area chosen on the create form and on a card's move form reaches the service. */
+    @Test
+    void thePostedAreaReachesCreateAndMove() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/admin/collections").param("name", "Ping - Docs").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(collectionService).createCollection(eq("Ping - Docs"), any(), eq("PingID"));
+
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(collectionService).moveCollection("OIM - Docs", "PingID");
+    }
+
+    /** The messages name the collection and area as stored, not as typed. */
+    @Test
+    void theMessagesNameTheStoredNames() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        when(collectionService.createCollection(" Ping - Docs ", null, "pingid")).thenReturn(
+            new Collection(UUID.randomUUID(), "Ping - Docs", null, List.of(), null, "PingID"));
+        when(collectionService.moveCollection("OIM - Docs", "pingid")).thenReturn("PingID");
+
+        mvc.perform(
+            post("/admin/collections").param("name", " Ping - Docs ").param("area", "pingid"))
+            .andExpect(
+                flash().attribute("success", "Collection 'Ping - Docs' created successfully."));
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "pingid"))
+            .andExpect(
+                flash().attribute("success", "Collection 'OIM - Docs' moved to area 'PingID'."));
     }
 }

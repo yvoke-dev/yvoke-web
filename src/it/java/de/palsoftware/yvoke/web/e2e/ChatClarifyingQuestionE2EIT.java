@@ -47,7 +47,7 @@ class ChatClarifyingQuestionE2EIT extends AbstractE2E {
 
   /** Sends one question and has the assistant reply with a clarifying question. */
   private String askAndReceiveClarifyingQuestion() {
-    playbookService.savePlaybook(PLAYBOOK, "E2E Clarify", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook(PLAYBOOK, "E2E Clarify", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     stubAssistantReply(QUESTION);
 
     loginAs("user");

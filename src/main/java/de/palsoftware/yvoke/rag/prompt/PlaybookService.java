@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -27,16 +28,19 @@ public class PlaybookService {
      * bean is only logged by {@code McpToolsConfig}, so the cycle would silently drop the tool.
      */
     private final ObjectProvider<McpSyncServer> mcpSyncServer;
+    private final AreaService areaService;
 
     @Autowired
     public PlaybookService(PlaybookRepository playbookRepository,
-        ObjectProvider<McpSyncServer> mcpSyncServer) {
+        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService) {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
+        this.areaService = areaService;
     }
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
-    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer) {
+    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
+        AreaService areaService) {
         this(playbookRepository, new ObjectProvider<>() {
             @Override
             public McpSyncServer getObject() {
@@ -47,7 +51,7 @@ public class PlaybookService {
             public McpSyncServer getIfAvailable() {
                 return mcpSyncServer;
             }
-        });
+        }, areaService);
     }
 
     public List<Playbook> listAllPlaybooks() {
@@ -73,22 +77,11 @@ public class PlaybookService {
         return playbookRepository.findByName(name.trim());
     }
 
-    public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution) {
-        savePlaybook(name, title, description, templateText, tools, codeExecution, "specialist",
-            false);
-    }
-
-    public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent) {
-        savePlaybook(name, title, description, templateText, tools, codeExecution, targetAgent,
-            false);
-    }
-
     @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name",
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype) {
+        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
+        String area) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
         }
@@ -101,10 +94,11 @@ public class PlaybookService {
 
         String agent =
             targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
+        String storedArea = areaService.requireArea(area);
 
         playbookRepository.upsert(name.trim(), title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,
-            codeExecution, agent, prototype);
+            codeExecution, agent, prototype, storedArea);
 
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
@@ -112,10 +106,17 @@ public class PlaybookService {
         }
     }
 
-    public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName) {
+    /**
+     * Imports a playbook file. The area named in its frontmatter wins; a file that names none goes
+     * into {@code fallbackArea}, the area picked on the import form.
+     */
+    public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName,
+        String fallbackArea) {
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName);
+        String area =
+            parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
         savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),
-            parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype());
+            parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype(), area);
         return getPlaybook(parsed.name()).orElse(parsed);
     }
 

@@ -607,9 +607,9 @@ public class ChatThreadRenderingIT {
         String userOid = "profile-visibility-oid";
         userRepository.upsert(userOid, "profile-visibility@local", "Profile Visibility User");
         orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Ordinary", 2, 8,
-            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null));
+            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
         orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Prototype", 2, 8,
-            "orch", "rev", List.of("spec"), null, null, null, null, null, null, true, null, null));
+            "orch", "rev", List.of("spec"), null, null, null, null, null, null, true, null, null).withArea("OIM"));
 
         setSecurityContext(userOid, "profile-visibility@local", "Profile Visibility User");
         UUID convId = chatConversationService.createConversation().id();

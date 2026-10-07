@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
 import java.util.List;
@@ -17,9 +18,11 @@ public class OrchestratorProfileService {
     private final OrchestratorProfileRepository repository;
     private final OrchestratorProperties properties;
     private final ObjectMapper objectMapper;
+    private final AreaService areaService;
 
     public OrchestratorProfileService(OrchestratorProfileRepository repository,
-        OrchestratorProperties properties) {
+        OrchestratorProperties properties, AreaService areaService) {
+        this.areaService = areaService;
         this.repository = repository;
         this.properties = properties;
         this.objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -45,8 +48,9 @@ public class OrchestratorProfileService {
         return repository.findByName(name);
     }
 
+    /** Saves a profile into its area, which must exist. */
     public void saveProfile(OrchestratorProfile profile) {
-        repository.upsert(profile);
+        repository.upsert(profile.withArea(areaService.requireArea(profile.area())));
     }
 
     public void deleteProfile(String name) {
@@ -64,12 +68,19 @@ public class OrchestratorProfileService {
         }
     }
 
-    public OrchestratorProfile importProfileFromJson(String jsonContent) {
+    /**
+     * Imports a profile file. The area named in the file wins; a file that names none goes into
+     * {@code fallbackArea}, the area picked on the import form.
+     */
+    public OrchestratorProfile importProfileFromJson(String jsonContent, String fallbackArea) {
         try {
             OrchestratorProfile profile =
                 objectMapper.readValue(jsonContent, OrchestratorProfile.class);
             if (profile.name() == null || profile.name().isBlank()) {
                 throw new IllegalArgumentException("Invalid JSON: profile name is required.");
+            }
+            if (profile.area() == null || profile.area().isBlank()) {
+                profile = profile.withArea(fallbackArea);
             }
             saveProfile(profile);
             return getProfile(profile.name()).orElse(profile);

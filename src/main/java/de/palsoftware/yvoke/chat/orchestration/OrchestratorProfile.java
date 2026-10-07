@@ -12,4 +12,12 @@ import java.util.List;
  * a discovery flag only — it never affects how a run resolves or executes, so
  * {@link ResolvedProfile} deliberately does not carry it.
  */
-public record OrchestratorProfile(String name,int maxReviewRounds,int maxSpecialistCalls,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,String orchestratorModel,String orchestratorThinkingLevel,String reviewerModel,String reviewerThinkingLevel,String specialistModel,String specialistThinkingLevel,boolean prototype,Instant createdAt,Instant updatedAt){}
+public record OrchestratorProfile(String name,int maxReviewRounds,int maxSpecialistCalls,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,String orchestratorModel,String orchestratorThinkingLevel,String reviewerModel,String reviewerThinkingLevel,String specialistModel,String specialistThinkingLevel,boolean prototype,Instant createdAt,Instant updatedAt,String area){
+
+/**
+ * Every field but {@code area}, which is then {@code null}: for values not read from the database.
+ */
+public OrchestratorProfile(String name,int maxReviewRounds,int maxSpecialistCalls,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,String orchestratorModel,String orchestratorThinkingLevel,String reviewerModel,String reviewerThinkingLevel,String specialistModel,String specialistThinkingLevel,boolean prototype,Instant createdAt,Instant updatedAt){this(name,maxReviewRounds,maxSpecialistCalls,orchestratorPlaybook,reviewerPlaybook,specialistPlaybooks,orchestratorModel,orchestratorThinkingLevel,reviewerModel,reviewerThinkingLevel,specialistModel,specialistThinkingLevel,prototype,createdAt,updatedAt,null);}
+
+/** This profile in another area. */
+public OrchestratorProfile withArea(String newArea){return new OrchestratorProfile(name,maxReviewRounds,maxSpecialistCalls,orchestratorPlaybook,reviewerPlaybook,specialistPlaybooks,orchestratorModel,orchestratorThinkingLevel,reviewerModel,reviewerThinkingLevel,specialistModel,specialistThinkingLevel,prototype,createdAt,updatedAt,newArea);}}

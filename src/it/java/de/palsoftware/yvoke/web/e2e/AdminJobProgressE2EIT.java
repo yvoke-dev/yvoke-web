@@ -30,7 +30,7 @@ class AdminJobProgressE2EIT extends AbstractE2E {
   @Test
   void jobDetailPageReflectsLiveSseProgress() {
     String collection = "e2e-jobs-" + UUID.randomUUID();
-    collectionRepository.create(collection, "e2e progress test");
+    collectionRepository.create(collection, "e2e progress test", "OIM");
     // kind "noop" has no handler — harmless because the worker is disabled.
     UUID jobId =
         jobService

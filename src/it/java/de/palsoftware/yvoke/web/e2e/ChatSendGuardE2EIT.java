@@ -39,7 +39,7 @@ class ChatSendGuardE2EIT extends AbstractE2E {
   }
 
   private void openConversation() {
-    playbookService.savePlaybook(PLAYBOOK, "E2E Send Guard", "d", "Answer.", List.of(), false);
+    playbookService.savePlaybook(PLAYBOOK, "E2E Send Guard", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
     loginAs("user");
     newConversation();
   }

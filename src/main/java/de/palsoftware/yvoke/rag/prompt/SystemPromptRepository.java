@@ -18,7 +18,7 @@ public class SystemPromptRepository {
 
     public List<SystemPrompt> findAll() {
         return jdbcClient.sql(
-            "SELECT name, type, system_prompt, description, created_at, updated_at FROM system_prompts ORDER BY name ASC")
+            "SELECT name, type, system_prompt, description, created_at, updated_at, area FROM system_prompts ORDER BY name ASC")
             .query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");
@@ -26,7 +26,7 @@ public class SystemPromptRepository {
                     SystemPromptType.fromString(rs.getString("type")),
                     rs.getString("system_prompt"), rs.getString("description"),
                     cat != null ? cat.toInstant() : Instant.now(),
-                    uat != null ? uat.toInstant() : Instant.now(), false);
+                    uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"));
             }).list();
     }
 
@@ -36,7 +36,7 @@ public class SystemPromptRepository {
         // wrote lower case. A case-sensitive comparison silently returned nothing for whichever
         // spelling it was not asking about, and an empty list reads as "none are configured".
         return jdbcClient.sql(
-            "SELECT name, type, system_prompt, description, created_at, updated_at FROM system_prompts WHERE upper(type) = upper(:type) ORDER BY name ASC")
+            "SELECT name, type, system_prompt, description, created_at, updated_at, area FROM system_prompts WHERE upper(type) = upper(:type) ORDER BY name ASC")
             .param("type", type.dbValue()).query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");
@@ -44,13 +44,13 @@ public class SystemPromptRepository {
                     SystemPromptType.fromString(rs.getString("type")),
                     rs.getString("system_prompt"), rs.getString("description"),
                     cat != null ? cat.toInstant() : Instant.now(),
-                    uat != null ? uat.toInstant() : Instant.now(), false);
+                    uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"));
             }).list();
     }
 
     public Optional<SystemPrompt> findByName(String name) {
         return jdbcClient.sql(
-            "SELECT name, type, system_prompt, description, created_at, updated_at FROM system_prompts WHERE name = :name")
+            "SELECT name, type, system_prompt, description, created_at, updated_at, area FROM system_prompts WHERE name = :name")
             .param("name", name).query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");
@@ -58,22 +58,24 @@ public class SystemPromptRepository {
                     SystemPromptType.fromString(rs.getString("type")),
                     rs.getString("system_prompt"), rs.getString("description"),
                     cat != null ? cat.toInstant() : Instant.now(),
-                    uat != null ? uat.toInstant() : Instant.now(), false);
+                    uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"));
             }).optional();
     }
 
-    public void upsert(String name, SystemPromptType type, String systemPrompt,
-        String description) {
+    public void upsert(String name, SystemPromptType type, String systemPrompt, String description,
+        String area) {
         jdbcClient.sql("""
-            INSERT INTO system_prompts (name, type, system_prompt, description)
-            VALUES (:name, :type, :systemPrompt, :description)
+            INSERT INTO system_prompts (name, type, system_prompt, description, area)
+            VALUES (:name, :type, :systemPrompt, :description, :area)
             ON CONFLICT (name) DO UPDATE SET
                 type = EXCLUDED.type,
                 system_prompt = EXCLUDED.system_prompt,
                 description = EXCLUDED.description,
+                area = EXCLUDED.area,
                 updated_at = CURRENT_TIMESTAMP
             """).param("name", name).param("type", type.dbValue())
-            .param("systemPrompt", systemPrompt).param("description", description).update();
+            .param("systemPrompt", systemPrompt).param("description", description)
+            .param("area", area).update();
     }
 
     public void delete(String name) {

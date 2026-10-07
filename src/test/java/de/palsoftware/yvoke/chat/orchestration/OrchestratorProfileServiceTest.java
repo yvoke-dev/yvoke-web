@@ -1,5 +1,12 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
+import org.mockito.ArgumentCaptor;
+
+import static org.mockito.Mockito.never;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -29,7 +36,8 @@ public class OrchestratorProfileServiceTest {
                 new RoleConfig("gemini-3.1-flash", "medium")),
             List.of(
                 new Profile("OIM", "oim-orch", "oim-rev", List.of("spec-1"), null, null, null)));
-        service = new OrchestratorProfileService(repository, properties);
+        service =
+            new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"));
     }
 
     @Test
@@ -177,7 +185,7 @@ public class OrchestratorProfileServiceTest {
     @Test
     void testSaveAndDeleteProfile() {
         OrchestratorProfile profile = new OrchestratorProfile("NewProfile", 2, 8, "orch", "rev",
-            List.of("spec"), null, null, null, null, null, null, false, null, null);
+            List.of("spec"), null, null, null, null, null, null, false, null, null, "OIM");
 
         service.saveProfile(profile);
         verify(repository).upsert(profile);
@@ -198,7 +206,7 @@ public class OrchestratorProfileServiceTest {
         assertThat(json).contains("\"maxReviewRounds\" : 3");
         assertThat(json).contains("\"maxSpecialistCalls\" : 9");
 
-        OrchestratorProfile imported = service.importProfileFromJson(json);
+        OrchestratorProfile imported = service.importProfileFromJson(json, "OIM");
         assertThat(imported.name()).isEqualTo("ExportImportProfile");
         assertThat(imported.maxReviewRounds()).isEqualTo(3);
         assertThat(imported.specialistPlaybooks()).containsExactly("spec-1", "spec-2");
@@ -225,7 +233,7 @@ public class OrchestratorProfileServiceTest {
         assertThat(json).contains("\"prototype\" : true");
 
         when(repository.findByName("Browsing")).thenReturn(Optional.empty());
-        assertThat(service.importProfileFromJson(json).prototype()).isTrue();
+        assertThat(service.importProfileFromJson(json, "OIM").prototype()).isTrue();
     }
 
     /**
@@ -253,5 +261,43 @@ public class OrchestratorProfileServiceTest {
         assertThat(resolved.reviewer().thinkingLevel()).isEqualTo("high");
         assertThat(resolved.specialist().model()).isEqualTo("gemini-3.1-flash");
         assertThat(resolved.specialist().thinkingLevel()).isEqualTo("medium");
+    }
+
+    @Test
+    void importUsesTheFilesAreaOverTheFallback() {
+        OrchestratorProfileService twoAreas = new OrchestratorProfileService(repository, properties,
+            TestAreas.withAreas("OIM", "PingID"));
+        twoAreas.importProfileFromJson("{\"name\":\"P\",\"area\":\"pingid\"}", "OIM");
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(repository).upsert(saved.capture());
+        assertThat(saved.getValue().area()).isEqualTo("PingID");
+    }
+
+    @Test
+    void importPutsAFileWithoutAnAreaIntoTheFallback() {
+        service.importProfileFromJson("{\"name\":\"P\"}", "OIM");
+
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(repository).upsert(saved.capture());
+        assertThat(saved.getValue().area()).isEqualTo("OIM");
+    }
+
+    @Test
+    void anUnknownAreaIsRefusedByName() {
+        assertThatThrownBy(
+            () -> service.importProfileFromJson("{\"name\":\"P\",\"area\":\"SAP\"}", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessage("Area 'SAP' does not exist.");
+        verify(repository, never()).upsert(any());
+    }
+
+    @Test
+    void exportWritesTheArea() {
+        when(repository.findByName("P"))
+            .thenReturn(Optional.of(new OrchestratorProfile("P", 2, 8, null, null, List.of(), null,
+                null, null, null, null, null, false, null, null, "PingID")));
+        assertThat(service.exportProfileToJson("P")).contains("\"area\" : \"PingID\"");
     }
 }

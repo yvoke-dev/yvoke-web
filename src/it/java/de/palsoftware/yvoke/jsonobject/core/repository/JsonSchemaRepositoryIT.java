@@ -37,7 +37,7 @@ public class JsonSchemaRepositoryIT {
     @BeforeEach
     public void setUp() {
         cleanup();
-        collectionRepository.create(COLLECTION_NAME, "Test Collection");
+        collectionRepository.create(COLLECTION_NAME, "Test Collection", "OIM");
         collectionId = collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
     }
 

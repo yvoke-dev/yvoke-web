@@ -5,6 +5,8 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -49,6 +51,9 @@ public class McpServerEndpointsIT {
 
     @Autowired
     private SystemPromptService systemPromptService;
+
+    @Autowired
+    private AreaRepository areaRepository;
 
     /**
      * Present only because the build-info goal writes META-INF/build-info.properties; the bean is
@@ -295,7 +300,7 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "get_system_prompt", "list_playbooks", "get_playbook");
+                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
@@ -326,10 +331,10 @@ public class McpServerEndpointsIT {
                 systemPromptService.getPrompt(SystemPromptService.DEFAULT_CHAT).isEmpty();
         if (createdDefaultChatRow) {
             systemPromptService.savePrompt(SystemPromptService.DEFAULT_CHAT, SystemPromptType.CHAT,
-                    "IT generic default-chat row.", "P1-01 IT");
+                    "IT generic default-chat row.", "P1-01 IT", "OIM");
         }
         systemPromptService.savePrompt(name, SystemPromptType.CHAT,
-                "IT base instructions: cite every claim.", "P1-01 IT");
+                "IT base instructions: cite every claim.", "P1-01 IT", "OIM");
         systemPromptService.setDefaultChatPromptName(name);
 
         try (McpSession session = establishSession()) {
@@ -403,7 +408,7 @@ public class McpServerEndpointsIT {
         String name = "test-endpoints-it-live-edit";
         playbookService.savePlaybook(name, "Live Edit IT Playbook", "Description before the edit",
                 "ORIGINAL instructions: answer {query} from the corpus.", List.of("search_corpus"),
-                false);
+                false, "specialist", false, "OIM");
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -439,7 +444,7 @@ public class McpServerEndpointsIT {
             // prompt here, so only the handler's own re-read at call time can surface it.
             playbookRepository.upsert(name, "Live Edit IT Playbook", "Description after the edit",
                     "REVISED instructions: cite every claim with a chunk id.",
-                    List.of("search_corpus"), false, "specialist");
+                    List.of("search_corpus"), false, "specialist", false, "OIM");
 
             HttpRequest secondGet = HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:" + port + "/mcp"))
@@ -505,7 +510,7 @@ public class McpServerEndpointsIT {
     public void promptsGetCarriesTheToolAndTargetAgentMetadata() throws Exception {
         playbookService.savePlaybook("test-endpoints-it-prompt-meta", "Prompt Meta IT Playbook",
             "Carries tool metadata", "Answer {query} from the corpus.", List.of("search_corpus"),
-            false);
+            false, "specialist", false, "OIM");
 
         try (McpSession session = establishSession()) {
             HttpRequest getRequest = HttpRequest.newBuilder()
@@ -553,7 +558,7 @@ public class McpServerEndpointsIT {
     @Test
     public void testDynamicPromptsListAndGetRpc() throws Exception {
         // Seed a dynamic prompt
-        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false);
+        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false, "specialist", false, "OIM");
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -653,7 +658,7 @@ public class McpServerEndpointsIT {
     public void playbookToolsServeTheLiveLibraryOverMcp() throws Exception {
         String name = "test-endpoints-it-playbook-tools";
         playbookService.savePlaybook(name, "Playbook Tools IT", "Served by the playbook tools",
-                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false);
+                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false, "specialist", false, "OIM");
 
         try (McpSession session = establishSession()) {
             String listed = callTool(session, "8", "list_playbooks", "{}").body();
@@ -693,6 +698,56 @@ public class McpServerEndpointsIT {
             try {
                 playbookService.deletePlaybook(name);
             } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * P1-12 over the wire: {@code list_areas} lists an area with its members and defaults, and the
+     * area filters of {@code list_playbooks} and {@code get_system_prompt} answer for it.
+     */
+    @Test
+    public void areaToolsAndFiltersServeTheLiveAreasOverMcp() throws Exception {
+        String area = "IT_AREA_WIRE";
+        String playbook = "test-endpoints-it-area-playbook";
+        String prompt = "test-endpoints-it-area-prompt";
+        areaRepository.upsert(new Area(area, "Wire area", null, false, null, null, null, null,
+                null));
+        try {
+            playbookService.savePlaybook(playbook, "Area IT", "", "AREA instructions.",
+                    List.of(), false, "specialist", false, area);
+            systemPromptService.savePrompt(prompt, SystemPromptType.CHAT,
+                    "AREA base instructions.", "P1-12 IT", area);
+            areaRepository.upsert(new Area(area, "Wire area", null, false, prompt, playbook, null,
+                    null, null));
+
+            try (McpSession session = establishSession()) {
+                String areas = callTool(session, "8", "list_areas", "{}").body();
+                assertTrue(areas.contains(area) && areas.contains("Wire area"),
+                        "list_areas must list the area — BODY=" + areas);
+                assertTrue(areas.contains(playbook) && areas.contains(prompt),
+                        "list_areas must list its members — BODY=" + areas);
+
+                String mine = callTool(session, "9", "list_playbooks",
+                        "{ \"area\": \"it_area_wire\" }").body();
+                assertTrue(mine.contains(playbook), "the area's playbook is listed — BODY=" + mine);
+                assertFalse(mine.contains("test-endpoints-it-playbook-tools"),
+                        "no other area's playbook is listed — BODY=" + mine);
+
+                String none = callTool(session, "10", "list_playbooks",
+                        "{ \"area\": \"no-such-area\" }").body();
+                assertFalse(none.contains(playbook), "an unknown area lists nothing — BODY=" + none);
+
+                String base = callTool(session, "11", "get_system_prompt",
+                        "{ \"area\": \"" + area + "\" }").body();
+                assertTrue(base.contains("AREA base instructions."),
+                        "the area's default prompt is returned — BODY=" + base);
+            }
+        } finally {
+            try {
+                playbookRepository.delete(playbook);
+                systemPromptService.deletePrompt(prompt);
+            } catch (Exception ignored) {}
+            areaRepository.delete(area);
         }
     }
 }

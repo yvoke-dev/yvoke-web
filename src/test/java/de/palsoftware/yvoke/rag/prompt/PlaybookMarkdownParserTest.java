@@ -4,6 +4,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlaybookMarkdownParserTest {
@@ -143,5 +144,35 @@ class PlaybookMarkdownParserTest {
         assertEquals(original.tools(), parsed.tools());
         assertEquals(original.codeExecution(), parsed.codeExecution());
         assertEquals(original.templateText(), parsed.templateText());
+    }
+
+    /** The yvoke-exports files carry each playbook's area, so it must survive a round trip. */
+    @Test
+    void theAreaIsReadFromTheFrontmatterAndWrittenBack() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            area: PingID
+            ---
+            Body
+            """, null);
+        assertEquals("PingID", parsed.area());
+
+        String md = PlaybookMarkdownParser.toMarkdown(parsed);
+        assertTrue(md.contains("area: PingID"), md);
+        assertEquals("PingID", PlaybookMarkdownParser.parseMarkdown(md, null).area());
+    }
+
+    @Test
+    void aFileWithoutAnAreaParsesWithNone() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            ---
+            Body
+            """, null);
+        assertNull(parsed.area());
     }
 }
