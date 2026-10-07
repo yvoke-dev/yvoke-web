@@ -52,16 +52,16 @@ public class CollectionAdminController {
         RedirectAttributes redirectAttributes) {
         collectionService.createCollection(name, description, area);
         redirectAttributes.addFlashAttribute("success",
-            "Collection '" + name + "' created successfully.");
+            "Collection '" + name.trim() + "' created successfully.");
         return "redirect:/admin/collections";
     }
 
     @PostMapping("/collections/area")
     public String moveCollection(@RequestParam String name, @RequestParam String area,
         RedirectAttributes redirectAttributes) {
-        collectionService.moveCollection(name, area);
+        String movedTo = collectionService.moveCollection(name, area);
         redirectAttributes.addFlashAttribute("success",
-            "Collection '" + name + "' moved to area '" + area + "'.");
+            "Collection '" + name + "' moved to area '" + movedTo + "'.");
         return "redirect:/admin/collections";
     }
 

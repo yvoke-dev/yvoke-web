@@ -4,6 +4,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -143,5 +144,23 @@ class CollectionAdminControllerTest {
             post("/admin/collections/area").param("name", "OIM - Docs").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
         verify(collectionService).moveCollection("OIM - Docs", "PingID");
+    }
+
+    /** The messages name the collection and area as stored, not as typed. */
+    @Test
+    void theMessagesNameTheStoredNames() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        when(collectionService.createCollection(" Ping - Docs ", null, "pingid")).thenReturn(
+            new Collection(UUID.randomUUID(), "Ping - Docs", null, List.of(), null, "PingID"));
+        when(collectionService.moveCollection("OIM - Docs", "pingid")).thenReturn("PingID");
+
+        mvc.perform(
+            post("/admin/collections").param("name", " Ping - Docs ").param("area", "pingid"))
+            .andExpect(
+                flash().attribute("success", "Collection 'Ping - Docs' created successfully."));
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "pingid"))
+            .andExpect(
+                flash().attribute("success", "Collection 'OIM - Docs' moved to area 'PingID'."));
     }
 }

@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AreaService {
@@ -67,8 +68,10 @@ public class AreaService {
     /**
      * Creates an area ({@code originalName} blank) or saves an existing one, renaming it when
      * {@code name} differs. A rename goes through {@code ON UPDATE CASCADE}, so every member
-     * follows it. Each default must be a member of the area that a client can pick.
+     * follows it. Each default must be a member of the area that a client can pick. One
+     * transaction, so a failed upsert also undoes the rename.
      */
+    @Transactional
     public void saveArea(String originalName, String name, String title, String description,
         boolean prototype, String defaultSystemPrompt, String defaultPlaybook,
         String defaultProfile) {
@@ -103,8 +106,11 @@ public class AreaService {
             blankToNull(defaultPlaybook), blankToNull(defaultProfile), null, null));
     }
 
-    /** Deletes an empty area. One that still has members is refused by the database. */
-    public void deleteArea(String name) {
+    /**
+     * Deletes an empty area and returns its stored name. One that still has members is refused by
+     * the database.
+     */
+    public String deleteArea(String name) {
         String stored = requireArea(name);
         try {
             areaRepository.delete(stored);
@@ -113,6 +119,7 @@ public class AreaService {
                 + "' still has system prompts, collections, playbooks or profiles. "
                 + "Move or delete them first.");
         }
+        return stored;
     }
 
     private static void checkDefaults(String area, AreaMembers members, String systemPrompt,

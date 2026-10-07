@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -24,11 +25,16 @@ class AreaRepositoryIT {
     private AreaRepository repository;
 
     @Autowired
+    private AreaService areaService;
+
+    @Autowired
     private JdbcClient jdbcClient;
 
     @AfterEach
     void cleanUp() {
         jdbcClient.sql("DELETE FROM playbooks WHERE name LIKE 'it-area-%'").update();
+        jdbcClient.sql("DROP TRIGGER IF EXISTS it_area_refuse_title ON areas").update();
+        jdbcClient.sql("DROP FUNCTION IF EXISTS it_area_refuse_title()").update();
         jdbcClient.sql("DELETE FROM areas WHERE name LIKE 'IT_AREA%'").update();
     }
 
@@ -119,5 +125,32 @@ class AreaRepositoryIT {
             INSERT INTO playbooks (name, title, template_text, area)
             VALUES (:name, :name, 'text', :area)
             """).param("name", name).param("area", area).update();
+    }
+
+    /**
+     * A save that renames runs two statements, the rename and the upsert. If the upsert fails the
+     * rename must be undone too, or the area keeps its new name without the rest of the save. A
+     * trigger refusing one title makes the second statement fail on demand.
+     */
+    @Test
+    void aSaveWhoseSecondStatementFailsLeavesTheAreaAsItWas() {
+        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null, null,
+            null));
+        jdbcClient.sql("""
+            CREATE FUNCTION it_area_refuse_title() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.title = 'it-refused' THEN RAISE EXCEPTION 'refused by test'; END IF;
+                RETURN NEW;
+            END $$""").update();
+        jdbcClient.sql("""
+            CREATE TRIGGER it_area_refuse_title BEFORE INSERT OR UPDATE ON areas
+            FOR EACH ROW EXECUTE FUNCTION it_area_refuse_title()""").update();
+
+        assertThatThrownBy(() -> areaService.saveArea("IT_AREA_OLD", "IT_AREA_NEW", "it-refused",
+            null, false, null, null, null)).isInstanceOf(DataAccessException.class);
+
+        assertThat(repository.findByName("IT_AREA_OLD")).get().extracting(Area::title)
+            .isEqualTo("Old");
+        assertThat(repository.findByName("IT_AREA_NEW")).isEmpty();
     }
 }

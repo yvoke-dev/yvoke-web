@@ -47,8 +47,8 @@ public class AreaAdminController {
 
     @PostMapping("/areas/delete")
     public String deleteArea(@RequestParam String name, RedirectAttributes redirectAttributes) {
-        areaService.deleteArea(name);
-        redirectAttributes.addFlashAttribute("success", "Area '" + name + "' deleted.");
+        String deleted = areaService.deleteArea(name);
+        redirectAttributes.addFlashAttribute("success", "Area '" + deleted + "' deleted.");
         return "redirect:/admin/areas";
     }
 }

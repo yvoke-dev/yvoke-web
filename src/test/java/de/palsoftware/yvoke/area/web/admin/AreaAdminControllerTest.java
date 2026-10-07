@@ -72,4 +72,13 @@ class AreaAdminControllerTest {
 
         verify(areaService).deleteArea("PingID");
     }
+
+    /** The message names the area as stored, not as typed. */
+    @Test
+    void theDeleteMessageNamesTheStoredArea() throws Exception {
+        when(areaService.deleteArea(" pingid ")).thenReturn("PingID");
+
+        mvc.perform(post("/admin/areas/delete").param("name", " pingid "))
+            .andExpect(flash().attribute("success", "Area 'PingID' deleted."));
+    }
 }

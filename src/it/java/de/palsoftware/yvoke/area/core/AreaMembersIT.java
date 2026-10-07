@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptRepository;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
@@ -42,6 +43,8 @@ class AreaMembersIT {
     private CollectionRepository collectionRepository;
     @Autowired
     private OrchestratorProfileRepository profileRepository;
+    @Autowired
+    private PlaybookService playbookService;
     @Autowired
     private JdbcClient jdbcClient;
 
@@ -151,5 +154,30 @@ class AreaMembersIT {
         assertThat(members.profiles()).containsExactly("it-members-prof");
         assertThat(areaRepository.findAllMembers().getOrDefault("OIM", AreaMembers.NONE).playbooks())
             .doesNotContain("it-members-spec");
+    }
+
+    /**
+     * The pickable-playbook rule exists twice: in SQL here and in Java in
+     * {@code PlaybookService.listSpecializedPlaybooks} ({@code area} may not depend on {@code rag}).
+     * This compares the two over every kind of role, so changing one without the other fails.
+     */
+    @Test
+    void thePlaybookMembersMatchWhatListPlaybooksOffers() {
+        String[] roles = {"specialist", "Specialist", "orchestrator", "ORCHESTRATOR", "reviewer",
+            "Reviewer", "", "custom-role", " reviewer "};
+        for (int i = 0; i < roles.length; i++) {
+            jdbcClient.sql("""
+                INSERT INTO playbooks (name, title, template_text, target_agent, area)
+                VALUES (:name, 'T', 't', :role, :area)""").param("name", "it-members-role-" + i)
+                .param("role", roles[i]).param("area", OTHER).update();
+        }
+
+        List<String> offered = playbookService.listSpecializedPlaybooks().stream()
+            .filter(p -> OTHER.equals(p.area())).map(Playbook::name).toList();
+
+        assertThat(areaRepository.findAllMembers().get(OTHER).playbooks())
+            .containsExactlyInAnyOrderElementsOf(offered)
+            .isNotEmpty();
+        assertThat(offered).hasSizeBetween(1, roles.length - 1);
     }
 }

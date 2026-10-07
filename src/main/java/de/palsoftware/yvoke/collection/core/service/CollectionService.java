@@ -72,9 +72,11 @@ public class CollectionService {
 
     /** Moves an existing collection to another area. */
     @Transactional
-    public void moveCollection(String name, String area) {
+    public String moveCollection(String name, String area) {
         Collection collection = getCollection(name).orElseThrow(
             () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
-        collectionRepository.updateArea(collection.name(), areaService.requireArea(area));
+        String storedArea = areaService.requireArea(area);
+        collectionRepository.updateArea(collection.name(), storedArea);
+        return storedArea;
     }
 }
