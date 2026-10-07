@@ -43,6 +43,10 @@ CREATE INDEX idx_system_prompts_area ON system_prompts(area);
 CREATE INDEX idx_collections_area ON collections(area);
 CREATE INDEX idx_playbooks_area ON playbooks(area);
 CREATE INDEX idx_orchestrator_profiles_area ON orchestrator_profiles(area);
+-- The defaults are foreign keys too: renaming or deleting a prompt, playbook or profile looks them up.
+CREATE INDEX idx_areas_default_system_prompt ON areas(default_system_prompt);
+CREATE INDEX idx_areas_default_playbook ON areas(default_playbook);
+CREATE INDEX idx_areas_default_profile ON areas(default_profile);
 
 -- OIM's defaults, where the rows exist: the playbook every OIM session started with and the profile
 -- named after the area. The default system prompt stays empty, so OIM keeps following the admin's

@@ -336,6 +336,40 @@ public class IngestServiceTest {
         verify(collectionService).createCollection(eq("NEW"), any(), eq("PingID"));
     }
 
+    /** An unknown area is a 400 naming it, not a 500, and no job is queued. */
+    @Test
+    public void uploadAndEnqueueRefusesAnUnknownAreaForANewCollection() {
+        when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
+        when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
+            .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null,
+            null, null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
+                ResponseStatusException rse = (ResponseStatusException) e;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
+            });
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void processKgRefusesAnUnknownAreaForANewCollection() {
+        when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
+        when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
+            .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
+
+        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
+            "10.0", null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> {
+                ResponseStatusException rse = (ResponseStatusException) e;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
+            });
+        verify(jobService, never()).enqueue(any());
+    }
+
     @Test
     public void processKgRefusesToCreateACollectionWithoutAnArea() {
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());

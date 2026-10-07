@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional(readOnly = true)
 public class AreaService {
 
     private final AreaRepository areaRepository;
@@ -110,6 +111,7 @@ public class AreaService {
      * Deletes an empty area and returns its stored name. One that still has members is refused by
      * the database.
      */
+    @Transactional
     public String deleteArea(String name) {
         String stored = requireArea(name);
         try {

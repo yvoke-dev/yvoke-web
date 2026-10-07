@@ -95,6 +95,25 @@ class AreaRepositoryIT {
         assertThat(repository.findByName("IT_AREA_USED")).isPresent();
     }
 
+    /**
+     * Through the service, which runs its reads read-only: deleting must still write, and the
+     * refusal must reach the admin as a named message rather than a database error.
+     */
+    @Test
+    void theServiceDeletesAnEmptyAreaAndNamesTheRefusalForAUsedOne() {
+        repository.upsert(new Area("IT_AREA_USED", "Used", null, false, null, null, null, null, null));
+        insertPlaybook("it-area-used", "IT_AREA_USED");
+        repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null, null));
+
+        assertThatThrownBy(() -> areaService.deleteArea("it_area_used"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Area 'IT_AREA_USED' still has");
+        assertThat(repository.findByName("IT_AREA_USED")).isPresent();
+
+        assertThat(areaService.deleteArea("it_area_empty")).isEqualTo("IT_AREA_EMPTY");
+        assertThat(repository.findByName("IT_AREA_EMPTY")).isEmpty();
+    }
+
     @Test
     void anEmptyAreaCanBeDeleted() {
         repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null, null));
