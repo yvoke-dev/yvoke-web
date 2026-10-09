@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.core.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +91,35 @@ class ChatCancellationServiceTest {
 
         assertFalse(next.isInterrupted(),
             "The subsequent generation must NOT be interrupted by an expired cancellation sentinel");
+    }
+
+    @Test
+    void defaultSentinelTtlIsSixtySeconds() {
+        assertThat(ChatCancellationService.DEFAULT_SENTINEL_TTL).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void sentinelWithDefaultTtlSurvivesFiftySecondsAndExpiresAfterSixty() {
+        MutableTestClock clock = new MutableTestClock(Instant.now());
+        ChatCancellationService timedService =
+            new ChatCancellationService(ChatCancellationService.DEFAULT_SENTINEL_TTL, clock);
+
+        UUID id = UUID.randomUUID();
+        timedService.stop(id);
+
+        // 50 seconds in: within 60s TTL, registration must still be interrupted
+        clock.advance(Duration.ofSeconds(50));
+        TestThread threadWithinTtl = new TestThread();
+        timedService.register(id, threadWithinTtl);
+        assertTrue(threadWithinTtl.isInterrupted(), "Registration within 60s must be interrupted");
+
+        // Stop again and advance past 60s
+        timedService.stop(id);
+        clock.advance(Duration.ofSeconds(61));
+        TestThread threadAfterTtl = new TestThread();
+        timedService.register(id, threadAfterTtl);
+        assertFalse(threadAfterTtl.isInterrupted(),
+            "Registration after 60s must NOT be interrupted");
     }
 
     @Test

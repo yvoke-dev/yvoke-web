@@ -121,4 +121,13 @@ class DesktopSyncDtoValidationTest {
             null, null, null, null, null, null, null, null, null, null, steps);
         assertThat(validator.validate(req)).isNotEmpty();
     }
+
+    @Test
+    void rejectsOrchestratorRunStepWithOverlongPlaybookName() {
+        List<OrchestratorRunRequest.Step> steps = List.of(new OrchestratorRunRequest.Step(0, "spec",
+            0, "p".repeat(256), "m", "high", null, null, null, null, null, null, null, null, null));
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
+            null, null, null, null, null, null, null, null, null, null, steps);
+        assertThat(validator.validate(req)).isNotEmpty();
+    }
 }
