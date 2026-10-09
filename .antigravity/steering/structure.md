@@ -19,7 +19,7 @@ yvoke/
 ├── config/                 # eclipse-java-google-style.xml — the format Spotless applies
 ├── docker/                 # Docker config files
 │   ├── db/                 # Database migrations and Flyway Dockerfile
-│   │   └── migration/      # Flyway SQL scripts — consolidated V1__init_schema.sql (schema + indexes + partition triggers + tag-scoped graph identity + confluence_instances + job/document uniqueness, no seed) PLUS incremental V2..V11; add the next as V12, never edit an existing one
+│   │   └── migration/      # Flyway SQL scripts — consolidated V1__init_schema.sql (schema + indexes + partition triggers + tag-scoped graph identity + confluence_instances + job/document uniqueness, no seed) PLUS incremental V2..V12 (incl. message_tool_calls); add the next as V13, never edit an existing one
 │   └── postgres/           # Custom Postgres Dockerfile (pgvector + pg_search)
 ├── k8s/                    # Kubernetes deployment (Kustomize + sops-encrypted secrets, decrypted by the KSOPS exec plugin — kustomize build --enable-alpha-plugins --enable-exec)
 │   └── app/                # Namespace and root kustomization

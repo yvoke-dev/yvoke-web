@@ -38,7 +38,8 @@ public class SchemaPresenceIT {
         "section_summaries",
         "audit_log",
         "agent_runs",
-        "agent_steps"
+        "agent_steps",
+        "message_tool_calls"
     );
 
     @Test
@@ -216,6 +217,51 @@ public class SchemaPresenceIT {
             assertThat(referencedMessageId).isNull();
         } finally {
             jdbcTemplate.update("DELETE FROM llm_call_logs WHERE id IN (?, ?)", logId1, logId2);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+        }
+    }
+
+    @Test
+    public void testMigrationV12MessageToolCallsTableAndCascadeDeletion() {
+        assertThat(tableExists("message_tool_calls")).isTrue();
+        assertThat(indexExists("message_tool_calls", "idx_message_tool_calls_created_at")).isTrue();
+
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+            userId, "oid-" + userId, "v12-" + userId + "@example.com", "User 12");
+        UUID convId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+            convId, userId, "v12-conv");
+        UUID messageId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+            messageId, convId, "assistant", "Response with tool calls");
+
+        UUID toolCallId = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+            INSERT INTO message_tool_calls (id, message_id, seq, tool_call_id, tool_name, arguments, result, is_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            toolCallId, messageId, 0, "call_123", "search_corpus", "{\"q\":\"test\"}", "found items", false);
+
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM message_tool_calls WHERE message_id = ?", Integer.class, messageId);
+            assertThat(count).isEqualTo(1);
+
+            // Delete message and verify ON DELETE CASCADE deletes message_tool_calls
+            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", messageId);
+
+            Integer remainingToolCalls = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM message_tool_calls WHERE id = ?", Integer.class, toolCallId);
+            assertThat(remainingToolCalls).isEqualTo(0);
+        } finally {
+            jdbcTemplate.update("DELETE FROM message_tool_calls WHERE id = ?", toolCallId);
+            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", messageId);
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
             jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
         }

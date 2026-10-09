@@ -91,6 +91,12 @@ public class AgentRunRepository {
             .query(AgentRunRepository::mapRow).optional();
     }
 
+    public Optional<AgentRun> findByMessageId(UUID messageId) {
+        return jdbcClient
+            .sql(SELECT_COLUMNS + " WHERE message_id = :messageId ORDER BY started_at DESC LIMIT 1")
+            .param("messageId", messageId).query(AgentRunRepository::mapRow).optional();
+    }
+
     /** Most recent runs first, for the admin trace viewer. */
     public List<AgentRun> findRecent(int limit) {
         return jdbcClient.sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
