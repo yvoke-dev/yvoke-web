@@ -1550,4 +1550,88 @@ public class RagServiceAgenticTest {
         assertThat(offered).as("the allow-list still governs everything that is not an extra tool")
             .doesNotContain("oim_search");
     }
+
+    @Test
+    public void testToolBannerWithTraceEnabled_EmitsIdAndSanitizesArgs() {
+        ToolCallback mockSearchTool = mock(ToolCallback.class);
+        ToolDefinition toolDef = mock(ToolDefinition.class);
+        when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
+        when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
+        when(mockSearchTool.call(anyString())).thenReturn("chunk response");
+
+        ragService.getToolRegistry().put("oim_search", mockSearchTool);
+
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null, List.of(new LlmToolCallDelta(0,
+                        "call_id_999", "oim_search", "{\n  \"query\": \"Person\"\n}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(
+                        new LlmResponseChunk("Done.", null, null, new LlmUsage(40, 50, 90, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("test").modelOverride("model-override")
+                .allowedTools(List.of("oim_search")).traceToolCalls(true).build(),
+            tokens::add);
+
+        String answer = String.join("", tokens);
+        assertThat(answer).contains(
+            "🔧 *Calling tool:* oim_search({   \"query\": \"Person\" }) #call_id_999\n\n");
+    }
+
+    @Test
+    public void testToolBannerWithTraceDisabled_DoesNotEmitId() {
+        ToolCallback mockSearchTool = mock(ToolCallback.class);
+        ToolDefinition toolDef = mock(ToolDefinition.class);
+        when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
+        when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
+        when(mockSearchTool.call(anyString())).thenReturn("chunk response");
+
+        ragService.getToolRegistry().put("oim_search", mockSearchTool);
+
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null, List.of(new LlmToolCallDelta(0,
+                        "call_id_999", "oim_search", "{\n  \"query\": \"Person\"\n}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(
+                        new LlmResponseChunk("Done.", null, null, new LlmUsage(40, 50, 90, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        ragService
+            .generateAgenticAnswer(
+                AgenticRequest.builder().query("test").modelOverride("model-override")
+                    .allowedTools(List.of("oim_search")).traceToolCalls(false).build(),
+                tokens::add);
+
+        String answer = String.join("", tokens);
+        assertThat(answer)
+            .contains("🔧 *Calling tool:* oim_search({   \"query\": \"Person\" })\n\n");
+        assertThat(answer).doesNotContain("#call_id_999");
+    }
 }

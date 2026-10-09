@@ -13,11 +13,15 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -75,6 +79,9 @@ public class ChatMessageService {
     private final AsyncTaskExecutor taskExecutor;
     private final ChatCancellationService chatCancellationService;
     private final OrchestrationService orchestrationService;
+    private final MessageToolCallRepository messageToolCallRepository;
+    private final ToolCallTraceExtractor toolCallTraceExtractor;
+    private final ChatProperties chatProperties;
 
     public ChatMessageService(MessageRepository messageRepository,
         ConversationRepository conversationRepository,
@@ -84,6 +91,22 @@ public class ChatMessageService {
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
         ChatCancellationService chatCancellationService,
         OrchestrationService orchestrationService) {
+        this(messageRepository, conversationRepository, chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, orchestrationService, null, null, null);
+    }
+
+    @Autowired
+    public ChatMessageService(MessageRepository messageRepository,
+        ConversationRepository conversationRepository,
+        ChatConversationService chatConversationService, RagService ragService,
+        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
+        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
+        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
+        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
+        @Nullable MessageToolCallRepository messageToolCallRepository,
+        @Nullable ToolCallTraceExtractor toolCallTraceExtractor,
+        @Nullable ChatProperties chatProperties) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -95,6 +118,9 @@ public class ChatMessageService {
         this.taskExecutor = taskExecutor;
         this.chatCancellationService = chatCancellationService;
         this.orchestrationService = orchestrationService;
+        this.messageToolCallRepository = messageToolCallRepository;
+        this.toolCallTraceExtractor = toolCallTraceExtractor;
+        this.chatProperties = chatProperties;
     }
 
     public List<Message> getMessages(UUID conversationId) {
@@ -194,6 +220,7 @@ public class ChatMessageService {
                     linkRetrievalLogs(ragResult, assistantMessageId);
                     // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
                 });
+                saveToolCallTrace(ragResult, assistantMessageId);
             } catch (CancellationException e) {
                 Thread.interrupted(); // Clear interrupted status so DB updates can execute
                 log.info("Async generation cancelled by user for conversation: {}", conversationId);
@@ -345,6 +372,7 @@ public class ChatMessageService {
             transactionTemplate.executeWithoutResult(
                 status -> saveAssistantMessage(ragResult, prepared.conversationId(),
                     assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
+            saveToolCallTrace(ragResult, assistantMessageId);
 
             sink.accept(formatDoneToken(ragResult, assistantMessageId));
         } catch (CancellationException e) {
@@ -398,6 +426,7 @@ public class ChatMessageService {
             String content = assistantContent.toString();
             transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
                 prepared.conversationId(), assistantMessageId, content, prepared.modelToUse()));
+            saveToolCallTrace(ragResult, assistantMessageId);
 
             return new Message(assistantMessageId, prepared.conversationId(), "assistant", content,
                 null, ragResult.retrievedChunkIds(), Collections.emptyList(), Instant.now(),
@@ -546,7 +575,7 @@ public class ChatMessageService {
             .modelOverride(prepared.modelToUse()).history(prepared.history())
             .systemPromptOverride(prepared.systemPrompt()).allowedTools(prepared.allowedTools())
             .thinkingLevel(prepared.thinkingLevel()).codeExecution(prepared.codeExecution())
-            .build();
+            .traceToolCalls(chatProperties != null && chatProperties.traceToolCalls()).build();
     }
 
     /**
@@ -574,6 +603,26 @@ public class ChatMessageService {
         // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
 
         linkRetrievalLogs(ragResult, assistantMessageId);
+    }
+
+    private void saveToolCallTrace(RagResult ragResult, UUID assistantMessageId) {
+        if (chatProperties == null || !chatProperties.traceToolCalls() || ragResult == null
+            || ragResult.messages() == null) {
+            return;
+        }
+        if (toolCallTraceExtractor == null || messageToolCallRepository == null) {
+            return;
+        }
+        try {
+            List<ToolCallRecord> records =
+                toolCallTraceExtractor.extract(assistantMessageId, ragResult.messages());
+            if (!records.isEmpty()) {
+                messageToolCallRepository.insertAll(assistantMessageId, records);
+            }
+        } catch (Exception e) {
+            log.error("Failed to persist tool call trace for assistant message {}",
+                assistantMessageId, e);
+        }
     }
 
     private void linkRetrievalLogs(RagResult ragResult, UUID assistantMessageId) {

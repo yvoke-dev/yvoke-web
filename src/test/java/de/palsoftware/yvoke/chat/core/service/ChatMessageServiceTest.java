@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,13 +28,18 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.llm.core.model.LlmMessage;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -63,6 +69,9 @@ public class ChatMessageServiceTest {
     private PlatformTransactionManager transactionManager;
     private AsyncTaskExecutor taskExecutor;
     private ChatCancellationService chatCancellationService;
+    private MessageToolCallRepository messageToolCallRepository;
+    private ToolCallTraceExtractor toolCallTraceExtractor;
+    private ChatProperties chatProperties;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
@@ -76,11 +85,15 @@ public class ChatMessageServiceTest {
         transactionManager = mock(PlatformTransactionManager.class);
         taskExecutor = mock(AsyncTaskExecutor.class);
         chatCancellationService = mock(ChatCancellationService.class);
+        messageToolCallRepository = mock(MessageToolCallRepository.class);
+        toolCallTraceExtractor = mock(ToolCallTraceExtractor.class);
+        chatProperties = new ChatProperties(true, List.of("model1"), true, false);
 
         chatMessageService = new ChatMessageService(messageRepository,
             mock(ConversationRepository.class), chatConversationService, ragService,
             retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class));
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, chatProperties);
     }
 
     @Test
@@ -1570,6 +1583,238 @@ public class ChatMessageServiceTest {
         assertThat(delegatedMessageId.getValue())
             .as("the assistant placeholder exists and would satisfy the FK — that is the trap")
             .isNotEqualTo(assistantMessageId);
+    }
+
+    @Test
+    public void testPersistenceFailureIsolation_DoesNotRollbackAssistantMessage() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        RagResult ragResult =
+            new RagResult(List.of(), List.of(asstMsg, toolMsg), null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag ON
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+
+        when(toolCallTraceExtractor.extract(eq(assistantMessageId), any()))
+            .thenReturn(List.of(new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+                "call_1", "tool", "{}", "result", false, Instant.now())));
+        // Simulate repository failure during tool call persistence
+        doThrow(new RuntimeException("Database error during tool trace save"))
+            .when(messageToolCallRepository).insertAll(eq(assistantMessageId), any());
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        List<String> tokens = new ArrayList<>();
+        service.stream(prepared, assistantMessageId, tokens::add);
+
+        // Verify that assistant message is still saved with status "done" despite tool trace
+        // failure
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(2)).save(messageCaptor.capture());
+        Message assistantMessage = messageCaptor.getAllValues().stream()
+            .filter(m -> "assistant".equals(m.role())).findFirst().orElseThrow();
+        assertThat(assistantMessage.status()).isEqualTo("done");
+        assertThat(assistantMessage.id()).isEqualTo(assistantMessageId);
+    }
+
+    @Test
+    public void testFeatureFlagDisabled_SkipsToolCallPersistence() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        RagResult ragResult =
+            new RagResult(List.of(), List.of(asstMsg, toolMsg), null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag OFF
+        ChatProperties disabledProps = new ChatProperties(true, List.of("model1"), true, false);
+        ChatMessageService service = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, disabledProps);
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        List<String> tokens = new ArrayList<>();
+        service.stream(prepared, assistantMessageId, tokens::add);
+
+        verifyNoInteractions(messageToolCallRepository);
+        verifyNoInteractions(toolCallTraceExtractor);
+    }
+
+    @Test
+    public void testFeatureFlagEnabled_ExtractsAndSavesToolCalls() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag ON
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+            "call_1", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(assistantMessageId, messages))
+            .thenReturn(List.of(record));
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        List<String> tokens = new ArrayList<>();
+        service.stream(prepared, assistantMessageId, tokens::add);
+
+        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // stream() saveAssistantMessage commit
+        inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
+        verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
+    }
+
+    @Test
+    public void testGenerateSync_ExtractsAndSavesToolCallsOutsideTransaction() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+            "call_1", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(assistantMessageId, messages))
+            .thenReturn(List.of(record));
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        service.generateSync(prepared, assistantMessageId);
+
+        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // generateSync() saveAssistantMessage
+                                                          // commit
+        inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
+        verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
+    }
+
+    @Test
+    public void testPrepareAndSubmitAsync_PersistsToolCallsOutsideTransaction() {
+        UUID conversationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, userId, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_async", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_async", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), UUID.randomUUID(), 0,
+            "call_async", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(any(), eq(messages))).thenReturn(List.of(record));
+
+        UUID messageId = service.prepareAndSubmitAsync(conversationId, "async query", "test-pb");
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskExecutor).submit(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+
+        verify(messageRepository).updateContentAndStatus(eq(messageId), any(), any(), any(), any(),
+            any(), any(), any(), any(), eq("done"), any());
+
+        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // initial assistant message commit
+        inOrder.verify(transactionManager).commit(any()); // async completion commit
+        inOrder.verify(messageToolCallRepository).insertAll(eq(messageId), eq(List.of(record)));
     }
 
     private static JsonNode parseDoneEvent(String line) {
