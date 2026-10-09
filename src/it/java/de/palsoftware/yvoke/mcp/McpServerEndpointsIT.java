@@ -751,4 +751,17 @@ public class McpServerEndpointsIT {
             areaRepository.delete(area);
         }
     }
+
+    @Test
+    public void computeToolsExecuteOverMcpJsonRpc() throws Exception {
+        try (McpSession session = establishSession()) {
+            HttpResponse<String> response = callTool(session, "100", "statistics",
+                    "{ \"values\": [1.0, 2.0, 3.0] }");
+            assertEquals(200, response.statusCode());
+            String body = response.body();
+            assertTrue(body.contains("\\\"count\\\":3"), "statistics count in MCP response — BODY=" + body);
+            assertTrue(body.contains("\\\"mean\\\":2.0"), "statistics mean in MCP response — BODY=" + body);
+            assertTrue(body.contains("\\\"sum\\\":6.0"), "statistics sum in MCP response — BODY=" + body);
+        }
+    }
 }

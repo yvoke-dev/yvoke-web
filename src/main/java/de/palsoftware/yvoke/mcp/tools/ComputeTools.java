@@ -8,12 +8,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -63,8 +62,18 @@ public class ComputeTools {
 
     private static final int MAX_EXPRESSION_LENGTH = 1000;
 
-    private static final Map<String, Long> UNIT_MS = Map.of("milliseconds", 1L, "seconds", 1_000L,
-        "minutes", 60_000L, "hours", 3_600_000L, "days", 86_400_000L, "weeks", 604_800_000L);
+    private static final Map<String, Long> UNIT_MS;
+
+    static {
+        Map<String, Long> units = new LinkedHashMap<>();
+        units.put("milliseconds", 1L);
+        units.put("seconds", 1_000L);
+        units.put("minutes", 60_000L);
+        units.put("hours", 3_600_000L);
+        units.put("days", 86_400_000L);
+        units.put("weeks", 604_800_000L);
+        UNIT_MS = Collections.unmodifiableMap(units);
+    }
 
     private final ObjectMapper objectMapper;
 
@@ -86,7 +95,7 @@ public class ComputeTools {
         }
         try {
             double result = safeCalculate(expression.trim());
-            Map<String, Object> response = new HashMap<>();
+            Map<String, Object> response = new LinkedHashMap<>();
             response.put("expression", expression.trim());
             if (result == Math.floor(result) && !Double.isInfinite(result)
                 && Math.abs(result) < 1e15) {
@@ -134,7 +143,8 @@ public class ComputeTools {
         if (to == null || to.isBlank()) {
             return "date_diff error: 'to' must not be null or blank";
         }
-        String resolvedUnit = (unit == null || unit.isBlank()) ? "days" : unit.trim().toLowerCase();
+        String resolvedUnit =
+            (unit == null || unit.isBlank()) ? "days" : unit.trim().toLowerCase(Locale.ROOT);
         Long unitMultiplier = UNIT_MS.get(resolvedUnit);
         if (unitMultiplier == null) {
             return "date_diff error: unknown unit '" + resolvedUnit + "'. Supported: "
@@ -144,7 +154,7 @@ public class ComputeTools {
             long fromMs = parseToEpochMilli(from.trim());
             long toMs = parseToEpochMilli(to.trim());
             double difference = (double) (toMs - fromMs) / unitMultiplier;
-            Map<String, Object> response = new HashMap<>();
+            Map<String, Object> response = new LinkedHashMap<>();
             response.put("from", from.trim());
             response.put("to", to.trim());
             response.put("unit", resolvedUnit);
@@ -183,7 +193,7 @@ public class ComputeTools {
             }
         }
         int count = values.size();
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("count", count);
 
         if (count == 0) {
@@ -303,7 +313,8 @@ public class ComputeTools {
                     && (Character.isLetterOrDigit(input.charAt(j)) || input.charAt(j) == '_')) {
                     j++;
                 }
-                tokens.add(new Token(TokenType.NAME, 0.0, input.substring(i, j).toLowerCase()));
+                tokens.add(
+                    new Token(TokenType.NAME, 0.0, input.substring(i, j).toLowerCase(Locale.ROOT)));
                 i = j;
                 continue;
             }
@@ -338,11 +349,24 @@ public class ComputeTools {
     }
 
     private static class Parser {
+        private static final int MAX_NESTING_DEPTH = 50;
         private final List<Token> tokens;
         private int pos = 0;
+        private int depth = 0;
 
         Parser(List<Token> tokens) {
             this.tokens = tokens;
+        }
+
+        private void enterNesting() {
+            if (++depth > MAX_NESTING_DEPTH) {
+                throw new IllegalArgumentException(
+                    "expression nesting too deep (max " + MAX_NESTING_DEPTH + ")");
+            }
+        }
+
+        private void exitNesting() {
+            depth--;
         }
 
         double parse() {
@@ -398,8 +422,13 @@ public class ComputeTools {
             double base = parseUnary();
             if (isOp("^")) {
                 pos++;
-                double exponent = parsePower(); // right-associative
-                return Math.pow(base, exponent);
+                enterNesting();
+                try {
+                    double exponent = parsePower(); // right-associative
+                    return Math.pow(base, exponent);
+                } finally {
+                    exitNesting();
+                }
             }
             return base;
         }
@@ -407,11 +436,21 @@ public class ComputeTools {
         private double parseUnary() {
             if (isOp("+")) {
                 pos++;
-                return parseUnary();
+                enterNesting();
+                try {
+                    return parseUnary();
+                } finally {
+                    exitNesting();
+                }
             }
             if (isOp("-")) {
                 pos++;
-                return -parseUnary();
+                enterNesting();
+                try {
+                    return -parseUnary();
+                } finally {
+                    exitNesting();
+                }
             }
             return parsePrimary();
         }
@@ -427,7 +466,13 @@ public class ComputeTools {
             }
             if (t.type() == TokenType.LPAREN) {
                 pos++;
-                double value = parseExpression();
+                enterNesting();
+                double value;
+                try {
+                    value = parseExpression();
+                } finally {
+                    exitNesting();
+                }
                 Token close = peek();
                 if (close == null || close.type() != TokenType.RPAREN) {
                     throw new IllegalArgumentException("missing closing parenthesis");
@@ -441,13 +486,18 @@ public class ComputeTools {
                 Token next = peek();
                 if (next != null && next.type() == TokenType.LPAREN) {
                     pos++;
+                    enterNesting();
                     List<Double> args = new ArrayList<>();
-                    if (peek() != null && peek().type() != TokenType.RPAREN) {
-                        args.add(parseExpression());
-                        while (peek() != null && peek().type() == TokenType.COMMA) {
-                            pos++;
+                    try {
+                        if (peek() != null && peek().type() != TokenType.RPAREN) {
                             args.add(parseExpression());
+                            while (peek() != null && peek().type() == TokenType.COMMA) {
+                                pos++;
+                                args.add(parseExpression());
+                            }
                         }
+                    } finally {
+                        exitNesting();
                     }
                     Token close = peek();
                     if (close == null || close.type() != TokenType.RPAREN) {
