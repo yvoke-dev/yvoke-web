@@ -88,7 +88,7 @@ class DesktopSyncDtoValidationTest {
     @Test
     void rejectsOrchestratorRunWithOverlongProfileName() {
         OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null,
-            "p".repeat(201), null, null, null, null, null, null, null, null, null, null, null);
+            "p".repeat(256), null, null, null, null, null, null, null, null, null, null, null);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 

@@ -60,6 +60,24 @@ class ChatAsyncControllerTest {
     }
 
     @Test
+    void ownershipFailureRejectsBeforeAcquiringConcurrencyPermit() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+        doThrow(new AccessDeniedException("Forbidden")).when(chatConversationService)
+            .verifyOwnership(any(UUID.class), eq(false));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+
+        verify(limiter, never()).tryAcquire();
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
+    }
+
+    @Test
     void blankContentReturnsBadRequest() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);

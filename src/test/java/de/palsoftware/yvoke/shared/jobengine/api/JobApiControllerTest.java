@@ -148,7 +148,15 @@ class JobApiControllerTest {
 
         JobDto dto = controller.get(id);
 
-        assertThat(dto).isEqualTo(JobDto.from(job));
+        assertThat(dto.id()).isEqualTo(id);
+        assertThat(dto.kind()).isEqualTo(ItTestJobHandler.KIND);
+        assertThat(dto.status()).isEqualTo(JobStatus.RUNNING);
+        assertThat(dto.sourceRef()).isEqualTo("ref");
+        assertThat(dto.collectionName()).isEqualTo("col");
+        assertThat(dto.tags()).containsExactly("1.0");
+        assertThat(dto.progress()).isEqualTo(0);
+        assertThat(dto.attempts()).isEqualTo(1);
+        assertThat(dto.createdAt()).isNotNull();
     }
 
     @Test

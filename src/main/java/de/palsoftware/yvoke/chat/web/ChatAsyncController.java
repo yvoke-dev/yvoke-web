@@ -44,6 +44,9 @@ public class ChatAsyncController {
         if (content == null || content.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        // Verify conversation ownership before acquiring a concurrency permit
+        chatConversationService.verifyOwnership(id, false);
+
         if (!concurrencyLimiter.tryAcquire()) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "The assistant is at capacity right now. Please retry in a moment.");

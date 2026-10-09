@@ -17,7 +17,14 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class ChatCancellationService {
     private static final Logger log = LoggerFactory.getLogger(ChatCancellationService.class);
-    static final Duration DEFAULT_SENTINEL_TTL = Duration.ofSeconds(10);
+
+    /**
+     * Default TTL for {@link CancelledSentinel}. A 60-second window gives ample headroom for slow
+     * database writes, connection acquisition, or context preparation during the reset->register
+     * turn initialization phase, while ensuring stale cancellation sentinels are reliably evicted
+     * and cannot leak memory or affect subsequent turns.
+     */
+    static final Duration DEFAULT_SENTINEL_TTL = Duration.ofSeconds(60);
 
     // Values can be either a Thread or a CancelledSentinel
     private final ConcurrentHashMap<UUID, Object> activeTasks = new ConcurrentHashMap<>();
