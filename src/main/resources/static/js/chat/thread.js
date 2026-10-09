@@ -322,7 +322,10 @@ import { createSseAccumulator } from './sse-accumulator.js';
             'query_json_objects': 'Query JSON Objects',
             'search_graph_entities': 'Search Graph Entities',
             'verify_citations': 'Verify Citations',
-            'ask_clarifying_question': 'Ask Clarifying Question'
+            'ask_clarifying_question': 'Ask Clarifying Question',
+            'calculate': 'Calculate',
+            'statistics': 'Statistics',
+            'date_diff': 'Date Difference'
         };
 
 

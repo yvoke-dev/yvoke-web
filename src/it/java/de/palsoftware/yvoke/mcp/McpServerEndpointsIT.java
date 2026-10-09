@@ -300,7 +300,8 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas");
+                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas",
+                    "calculate", "statistics", "date_diff");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
