@@ -40,6 +40,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.RagAdminViewService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -47,6 +48,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.ui.Model;
 import org.mockito.InOrder;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
@@ -239,5 +242,33 @@ class RagAdminControllerTest {
             .file(new MockMultipartFile("file", "p.md", "text/markdown", "text".getBytes()))
             .param("area", "PingID")).andExpect(status().is3xxRedirection());
         verify(systemPromptService).importPromptFromMarkdown("text", "p", "PingID");
+    }
+
+    @Test
+    void testExportPrompt_escapesFilenameAgainstHeaderInjection() {
+        String unsafeName = "malicious\"; dummy=\"";
+        when(systemPromptService.exportPromptToMarkdown(unsafeName))
+            .thenReturn("---\nname: malicious\n---\nHello");
+
+        var response = controller.exportPrompt(unsafeName);
+
+        String disposition = response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+        assertThat(disposition).doesNotContain("filename=\"malicious\"; dummy=\"");
+        assertThat(disposition).isEqualTo(ContentDisposition.attachment()
+            .filename(unsafeName + ".md", StandardCharsets.UTF_8).build().toString());
+    }
+
+    @Test
+    void testExportPlaybook_escapesFilenameAgainstHeaderInjection() {
+        String unsafeName = "malicious\"; dummy=\"";
+        when(playbookService.exportPlaybookToMarkdown(unsafeName))
+            .thenReturn("---\nname: malicious\n---\nHello");
+
+        var response = controller.exportPlaybook(unsafeName);
+
+        String disposition = response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+        assertThat(disposition).doesNotContain("filename=\"malicious\"; dummy=\"");
+        assertThat(disposition).isEqualTo(ContentDisposition.attachment()
+            .filename(unsafeName + ".md", StandardCharsets.UTF_8).build().toString());
     }
 }

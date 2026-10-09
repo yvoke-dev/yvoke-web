@@ -258,4 +258,149 @@ class JsonImportJobHandlerTest {
             List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "objects.json", List.of("1.0"),
             null);
     }
+
+    /**
+     * CORE-SURVEY-03: RFC 8259 §8.1 mandates UTF-8 for JSON. Using new FileReader(file) binds to
+     * the platform default charset (Charset.defaultCharset()), causing mojibake or parse errors on
+     * systems with non-UTF-8 defaults (e.g. Windows-1252, ISO-8859-1). Must use
+     * Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8).
+     */
+    @Test
+    void jsonlParsingUsesExplicitUtf8CharsetRatherThanPlatformDefault() throws Exception {
+        String source = Files.readString(
+            Path.of("src/main/java/de/palsoftware/yvoke/ingest/worker/JsonImportJobHandler.java"),
+            StandardCharsets.UTF_8);
+        assertThat(source).as(
+            "FileReader without explicit charset uses platform default encoding (mojibake risk); "
+                + "must use Files.newBufferedReader(..., StandardCharsets.UTF_8) or specify UTF-8 explicitly")
+            .doesNotContain("new FileReader(").contains("StandardCharsets.UTF_8");
+    }
+
+    @Test
+    void aJsonlFileWithMultibyteUtf8CharactersIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("multibyte.jsonl");
+        Files.writeString(jsonFile, "{\"city\":\"München\",\"desc\":\"東京 🚀\"}\n",
+            StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("city", "München", "desc", "東京 🚀")), "multibyte.jsonl", List.of("1.0"),
+            null);
+    }
+
+    @Test
+    void emptyJsonlFileProcessesZeroObjects() throws Exception {
+        jsonFile = tempDir.resolve("empty.jsonl");
+        Files.createFile(jsonFile);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(0);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(), "empty.jsonl",
+            List.of("1.0"), null);
+    }
+
+    @Test
+    void singleLineJsonlWithoutNewlineIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("single_no_nl.jsonl");
+        Files.writeString(jsonFile, "{\"name\":\"Single\"}", StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("name", "Single")), "single_no_nl.jsonl", List.of("1.0"), null);
+    }
+
+    @Test
+    void largeLineJsonlIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("large_line.jsonl");
+        String bigPayload = "x".repeat(1_000_000);
+        Files.writeString(jsonFile, "{\"big\":\"" + bigPayload + "\"}\n", StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("big", bigPayload)), "large_line.jsonl", List.of("1.0"), null);
+    }
+
+    @Test
+    void multilingualMultibyteUtf8ContentIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("multilingual.jsonl");
+        String text = "Hello 🌍 世界, Привет, שָׁלוֹם, ñoño, €uro, 🔥 🚀 🧙‍♂️ 👩‍💻";
+        Files.writeString(jsonFile, "{\"text\":\"" + text + "\"}\n", StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(Map.of("text", text)),
+            "multilingual.jsonl", List.of("1.0"), null);
+    }
+
+    @Test
+    void aJsonlFileWithBomIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("with_bom.jsonl");
+        Files.writeString(jsonFile, "\uFEFF{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n",
+            StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(2);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "with_bom.jsonl",
+            List.of("1.0"), null);
+    }
+
+    @Test
+    void aJsonlFileWithBomOnOwnLineIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("bom_own_line.jsonl");
+        Files.writeString(jsonFile, "\uFEFF\n{\"name\":\"Solo\"}\n", StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("name", "Solo")), "bom_own_line.jsonl", List.of("1.0"), null);
+    }
+
+    @Test
+    void aJsonlFileWithOnlyBomProcessesZeroObjects() throws Exception {
+        jsonFile = tempDir.resolve("only_bom.jsonl");
+        Files.writeString(jsonFile, "\uFEFF\n", StandardCharsets.UTF_8);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(0);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(), "only_bom.jsonl",
+            List.of("1.0"), null);
+    }
+
+    @Test
+    void aJsonlFileWithRawUtf8BomBytesIsParsedCorrectly() throws Exception {
+        jsonFile = tempDir.resolve("raw_bytes_bom.jsonl");
+        byte[] bomBytes = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] payloadBytes = "{\"name\":\"BinaryBom\"}\n".getBytes(StandardCharsets.UTF_8);
+        byte[] fullContent = new byte[bomBytes.length + payloadBytes.length];
+        System.arraycopy(bomBytes, 0, fullContent, 0, bomBytes.length);
+        System.arraycopy(payloadBytes, 0, fullContent, bomBytes.length, payloadBytes.length);
+        Files.write(jsonFile, fullContent);
+        JobContext ctx = contextFor(JobStatus.RUNNING);
+
+        JobCounts counts = handler.run(ctx);
+
+        assertThat(counts.jsonObjects()).isEqualTo(1);
+        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
+            List.of(Map.of("name", "BinaryBom")), "raw_bytes_bom.jsonl", List.of("1.0"), null);
+    }
 }

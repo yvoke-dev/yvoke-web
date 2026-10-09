@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -123,7 +124,9 @@ public class OrchestratorAdminController {
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + ".json\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(name + ".json", StandardCharsets.UTF_8)
+                    .build().toString())
             .contentType(MediaType.APPLICATION_JSON).contentLength(bytes.length).body(resource);
     }
 

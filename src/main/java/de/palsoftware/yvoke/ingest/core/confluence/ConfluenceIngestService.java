@@ -526,10 +526,11 @@ public class ConfluenceIngestService {
         // "Here is a summary of the section:" summary in this collection. The prompt is resolved
         // before the summarizer starts, so a prompt deleted mid-crawl fails one page rather than
         // three hundred.
-        if (summariesEnabled(ctx.job().settings())) {
+        Map<String, Object> jobSettings = job != null ? job.settings() : null;
+        if (summariesEnabled(jobSettings)) {
             ctx.report(JobStep.INJECT, 90, "Generating section summaries");
-            sectionSummarizer.generateSummaries(documentId, sections, ctx.job().id(), ctx,
-                ingestPrompts.requireSummarizePromptText(ctx.job().settings(),
+            sectionSummarizer.generateSummaries(documentId, sections, jobId, ctx,
+                ingestPrompts.requireSummarizePromptText(jobSettings,
                     "section summaries for Confluence page '" + title + "'"));
         }
 

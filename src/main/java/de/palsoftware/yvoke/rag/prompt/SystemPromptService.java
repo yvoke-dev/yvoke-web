@@ -94,7 +94,7 @@ public class SystemPromptService {
         return names.isEmpty() ? "(none registered)" : String.join(", ", names);
     }
 
-    @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
+    @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public Optional<SystemPrompt> getPrompt(String name) {
         if (name == null || name.isBlank()) {
@@ -127,7 +127,7 @@ public class SystemPromptService {
         return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public void savePrompt(String name, SystemPromptType type, String systemPrompt,
         String description, String area) {
@@ -145,7 +145,7 @@ public class SystemPromptService {
             description != null ? description.trim() : "", storedArea);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name",
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public void deletePrompt(String name) {
         if (name == null || name.isBlank()) {
@@ -176,6 +176,8 @@ public class SystemPromptService {
      * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
      * into {@code fallbackArea}, the area picked on the import form.
      */
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#result?.name()?.trim()",
+        condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
     public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
         if (mdContent == null) {

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.shared.jobengine.api.dto.JobDto;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -137,6 +138,25 @@ class JobApiControllerTest {
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void getKnownJobReturnsJobDto() {
+        UUID id = UUID.randomUUID();
+        IngestionJob job = job(id, JobStatus.RUNNING);
+        when(jobRepository.findById(id)).thenReturn(Optional.of(job));
+
+        JobDto dto = controller.get(id);
+
+        assertThat(dto.id()).isEqualTo(id);
+        assertThat(dto.kind()).isEqualTo(ItTestJobHandler.KIND);
+        assertThat(dto.status()).isEqualTo(JobStatus.RUNNING);
+        assertThat(dto.sourceRef()).isEqualTo("ref");
+        assertThat(dto.collectionName()).isEqualTo("col");
+        assertThat(dto.tags()).containsExactly("1.0");
+        assertThat(dto.progress()).isEqualTo(0);
+        assertThat(dto.attempts()).isEqualTo(1);
+        assertThat(dto.createdAt()).isNotNull();
     }
 
     @Test

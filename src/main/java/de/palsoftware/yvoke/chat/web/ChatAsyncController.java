@@ -1,13 +1,16 @@
 package de.palsoftware.yvoke.chat.web;
 
+import de.palsoftware.yvoke.chat.api.model.MessageDto;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class ChatAsyncController {
@@ -22,11 +26,14 @@ public class ChatAsyncController {
 
     private final ChatMessageService chatMessageService;
     private final ChatConversationService chatConversationService;
+    private final GenerationConcurrencyLimiter concurrencyLimiter;
 
     public ChatAsyncController(ChatMessageService chatMessageService,
-        ChatConversationService chatConversationService) {
+        ChatConversationService chatConversationService,
+        GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatMessageService = chatMessageService;
         this.chatConversationService = chatConversationService;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     @PostMapping(value = "/chat/{id}/send-async", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -37,12 +44,20 @@ public class ChatAsyncController {
         if (content == null || content.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        // Verify conversation ownership before acquiring a concurrency permit
+        chatConversationService.verifyOwnership(id, false);
+
+        if (!concurrencyLimiter.tryAcquire()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "The assistant is at capacity right now. Please retry in a moment.");
+        }
         try {
-            UUID assistantMessageId =
-                chatMessageService.prepareAndSubmitAsync(id, content, promptName);
+            UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(id, content,
+                promptName, concurrencyLimiter::release);
             return ResponseEntity.accepted()
                 .body(Map.of("assistantMessageId", assistantMessageId.toString()));
         } catch (Exception e) {
+            concurrencyLimiter.release();
             log.error("Failed to prepare and submit async chat", e);
             throw e; // Let standard exception handler or Spring Security filter handle it (e.g.
                      // AccessDeniedException)
@@ -80,6 +95,7 @@ public class ChatAsyncController {
         if ("error".equals(message.status()) || "cancelled".equals(message.status())) {
             status = message.status();
         }
-        return ResponseEntity.ok(Map.of("status", status, "message", message));
+        return ResponseEntity
+            .ok(Map.of("status", status, "message", MessageDto.from(message, null)));
     }
 }

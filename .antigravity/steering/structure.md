@@ -19,7 +19,7 @@ yvoke/
 ├── config/                 # eclipse-java-google-style.xml — the format Spotless applies
 ├── docker/                 # Docker config files
 │   ├── db/                 # Database migrations and Flyway Dockerfile
-│   │   └── migration/      # Flyway SQL scripts — consolidated V1__init_schema.sql (schema + indexes + partition triggers + tag-scoped graph identity + confluence_instances + job/document uniqueness, no seed) PLUS incremental V2..V10; add the next after the highest V<N> on disk, never edit an existing one
+│   │   └── migration/      # Flyway SQL scripts — consolidated V1__init_schema.sql (schema + indexes + partition triggers + tag-scoped graph identity + confluence_instances + job/document uniqueness, no seed) PLUS incremental V2..V11; add the next as V12, never edit an existing one
 │   └── postgres/           # Custom Postgres Dockerfile (pgvector + pg_search)
 ├── k8s/                    # Kubernetes deployment (Kustomize + sops-encrypted secrets, decrypted by the KSOPS exec plugin — kustomize build --enable-alpha-plugins --enable-exec)
 │   └── app/                # Namespace and root kustomization
@@ -117,6 +117,7 @@ yvoke/
 │   │   │   │   │            # which previously each had half the rule and disagreed.
 │   │   │   │   ├── jobengine/ # Postgres-backed background task queue + EnqueueValidator SPI
 │   │   │   │   │   ├── api/ # Job status REST API (/api/jobs/v1)
+│   │   │   │   │   │   └── dto/ # Request/response DTOs for the job API
 │   │   │   │   │   ├── model/ # Job engine records (IngestionJob, EnqueueRequest, steps)
 │   │   │   │   │   ├── repository/ # Job queue repository (claim/enqueue/progress SQL)
 │   │   │   │   │   └── service/ # JobService (claim transaction boundary) + JobWorker poll loop

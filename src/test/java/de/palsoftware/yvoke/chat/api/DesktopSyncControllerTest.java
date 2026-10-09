@@ -408,4 +408,59 @@ class DesktopSyncControllerTest {
         assertThat(playbooks.get(0).codeExecution()).isTrue();
         assertThat(playbooks.get(0).targetAgent()).isEqualTo("specialist");
     }
+
+    @Test
+    void anOversizedOrchestratorRunBatchIsRejectedBeforeReachingTheService() throws Exception {
+        UserService userService = mock(UserService.class);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        StringBuilder stepsJson = new StringBuilder("[");
+        for (int i = 0; i <= 200; i++) {
+            if (i > 0) {
+                stepsJson.append(',');
+            }
+            stepsJson.append("{\"role\":\"specialist\",\"seq\":").append(i).append("}");
+        }
+        stepsJson.append("]");
+
+        String json = """
+            {
+                "conversationId": "%s",
+                "profileName": "OIM",
+                "steps": %s
+            }
+            """.formatted(UUID.randomUUID(), stepsJson);
+
+        mockMvc
+            .perform(post("/api/chat/v1/orchestrator/runs").contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("steps")));
+
+        verify(orchestratorRunService, never()).record(any(), any());
+    }
+
+    @Test
+    void recordOrchestratorRunWithMissingConversationIdIsRejected() throws Exception {
+        UserService userService = mock(UserService.class);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        String json = """
+            {
+                "profileName": "OIM"
+            }
+            """;
+
+        mockMvc.perform(post("/api/chat/v1/orchestrator/runs")
+            .contentType(MediaType.APPLICATION_JSON).content(json))
+            .andExpect(status().isBadRequest());
+
+        verify(orchestratorRunService, never()).record(any(), any());
+    }
 }

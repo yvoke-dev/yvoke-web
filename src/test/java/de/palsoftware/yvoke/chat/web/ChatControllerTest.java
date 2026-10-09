@@ -116,6 +116,18 @@ class ChatControllerTest {
     }
 
     @Test
+    void updateOrchestratorProfile_unownedConversationWithUnknownProfile_throwsForbiddenNotBadRequest() {
+        UUID conversationId = UUID.randomUUID();
+        doThrow(new AccessDeniedException("not your conversation")).when(conversationService)
+            .verifyOwnership(conversationId, false);
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
+
+        verify(orchestratorProfileService, never()).getProfile(any());
+    }
+
+    @Test
     void stopGeneration_verifiesOwnershipBeforeStopping() {
         UUID conversationId = UUID.randomUUID();
 

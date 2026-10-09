@@ -502,13 +502,37 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
             List.of(new LlmToolCallDelta(index, id, name, argsDelta)), null);
     }
 
-    private static LlmUsage usageOf(ResponseUsage usage) {
+    static LlmUsage usageOf(ResponseUsage usage) {
         if (usage == null) {
             return null;
         }
-        return new LlmUsage((int) usage.inputTokens(), (int) usage.outputTokens(),
-            (int) usage.totalTokens(), (int) usage.inputTokensDetails().cachedTokens(),
-            (int) usage.outputTokensDetails().reasoningTokens());
+        int cachedTokens = 0;
+        if (usage._inputTokensDetails() != null) {
+            cachedTokens =
+                usage._inputTokensDetails().asKnown()
+                    .flatMap(details -> details._cachedTokens() != null
+                        ? details._cachedTokens().asKnown()
+                        : Optional.empty())
+                    .map(Long::intValue).orElse(0);
+        }
+        int reasoningTokens = 0;
+        if (usage._outputTokensDetails() != null) {
+            reasoningTokens = usage._outputTokensDetails().asKnown()
+                .flatMap(details -> details._reasoningTokens() != null
+                    ? details._reasoningTokens().asKnown()
+                    : Optional.empty())
+                .map(Long::intValue).orElse(0);
+        }
+        int inputTokens = usage._inputTokens() != null
+            ? usage._inputTokens().asKnown().map(Long::intValue).orElse(0)
+            : 0;
+        int outputTokens = usage._outputTokens() != null
+            ? usage._outputTokens().asKnown().map(Long::intValue).orElse(0)
+            : 0;
+        int totalTokens = usage._totalTokens() != null
+            ? usage._totalTokens().asKnown().map(Long::intValue).orElse(0)
+            : 0;
+        return new LlmUsage(inputTokens, outputTokens, totalTokens, cachedTokens, reasoningTokens);
     }
 
     ResponseCreateParams buildParams(LlmRequest request) {

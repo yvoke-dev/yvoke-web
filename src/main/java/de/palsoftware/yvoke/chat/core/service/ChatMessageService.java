@@ -109,6 +109,7 @@ public class ChatMessageService {
      * HTTP responses <em>before</em> any SSE stream is committed.
      */
     public PreparedChat prepare(UUID conversationId, String userContent, String promptName) {
+        chatCancellationService.reset(conversationId);
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
@@ -137,12 +138,18 @@ public class ChatMessageService {
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
+        return prepareAndSubmitAsync(conversationId, content, promptName, null);
+    }
+
+    public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName,
+        Runnable onComplete) {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
         if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
-            return submitOrchestratedAsync(conversationId, content, orchestratorProfile);
+            return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
+                onComplete);
         }
 
         PreparedChat prepared = prepare(conversationId, content, promptName);
@@ -206,6 +213,14 @@ public class ChatMessageService {
                         prepared.modelToUse());
                 });
             } finally {
+                if (onComplete != null) {
+                    try {
+                        onComplete.run();
+                    } catch (Throwable t) {
+                        log.error("Error executing onComplete callback for conversation: {}",
+                            conversationId, t);
+                    }
+                }
                 LlmCallContextHolder.clear();
                 chatCancellationService.deregister(conversationId, Thread.currentThread());
             }
@@ -219,7 +234,9 @@ public class ChatMessageService {
      * background executor, and lands the final answer in the placeholder assistant message. The
      * per-agent trace is persisted to agent_runs/agent_steps by {@link OrchestrationService}.
      */
-    private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName) {
+    private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName,
+        Runnable onComplete) {
+        chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate
             .execute(status -> saveUserMessage(conversationId, userMessageId, content, null));
@@ -267,6 +284,14 @@ public class ChatMessageService {
                         GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0,
                         0, 0, 0, "error", null));
             } finally {
+                if (onComplete != null) {
+                    try {
+                        onComplete.run();
+                    } catch (Throwable t) {
+                        log.error("Error executing onComplete callback for conversation: {}",
+                            conversationId, t);
+                    }
+                }
                 chatCancellationService.deregister(conversationId, Thread.currentThread());
             }
         });

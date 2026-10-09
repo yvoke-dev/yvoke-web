@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -186,7 +187,8 @@ public class RagAdminWriteIT {
         mockMvc.perform(get("/admin/playbooks/export").param("name", PLAYBOOK).with(admin()))
             .andExpect(status().isOk())
             .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"" + PLAYBOOK + ".md\""))
+                ContentDisposition.attachment().filename(PLAYBOOK + ".md", StandardCharsets.UTF_8)
+                    .build().toString()))
             .andExpect(content().contentTypeCompatibleWith("text/markdown"))
             .andExpect(content().string(Matchers.containsString("Answer carefully.")));
     }

@@ -545,4 +545,19 @@ class SecurityConfigMockAuthGuardTest {
         off.addHeader("X-Yvoke-Dev-Mode", "false");
         assertThat(build(true, "local").mcpBearerTokenResolver().resolve(off)).isNull();
     }
+
+    @Test
+    void theGatedPathMatchersExplicitlyIncludeTheRootPathAlongsideTheWildcard() throws Exception {
+        String configSource = Files
+            .readString(
+                Path.of("src/main/java/de/palsoftware/yvoke/shared/security/SecurityConfig.java"))
+            .replaceAll("\\s+", " ");
+        assertThat(configSource).as("/admin root path must be explicitly gated alongside /admin/**")
+            .contains("requestMatchers(\"/admin/**\", \"/admin\")");
+        assertThat(configSource).as("/chat root path must be explicitly gated alongside /chat/**")
+            .contains("requestMatchers(\"/chat/**\", \"/chat\")");
+        assertThat(configSource)
+            .as("/document root path must be explicitly gated alongside /document/**")
+            .contains("requestMatchers(\"/document/**\", \"/document\")");
+    }
 }

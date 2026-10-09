@@ -99,6 +99,130 @@ public class SchemaPresenceIT {
     }
 
     @Test
+    public void testMigrationV11PerformanceIndexesExist() {
+        // V11 (PERF-01, PERF-02, PERF-03): foreign key and collection lookup indexes.
+        assertThat(indexExists("llm_call_logs", "idx_llm_call_logs_message_id"))
+            .withFailMessage("Partial index idx_llm_call_logs_message_id should exist (PERF-01)")
+            .isTrue();
+        assertThat(indexExists("chunks", "idx_chunks_collection_id"))
+            .withFailMessage("BTree index idx_chunks_collection_id should exist (PERF-02)")
+            .isTrue();
+        assertThat(indexExists("ingestion_jobs", "idx_ingestion_jobs_collection_id"))
+            .withFailMessage("Index idx_ingestion_jobs_collection_id should exist (PERF-03)")
+            .isTrue();
+
+        // Ensure idx_llm_call_logs_message_id is partial on non-null message_id
+        String llmCallLogIndexDef = jdbcTemplate.queryForObject(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
+            String.class, "idx_llm_call_logs_message_id");
+        assertThat(llmCallLogIndexDef).contains("WHERE").contains("message_id IS NOT NULL");
+    }
+
+    @Test
+    public void testMigrationV11PartitionIndexPropagationAndCascadeBehavior() {
+        UUID collectionId = UUID.randomUUID();
+        String partition = "chunks_p_" + collectionId.toString().replace("-", "");
+        jdbcTemplate.update(
+            "INSERT INTO collections (id, name) VALUES (?, ?)", collectionId, "v11-partition-test");
+        try {
+            assertThat(tableExists(partition)).isTrue();
+
+            // Verify index on partition: check pg_indexes for this partition table
+            List<String> partitionIndexDefs = jdbcTemplate.queryForList(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?",
+                String.class, partition);
+            assertThat(partitionIndexDefs)
+                .as("Partition %s must inherit an index on (collection_id) from idx_chunks_collection_id", partition)
+                .anyMatch(def -> def.contains("(collection_id)"));
+
+            // Verify the partition index is attached to parent index idx_chunks_collection_id in pg_inherits / pg_index
+            Integer attachedParentIndexCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM pg_index child_idx
+                JOIN pg_class child_cls ON child_cls.oid = child_idx.indexrelid
+                JOIN pg_inherits inh ON inh.inhrelid = child_cls.oid
+                JOIN pg_class parent_cls ON parent_cls.oid = inh.inhparent
+                WHERE parent_cls.relname = 'idx_chunks_collection_id'
+                  AND child_idx.indrelid = ?::regclass
+                """,
+                Integer.class,
+                partition);
+            assertThat(attachedParentIndexCount)
+                .as("Partition %s must have an index partition attached to parent idx_chunks_collection_id", partition)
+                .isEqualTo(1);
+
+            // Insert a document and a chunk
+            UUID docId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO documents (id, collection_id, kind, title) VALUES (?, ?, ?, ?)",
+                docId, collectionId, "manual", "Doc 1");
+            UUID chunkId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO chunks (id, collection_id, document_id, text) VALUES (?, ?, ?, ?)",
+                chunkId, collectionId, docId, "Some text");
+
+            // Insert an ingestion job
+            UUID jobId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO ingestion_jobs (id, collection_id, kind, source_ref, status) VALUES (?, ?, ?, ?, ?)",
+                jobId, collectionId, "manual", "ref", "queued");
+
+            Integer jobCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class, collectionId);
+            assertThat(jobCount).isEqualTo(1);
+        } finally {
+            // Delete collection - test cascade and trigger without deadlock
+            jdbcTemplate.update("DELETE FROM collections WHERE id = ?", collectionId);
+        }
+
+        // Verify partition dropped and jobs cascaded
+        assertThat(tableExists(partition)).isFalse();
+        Integer remainingJobs = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class, collectionId);
+        assertThat(remainingJobs).isEqualTo(0);
+    }
+
+    @Test
+    public void testMigrationV11MessageDeletionAndLlmCallLogsIndexIntegrity() {
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+            userId, "oid-" + userId, "v11-" + userId + "@example.com", "User 11");
+        UUID convId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+            convId, userId, "v11-conv");
+        UUID messageId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+            messageId, convId, "user", "Hello");
+
+        UUID logId1 = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)",
+            logId1, messageId, "chat", "gpt-4");
+        UUID logId2 = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)",
+            logId2, null, "background", "gpt-4");
+
+        try {
+            // Delete message and verify ON DELETE SET NULL works cleanly without error or deadlock
+            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", messageId);
+
+            UUID referencedMessageId = jdbcTemplate.queryForObject(
+                "SELECT message_id FROM llm_call_logs WHERE id = ?", UUID.class, logId1);
+            assertThat(referencedMessageId).isNull();
+        } finally {
+            jdbcTemplate.update("DELETE FROM llm_call_logs WHERE id IN (?, ?)", logId1, logId2);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+        }
+    }
+
+
+    @Test
     public void testUniquenessIndexesExist() {
         // Wave 3b (V3): job admission control and document identity. Both are the ARBITER of an
         // ON CONFLICT in application code (JobRepository.enqueue, DocumentRepository's upsert), so

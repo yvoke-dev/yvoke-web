@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.shared.jobengine.api;
 
 
 import de.palsoftware.yvoke.shared.jobengine.PrivilegedJobKindGuard;
+import de.palsoftware.yvoke.shared.jobengine.api.dto.JobDto;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -58,8 +59,8 @@ public class JobApiController {
     }
 
     @GetMapping("/{id}")
-    public IngestionJob get(@PathVariable UUID id) {
-        return jobRepository.findById(id).orElseThrow(
+    public JobDto get(@PathVariable UUID id) {
+        return jobRepository.findById(id).map(JobDto::from).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
     }
 

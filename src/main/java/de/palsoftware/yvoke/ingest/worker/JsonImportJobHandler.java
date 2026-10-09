@@ -14,7 +14,8 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,14 +85,20 @@ public class JsonImportJobHandler implements JobHandler {
 
         if (filename.toLowerCase().endsWith(".jsonl")) {
             // parse jsonl
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            try (BufferedReader reader =
+                Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
                 String line;
                 int lineCount = 0;
                 while ((line = reader.readLine()) != null) {
-                    if (line.trim().isEmpty())
+                    String trimmed = line.trim();
+                    while (trimmed.startsWith("\uFEFF")) {
+                        trimmed = trimmed.substring(1).trim();
+                    }
+                    if (trimmed.isEmpty()) {
                         continue;
-                    Map<String, Object> obj =
-                        objectMapper.readValue(line, new TypeReference<Map<String, Object>>() {});
+                    }
+                    Map<String, Object> obj = objectMapper.readValue(trimmed,
+                        new TypeReference<Map<String, Object>>() {});
                     objects.add(obj);
                     lineCount++;
                     if (lineCount % 1000 == 0) {

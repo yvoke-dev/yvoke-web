@@ -3,6 +3,9 @@ package de.palsoftware.yvoke.chat.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest;
+import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest.Step;
+import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
@@ -37,6 +40,9 @@ public class DesktopSyncServiceIT {
 
     @Autowired
     private DesktopSyncService service;
+
+    @Autowired
+    private DesktopOrchestratorRunService orchestratorRunService;
 
     @Autowired
     private UserRepository userRepository;
@@ -424,5 +430,77 @@ public class DesktopSyncServiceIT {
 
         List<Instant> timestamps = stored.stream().map(Message::createdAt).toList();
         assertThat(timestamps).doesNotContainNull().doesNotHaveDuplicates().isSorted();
+    }
+
+    @Test
+    public void recordOrchestratorRunRollsBackOnStepFailure() {
+        userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
+        User user = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
+        Conversation conv = service.createConversation(user, "MAS Run Test", Map.of());
+        conversationId = conv.id();
+
+        // Step 1 is valid, Step 2 contains PostgreSQL-invalid NUL character (\u0000)
+        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20, 30, 0, 0);
+        Step s2 = new Step(1, "specialist", 0, "pb", "m", "high", "in2\u0000bad", "out2", null, null, 10, 20, 30, 0, 0);
+
+        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, null, "OIM", "done", null,
+            1, null, 20, 40, 60, 0, 0, null, List.of(s1, s2));
+
+        assertThatThrownBy(() -> orchestratorRunService.record(user, req))
+            .isNotNull();
+
+        // Transaction rollback must have removed the agent_runs row
+        Integer runCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM agent_runs WHERE conversation_id = ?", Integer.class, conversationId);
+        assertThat(runCount).as("agent_runs row must be rolled back on step failure").isZero();
+    }
+
+    @Test
+    public void recordOrchestratorRunWithCrossConversationMessageIdIsRejected() {
+        userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
+        User user = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
+        Conversation convA = service.createConversation(user, "Conv A", Map.of());
+        Conversation convB = service.createConversation(user, "Conv B", Map.of());
+        conversationId = convA.id();
+
+        // Create message in convB
+        service.appendMessages(convB.id(), user, List.of(
+            new NewMessage("assistant", "answer in B", null, null, null, null, null)));
+        UUID messageIdInB = service.getMessages(convB.id(), user, 10, 0).get(0).id();
+
+        // Try to record run for convA pointing to message in convB
+        OrchestratorRunRequest req = new OrchestratorRunRequest(convA.id(), messageIdInB, "OIM", "done",
+            null, 1, null, 10, 10, 20, 0, 0, null, List.of());
+
+        assertThatThrownBy(() -> orchestratorRunService.record(user, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(t -> assertThat(((ResponseStatusException) t).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    public void recordOrchestratorRunHappyPath() {
+        userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
+        User user = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
+        Conversation conv = service.createConversation(user, "Conv Happy", Map.of());
+        conversationId = conv.id();
+
+        service.appendMessages(conv.id(), user, List.of(
+            new NewMessage("assistant", "answer in conv", null, null, null, null, null)));
+        UUID messageId = service.getMessages(conv.id(), user, 10, 0).get(0).id();
+
+        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20, 30, 0, 0);
+        OrchestratorRunRequest req = new OrchestratorRunRequest(conv.id(), messageId, "OIM", "done",
+            null, 1, null, 10, 20, 30, 0, 0, null, List.of(s1));
+
+        UUID runId = orchestratorRunService.record(user, req);
+        assertThat(runId).isNotNull();
+
+        Integer runCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM agent_runs WHERE id = ?", Integer.class, runId);
+        assertThat(runCount).isEqualTo(1);
+
+        Integer stepCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM agent_steps WHERE agent_run_id = ?", Integer.class, runId);
+        assertThat(stepCount).isEqualTo(1);
     }
 }

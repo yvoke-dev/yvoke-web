@@ -14,7 +14,9 @@ import static org.mockito.Mockito.when;
 import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest;
 import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest.Step;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -38,6 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 class DesktopOrchestratorRunServiceTest {
 
     private ConversationRepository conversationRepository;
+    private MessageRepository messageRepository;
     private AgentRunRepository agentRunRepository;
     private AgentStepRepository agentStepRepository;
     private DesktopOrchestratorRunService service;
@@ -49,10 +53,11 @@ class DesktopOrchestratorRunServiceTest {
     @BeforeEach
     void setUp() {
         conversationRepository = mock(ConversationRepository.class);
+        messageRepository = mock(MessageRepository.class);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
-        service = new DesktopOrchestratorRunService(conversationRepository, agentRunRepository,
-            agentStepRepository);
+        service = new DesktopOrchestratorRunService(conversationRepository, messageRepository,
+            agentRunRepository, agentStepRepository);
     }
 
     private void ownsConversation(UUID id) {
@@ -70,8 +75,8 @@ class DesktopOrchestratorRunServiceTest {
      * null.
      */
     private static OrchestratorRunRequest requestFor(UUID conversationId, List<Step> steps) {
-        return new OrchestratorRunRequest(conversationId, UUID.randomUUID(), "oim-profile", null,
-            null, null, null, null, null, null, null, null, null, steps);
+        return new OrchestratorRunRequest(conversationId, null, "oim-profile", null, null, null,
+            null, null, null, null, null, null, null, steps);
     }
 
     private static void assertStatus(Throwable t, HttpStatus status) {
@@ -138,6 +143,9 @@ class DesktopOrchestratorRunServiceTest {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
         UUID messageId = UUID.randomUUID();
+        when(messageRepository.findById(messageId)).thenReturn(
+            Optional.of(new Message(messageId, conversationId, "assistant", "done", null, List.of(),
+                List.of(), Instant.now(), null, null, null, null, null, "done", null)));
         OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
             "oim-profile", "done", Map.of("k", "v"), 2, Map.of("approved", true), 100, 50, 150, 10,
             5, null, List.of());
@@ -183,5 +191,45 @@ class DesktopOrchestratorRunServiceTest {
         verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
             eq(0), eq("pb1"), any(), any(), eq("in1"), eq("out1"), any(), any(), anyInt(), anyInt(),
             anyInt(), anyInt(), anyInt());
+    }
+
+    @Test
+    void unknownMessageIdIsRejectedWith400() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+        UUID messageId = UUID.randomUUID();
+        when(messageRepository.findById(messageId)).thenReturn(Optional.empty());
+
+        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
+            "oim-profile", null, null, null, null, null, null, null, null, null, null, List.of());
+
+        assertThatThrownBy(() -> service.record(currentUser, req))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void messageFromDifferentConversationIsRejectedWith400() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+        UUID otherConversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        when(messageRepository.findById(messageId)).thenReturn(
+            Optional.of(new Message(messageId, otherConversationId, "assistant", "done", null,
+                List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null)));
+
+        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
+            "oim-profile", null, null, null, null, null, null, null, null, null, null, List.of());
+
+        assertThatThrownBy(() -> service.record(currentUser, req))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void recordMethodIsAnnotatedWithTransactional() throws NoSuchMethodException {
+        assertThat(DesktopOrchestratorRunService.class
+            .getMethod("record", User.class, OrchestratorRunRequest.class)
+            .isAnnotationPresent(Transactional.class)).isTrue();
     }
 }
