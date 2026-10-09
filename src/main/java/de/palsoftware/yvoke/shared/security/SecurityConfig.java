@@ -302,8 +302,9 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**", "/actuator").permitAll()
                 .requestMatchers("/login", "/logged-out", "/error", "/.well-known/**").permitAll()
                 // Gated paths
-                .requestMatchers("/admin/**").hasRole("ADMIN").requestMatchers("/chat/**")
-                .hasRole("USER").requestMatchers("/document/**").hasRole("USER").anyRequest()
+                .requestMatchers("/admin/**", "/admin").hasRole("ADMIN")
+                .requestMatchers("/chat/**", "/chat").hasRole("USER")
+                .requestMatchers("/document/**", "/document").hasRole("USER").anyRequest()
                 .authenticated());
 
         if (mockAuth) {

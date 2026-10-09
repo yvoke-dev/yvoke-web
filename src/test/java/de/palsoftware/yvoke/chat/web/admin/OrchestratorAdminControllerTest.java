@@ -20,9 +20,12 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -184,10 +187,22 @@ public class OrchestratorAdminControllerTest {
             .thenReturn("{\"name\":\"TestProfile\"}");
 
         mockMvc.perform(get("/admin/orchestrators/export").param("name", "TestProfile"))
-            .andExpect(status().isOk()).andExpect(header().string("Content-Disposition",
-                "attachment; filename=\"TestProfile.json\""));
+            .andExpect(status().isOk()).andExpect(
+                header().string(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                    .filename("TestProfile.json", StandardCharsets.UTF_8).build().toString()));
 
         verify(profileService).exportProfileToJson("TestProfile");
+    }
+
+    @Test
+    void testExportProfile_escapesFilenameAgainstHeaderInjection() throws Exception {
+        String unsafeName = "malicious\"; dummy=\"";
+        when(profileService.exportProfileToJson(unsafeName)).thenReturn("{\"name\":\"malicious\"}");
+
+        mockMvc.perform(get("/admin/orchestrators/export").param("name", unsafeName))
+            .andExpect(status().isOk()).andExpect(
+                header().string(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                    .filename(unsafeName + ".json", StandardCharsets.UTF_8).build().toString()));
     }
 
     @Test

@@ -140,6 +140,15 @@ class MvcExceptionHandlerTest {
     }
 
     @Test
+    void protocolRelativeRefererFallsBackToAdminLanding() throws Exception {
+        mvc.perform(post("/probe/unexpected").header("Accept", HTML).header("Referer",
+            "https://yvoke.local//attacker.com/phish")).andExpect(redirectedUrl("/admin"));
+
+        mvc.perform(post("/probe/unexpected").header("Accept", HTML).header("Referer",
+            "https://yvoke.local/\\attacker.com/phish")).andExpect(redirectedUrl("/admin"));
+    }
+
+    @Test
     void missingRefererFallsBackToAdminLanding() throws Exception {
         mvc.perform(post("/probe/unexpected").header("Accept", HTML))
             .andExpect(redirectedUrl("/admin"));

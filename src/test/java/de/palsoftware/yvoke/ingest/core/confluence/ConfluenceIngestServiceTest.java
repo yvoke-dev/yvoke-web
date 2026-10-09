@@ -79,7 +79,9 @@ class ConfluenceIngestServiceTest {
 
     private ConfluenceInstance instance;
 
-    private final PlatformTransactionManager transactionManager = new PlatformTransactionManager() {
+    private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
+
+    private static final class NoopTransactionManager implements PlatformTransactionManager {
         @Override
         public TransactionStatus getTransaction(TransactionDefinition definition)
             throws TransactionException {
@@ -91,7 +93,7 @@ class ConfluenceIngestServiceTest {
 
         @Override
         public void rollback(TransactionStatus status) throws TransactionException {}
-    };
+    }
 
     @BeforeEach
     void setUp() {
@@ -1268,5 +1270,68 @@ class ConfluenceIngestServiceTest {
         List<String> embedded = embedCaptor.getValue();
         assertThat(embedded)
             .containsExactlyElementsOf(chunks.stream().map(ChunkInsert::text).toList());
+    }
+
+    /**
+     * CORE-SURVEY-04: ingestPage guarded against null ctx.job() at lines 433, 442, and 585, but
+     * dereferenced ctx.job().settings() and ctx.job().id() unconditionally at the section
+     * summarizer step, throwing NPE when a JobContext has no IngestionJob.
+     */
+    @Test
+    void ingestPageSupportsNullJobInContextWithoutNpe() {
+        when(instanceRepository.findBySlug("default")).thenReturn(Optional.of(instance));
+        JobContext ctx = mock(JobContext.class);
+        when(ctx.job()).thenReturn(null);
+        when(confluenceClient.getPageContent(instance, "page-null-job"))
+            .thenReturn(new ConfluencePageContent("<h2>Section</h2><p>Content.</p>", "John Doe",
+                "2026-08-15", 1));
+        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-null-job"),
+            anyString())).thenReturn("## Section\n\nContent.");
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
+            any(), any())).thenReturn(docId);
+
+        JobCounts counts = service.ingestPage(ctx, "page-null-job", "Null Job Page");
+
+        assertThat(counts.docs()).isEqualTo(1);
+    }
+
+    @Test
+    void ingestPageBehavesIdenticallyWhenJobIsPresentVsWhenJobIsNull() {
+        when(instanceRepository.findBySlug("default")).thenReturn(Optional.of(instance));
+
+        when(confluenceClient.getPageContent(instance, "parity-page"))
+            .thenReturn(new ConfluencePageContent(
+                "<h2>Section A</h2><p>Body A</p><h2>Section B</h2><p>Body B</p>", "Alice",
+                "2026-10-01", 3));
+        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("parity-page"),
+            anyString())).thenReturn("## Section A\n\nBody A\n\n## Section B\n\nBody B");
+
+        UUID docIdNull = UUID.randomUUID();
+        UUID docIdPresent = UUID.randomUUID();
+        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
+            any(), any())).thenReturn(docIdNull, docIdPresent);
+
+        // Case 1: job is null
+        JobContext ctxNull = mock(JobContext.class);
+        when(ctxNull.job()).thenReturn(null);
+        JobCounts countsNull = service.ingestPage(ctxNull, "parity-page", "Parity Page");
+
+        // Case 2: job is present with summaries disabled
+        JobContext ctxPresent = mock(JobContext.class);
+        IngestionJob job = new IngestionJob(UUID.randomUUID(), "confluence-page-import:default",
+            "confluence/SPACE/parity-page", List.of(), UUID.randomUUID(), "coll", JobStatus.RUNNING,
+            null, 0, 0, null, null, OffsetDateTime.now(), null, null,
+            Map.of("summarizeSections", false), null);
+        when(ctxPresent.job()).thenReturn(job);
+        JobCounts countsPresent = service.ingestPage(ctxPresent, "parity-page", "Parity Page");
+
+        // Assert identical counts
+        assertThat(countsNull.docs()).isEqualTo(countsPresent.docs()).isEqualTo(1);
+        assertThat(countsNull.chunks()).isEqualTo(countsPresent.chunks());
+        assertThat(countsNull.chunks()).isGreaterThan(0);
+
+        // Assert sectionSummarizer was never invoked for either
+        verify(sectionSummarizer, never()).generateSummaries(any(), any(), any(), any(), any());
     }
 }

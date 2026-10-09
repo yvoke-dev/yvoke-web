@@ -181,6 +181,7 @@ public class ChatController {
     @ResponseBody
     public void updateOrchestratorProfile(@PathVariable UUID id,
         @RequestParam(name = "name", required = false) String name) {
+        chatConversationService.verifyOwnership(id, false);
         String selected = (name == null) ? "" : name.trim();
         if (!selected.isEmpty()) {
             boolean exists = (orchestratorProfileService != null

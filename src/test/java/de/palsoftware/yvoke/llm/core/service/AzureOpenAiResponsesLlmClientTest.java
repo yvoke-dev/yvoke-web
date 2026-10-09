@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -25,6 +26,7 @@ import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseIncludable;
+import com.openai.models.responses.ResponseUsage;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
@@ -920,5 +922,172 @@ class AzureOpenAiResponsesLlmClientTest {
      */
     private static AzureOpenAiResponsesLlmClient reasoningModels(String csv) {
         return new AzureOpenAiResponsesLlmClient((OpenAIClient) null, true, "medium", csv);
+    }
+
+    @Test
+    void nonStreamingCallSucceedsWhenUsageOmitsTokenDetails() throws IOException {
+        LlmResponse response = blocking("""
+            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+             "usage":{"input_tokens":120,"output_tokens":34,"total_tokens":154}}""");
+
+        assertThat(response.content()).isEqualTo("Hello world");
+        assertThat(response.usage()).isEqualTo(new LlmUsage(120, 34, 154, 0, 0));
+    }
+
+    @Test
+    void nonStreamingCallWhenUsageOmitsInputTokens() throws IOException {
+        LlmResponse response = blocking("""
+            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+             "usage":{"output_tokens":34,"total_tokens":34}}""");
+
+        assertThat(response.content()).isEqualTo("Hello world");
+        assertThat(response.usage()).isEqualTo(new LlmUsage(0, 34, 34, 0, 0));
+    }
+
+    @Test
+    void nonStreamingCallWhenUsageIsEmptyObject() throws IOException {
+        LlmResponse response = blocking("""
+            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+             "usage":{}}""");
+
+        assertThat(response.content()).isEqualTo("Hello world");
+        assertThat(response.usage()).isEqualTo(new LlmUsage(0, 0, 0, 0, 0));
+    }
+
+    private List<LlmResponseChunk> replaySse(String sse) throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            try (InputStream in = exchange.getRequestBody()) {
+                in.readAllBytes();
+            }
+            requests.incrementAndGet();
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(sse.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        });
+        server.start();
+
+        List<LlmResponseChunk> chunks = new ArrayList<>();
+        try (AzureOpenAiResponsesLlmClient client =
+            new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
+            client.generateStream(requestWithTools("gpt-5.6-luna"), chunks::add);
+        }
+        return chunks;
+    }
+
+    @Test
+    void streamingCallSucceedsWhenUsageOmitsTokenDetails() throws IOException {
+        String sse =
+            """
+                event: response.created
+                data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
+
+                event: response.output_item.added
+                data: {"type":"response.output_item.added","item":{"id":"msg_1","type":"message","status":"in_progress","role":"assistant","content":[]},"output_index":0}
+
+                event: response.content_part.added
+                data: {"type":"response.content_part.added","part":{"type":"output_text","text":""},"item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.output_text.delta
+                data: {"type":"response.output_text.delta","delta":"Streaming answer","item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.6-luna","output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Streaming answer"}]}],"usage":{"input_tokens":120,"output_tokens":34,"total_tokens":154}}}
+
+                """;
+
+        List<LlmResponseChunk> chunks = replaySse(sse);
+        assertThat(joined(chunks, LlmResponseChunk::content)).isEqualTo("Streaming answer");
+        LlmUsage usage = lastUsage(chunks.stream().filter(c -> !c.endOfCall()).toList());
+        assertThat(usage).isEqualTo(new LlmUsage(120, 34, 154, 0, 0));
+    }
+
+    @Test
+    void streamingCallSucceedsWhenUsageCarriesFullTokenDetails() throws IOException {
+        String sse =
+            """
+                event: response.created
+                data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
+
+                event: response.output_item.added
+                data: {"type":"response.output_item.added","item":{"id":"msg_1","type":"message","status":"in_progress","role":"assistant","content":[]},"output_index":0}
+
+                event: response.content_part.added
+                data: {"type":"response.content_part.added","part":{"type":"output_text","text":""},"item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.output_text.delta
+                data: {"type":"response.output_text.delta","delta":"Details answer","item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.6-luna","output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Details answer"}]}],"usage":{"input_tokens":120,"output_tokens":34,"total_tokens":154,"input_tokens_details":{"cached_tokens":40},"output_tokens_details":{"reasoning_tokens":20}}}}
+
+                """;
+
+        List<LlmResponseChunk> chunks = replaySse(sse);
+        assertThat(joined(chunks, LlmResponseChunk::content)).isEqualTo("Details answer");
+        LlmUsage usage = lastUsage(chunks.stream().filter(c -> !c.endOfCall()).toList());
+        assertThat(usage).isEqualTo(new LlmUsage(120, 34, 154, 40, 20));
+    }
+
+    @Test
+    void streamingCallSucceedsWhenUsageIsNull() throws IOException {
+        String sse =
+            """
+                event: response.created
+                data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
+
+                event: response.output_item.added
+                data: {"type":"response.output_item.added","item":{"id":"msg_1","type":"message","status":"in_progress","role":"assistant","content":[]},"output_index":0}
+
+                event: response.content_part.added
+                data: {"type":"response.content_part.added","part":{"type":"output_text","text":""},"item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.output_text.delta
+                data: {"type":"response.output_text.delta","delta":"No usage answer","item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.6-luna","output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"No usage answer"}]}],"usage":null}}
+
+                """;
+
+        List<LlmResponseChunk> chunks = replaySse(sse);
+        assertThat(joined(chunks, LlmResponseChunk::content)).isEqualTo("No usage answer");
+        LlmUsage usage = lastUsage(chunks.stream().filter(c -> !c.endOfCall()).toList());
+        assertThat(usage).isNull();
+    }
+
+    @Test
+    void streamingCallCapturesUsageOnFailedEventWhenDetailsAreOmitted() throws IOException {
+        String sse =
+            """
+                event: response.created
+                data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
+
+                event: response.output_item.added
+                data: {"type":"response.output_item.added","item":{"id":"msg_1","type":"message","status":"in_progress","role":"assistant","content":[]},"output_index":0}
+
+                event: response.content_part.added
+                data: {"type":"response.content_part.added","part":{"type":"output_text","text":""},"item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.output_text.delta
+                data: {"type":"response.output_text.delta","delta":"Partial before fail","item_id":"msg_1","output_index":0,"content_index":0}
+
+                event: response.failed
+                data: {"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-5.6-luna","error":{"code":"server_error","message":"Model crash"},"output":[],"usage":{"input_tokens":50,"output_tokens":10,"total_tokens":60}}}
+
+                """;
+
+        assertThatThrownBy(() -> replaySse(sse)).isInstanceOf(LlmCallFailedException.class)
+            .satisfies(e -> assertThat(((LlmCallFailedException) e).usage())
+                .isEqualTo(new LlmUsage(50, 10, 60, 0, 0)));
     }
 }

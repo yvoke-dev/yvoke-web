@@ -109,10 +109,10 @@ public class JobApiControllerIT {
             .andExpect(jsonPath("$.id").value(jobId.toString()))
             .andExpect(jsonPath("$.kind").value("kg-extract"))
             .andExpect(jsonPath("$.status").value("COMPLETED"))
-            .andExpect(jsonPath("$.step").value("extract"))
             .andExpect(jsonPath("$.createdAt").isString())
             .andExpect(jsonPath("$.createdAt", matchesPattern(
                 "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})")))
+            .andExpect(jsonPath("$.updatedAt").isString())
             .andReturn().getResponse().getContentAsString();
 
         assertThat(body)

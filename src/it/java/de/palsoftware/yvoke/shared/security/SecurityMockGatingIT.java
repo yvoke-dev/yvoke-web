@@ -371,6 +371,10 @@ public class SecurityMockGatingIT {
                         .with(user("user").roles("USER")))
                 .andExpect(status().isOk());
 
+        mockMvc.perform(get("/admin")
+                        .with(user("user").roles("USER")))
+                .andExpect(status().isForbidden());
+
         mockMvc.perform(get("/admin/documents")
                         .with(user("user").roles("USER")))
                 .andExpect(status().isForbidden());

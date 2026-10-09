@@ -7,6 +7,7 @@ import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -68,5 +69,56 @@ class DesktopSyncDtoValidationTest {
     void rejectsConversationTitleOverLimit() {
         CreateConversationRequest request = new CreateConversationRequest("t".repeat(501), null);
         assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunWithMissingConversationId() {
+        OrchestratorRunRequest req = new OrchestratorRunRequest(null, null, "profile", null, null,
+            null, null, null, null, null, null, null, null, null);
+        assertThat(validator.validate(req)).isNotEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunWithMissingProfileName() {
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, null, null,
+            null, null, null, null, null, null, null, null, null, null);
+        assertThat(validator.validate(req)).isNotEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunWithOverlongProfileName() {
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null,
+            "p".repeat(201), null, null, null, null, null, null, null, null, null, null, null);
+        assertThat(validator.validate(req)).isNotEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunWithStepsExceedingLimit() {
+        List<OrchestratorRunRequest.Step> steps =
+            Collections.nCopies(201, new OrchestratorRunRequest.Step(0, "spec", 0, "pb", "m",
+                "high", null, null, null, null, null, null, null, null, null));
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
+            null, null, null, null, null, null, null, null, null, null, steps);
+        assertThat(validator.validate(req)).isNotEmpty();
+    }
+
+    @Test
+    void acceptsOrchestratorRunWithStepsAtLimit() {
+        List<OrchestratorRunRequest.Step> steps =
+            Collections.nCopies(200, new OrchestratorRunRequest.Step(0, "spec", 0, "pb", "m",
+                "high", null, null, null, null, null, null, null, null, null));
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
+            null, null, null, null, null, null, null, null, null, null, steps);
+        assertThat(validator.validate(req)).isEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunStepWithOverlongRole() {
+        List<OrchestratorRunRequest.Step> steps =
+            List.of(new OrchestratorRunRequest.Step(0, "r".repeat(201), 0, "pb", "m", "high", null,
+                null, null, null, null, null, null, null, null));
+        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
+            null, null, null, null, null, null, null, null, null, null, steps);
+        assertThat(validator.validate(req)).isNotEmpty();
     }
 }

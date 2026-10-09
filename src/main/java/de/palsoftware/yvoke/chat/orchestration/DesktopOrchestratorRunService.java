@@ -2,7 +2,9 @@ package de.palsoftware.yvoke.chat.orchestration;
 
 import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.util.List;
 import java.util.Objects;
@@ -12,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -24,17 +27,21 @@ public class DesktopOrchestratorRunService {
     private static final Logger log = LoggerFactory.getLogger(DesktopOrchestratorRunService.class);
 
     private final ConversationRepository conversationRepository;
+    private final MessageRepository messageRepository;
     private final AgentRunRepository agentRunRepository;
     private final AgentStepRepository agentStepRepository;
 
     public DesktopOrchestratorRunService(ConversationRepository conversationRepository,
-        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
+        MessageRepository messageRepository, AgentRunRepository agentRunRepository,
+        AgentStepRepository agentStepRepository) {
         this.conversationRepository = conversationRepository;
+        this.messageRepository = messageRepository;
         this.agentRunRepository = agentRunRepository;
         this.agentStepRepository = agentStepRepository;
     }
 
     /** Records a finished run owned by {@code user}. Returns the new {@code agent_runs} id. */
+    @Transactional
     public UUID record(User user, OrchestratorRunRequest req) {
         if (req == null || req.conversationId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversationId is required");
@@ -43,6 +50,9 @@ public class DesktopOrchestratorRunService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "profileName is required");
         }
         verifyOwnership(req.conversationId(), user);
+        if (req.messageId() != null) {
+            verifyMessageBelongsToConversation(req.messageId(), req.conversationId());
+        }
 
         UUID runId = UUID.randomUUID();
         agentRunRepository.create(runId, req.conversationId(), req.profileName(), req.config());
@@ -74,6 +84,16 @@ public class DesktopOrchestratorRunService {
                 "Conversation not found: " + conversationId));
         if (!Objects.equals(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);
+        }
+    }
+
+    private void verifyMessageBelongsToConversation(UUID messageId, UUID conversationId) {
+        Message message = messageRepository.findById(messageId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Message not found: " + messageId));
+        if (!Objects.equals(message.conversationId(), conversationId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Message " + messageId + " does not belong to conversation " + conversationId);
         }
     }
 

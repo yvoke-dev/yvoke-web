@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -98,7 +99,7 @@ public class DesktopSyncController {
      */
     @PostMapping("/orchestrator/runs")
     public Map<String, UUID> recordOrchestratorRun(User user,
-        @RequestBody OrchestratorRunRequest request) {
+        @Valid @RequestBody OrchestratorRunRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }

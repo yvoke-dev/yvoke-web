@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.chat.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,22 +14,31 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import de.palsoftware.yvoke.chat.api.model.MessageDto;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.server.ResponseStatusException;
 
 class ChatAsyncControllerTest {
+
+    private static GenerationConcurrencyLimiter allowingLimiter() {
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+        when(limiter.tryAcquire()).thenReturn(true);
+        return limiter;
+    }
 
     private static Message messageWithStatus(UUID conversationId, String status) {
         return new Message(UUID.randomUUID(), conversationId, "assistant", "content", null,
@@ -38,11 +49,11 @@ class ChatAsyncControllerTest {
     void validationErrorPropagatesAndDoesNotSubmit() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
-        when(chatMessageService.prepareAndSubmitAsync(any(UUID.class), anyString(), any()))
+        when(chatMessageService.prepareAndSubmitAsync(any(UUID.class), anyString(), any(), any()))
             .thenThrow(new AccessDeniedException("Access denied to conversation"));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         assertThrows(AccessDeniedException.class,
             () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
@@ -53,13 +64,13 @@ class ChatAsyncControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, String>> response =
             controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any());
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
     }
 
     @Test
@@ -70,18 +81,20 @@ class ChatAsyncControllerTest {
         UUID expectedAssistantMessageId = UUID.randomUUID();
         String content = "Hello assistant";
 
-        when(chatMessageService.prepareAndSubmitAsync(eq(conversationId), eq(content), any()))
+        when(
+            chatMessageService.prepareAndSubmitAsync(eq(conversationId), eq(content), any(), any()))
             .thenReturn(expectedAssistantMessageId);
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
         ResponseEntity<Map<String, String>> response =
             controller.sendMessageAsync(conversationId, content, null);
 
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
         assertEquals(expectedAssistantMessageId.toString(),
             response.getBody().get("assistantMessageId"));
-        verify(chatMessageService).prepareAndSubmitAsync(eq(conversationId), eq(content), any());
+        verify(chatMessageService).prepareAndSubmitAsync(eq(conversationId), eq(content), any(),
+            any());
     }
 
     @Test
@@ -96,7 +109,7 @@ class ChatAsyncControllerTest {
         Message doneMessage = messageWithStatus(conversationId, "done");
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         // 1. Test Generating
         when(chatMessageService.getMessageStatus(messageId))
@@ -113,7 +126,7 @@ class ChatAsyncControllerTest {
             controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.OK, responseErr.getStatusCode());
         assertEquals("error", responseErr.getBody().get("status"));
-        assertEquals(errorMessage, responseErr.getBody().get("message"));
+        assertEquals(MessageDto.from(errorMessage, null), responseErr.getBody().get("message"));
 
         // 3. Test Done
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(doneMessage));
@@ -121,7 +134,7 @@ class ChatAsyncControllerTest {
             controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.OK, responseDone.getStatusCode());
         assertEquals("done", responseDone.getBody().get("status"));
-        assertEquals(doneMessage, responseDone.getBody().get("message"));
+        assertEquals(MessageDto.from(doneMessage, null), responseDone.getBody().get("message"));
 
         // 4. Test Not Found
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.empty());
@@ -147,14 +160,14 @@ class ChatAsyncControllerTest {
             .thenReturn(Optional.of(cancelledMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, Object>> response =
             controller.getMessageStatus(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("cancelled", response.getBody().get("status"));
-        assertEquals(cancelledMessage, response.getBody().get("message"));
+        assertEquals(MessageDto.from(cancelledMessage, null), response.getBody().get("message"));
     }
 
     /**
@@ -186,14 +199,14 @@ class ChatAsyncControllerTest {
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(queuedMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, Object>> response =
             controller.getMessageStatus(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("done", response.getBody().get("status"));
-        assertEquals(queuedMessage, response.getBody().get("message"));
+        assertEquals(MessageDto.from(queuedMessage, null), response.getBody().get("message"));
         assertNotEquals("queued", response.getBody().get("status"),
             "an unrecognised status must not be echoed back to a client that has no branch for it: "
                 + response.getBody().get("status"));
@@ -215,7 +228,7 @@ class ChatAsyncControllerTest {
             .thenReturn(Optional.of(foreignMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
         ResponseEntity<Map<String, Object>> response =
             controller.getMessageStatus(conversationId, messageId);
 
@@ -235,10 +248,100 @@ class ChatAsyncControllerTest {
             .verifyOwnership(any(UUID.class), anyBoolean());
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService);
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
 
         assertThrows(AccessDeniedException.class,
             () -> controller.getMessageStatus(conversationId, messageId));
         verify(chatMessageService, never()).getMessageStatus(any());
+    }
+
+    @Test
+    void returns429AndDoesNotSubmitWhenAtGlobalCapacity() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+        when(limiter.tryAcquire()).thenReturn(false);
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
+        assertEquals("The assistant is at capacity right now. Please retry in a moment.",
+            ex.getReason());
+
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any());
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
+        verify(limiter, never()).release();
+    }
+
+    @Test
+    void concurrencyPermitReleasedIfPrepareAndSubmitThrowsSynchronously() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = allowingLimiter();
+
+        when(chatMessageService.prepareAndSubmitAsync(any(), any(), any(), any()))
+            .thenThrow(new AccessDeniedException("Access denied to conversation"));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+
+        verify(limiter).tryAcquire();
+        verify(limiter).release();
+    }
+
+    @Test
+    void concurrencyPermitReleasedWhenAsyncTaskCompletes() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = allowingLimiter();
+        UUID convId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+
+        AtomicReference<Runnable> onCompleteRef = new AtomicReference<>();
+        when(chatMessageService.prepareAndSubmitAsync(eq(convId), eq("hello"), any(), any()))
+            .thenAnswer(inv -> {
+                onCompleteRef.set(inv.getArgument(3));
+                return assistantMessageId;
+            });
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        ResponseEntity<Map<String, String>> response =
+            controller.sendMessageAsync(convId, "hello", null);
+
+        assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        verify(limiter).tryAcquire();
+        verify(limiter, never()).release();
+
+        assertThat(onCompleteRef.get()).isNotNull();
+        onCompleteRef.get().run();
+
+        verify(limiter).release();
+    }
+
+    @Test
+    void blankContentDoesNotAcquirePermit() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        ResponseEntity<Map<String, String>> response =
+            controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        verify(limiter, never()).tryAcquire();
+        verify(limiter, never()).release();
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any());
+        verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
     }
 }

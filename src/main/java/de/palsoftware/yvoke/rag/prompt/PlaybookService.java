@@ -66,7 +66,7 @@ public class PlaybookService {
             .toList();
     }
 
-    @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name",
+    @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public Optional<Playbook> getPlaybook(String name) {
         if (name == null || name.isBlank()) {
@@ -77,7 +77,7 @@ public class PlaybookService {
         return playbookRepository.findByName(name.trim());
     }
 
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name",
+    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
@@ -110,6 +110,8 @@ public class PlaybookService {
      * Imports a playbook file. The area named in its frontmatter wins; a file that names none goes
      * into {@code fallbackArea}, the area picked on the import form.
      */
+    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#result?.name()?.trim()",
+        condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
     public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName);
@@ -126,7 +128,7 @@ public class PlaybookService {
         return PlaybookMarkdownParser.toMarkdown(pb);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name",
+    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public void deletePlaybook(String name) {
         if (name == null || name.isBlank()) {

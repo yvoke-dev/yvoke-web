@@ -1,12 +1,16 @@
 package de.palsoftware.yvoke.chat.core.service;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import java.util.UUID;
-
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class ChatCancellationServiceTest {
 
@@ -61,61 +65,75 @@ class ChatCancellationServiceTest {
         assertFalse(thread.isInterrupted());
     }
 
-    /**
-     * The CANCELLED sentinel has no lifetime, and this is where that stops being an implementation
-     * detail.
-     *
-     * <p>
-     * {@code stop()} uses {@code compute()} and writes the sentinel whenever the current value is
-     * not a Thread — INCLUDING when there is no value at all. {@code deregister()} is
-     * {@code activeTasks.remove(id, thread)}, identity-scoped, so it can never clear a sentinel;
-     * nothing else removes one and nothing expires it. So a Stop click that lands even a moment
-     * after the run it was aimed at has finished leaves a permanent mark on that conversation id,
-     * and {@code register()} interrupts whatever thread arrives next for it — whenever that is,
-     * minutes or hours later.
-     *
-     * <p>
-     * That is reachable from the UI, not theoretical: {@code ChatController.stopGeneration} calls
-     * {@code stop(id)} unconditionally once ownership checks out, and both async paths call
-     * {@code register()} as the FIRST statement of the executor task
-     * ({@code ChatMessageService}:159 and :243) — so the user's next question in that conversation
-     * starts already interrupted, falls straight into the {@code CancellationException} branch, and
-     * is persisted as status {@code cancelled} with "[Generation stopped by user]" against a
-     * question the user never stopped. The sentinel is deliberate and correct for the intra-run
-     * race it was written for (stop arriving before the worker registers,
-     * {@code testStopBeforeRegister_EagerlyInterruptsThread}); what is undecided is whether it
-     * should survive the run it belongs to.
-     *
-     * <p>
-     * This is a CHARACTERIZATION test: it pins what the code does today so the cross-run
-     * consequence is visible in the suite instead of being reasoned out from three files.
-     * {@code testStopAfterDeregister_DoesNothing} looks like it covers this case and does not — it
-     * asserts only that the already-finished thread is not interrupted, never inspects the map, and
-     * stays green with the leftover sentinel sitting there. If the owner decides a stop with
-     * nothing in flight should be a no-op, this test must be changed deliberately, and that is the
-     * point.
-     */
     @Test
-    void aStopWithNothingRunningLeavesASentinelThatInterruptsTheNextGeneration() {
+    void aStopWithNothingRunningDoesNotInterruptSubsequentGenerationAfterTtl() {
+        MutableTestClock clock = new MutableTestClock(Instant.now());
+        ChatCancellationService timedService =
+            new ChatCancellationService(Duration.ofSeconds(10), clock);
+
         UUID id = UUID.randomUUID();
         TestThread finished = new TestThread();
 
-        // A generation that ran to completion and deregistered itself in its finally block.
-        service.register(id, finished);
-        service.deregister(id, finished);
+        timedService.register(id, finished);
+        timedService.deregister(id, finished);
 
         // The Stop click lands after that — nothing is in flight for this conversation.
-        service.stop(id);
+        timedService.stop(id);
         assertFalse(finished.isInterrupted(), "the finished run's thread must not be touched");
 
-        // Later: the user asks their next question in the SAME conversation.
+        // Later: 15 seconds pass (past the 10-second TTL)
+        clock.advance(Duration.ofSeconds(15));
+
+        // User asks their next question in the SAME conversation
+        TestThread next = new TestThread();
+        timedService.register(id, next);
+
+        assertFalse(next.isInterrupted(),
+            "The subsequent generation must NOT be interrupted by an expired cancellation sentinel");
+    }
+
+    @Test
+    void testOrphanedSentinelIsEvictedAfterTtl() throws InterruptedException {
+        ChatCancellationService timedService =
+            new ChatCancellationService(Duration.ofMillis(50), Clock.systemUTC());
+        UUID id = UUID.randomUUID();
+
+        timedService.stop(id);
+        assertTrue(timedService.hasActiveTask(id));
+
+        // Wait for delayed eviction
+        Thread.sleep(120);
+
+        assertFalse(timedService.hasActiveTask(id),
+            "Orphaned sentinel must be evicted from activeTasks after TTL to prevent memory leak");
+    }
+
+    @Test
+    void testResetClearsSentinelImmediately() {
+        UUID id = UUID.randomUUID();
+        service.stop(id);
+        assertTrue(service.isSentinelPresent(id));
+
+        service.reset(id);
+        assertFalse(service.isSentinelPresent(id));
+
         TestThread next = new TestThread();
         service.register(id, next);
+        assertFalse(next.isInterrupted(), "Next generation must not be interrupted after reset");
+    }
 
-        assertTrue(next.isInterrupted(),
-            "current behaviour: the CANCELLED sentinel left by the no-op stop never expires, so the "
-                + "next generation for this conversation begins interrupted and is persisted as "
-                + "'cancelled' with '[Generation stopped by user]'");
+    @Test
+    void testResetDoesNotRemoveActiveRunningThread() {
+        UUID id = UUID.randomUUID();
+        TestThread thread = new TestThread();
+        service.register(id, thread);
+
+        service.reset(id);
+
+        service.stop(id);
+        assertTrue(thread.isInterrupted(),
+            "Active running thread must remain registered and stoppable");
+        service.deregister(id, thread);
     }
 
     @Test
@@ -126,13 +144,41 @@ class ChatCancellationServiceTest {
 
         service.register(id, owner);
         // A stale finally-deregister from a finished generation (a DIFFERENT thread) must NOT
-        // remove
-        // the current owner's registration — otherwise stop() below would become a silent no-op
+        // remove the current owner's registration — otherwise stop() below would become a silent
+        // no-op
         // (ARC-12).
         service.deregister(id, stale);
 
         service.stop(id);
         assertTrue(owner.isInterrupted());
+    }
+
+    private static class MutableTestClock extends Clock {
+        private Instant instant;
+        private final ZoneId zone = ZoneOffset.UTC;
+
+        MutableTestClock(Instant initial) {
+            this.instant = initial;
+        }
+
+        void advance(Duration duration) {
+            this.instant = this.instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 
     private static class TestThread extends Thread {

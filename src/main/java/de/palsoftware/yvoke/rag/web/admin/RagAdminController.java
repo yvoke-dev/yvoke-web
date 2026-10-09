@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -252,7 +253,9 @@ public class RagAdminController {
         byte[] bytes = md.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + ".md\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(name + ".md", StandardCharsets.UTF_8)
+                    .build().toString())
             .contentType(MediaType.parseMediaType("text/markdown")).contentLength(bytes.length)
             .body(resource);
     }
@@ -326,7 +329,9 @@ public class RagAdminController {
         byte[] bytes = md.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + ".md\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(name + ".md", StandardCharsets.UTF_8)
+                    .build().toString())
             .contentType(MediaType.parseMediaType("text/markdown")).contentLength(bytes.length)
             .body(resource);
     }

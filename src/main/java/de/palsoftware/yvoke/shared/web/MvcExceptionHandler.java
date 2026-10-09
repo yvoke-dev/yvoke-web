@@ -128,7 +128,8 @@ public class MvcExceptionHandler {
         try {
             URI uri = new URI(referer);
             String path = uri.getRawPath();
-            if (path == null || path.isBlank()) {
+            if (path == null || path.isBlank() || !path.startsWith("/") || path.startsWith("//")
+                || path.startsWith("/\\")) {
                 return FALLBACK_REDIRECT;
             }
             String query = uri.getRawQuery();
