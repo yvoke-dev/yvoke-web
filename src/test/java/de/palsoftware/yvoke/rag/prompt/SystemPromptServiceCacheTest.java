@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 import java.util.ArrayList;
@@ -38,6 +40,8 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 @TestPropertySource(properties = {"app.ai.rag.default-prompt-name=default-chat"})
 class SystemPromptServiceCacheTest {
 
+    private static final String AREA = "OIM";
+
     @Configuration
     @EnableCaching
     static class TestConfig {
@@ -49,6 +53,14 @@ class SystemPromptServiceCacheTest {
         @Bean
         AppConfigRepository appConfigRepository() {
             return mock(AppConfigRepository.class);
+        }
+
+        @Bean
+        AreaService areaService() {
+            AreaService mock = mock(AreaService.class);
+            when(mock.requireArea(any()))
+                .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : "OIM");
+            return mock;
         }
     }
 
@@ -142,7 +154,8 @@ class SystemPromptServiceCacheTest {
         verify(systemPromptRepository, times(1)).findByName("test-prompt");
 
         // Save with untrimmed name
-        systemPromptService.savePrompt("  test-prompt  ", SystemPromptType.CHAT, "Body V2", "Desc");
+        systemPromptService.savePrompt("  test-prompt  ", SystemPromptType.CHAT, "Body V2", "Desc",
+            AREA);
 
         // Subsequent getPrompt must MISS cache
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(newPrompt));
@@ -160,13 +173,13 @@ class SystemPromptServiceCacheTest {
         assertDoesNotThrow(() -> assertTrue(systemPromptService.getPrompt("\t\n\r").isEmpty()));
 
         assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt(null, SystemPromptType.CHAT, "B", "D"));
+            () -> systemPromptService.savePrompt(null, SystemPromptType.CHAT, "B", "D", AREA));
         assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("", SystemPromptType.CHAT, "B", "D"));
+            () -> systemPromptService.savePrompt("", SystemPromptType.CHAT, "B", "D", AREA));
         assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("   ", SystemPromptType.CHAT, "B", "D"));
+            () -> systemPromptService.savePrompt("   ", SystemPromptType.CHAT, "B", "D", AREA));
         assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("\t\n", SystemPromptType.CHAT, "B", "D"));
+            () -> systemPromptService.savePrompt("\t\n", SystemPromptType.CHAT, "B", "D", AREA));
 
         assertThrows(IllegalArgumentException.class, () -> systemPromptService.deletePrompt(null));
         assertThrows(IllegalArgumentException.class, () -> systemPromptService.deletePrompt(""));
@@ -216,7 +229,8 @@ class SystemPromptServiceCacheTest {
         systemPromptService.getPrompt("prompt-evict");
         verify(systemPromptRepository, times(1)).findByName("prompt-evict");
 
-        systemPromptService.savePrompt("\t prompt-evict \n", SystemPromptType.CHAT, "B2", "D2");
+        systemPromptService.savePrompt("\t prompt-evict \n", SystemPromptType.CHAT, "B2", "D2",
+            AREA);
 
         when(systemPromptRepository.findByName("prompt-evict")).thenReturn(
             Optional.of(new SystemPrompt("prompt-evict", SystemPromptType.CHAT, "B2", "D2")));
@@ -263,7 +277,7 @@ class SystemPromptServiceCacheTest {
                     for (int j = 0; j < iterationsPerThread; j++) {
                         if (threadId % 3 == 0) {
                             systemPromptService.savePrompt(promptName, SystemPromptType.CHAT,
-                                "Body " + j, "Desc " + j);
+                                "Body " + j, "Desc " + j, AREA);
                             saveSuccesses.incrementAndGet();
                         } else {
                             Optional<SystemPrompt> res = systemPromptService.getPrompt(promptName);

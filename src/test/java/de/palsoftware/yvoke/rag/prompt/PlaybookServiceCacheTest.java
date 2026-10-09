@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -11,8 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import io.modelcontextprotocol.server.McpSyncServer;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +40,8 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
     classes = {PlaybookService.class, CacheConfig.class, PlaybookServiceCacheTest.TestConfig.class})
 class PlaybookServiceCacheTest {
 
+    private static final String AREA = "OIM";
+
     @Configuration
     @EnableCaching
     static class TestConfig {
@@ -51,6 +56,14 @@ class PlaybookServiceCacheTest {
             ObjectProvider<McpSyncServer> provider = mock(ObjectProvider.class);
             return provider;
         }
+
+        @Bean
+        AreaService areaService() {
+            AreaService mock = mock(AreaService.class);
+            when(mock.requireArea(any()))
+                .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : AREA);
+            return mock;
+        }
     }
 
     @Autowired
@@ -61,6 +74,11 @@ class PlaybookServiceCacheTest {
 
     @Autowired
     private CacheManager cacheManager;
+
+    private static Playbook testPlaybook(String name, String title, String templateText) {
+        return new Playbook(name, title, "Desc", templateText, List.of(), false, "specialist",
+            false, Instant.now(), Instant.now(), false, AREA);
+    }
 
     @BeforeEach
     void clearCache() {
@@ -73,8 +91,7 @@ class PlaybookServiceCacheTest {
 
     @Test
     void getPlaybookNormalizesWhitespaceKeyAndHitsCache() {
-        Playbook pb = new Playbook("test-pb", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("test-pb", "Title", "Template");
         when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(pb));
 
         // Untrimmed call: fetches from repository and caches under normalized key
@@ -90,8 +107,7 @@ class PlaybookServiceCacheTest {
 
     @Test
     void deletePlaybookWithUntrimmedNameEvictsTrimmedCacheEntry() {
-        Playbook pb = new Playbook("test-pb", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("test-pb", "Title", "Template");
         when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(pb));
 
         // Populate cache via trimmed call
@@ -111,8 +127,7 @@ class PlaybookServiceCacheTest {
 
     @Test
     void deletePlaybookWithTrimmedNameEvictsUntrimmedCachedEntry() {
-        Playbook pb = new Playbook("test-pb", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("test-pb", "Title", "Template");
         when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(pb));
 
         // Populate cache via untrimmed call
@@ -132,68 +147,19 @@ class PlaybookServiceCacheTest {
 
     @Test
     void savePlaybookWithUntrimmedNameEvictsTrimmedCacheEntry() {
-        Playbook oldPb = new Playbook("test-pb", "Old Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
-        Playbook updatedPb = new Playbook("test-pb", "New Title", "Desc", "Template", List.of(),
-            false, "specialist", false, null, null);
+        Playbook oldPb = testPlaybook("test-pb", "Old Title", "Template");
+        Playbook updatedPb = testPlaybook("test-pb", "New Title", "Template");
         when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(oldPb));
 
         // Populate cache with old value
         playbookService.getPlaybook("test-pb");
         verify(playbookRepository, times(1)).findByName("test-pb");
 
-        // Save with untrimmed name (8-arg)
+        // Save with untrimmed name
         playbookService.savePlaybook("  test-pb  ", "New Title", "Desc", "Template", List.of(),
-            false, "specialist", false);
+            false, "specialist", false, AREA);
 
         // Subsequent getPlaybook must MISS cache and return updated entity
-        when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(updatedPb));
-        Optional<Playbook> afterSave = playbookService.getPlaybook("test-pb");
-        assertTrue(afterSave.isPresent());
-        assertEquals("New Title", afterSave.get().title());
-        verify(playbookRepository, times(2)).findByName("test-pb");
-    }
-
-    @Test
-    void savePlaybookSixArgOverloadEvictsCache() {
-        Playbook oldPb = new Playbook("test-pb", "Old Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
-        Playbook updatedPb = new Playbook("test-pb", "New Title", "Desc", "Template", List.of(),
-            false, "specialist", false, null, null);
-        when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(oldPb));
-
-        // Populate cache
-        playbookService.getPlaybook("test-pb");
-        verify(playbookRepository, times(1)).findByName("test-pb");
-
-        // Save via 6-arg overload
-        playbookService.savePlaybook("test-pb", "New Title", "Desc", "Template", List.of(), false);
-
-        // Subsequent getPlaybook must MISS cache
-        when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(updatedPb));
-        Optional<Playbook> afterSave = playbookService.getPlaybook("test-pb");
-        assertTrue(afterSave.isPresent());
-        assertEquals("New Title", afterSave.get().title());
-        verify(playbookRepository, times(2)).findByName("test-pb");
-    }
-
-    @Test
-    void savePlaybookSevenArgOverloadEvictsCache() {
-        Playbook oldPb = new Playbook("test-pb", "Old Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
-        Playbook updatedPb = new Playbook("test-pb", "New Title", "Desc", "Template", List.of(),
-            false, "specialist", false, null, null);
-        when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(oldPb));
-
-        // Populate cache
-        playbookService.getPlaybook("test-pb");
-        verify(playbookRepository, times(1)).findByName("test-pb");
-
-        // Save via 7-arg overload
-        playbookService.savePlaybook("test-pb", "New Title", "Desc", "Template", List.of(), false,
-            "specialist");
-
-        // Subsequent getPlaybook must MISS cache
         when(playbookRepository.findByName("test-pb")).thenReturn(Optional.of(updatedPb));
         Optional<Playbook> afterSave = playbookService.getPlaybook("test-pb");
         assertTrue(afterSave.isPresent());
@@ -208,14 +174,14 @@ class PlaybookServiceCacheTest {
         assertDoesNotThrow(() -> assertTrue(playbookService.getPlaybook("   ").isEmpty()));
         assertDoesNotThrow(() -> assertTrue(playbookService.getPlaybook("\t\n\r").isEmpty()));
 
-        assertThrows(IllegalArgumentException.class,
-            () -> playbookService.savePlaybook(null, "T", "D", "B", List.of(), false));
-        assertThrows(IllegalArgumentException.class,
-            () -> playbookService.savePlaybook("", "T", "D", "B", List.of(), false));
-        assertThrows(IllegalArgumentException.class,
-            () -> playbookService.savePlaybook("   ", "T", "D", "B", List.of(), false));
-        assertThrows(IllegalArgumentException.class,
-            () -> playbookService.savePlaybook("\t\n", "T", "D", "B", List.of(), false));
+        assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook(null, "T",
+            "D", "B", List.of(), false, "specialist", false, AREA));
+        assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("", "T",
+            "D", "B", List.of(), false, "specialist", false, AREA));
+        assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("   ", "T",
+            "D", "B", List.of(), false, "specialist", false, AREA));
+        assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("\t\n", "T",
+            "D", "B", List.of(), false, "specialist", false, AREA));
 
         assertThrows(IllegalArgumentException.class, () -> playbookService.deletePlaybook(null));
         assertThrows(IllegalArgumentException.class, () -> playbookService.deletePlaybook(""));
@@ -227,8 +193,7 @@ class PlaybookServiceCacheTest {
 
     @Test
     void getPlaybookWithTabAndNewlineNormalizesAndHitsCache() {
-        Playbook pb = new Playbook("special-pb", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("special-pb", "Title", "Template");
         when(playbookRepository.findByName("special-pb")).thenReturn(Optional.of(pb));
 
         Optional<Playbook> first = playbookService.getPlaybook("\t\nspecial-pb\r\n");
@@ -242,8 +207,7 @@ class PlaybookServiceCacheTest {
 
     @Test
     void getPlaybookWithInternalSpacesPreservesInternalWhitespace() {
-        Playbook pb = new Playbook("pb with spaces", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("pb with spaces", "Title", "Template");
         when(playbookRepository.findByName("pb with spaces")).thenReturn(Optional.of(pb));
 
         Optional<Playbook> first = playbookService.getPlaybook("   pb with spaces   ");
@@ -257,26 +221,24 @@ class PlaybookServiceCacheTest {
 
     @Test
     void savePlaybookWithTabAndNewlineEvictsNormalizedKey() {
-        Playbook pb = new Playbook("pb-trim", "Old Title", "Desc", "T1", List.of(), false,
-            "specialist", false, null, null);
+        Playbook pb = testPlaybook("pb-trim", "Old Title", "T1");
         when(playbookRepository.findByName("pb-trim")).thenReturn(Optional.of(pb));
 
         playbookService.getPlaybook("pb-trim");
         verify(playbookRepository, times(1)).findByName("pb-trim");
 
-        playbookService.savePlaybook("\t pb-trim \n", "New Title", "Desc", "T2", List.of(), false);
+        playbookService.savePlaybook("\t pb-trim \n", "New Title", "Desc", "T2", List.of(), false,
+            "specialist", false, AREA);
 
         when(playbookRepository.findByName("pb-trim"))
-            .thenReturn(Optional.of(new Playbook("pb-trim", "New Title", "Desc", "T2", List.of(),
-                false, "specialist", false, null, null)));
+            .thenReturn(Optional.of(testPlaybook("pb-trim", "New Title", "T2")));
         playbookService.getPlaybook("pb-trim");
         verify(playbookRepository, times(2)).findByName("pb-trim");
     }
 
     @Test
     void deletePlaybookWithTabAndNewlineEvictsNormalizedKey() {
-        Playbook pb = new Playbook("pb-del", "Title", "Desc", "T1", List.of(), false, "specialist",
-            false, null, null);
+        Playbook pb = testPlaybook("pb-del", "Title", "T1");
         when(playbookRepository.findByName("pb-del")).thenReturn(Optional.of(pb));
 
         playbookService.getPlaybook("pb-del");
@@ -293,8 +255,7 @@ class PlaybookServiceCacheTest {
     @Test
     void concurrentPlaybookGetAndSaveStressTest() throws Exception {
         final String pbName = "stress-pb";
-        final Playbook pb = new Playbook(pbName, "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, null, null);
+        final Playbook pb = testPlaybook(pbName, "Title", "Template");
         when(playbookRepository.findByName(pbName)).thenReturn(Optional.of(pb));
 
         int threadCount = 20;
@@ -313,7 +274,7 @@ class PlaybookServiceCacheTest {
                     for (int j = 0; j < iterationsPerThread; j++) {
                         if (threadId % 3 == 0) {
                             playbookService.savePlaybook(pbName, "Title " + j, "Desc",
-                                "Template " + j, List.of(), false);
+                                "Template " + j, List.of(), false, "specialist", false, AREA);
                             saveSuccesses.incrementAndGet();
                         } else {
                             Optional<Playbook> res = playbookService.getPlaybook(pbName);
