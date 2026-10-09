@@ -113,7 +113,10 @@ class ChatCancellationServiceTest {
         timedService.register(id, threadWithinTtl);
         assertTrue(threadWithinTtl.isInterrupted(), "Registration within 60s must be interrupted");
 
-        // Stop again and advance past 60s
+        // Finish the first generation by deregistering the thread
+        timedService.deregister(id, threadWithinTtl);
+
+        // Stop again with nothing running — creates a new CancelledSentinel
         timedService.stop(id);
         clock.advance(Duration.ofSeconds(61));
         TestThread threadAfterTtl = new TestThread();
