@@ -19,6 +19,7 @@ running corpus scripts and the evaluation harness.
 | **Look things up in the knowledge graph** | Search a knowledge area's graph for named things — tables, processes, forms, endpoints — and get each one's kind, version, description and owning document. |
 | **Follow connections** | Ask what a named thing connects to and get its connections back: the counterpart, the kind of connection and the direction. Optional filters narrow to one type or direction. |
 | **Query structured records** | Read the declared field structure first, then filter records, pick fields, count matches, or group counts by a field. |
+| **Compute arithmetic and date intervals** | AI clients can call compute tools directly: `calculate` for arithmetic expressions with standard mathematical functions, `statistics` for numerical summaries, and `date_diff` for signed intervals between ISO-8601 timestamps. |
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
 | **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
 | **Fetch the base instructions** | A client asks for the base instructions by name, or for the active default when it names none. The active default is the chat prompt an administrator has made active, the same one a single-agent answer in the web app runs under, so switching it changes both. This is how the Claude plugin gets them. A client can instead ask for an area's base instructions: it gets the ones the area names as its default, or the active default when the area names none. They are deliberately **not** sent to a client when it connects, so a connected coding session that is not using the knowledge base never receives them. |
@@ -94,6 +95,7 @@ running corpus scripts and the evaluation harness.
   still hands back its old text, until the service is restarted. The playbook tools do not have this
   limit.
 - **Progress streams stop after 30 minutes**; clients must ask again.
+- **Compute tools (`date_diff`) support fixed duration units only** (`weeks`, `days`, `hours`, `minutes`, `seconds`, `milliseconds`). Calendar units (`months`, `years`) are not supported due to variable lengths across calendar boundaries.
 
 ## Not supported
 
@@ -107,5 +109,6 @@ running corpus scripts and the evaluation harness.
   produce them.
 - Push notifications when the corpus changes.
 - Signing an AI client in with an API key or personal token. Company accounts only.
+- Calendar-based interval calculations (`months`, `years`) in `date_diff` — only fixed-duration units are supported.
 
 ---

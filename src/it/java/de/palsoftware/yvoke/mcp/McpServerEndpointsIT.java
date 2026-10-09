@@ -300,7 +300,8 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas");
+                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas",
+                    "calculate", "statistics", "date_diff");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
@@ -748,6 +749,19 @@ public class McpServerEndpointsIT {
                 systemPromptService.deletePrompt(prompt);
             } catch (Exception ignored) {}
             areaRepository.delete(area);
+        }
+    }
+
+    @Test
+    public void computeToolsExecuteOverMcpJsonRpc() throws Exception {
+        try (McpSession session = establishSession()) {
+            HttpResponse<String> response = callTool(session, "100", "statistics",
+                    "{ \"values\": [1.0, 2.0, 3.0] }");
+            assertEquals(200, response.statusCode());
+            String body = response.body();
+            assertTrue(body.contains("\\\"count\\\":3"), "statistics count in MCP response — BODY=" + body);
+            assertTrue(body.contains("\\\"mean\\\":2.0"), "statistics mean in MCP response — BODY=" + body);
+            assertTrue(body.contains("\\\"sum\\\":6.0"), "statistics sum in MCP response — BODY=" + body);
         }
     }
 }
