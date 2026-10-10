@@ -39,12 +39,14 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
   private static final String NAME = "e2e-playbook-crud";
   private static final String TITLE = "E2E Playbook CRUD";
   private static final String TEMPLATE_BODY = "# Answer policy\n\nAlways cite the source document.";
+  private static final String SYSTEM_PROMPT_NAME = "e2e-chat-prompt";
 
   @Autowired private JdbcTemplate jdbcTemplate;
 
   @AfterEach
   void removePlaybook() {
     jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", NAME);
+    jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", SYSTEM_PROMPT_NAME);
   }
 
   /**
@@ -67,6 +69,12 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
 
   @Test
   void createsAPlaybookThroughTheFormAndPersistsEveryField() {
+    jdbcTemplate.update(
+        "INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES (?, 'CHAT', 'Prompt content.', 'E2E prompt') "
+            + "ON CONFLICT (name) DO NOTHING",
+        SYSTEM_PROMPT_NAME);
+
     loginAs("admin");
     page.navigate(url("/admin/playbooks"));
     page.waitForLoadState(LoadState.NETWORKIDLE);
@@ -75,6 +83,7 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
     page.fill("#title", TITLE);
     page.fill("#description", "Created by AdminPlaybookCrudE2EIT.");
     page.selectOption("#targetAgent", new SelectOption().setValue("specialist"));
+    page.selectOption("#systemPrompt", new SelectOption().setValue(SYSTEM_PROMPT_NAME));
     page.check("#codeExecution");
 
     // The tools multi-select is populated from the live tool registry; pick the first real option so
@@ -106,10 +115,19 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
         .assertThat(jdbcTemplate.queryForObject("SELECT title FROM playbooks WHERE name = ?",
             String.class, NAME))
         .isEqualTo(TITLE);
+    Assertions
+        .assertThat(jdbcTemplate.queryForObject(
+            "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, NAME))
+        .isEqualTo(SYSTEM_PROMPT_NAME);
 
     // And it renders in the list after a fresh load, so the round trip is complete.
     page.navigate(url("/admin/playbooks"));
     assertThat(page.locator("body")).containsText(TITLE);
+    assertThat(page.locator("body")).containsText("Prompt: " + SYSTEM_PROMPT_NAME);
+
+    // Edit button round-trip: clicking edit opens the modal and populates #systemPrompt
+    page.click("button[onclick='editPlaybook(this)'][data-name='" + NAME + "']");
+    assertThat(page.locator("#systemPrompt")).hasValue(SYSTEM_PROMPT_NAME);
   }
 
   @Test
