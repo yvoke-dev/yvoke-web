@@ -34,10 +34,15 @@ import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentRun;
+import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
+import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
@@ -72,6 +77,8 @@ public class ChatMessageServiceTest {
     private MessageToolCallRepository messageToolCallRepository;
     private ToolCallTraceExtractor toolCallTraceExtractor;
     private ChatProperties chatProperties;
+    private AgentRunRepository agentRunRepository;
+    private AgentStepRepository agentStepRepository;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
@@ -88,12 +95,15 @@ public class ChatMessageServiceTest {
         messageToolCallRepository = mock(MessageToolCallRepository.class);
         toolCallTraceExtractor = mock(ToolCallTraceExtractor.class);
         chatProperties = new ChatProperties(true, List.of("model1"), true, false);
+        agentRunRepository = mock(AgentRunRepository.class);
+        agentStepRepository = mock(AgentStepRepository.class);
 
-        chatMessageService = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, chatProperties);
+        chatMessageService =
+            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+                chatConversationService, ragService, retrievalLogRepository, playbookService,
+                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+                mock(OrchestrationService.class), messageToolCallRepository, toolCallTraceExtractor,
+                chatProperties, agentRunRepository, agentStepRepository);
     }
 
     @Test
@@ -1824,5 +1834,106 @@ public class ChatMessageServiceTest {
         } catch (Exception e) {
             throw new AssertionError("[DONE] line is not valid JSON: " + line, e);
         }
+    }
+
+    @Test
+    void testCrossConversationIdorReturnsEmpty() {
+        UUID conversationId1 = UUID.randomUUID();
+        UUID conversationId2 = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        Message msg = new Message(messageId, conversationId2, "assistant", "Content", null,
+            List.of(), List.of(), Instant.now(), 10, 20, 30, 0, 0, "done", "model1");
+        when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
+
+        Optional<MessageTrace> trace =
+            chatMessageService.getMessageTrace(conversationId1, messageId);
+
+        assertThat(trace).isEmpty();
+    }
+
+    @Test
+    void testSingleAgentTraceReturnsToolCalls() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        UUID chunkId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "Single answer", null,
+            List.of(chunkId), List.of(), Instant.now(), 10, 20, 30, 4, 5, "done", "gpt-4o");
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.empty());
+
+        ToolCallRecord tc1 = new ToolCallRecord(UUID.randomUUID(), msgId, 0, "call_1", "calc",
+            "{\"a\":1}", "2", false, Instant.now());
+        when(messageToolCallRepository.findByMessageId(msgId)).thenReturn(List.of(tc1));
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("single");
+        assertThat(trace.messageId()).isEqualTo(msgId);
+        assertThat(trace.conversationId()).isEqualTo(convId);
+        assertThat(trace.status()).isEqualTo("done");
+        assertThat(trace.content()).isEqualTo("Single answer");
+        assertThat(trace.model()).isEqualTo("gpt-4o");
+        assertThat(trace.promptTokens()).isEqualTo(10);
+        assertThat(trace.completionTokens()).isEqualTo(20);
+        assertThat(trace.totalTokens()).isEqualTo(30);
+        assertThat(trace.cachedTokens()).isEqualTo(4);
+        assertThat(trace.thoughtTokens()).isEqualTo(5);
+        assertThat(trace.retrievedChunkIds()).containsExactly(chunkId);
+        assertThat(trace.toolCalls()).containsExactly(tc1);
+        assertThat(trace.agentRun()).isNull();
+        assertThat(trace.steps()).isNull();
+    }
+
+    @Test
+    void testMasTraceReturnsAgentRunAndSteps() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "MAS answer", null, List.of(),
+            List.of(), Instant.now(), null, null, null, null, null, "done", "oim");
+        AgentRun run = new AgentRun(runId, convId, msgId, "oim", "done", "{}", 1, "approved", 100,
+            200, 300, 40, 50, null, Instant.now(), Instant.now());
+        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
+            "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
+            "ok", null);
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.of(run));
+        when(agentStepRepository.findByRunId(runId)).thenReturn(List.of(step1));
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("mas");
+        assertThat(trace.messageId()).isEqualTo(msgId);
+        assertThat(trace.agentRun()).isEqualTo(run);
+        assertThat(trace.steps()).containsExactly(step1);
+        assertThat(trace.promptTokens()).isEqualTo(100);
+        assertThat(trace.completionTokens()).isEqualTo(200);
+        assertThat(trace.totalTokens()).isEqualTo(300);
+        assertThat(trace.cachedTokens()).isEqualTo(40);
+        assertThat(trace.thoughtTokens()).isEqualTo(50);
+        assertThat(trace.toolCalls()).isNull();
+        assertThat(trace.retrievedChunkIds()).isNull();
+    }
+
+    @Test
+    void testZeroToolCallsReturnsEmptyList() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "Simple answer", null, List.of(),
+            List.of(), Instant.now(), 5, 5, 10, 0, 0, "done", "gpt-4o");
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.empty());
+        when(messageToolCallRepository.findByMessageId(msgId)).thenReturn(List.of());
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("single");
+        assertThat(trace.toolCalls()).isNotNull().isEmpty();
     }
 }

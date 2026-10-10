@@ -16,9 +16,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.chat.api.model.MessageDto;
+import de.palsoftware.yvoke.chat.api.model.MessageTraceDto;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import de.palsoftware.yvoke.chat.orchestration.AgentRun;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.time.Instant;
 import java.util.List;
@@ -361,5 +365,138 @@ class ChatAsyncControllerTest {
         verify(limiter, never()).release();
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any());
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
+    }
+
+    @Test
+    void testCrossConversationIdorReturns404() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        when(chatMessageService.getMessageTrace(conversationId, messageId))
+            .thenReturn(Optional.empty());
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseEntity<MessageTraceDto> response =
+            controller.getMessageTrace(conversationId, messageId);
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void testZeroToolCallsReturns200WithEmptyList() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
+            "content", "model", 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
+        when(chatMessageService.getMessageTrace(conversationId, messageId))
+            .thenReturn(Optional.of(trace));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseEntity<MessageTraceDto> response =
+            controller.getMessageTrace(conversationId, messageId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertThat(response.getBody()).isNotNull();
+        MessageTraceDto dto = response.getBody();
+        assertEquals("single", dto.mode());
+        assertEquals(messageId, dto.messageId());
+        assertEquals(conversationId, dto.conversationId());
+        assertEquals("done", dto.status());
+        assertThat(dto.toolCalls()).isNotNull().isEmpty();
+        assertThat(dto.agentRun()).isNull();
+        assertThat(dto.steps()).isNull();
+        verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void testGeneratingMessageTraceStatus() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "generating", "",
+            "model", null, null, null, null, null, List.of(), List.of(), null, null);
+        when(chatMessageService.getMessageTrace(conversationId, messageId))
+            .thenReturn(Optional.of(trace));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseEntity<MessageTraceDto> response =
+            controller.getMessageTrace(conversationId, messageId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertThat(response.getBody()).isNotNull();
+        MessageTraceDto dto = response.getBody();
+        assertEquals("generating", dto.status());
+        assertEquals(0, dto.tokens().total());
+        verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void testTraceUnauthorizedThrowsAccessDenied() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        doThrow(new AccessDeniedException("Forbidden")).when(chatConversationService)
+            .verifyOwnership(conversationId, true);
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.getMessageTrace(conversationId, messageId));
+        verify(chatMessageService, never()).getMessageTrace(any(), any());
+    }
+
+    @Test
+    void testMasModeTraceReturnsAgentRunAndSteps() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        AgentRun run = new AgentRun(runId, conversationId, messageId, "oim", "done", "{}", 1,
+            "approved", 100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
+        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
+            "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
+            "ok", null);
+
+        MessageTrace trace = new MessageTrace("mas", messageId, conversationId, "done",
+            "mas content", "oim", 100, 200, 300, 40, 50, null, null, run, List.of(step1));
+        when(chatMessageService.getMessageTrace(conversationId, messageId))
+            .thenReturn(Optional.of(trace));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseEntity<MessageTraceDto> response =
+            controller.getMessageTrace(conversationId, messageId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertThat(response.getBody()).isNotNull();
+        MessageTraceDto dto = response.getBody();
+        assertEquals("mas", dto.mode());
+        assertEquals(messageId, dto.messageId());
+        assertEquals(conversationId, dto.conversationId());
+        assertEquals(300, dto.tokens().total());
+        assertThat(dto.agentRun()).isEqualTo(run);
+        assertThat(dto.steps()).containsExactly(step1);
+        assertThat(dto.toolCalls()).isNull();
+        verify(chatConversationService).verifyOwnership(conversationId, true);
     }
 }

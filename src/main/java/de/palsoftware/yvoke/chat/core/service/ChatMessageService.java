@@ -17,10 +17,15 @@ import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentRun;
+import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
+import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
@@ -36,6 +41,7 @@ import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -82,6 +88,8 @@ public class ChatMessageService {
     private final MessageToolCallRepository messageToolCallRepository;
     private final ToolCallTraceExtractor toolCallTraceExtractor;
     private final ChatProperties chatProperties;
+    private final AgentRunRepository agentRunRepository;
+    private final AgentStepRepository agentStepRepository;
 
     public ChatMessageService(MessageRepository messageRepository,
         ConversationRepository conversationRepository,
@@ -93,7 +101,24 @@ public class ChatMessageService {
         OrchestrationService orchestrationService) {
         this(messageRepository, conversationRepository, chatConversationService, ragService,
             retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService, null, null, null);
+            taskExecutor, chatCancellationService, orchestrationService, null, null, null, null,
+            null);
+    }
+
+    public ChatMessageService(MessageRepository messageRepository,
+        ConversationRepository conversationRepository,
+        ChatConversationService chatConversationService, RagService ragService,
+        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
+        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
+        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
+        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
+        @Nullable MessageToolCallRepository messageToolCallRepository,
+        @Nullable ToolCallTraceExtractor toolCallTraceExtractor,
+        @Nullable ChatProperties chatProperties) {
+        this(messageRepository, conversationRepository, chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, chatProperties, null, null);
     }
 
     @Autowired
@@ -106,7 +131,8 @@ public class ChatMessageService {
         ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
         @Nullable MessageToolCallRepository messageToolCallRepository,
         @Nullable ToolCallTraceExtractor toolCallTraceExtractor,
-        @Nullable ChatProperties chatProperties) {
+        @Nullable ChatProperties chatProperties, @Nullable AgentRunRepository agentRunRepository,
+        @Nullable AgentStepRepository agentStepRepository) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -121,6 +147,8 @@ public class ChatMessageService {
         this.messageToolCallRepository = messageToolCallRepository;
         this.toolCallTraceExtractor = toolCallTraceExtractor;
         this.chatProperties = chatProperties;
+        this.agentRunRepository = agentRunRepository;
+        this.agentStepRepository = agentStepRepository;
     }
 
     public List<Message> getMessages(UUID conversationId) {
@@ -328,6 +356,31 @@ public class ChatMessageService {
 
     public Optional<Message> getMessageStatus(UUID messageId) {
         return messageRepository.findById(messageId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<MessageTrace> getMessageTrace(UUID conversationId, UUID messageId) {
+        Optional<Message> messageOpt = messageRepository.findById(messageId);
+        if (messageOpt.isEmpty() || !conversationId.equals(messageOpt.get().conversationId())) {
+            return Optional.empty();
+        }
+        Message message = messageOpt.get();
+
+        if (agentRunRepository != null) {
+            Optional<AgentRun> agentRunOpt = agentRunRepository.findByMessageId(messageId);
+            if (agentRunOpt.isPresent()) {
+                AgentRun run = agentRunOpt.get();
+                List<AgentStep> steps =
+                    agentStepRepository != null ? agentStepRepository.findByRunId(run.id())
+                        : List.of();
+                return Optional.of(MessageTrace.forMas(message, run, steps));
+            }
+        }
+
+        List<ToolCallRecord> records =
+            messageToolCallRepository != null ? messageToolCallRepository.findByMessageId(messageId)
+                : List.of();
+        return Optional.of(MessageTrace.forSingle(message, records));
     }
 
     @EventListener(ApplicationReadyEvent.class)

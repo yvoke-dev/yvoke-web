@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.web;
 
 import de.palsoftware.yvoke.chat.api.model.MessageDto;
+import de.palsoftware.yvoke.chat.api.model.MessageTraceDto;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
@@ -97,5 +98,14 @@ public class ChatAsyncController {
         }
         return ResponseEntity
             .ok(Map.of("status", status, "message", MessageDto.from(message, null)));
+    }
+
+    @GetMapping(value = "/chat/{id}/messages/{messageId}/trace",
+        produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<MessageTraceDto> getMessageTrace(@PathVariable UUID id,
+        @PathVariable UUID messageId) {
+        chatConversationService.verifyOwnership(id, true);
+        return chatMessageService.getMessageTrace(id, messageId).map(MessageTraceDto::from)
+            .map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
