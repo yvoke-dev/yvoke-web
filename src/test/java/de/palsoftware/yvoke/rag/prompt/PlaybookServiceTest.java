@@ -4,11 +4,13 @@ import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class PlaybookServiceTest {
 
@@ -92,7 +94,46 @@ class PlaybookServiceTest {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "orchestrator", true, "OIM");
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM");
+            false, "orchestrator", true, "OIM", null);
+    }
+
+    @Test
+    void testSavePlaybookWithSystemPromptSuccess() {
+        playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
+            false, "orchestrator", true, "OIM", "custom-prompt");
+        verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
+            false, "orchestrator", true, "OIM", "custom-prompt");
+    }
+
+    @Test
+    void testImportPlaybookWithSystemPromptPropagatesToSave() {
+        String md = """
+            ---
+            name: pb-custom-sys
+            title: PB Custom Sys
+            system_prompt: coding-system-prompt
+            ---
+            Template content
+            """;
+        playbookService.importPlaybookFromMarkdown(md, "fallback", "OIM");
+        verify(playbookRepository).upsert("pb-custom-sys", "PB Custom Sys", "", "Template content",
+            List.of(), false, "specialist", false, "OIM", "coding-system-prompt");
+    }
+
+    @Test
+    void testRegisterPlaybookWithMcpIncludesSystemPromptInMeta() {
+        Playbook pb = new Playbook("pb-mcp", "PB MCP", "Desc", "Template", List.of("t1"), true,
+            "specialist", false, null, null, false, "OIM", "coding-prompt");
+        when(playbookRepository.findAll()).thenReturn(List.of(pb));
+        when(playbookRepository.findByName("pb-mcp")).thenReturn(Optional.of(pb));
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+            ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+
+        var spec = captor.getValue();
+        assertEquals("coding-prompt", spec.prompt().meta().get("systemPrompt"));
     }
 
     @Test
@@ -173,7 +214,7 @@ class PlaybookServiceTest {
         playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false,
             " oim ");
         verify(playbookRepository).upsert("pb", "PB", "", "Body", List.of(), false, "specialist",
-            false, "OIM");
+            false, "OIM", null);
     }
 
     @Test
@@ -185,7 +226,7 @@ class PlaybookServiceTest {
         assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb", "PB",
             "", "Body", List.of(), false, null, false, null));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
-            any(), anyBoolean(), any());
+            any(), anyBoolean(), any(), any());
     }
 
     /** The file's own area wins over the one picked on the import form. */
@@ -202,7 +243,7 @@ class PlaybookServiceTest {
             Body
             """, null, "OIM");
         verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
-            anyBoolean(), eq("PingID"));
+            anyBoolean(), eq("PingID"), any());
     }
 
     @Test
@@ -215,6 +256,6 @@ class PlaybookServiceTest {
             Body
             """, null, "OIM");
         verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
-            anyBoolean(), eq("OIM"));
+            anyBoolean(), eq("OIM"), any());
     }
 }

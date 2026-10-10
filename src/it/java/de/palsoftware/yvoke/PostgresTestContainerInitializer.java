@@ -58,6 +58,12 @@ public class PostgresTestContainerInitializer implements ApplicationContextIniti
                 // (see the context-cache pitfall in CLAUDE.md).
                 // Safe: the only tests touching /actuator (SecurityGatingIT, SecurityMockGatingIT)
                 // use MockMvc, which never goes through the management container.
-                "management.server.port=0");
+                "management.server.port=0",
+                // Bind servers to 127.0.0.1 explicitly. On macOS, binding to 0.0.0.0 (wildcard)
+                // allows the kernel to allocate an ephemeral port that is already held on 127.0.0.1
+                // by another process (e.g. IDE proxy / language servers), causing client
+                // requests to localhost to route to that other process rather than Spring Boot.
+                "server.address=127.0.0.1",
+                "management.server.address=127.0.0.1");
     }
 }

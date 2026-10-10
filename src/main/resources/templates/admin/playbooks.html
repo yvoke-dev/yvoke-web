@@ -227,6 +227,7 @@
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
                                     <span th:if="${playbook.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${playbook.area}">OIM</span>
+                                    <span th:if="${playbook.systemPrompt != null}" title="Base System Prompt" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${'Prompt: ' + playbook.systemPrompt}">default-chat</span>
                                     <span th:if="${playbook.codeExecution}" title="Gemini server-side code execution is enabled for this playbook" style="font-size: 0.75rem; background-color: var(--color-accent-dim, rgba(59,130,246,0.15)); color: var(--color-accent); border: 1px solid var(--color-accent); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">⚙ Code Execution</span>
                                     <span th:if="${playbook.prototype}" title="Marked as prototype — hidden from normal chat users" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
@@ -273,7 +274,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary" 
-                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}"
+                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}, data-system-prompt=${playbook.systemPrompt}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
                                     Edit
@@ -342,6 +343,14 @@
                                     <option value="orchestrator">Orchestrator</option>
                                 </select>
                                 <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Specify the agent role for this playbook.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="systemPrompt" class="form-label">System Prompt</label>
+                                <select id="systemPrompt" name="systemPrompt" class="form-input">
+                                    <option value="">(Default / None)</option>
+                                    <option th:each="sp : ${systemPrompts}" th:value="${sp.name}" th:text="${sp.name + (sp.description != null ? ' - ' + sp.description : '')}"></option>
+                                </select>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Optional base system prompt for this playbook. If not set, the default chat system prompt is used.</span>
                             </div>
                             <div class="form-group">
                                 <label for="tools" class="form-label">Allowed Tools</label>
@@ -486,6 +495,7 @@
                 let codeExecution = false;
                 let prototype = false;
                 let area = null;
+                let systemPrompt = '';
                 let templateText = content;
 
                 // Parse frontmatter
@@ -525,6 +535,10 @@
                             } else if (trimmed.startsWith('area:')) {
                                 area = trimmed.substring(5).trim();
                                 inTools = false;
+                            } else if (trimmed.startsWith('system_prompt:') || trimmed.startsWith('systemPrompt:')) {
+                                const colonIdx = trimmed.indexOf(':');
+                                systemPrompt = trimmed.substring(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+                                inTools = false;
                             } else if (trimmed.startsWith('tools:')) {
                                 const valStr = trimmed.substring(6).trim();
                                 if (valStr === '[]') {
@@ -554,6 +568,12 @@
                 const targetAgentSelect = document.getElementById('targetAgent');
                 targetAgentSelect.value = targetAgent || 'specialist';
                 targetAgentSelect.disabled = false;
+
+                const sysPromptSelect = document.getElementById('systemPrompt');
+                if (sysPromptSelect) {
+                    sysPromptSelect.value = systemPrompt;
+                    sysPromptSelect.disabled = false;
+                }
 
                 // Reset tools selection
                 const toolsSelect = document.getElementById('tools');
@@ -619,6 +639,13 @@
             targetAgentSelect.value = targetAgent;
             targetAgentSelect.disabled = isReadOnly;
 
+            const systemPrompt = button.getAttribute('data-system-prompt') || '';
+            const sysPromptSelect = document.getElementById('systemPrompt');
+            if (sysPromptSelect) {
+                sysPromptSelect.value = systemPrompt;
+                sysPromptSelect.disabled = isReadOnly;
+            }
+
             applyArea(button.getAttribute('data-area'));
             document.getElementById('area').disabled = isReadOnly;
 
@@ -675,6 +702,12 @@
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
+
+            const sysPromptSelect = document.getElementById('systemPrompt');
+            if (sysPromptSelect) {
+                sysPromptSelect.value = '';
+                sysPromptSelect.disabled = false;
+            }
 
             document.getElementById('area').disabled = false;
 

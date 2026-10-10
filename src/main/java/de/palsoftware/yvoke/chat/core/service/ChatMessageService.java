@@ -129,7 +129,7 @@ public class ChatMessageService {
 
         Map<String, Object> settings = conversation.settings();
         String modelToUse = resolveModelToUse(settings);
-        String systemPrompt = resolveSystemPrompt(settings);
+        String systemPrompt = resolveSystemPrompt(settings, playbook);
         String thinkingLevel = resolveThinkingLevel(settings);
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
@@ -489,10 +489,15 @@ public class ChatMessageService {
         return modelToUse;
     }
 
-    private String resolveSystemPrompt(Map<String, Object> settings) {
+    private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
         String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
         if (chatPromptName != null && !chatPromptName.isBlank()) {
             return systemPromptService.getPrompt(chatPromptName.trim())
+                .map(SystemPrompt::systemPrompt).orElse(null);
+        }
+        if (playbook != null && playbook.systemPrompt() != null
+            && !playbook.systemPrompt().isBlank()) {
+            return systemPromptService.getPrompt(playbook.systemPrompt().trim())
                 .map(SystemPrompt::systemPrompt).orElse(null);
         }
         return null;
