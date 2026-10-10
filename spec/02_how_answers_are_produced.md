@@ -18,7 +18,7 @@ in-depth profiles, and can inspect any search or trace.
 | **Playbook recommendation** | Before the first message is sent, the system checks whether the chosen playbook fits. If not it offers a one-click switch and a **Send Anyway** button. |
 | **A toolbox, not just a search box** | While answering, the assistant can list a knowledge area's documents, open a document's table of contents, read a whole section, look up a thing and its connections in the knowledge graph, query structured records, and compute arithmetic expressions, statistics, and date intervals. |
 | **It can ask instead of guessing** | When a question is ambiguous the assistant pauses and asks, optionally with ready-made choices, then continues from the answer. |
-| **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where a playbook allows it, the assistant can also write and run small programs; both the code and its result appear in the answer. |
+| **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where tool call tracing is enabled, verbatim tool arguments and execution traces are recorded with correlated call IDs, while normal transcript replay strips tool banners cleanly without leaking arguments or reasoning. Where a playbook allows it, the assistant can also write and run small programs; both the code and its result appear in the answer. |
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
 | **Automated review of in-depth answers** | A reviewer agent checks the draft against the evidence the specialists gathered, and either approves it or sends it back with notes. If it still fails after the last attempt, the answer is delivered with a visible warning and the reviewer's notes. |
 | **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, its area, the tools it may use, whether code execution is allowed, its role, and whether it is flagged as a prototype (`prototype = true`). Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
@@ -84,6 +84,11 @@ in-depth profiles, and can inspect any search or trace.
   asked to continue and state the gap; the technical reason goes to the log only.
 - **Users only ever see one generic notice when something breaks.** A failure is never presented as
   though the user had stopped the answer.
+- **Single-agent tool call traces are recorded verbatim when enabled (`app.chat.trace-tool-calls = true`).**
+  Each tool invocation records its sequence order, tool name, raw arguments, verbatim output, and error
+  status into dedicated trace storage without risking the completion of the assistant's answer. When
+  enabled, tool streaming banners append `#<tool_call_id>` for call correlation, while the replayed model
+  history strips the banner line entirely.
 
 ## Limits
 
