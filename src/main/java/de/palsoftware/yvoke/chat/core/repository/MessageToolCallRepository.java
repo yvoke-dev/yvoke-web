@@ -1,12 +1,11 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -88,19 +87,6 @@ public class MessageToolCallRepository {
         return new ToolCallRecord(rs.getObject("id", UUID.class),
             rs.getObject("message_id", UUID.class), rs.getInt("seq"), rs.getString("tool_call_id"),
             rs.getString("tool_name"), rs.getString("arguments"), rs.getString("result"),
-            rs.getBoolean("is_error"), toInstant(rs.getObject("created_at")));
-    }
-
-    private static Instant toInstant(Object ts) {
-        if (ts == null) {
-            return null;
-        }
-        if (ts instanceof Timestamp t) {
-            return t.toInstant();
-        }
-        if (ts instanceof OffsetDateTime odt) {
-            return odt.toInstant();
-        }
-        return null;
+            rs.getBoolean("is_error"), JdbcMappers.toInstant(rs.getObject("created_at")));
     }
 }

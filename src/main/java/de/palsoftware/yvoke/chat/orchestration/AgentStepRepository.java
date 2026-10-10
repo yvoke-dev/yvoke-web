@@ -1,15 +1,13 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Instant;
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import java.sql.Timestamp;
-import java.time.OffsetDateTime;
 
 @Repository
 public class AgentStepRepository {
@@ -89,7 +87,29 @@ public class AgentStepRepository {
                 (Integer) rs.getObject("prompt_tokens"),
                 (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
                 (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
-                toInstant(rs.getObject("created_at")), rs.getString("status"),
+                JdbcMappers.toInstant(rs.getObject("created_at")), rs.getString("status"),
+                rs.getString("error")))
+            .list();
+    }
+
+    /** Slim projection omitting messages for trace responses without loading large JSON blobs. */
+    public List<AgentStep> findByRunIdWithoutMessages(UUID agentRunId) {
+        String sql = """
+            SELECT id, agent_run_id, seq, role, round, playbook_name, model, thinking_level, input,
+                   output, NULL AS messages, verdict::text AS verdict, prompt_tokens,
+                   completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
+                   status, error
+            FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
+            """;
+        return jdbcClient.sql(sql).param("agentRunId", agentRunId)
+            .query((rs, n) -> new AgentStep(rs.getObject("id", UUID.class),
+                rs.getObject("agent_run_id", UUID.class), rs.getInt("seq"), rs.getString("role"),
+                rs.getInt("round"), rs.getString("playbook_name"), rs.getString("model"),
+                rs.getString("thinking_level"), rs.getString("input"), rs.getString("output"), null,
+                rs.getString("verdict"), (Integer) rs.getObject("prompt_tokens"),
+                (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
+                (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
+                JdbcMappers.toInstant(rs.getObject("created_at")), rs.getString("status"),
                 rs.getString("error")))
             .list();
     }
@@ -104,18 +124,5 @@ public class AgentStepRepository {
             log.warn("Failed to serialize agent_step JSONB payload", e);
             return null;
         }
-    }
-
-    private static Instant toInstant(Object ts) {
-        if (ts == null) {
-            return null;
-        }
-        if (ts instanceof Timestamp t) {
-            return t.toInstant();
-        }
-        if (ts instanceof OffsetDateTime odt) {
-            return odt.toInstant();
-        }
-        return null;
     }
 }

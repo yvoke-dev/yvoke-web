@@ -140,20 +140,24 @@ class ToolCallTraceExtractorTest {
         LlmToolCall tcErr = new LlmToolCall("call_err\u0000", "function", "tool\u0000name",
             "{\"arg\":\"val\u0000\"}");
         LlmToolCall tcLegit = new LlmToolCall("call_legit", "function", "search_corpus", "{}");
+        LlmToolCall tcStrErr = new LlmToolCall("call_str_err", "function", "fetch_url", "{}");
 
         LlmMessage assistantMsg =
-            new LlmMessage("assistant", "", null, List.of(tcErr, tcLegit), null, null);
+            new LlmMessage("assistant", "", null, List.of(tcErr, tcLegit, tcStrErr), null, null);
         // Tool 1 failed with isError=true
         LlmMessage toolMsg1 = new LlmMessage("tool", "Failed\u0000 to fetch", null, null,
             "call_err\u0000", "tool\u0000name", true);
-        // Tool 2 returned legitimate result starting with 'Error: ' but isError=false
-        LlmMessage toolMsg2 = new LlmMessage("tool", "Error: no matching rows found for query",
-            null, null, "call_legit", "search_corpus", false);
+        // Tool 2 returned legitimate result with isError=false
+        LlmMessage toolMsg2 = new LlmMessage("tool", "Found 3 matching rows", null, null,
+            "call_legit", "search_corpus", false);
+        // Tool 3 returned Error: ... string despite isError=false (Finding 3)
+        LlmMessage toolMsg3 = new LlmMessage("tool", "Error: connection refused", null, null,
+            "call_str_err", "fetch_url", false);
 
         List<ToolCallRecord> records =
-            extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2));
+            extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2, toolMsg3));
 
-        assertThat(records).hasSize(2);
+        assertThat(records).hasSize(3);
         ToolCallRecord r0 = records.get(0);
         assertThat(r0.toolCallId()).isEqualTo("call_err");
         assertThat(r0.toolName()).isEqualTo("toolname");
@@ -164,9 +168,14 @@ class ToolCallTraceExtractorTest {
         ToolCallRecord r1 = records.get(1);
         assertThat(r1.toolCallId()).isEqualTo("call_legit");
         assertThat(r1.toolName()).isEqualTo("search_corpus");
-        assertThat(r1.result()).isEqualTo("Error: no matching rows found for query");
-        // Must NOT be classified as error despite starting with 'Error:'
+        assertThat(r1.result()).isEqualTo("Found 3 matching rows");
         assertThat(r1.isError()).isFalse();
+
+        ToolCallRecord r2 = records.get(2);
+        assertThat(r2.toolCallId()).isEqualTo("call_str_err");
+        assertThat(r2.toolName()).isEqualTo("fetch_url");
+        assertThat(r2.result()).isEqualTo("Error: connection refused");
+        assertThat(r2.isError()).isTrue();
     }
 
     @Test

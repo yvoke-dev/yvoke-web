@@ -107,6 +107,17 @@ public class ChatMessageServiceTest {
                 chatProperties, agentRunRepository, agentStepRepository);
     }
 
+    private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
+        AgentRunRepository runRepo, AgentStepRepository stepRepo) {
+        return new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+            chatConversationService, ragService, retrievalLogRepository, playbookService,
+            systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+            orchService != null ? orchService : mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor,
+            props != null ? props : chatProperties, runRepo != null ? runRepo : agentRunRepository,
+            stepRepo != null ? stepRepo : agentStepRepository);
+    }
+
     @Test
     public void testSendMessageAgenticMode() {
         UUID conversationId = UUID.randomUUID();
@@ -324,7 +335,9 @@ public class ChatMessageServiceTest {
         ChatMessageService disabledMessageService = new ChatMessageService(messageRepository,
             mock(ConversationRepository.class), disabledConversationService, ragService,
             retrievalLogRepository, mockPlaybookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class));
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, disabledProperties,
+            agentRunRepository, agentStepRepository);
 
         Assertions.assertThrows(IllegalStateException.class, () -> {
             disabledMessageService.prepare(UUID.randomUUID(), "query", "test-playbook");
@@ -936,10 +949,7 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         RagResult ragResult =
             new RagResult(List.of(UUID.randomUUID()), List.of(), null, List.of(), 11, 22, 33, 4, 5);
@@ -1019,10 +1029,7 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         UUID searchId = UUID.randomUUID();
         OrchestrationResult result = new OrchestrationResult("Orchestrated answer",
@@ -1201,10 +1208,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenThrow(new CancellationException("stopped by user"));
@@ -1273,10 +1277,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         String flaggedContent = "The kit ships 9.3.1.\n\n> ⚠️ Delivered with reservations.";
         OrchestrationResult flagged = new OrchestrationResult(flaggedContent, List.of(), List.of(),
@@ -1353,10 +1354,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenThrow(new RuntimeException("429 quota key=abc"));
@@ -1565,10 +1563,7 @@ public class ChatMessageServiceTest {
             new Conversation(conversationId, null, "My Chat", settings, null, null, List.of()));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
@@ -1608,11 +1603,7 @@ public class ChatMessageServiceTest {
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         AgentRunRepository agentRunRepositoryMock = mock(AgentRunRepository.class);
         ChatMessageService service =
-            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
-                chatConversationService, ragService, retrievalLogRepository, playbookService,
-                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
-                orchestrationService, messageToolCallRepository, toolCallTraceExtractor,
-                chatProperties, agentRunRepositoryMock, mock(AgentStepRepository.class));
+            createService(orchestrationService, null, agentRunRepositoryMock, null);
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
@@ -1651,11 +1642,7 @@ public class ChatMessageServiceTest {
 
         // Feature flag ON
         ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+        ChatMessageService service = createService(null, enabledProps, null, null);
 
         when(toolCallTraceExtractor.extract(eq(assistantMessageId), any()))
             .thenReturn(List.of(new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
@@ -1703,11 +1690,7 @@ public class ChatMessageServiceTest {
 
         // Feature flag OFF
         ChatProperties disabledProps = new ChatProperties(true, List.of("model1"), true, false);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, disabledProps);
+        ChatMessageService service = createService(null, disabledProps, null, null);
 
         ChatMessageService.PreparedChat prepared =
             service.prepare(conversationId, "query", "test-pb");
@@ -1742,11 +1725,7 @@ public class ChatMessageServiceTest {
 
         // Feature flag ON
         ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+        ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
             "call_1", "tool", "{}", "result", false, Instant.now());
@@ -1762,8 +1741,8 @@ public class ChatMessageServiceTest {
         InOrder inOrder = inOrder(transactionManager, sink, messageToolCallRepository);
         inOrder.verify(transactionManager).commit(any()); // prepare() commit
         inOrder.verify(transactionManager).commit(any()); // stream() saveAssistantMessage commit
-        inOrder.verify(sink).accept(contains("[DONE]"));
         inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
+        inOrder.verify(sink).accept(contains("[DONE]"));
         verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
     }
 
@@ -1790,11 +1769,7 @@ public class ChatMessageServiceTest {
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
         ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+        ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
             "call_1", "tool", "{}", "result", false, Instant.now());
@@ -1835,11 +1810,7 @@ public class ChatMessageServiceTest {
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
         ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor, enabledProps);
+        ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), UUID.randomUUID(), 0,
             "call_async", "tool", "{}", "result", false, Instant.now());
@@ -1857,8 +1828,8 @@ public class ChatMessageServiceTest {
         InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
         inOrder.verify(transactionManager).commit(any()); // prepare() commit
         inOrder.verify(transactionManager).commit(any()); // initial assistant message commit
-        inOrder.verify(transactionManager).commit(any()); // async completion commit
         inOrder.verify(messageToolCallRepository).insertAll(eq(messageId), eq(List.of(record)));
+        inOrder.verify(transactionManager).commit(any()); // async completion commit
     }
 
     private static JsonNode parseDoneEvent(String line) {
@@ -1934,7 +1905,7 @@ public class ChatMessageServiceTest {
             "ok", null);
         when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
         when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.of(run));
-        when(agentStepRepository.findByRunId(runId)).thenReturn(List.of(step1));
+        when(agentStepRepository.findByRunIdWithoutMessages(runId)).thenReturn(List.of(step1));
 
         Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
 
@@ -1950,7 +1921,7 @@ public class ChatMessageServiceTest {
         assertThat(trace.cachedTokens()).isEqualTo(40);
         assertThat(trace.thoughtTokens()).isEqualTo(50);
         assertThat(trace.toolCalls()).isNull();
-        assertThat(trace.retrievedChunkIds()).isNull();
+        assertThat(trace.retrievedChunkIds()).isEmpty();
     }
 
     @Test

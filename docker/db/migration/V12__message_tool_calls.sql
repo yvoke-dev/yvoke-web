@@ -12,5 +12,3 @@ CREATE TABLE message_tool_calls (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_message_tool_calls_message_seq UNIQUE (message_id, seq)
 );
-
-CREATE INDEX idx_message_tool_calls_created_at ON message_tool_calls (created_at);

@@ -1,18 +1,16 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Instant;
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.OffsetDateTime;
-import java.util.List;
 
 @Repository
 public class AgentRunRepository {
@@ -95,8 +93,8 @@ public class AgentRunRepository {
             rs.getString("final_verdict"), (Integer) rs.getObject("prompt_tokens"),
             (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
             (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
-            rs.getString("error"), toInstant(rs.getObject("started_at")),
-            toInstant(rs.getObject("finished_at")));
+            rs.getString("error"), JdbcMappers.toInstant(rs.getObject("started_at")),
+            JdbcMappers.toInstant(rs.getObject("finished_at")));
     }
 
     public Optional<AgentRun> findById(UUID id) {
@@ -126,18 +124,5 @@ public class AgentRunRepository {
             log.warn("Failed to serialize agent_run JSONB payload", e);
             return null;
         }
-    }
-
-    private static Instant toInstant(Object ts) {
-        if (ts == null) {
-            return null;
-        }
-        if (ts instanceof Timestamp t) {
-            return t.toInstant();
-        }
-        if (ts instanceof OffsetDateTime odt) {
-            return odt.toInstant();
-        }
-        return null;
     }
 }

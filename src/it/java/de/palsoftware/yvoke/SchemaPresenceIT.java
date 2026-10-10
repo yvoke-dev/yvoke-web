@@ -225,7 +225,7 @@ public class SchemaPresenceIT {
     @Test
     public void testMigrationV12MessageToolCallsTableAndCascadeDeletion() {
         assertThat(tableExists("message_tool_calls")).isTrue();
-        assertThat(indexExists("message_tool_calls", "idx_message_tool_calls_created_at")).isTrue();
+        assertThat(indexExists("message_tool_calls", "idx_message_tool_calls_created_at")).isFalse();
 
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(

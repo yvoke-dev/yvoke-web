@@ -28,6 +28,7 @@ import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -42,6 +43,8 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.Authentication;
@@ -58,7 +61,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+    properties = {"app.security.mock=true", "app.chat.trace-tool-calls=true"})
 public class ChatAsyncControllerTraceIT {
 
     @Autowired
@@ -172,7 +175,7 @@ public class ChatAsyncControllerTraceIT {
         messageToolCallRepository.insertAll(messageId, List.of(call0, call1));
 
         mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + messageId + "/trace")
-                .with(testUserLogin(userOid, "user-trace-a@local", "User Trace A", "ROLE_USER")))
+                .with(testUserLogin(userOid, "user-trace-a@local", "User Trace A", "ROLE_ADMIN", "ROLE_USER")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.mode").value("single"))
             .andExpect(jsonPath("$.messageId").value(messageId.toString()))
@@ -215,7 +218,7 @@ public class ChatAsyncControllerTraceIT {
 
         // Requesting messageB under conversation A should return 404 (IDOR guard)
         mockMvc.perform(get("/chat/" + convA.id() + "/messages/" + messageBId + "/trace")
-                .with(testUserLogin(userOid, "user-idor@local", "User Idor", "ROLE_USER")))
+                .with(testUserLogin(userOid, "user-idor@local", "User Idor", "ROLE_ADMIN", "ROLE_USER")))
             .andExpect(status().isNotFound());
     }
 
@@ -234,10 +237,14 @@ public class ChatAsyncControllerTraceIT {
             "done", "model-a");
         messageRepository.save(messageA);
 
+        // 1. Conversation owner without ROLE_ADMIN gets 403 Forbidden (trace endpoint is admin-only)
+        mockMvc.perform(get("/chat/" + convA.id() + "/messages/" + msgId + "/trace")
+                .with(testUserLogin(userAOid, "user-owner@local", "User Owner", "ROLE_USER")))
+            .andExpect(status().isForbidden());
+
+        // 2. Intruder user without ROLE_ADMIN gets 403 Forbidden
         String userBOid = "user-intruder-oid";
         userRepository.upsert(userBOid, "user-intruder@local", "User Intruder");
-
-        // Intruder accessing user A's private conversation gets 403 Forbidden
         mockMvc.perform(get("/chat/" + convA.id() + "/messages/" + msgId + "/trace")
                 .with(testUserLogin(userBOid, "user-intruder@local", "User Intruder", "ROLE_USER")))
             .andExpect(status().isForbidden());
@@ -306,7 +313,7 @@ public class ChatAsyncControllerTraceIT {
             List.of(new LlmMessage("system", "confidential instructions")), "ok", 50, 100, 150, 20, 25);
 
         mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/trace")
-                .with(testUserLogin(userOid, "user-mas@local", "User Mas", "ROLE_USER")))
+                .with(testUserLogin(userOid, "user-mas@local", "User Mas", "ROLE_ADMIN", "ROLE_USER")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.mode").value("mas"))
             .andExpect(jsonPath("$.messageId").value(assistantMessageId.toString()))
@@ -336,11 +343,23 @@ public class ChatAsyncControllerTraceIT {
         playbookService.savePlaybook("trace-playbook", "Trace Playbook", "Desc", "Template",
             List.of(), false, "specialist", false, "OIM");
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Hello async answer with trace!", null, null,
-                new LlmUsage(15, 25, 40, 5, 6)));
-            return null;
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null,
+                        List.of(new LlmToolCallDelta(0, "call_lookup", "test_lookup", "{\"key\":\"user_42\"}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(new LlmResponseChunk("Hello async answer with trace!", null, null,
+                        new LlmUsage(15, 25, 40, 5, 6)));
+                }
+                callCount++;
+                return null;
+            }
         }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userOid, "user-async-trace@local", "User Async Trace", "ROLE_USER");
@@ -375,24 +394,39 @@ public class ChatAsyncControllerTraceIT {
         }
         assertThat(done).isTrue();
 
-        // Trace call on correct conversation
+        // Regular user cannot access trace (requires ROLE_ADMIN)
         mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/trace")
                 .with(login))
+            .andExpect(status().isForbidden());
+
+        // Admin can fetch trace and observes the real persisted tool call
+        String adminOid = "admin-async-trace-oid";
+        userRepository.upsert(adminOid, "admin-async-trace@local", "Admin Async Trace");
+        var adminLogin = testUserLogin(adminOid, "admin-async-trace@local", "Admin Async Trace", "ROLE_ADMIN", "ROLE_USER");
+
+        mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/trace")
+                .with(adminLogin))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.mode").value("single"))
             .andExpect(jsonPath("$.messageId").value(assistantMessageId.toString()))
             .andExpect(jsonPath("$.conversationId").value(conv.id().toString()))
             .andExpect(jsonPath("$.status").value("done"))
-            .andExpect(jsonPath("$.tokens.prompt").value(15))
-            .andExpect(jsonPath("$.tokens.completion").value(25))
-            .andExpect(jsonPath("$.tokens.total").value(40))
+            .andExpect(jsonPath("$.tokens.prompt").value(25))
+            .andExpect(jsonPath("$.tokens.completion").value(45))
+            .andExpect(jsonPath("$.tokens.total").value(70))
             .andExpect(jsonPath("$.tokens.cached").value(5))
             .andExpect(jsonPath("$.tokens.thought").value(6))
-            .andExpect(jsonPath("$.toolCalls").isArray());
+            .andExpect(jsonPath("$.toolCalls.length()").value(1))
+            .andExpect(jsonPath("$.toolCalls[0].seq").value(0))
+            .andExpect(jsonPath("$.toolCalls[0].id").value("call_lookup"))
+            .andExpect(jsonPath("$.toolCalls[0].name").value("test_lookup"))
+            .andExpect(jsonPath("$.toolCalls[0].arguments").value("{\"key\":\"user_42\"}"))
+            .andExpect(jsonPath("$.toolCalls[0].result").value("Error: Tool test_lookup not found."))
+            .andExpect(jsonPath("$.toolCalls[0].isError").value(true));
 
         // IDOR cross-conversation trace request returns 404
         mockMvc.perform(get("/chat/" + convOther.id() + "/messages/" + assistantMessageId + "/trace")
-                .with(login))
+                .with(adminLogin))
             .andExpect(status().isNotFound());
     }
 

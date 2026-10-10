@@ -26,7 +26,6 @@ import de.palsoftware.yvoke.chat.orchestration.AgentRun;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
 import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
-import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -97,42 +96,10 @@ public class ChatMessageService {
         RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
         SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
-        ChatCancellationService chatCancellationService,
-        OrchestrationService orchestrationService) {
-        this(messageRepository, conversationRepository, chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService, null, null, null, null,
-            null);
-    }
-
-    public ChatMessageService(MessageRepository messageRepository,
-        ConversationRepository conversationRepository,
-        ChatConversationService chatConversationService, RagService ragService,
-        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
-        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
-        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
         ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
-        @Nullable MessageToolCallRepository messageToolCallRepository,
-        @Nullable ToolCallTraceExtractor toolCallTraceExtractor,
-        @Nullable ChatProperties chatProperties) {
-        this(messageRepository, conversationRepository, chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService, messageToolCallRepository,
-            toolCallTraceExtractor, chatProperties, null, null);
-    }
-
-    @Autowired
-    public ChatMessageService(MessageRepository messageRepository,
-        ConversationRepository conversationRepository,
-        ChatConversationService chatConversationService, RagService ragService,
-        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
-        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
-        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
-        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
-        @Nullable MessageToolCallRepository messageToolCallRepository,
-        @Nullable ToolCallTraceExtractor toolCallTraceExtractor,
-        @Nullable ChatProperties chatProperties, @Nullable AgentRunRepository agentRunRepository,
-        @Nullable AgentStepRepository agentStepRepository) {
+        MessageToolCallRepository messageToolCallRepository,
+        ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
+        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -239,6 +206,7 @@ public class ChatMessageService {
                     ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
 
                 String generatedContent = assistantContent.toString();
+                saveToolCallTrace(ragResult, assistantMessageId);
                 transactionTemplate.executeWithoutResult(status -> {
                     messageRepository.updateContentAndStatus(assistantMessageId, generatedContent,
                         ragResult.retrievedChunkIds(), Collections.emptyList(),
@@ -248,7 +216,6 @@ public class ChatMessageService {
                     linkRetrievalLogs(ragResult, assistantMessageId);
                     // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
                 });
-                saveToolCallTrace(ragResult, assistantMessageId);
             } catch (CancellationException e) {
                 Thread.interrupted(); // Clear interrupted status so DB updates can execute
                 log.info("Async generation cancelled by user for conversation: {}", conversationId);
@@ -322,9 +289,7 @@ public class ChatMessageService {
                     for (UUID searchId : result.searchIds()) {
                         retrievalLogRepository.updateMessageId(searchId, assistantMessageId);
                     }
-                    if (agentRunRepository != null) {
-                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                    }
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
                 });
             } catch (CancellationException e) {
                 Thread.interrupted();
@@ -333,9 +298,7 @@ public class ChatMessageService {
                     messageRepository.updateContentAndStatus(assistantMessageId,
                         "*[Generation stopped by user]*", Collections.emptyList(),
                         Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
-                    if (agentRunRepository != null) {
-                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                    }
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
                 });
             } catch (Exception e) {
                 Thread.interrupted();
@@ -345,9 +308,7 @@ public class ChatMessageService {
                     messageRepository.updateContentAndStatus(assistantMessageId, GENERIC_ERROR_TEXT,
                         Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0, "error",
                         null);
-                    if (agentRunRepository != null) {
-                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                    }
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
                 });
             } finally {
                 if (onComplete != null) {
@@ -377,20 +338,14 @@ public class ChatMessageService {
         }
         Message message = messageOpt.get();
 
-        if (agentRunRepository != null) {
-            Optional<AgentRun> agentRunOpt = agentRunRepository.findByMessageId(messageId);
-            if (agentRunOpt.isPresent()) {
-                AgentRun run = agentRunOpt.get();
-                List<AgentStep> steps =
-                    agentStepRepository != null ? agentStepRepository.findByRunId(run.id())
-                        : List.of();
-                return Optional.of(MessageTrace.forMas(message, run, steps));
-            }
+        Optional<AgentRun> agentRunOpt = agentRunRepository.findByMessageId(messageId);
+        if (agentRunOpt.isPresent()) {
+            AgentRun run = agentRunOpt.get();
+            List<AgentStep> steps = agentStepRepository.findByRunIdWithoutMessages(run.id());
+            return Optional.of(MessageTrace.forMas(message, run, steps));
         }
 
-        List<ToolCallRecord> records =
-            messageToolCallRepository != null ? messageToolCallRepository.findByMessageId(messageId)
-                : List.of();
+        List<ToolCallRecord> records = messageToolCallRepository.findByMessageId(messageId);
         return Optional.of(MessageTrace.forSingle(message, records));
     }
 
@@ -437,8 +392,8 @@ public class ChatMessageService {
                 status -> saveAssistantMessage(ragResult, prepared.conversationId(),
                     assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
 
-            sink.accept(formatDoneToken(ragResult, assistantMessageId));
             saveToolCallTrace(ragResult, assistantMessageId);
+            sink.accept(formatDoneToken(ragResult, assistantMessageId));
         } catch (CancellationException e) {
             log.info("Streaming generation cancelled by user for conversation: {}",
                 prepared.conversationId());
@@ -639,7 +594,7 @@ public class ChatMessageService {
             .modelOverride(prepared.modelToUse()).history(prepared.history())
             .systemPromptOverride(prepared.systemPrompt()).allowedTools(prepared.allowedTools())
             .thinkingLevel(prepared.thinkingLevel()).codeExecution(prepared.codeExecution())
-            .traceToolCalls(chatProperties != null && chatProperties.traceToolCalls()).build();
+            .traceToolCalls(chatProperties.traceToolCalls()).build();
     }
 
     /**
@@ -670,11 +625,7 @@ public class ChatMessageService {
     }
 
     private void saveToolCallTrace(RagResult ragResult, UUID assistantMessageId) {
-        if (chatProperties == null || !chatProperties.traceToolCalls() || ragResult == null
-            || ragResult.messages() == null) {
-            return;
-        }
-        if (toolCallTraceExtractor == null || messageToolCallRepository == null) {
+        if (!chatProperties.traceToolCalls() || ragResult == null || ragResult.messages() == null) {
             return;
         }
         try {

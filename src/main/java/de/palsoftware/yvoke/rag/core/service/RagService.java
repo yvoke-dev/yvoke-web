@@ -540,6 +540,9 @@ public class RagService {
                     } else {
                         responseData = callback.call(tc.arguments());
                     }
+                    if (responseData != null && responseData.startsWith("Error:")) {
+                        isError = true;
+                    }
                     log.info("Tool {} executed successfully, response length: {}", tc.name(),
                         responseData != null ? responseData.length() : 0);
                 } catch (Exception e) {
@@ -589,13 +592,13 @@ public class RagService {
 
     private static void emitToolBanner(Consumer<String> sink, LlmToolCall tc,
         boolean traceToolCalls) {
-        String argsSingleLine =
-            tc.arguments() != null ? tc.arguments().replaceAll("\\R", " ") : "{}";
         if (traceToolCalls && tc.id() != null && !tc.id().isBlank()) {
+            String argsSingleLine =
+                tc.arguments() != null ? tc.arguments().replaceAll("\\R", " ") : "{}";
             sink.accept(String.format("🔧 *Calling tool:* %s(%s) #%s\n\n", tc.name(),
                 argsSingleLine, tc.id()));
         } else {
-            sink.accept(String.format("🔧 *Calling tool:* %s(%s)\n\n", tc.name(), argsSingleLine));
+            sink.accept(String.format("🔧 *Calling tool:* %s(%s)\n\n", tc.name(), tc.arguments()));
         }
     }
 

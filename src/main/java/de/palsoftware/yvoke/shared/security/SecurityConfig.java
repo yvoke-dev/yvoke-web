@@ -303,6 +303,7 @@ public class SecurityConfig {
                 .requestMatchers("/login", "/logged-out", "/error", "/.well-known/**").permitAll()
                 // Gated paths
                 .requestMatchers("/admin/**", "/admin").hasRole("ADMIN")
+                .requestMatchers("/chat/*/messages/*/trace").hasRole("ADMIN")
                 .requestMatchers("/chat/**", "/chat").hasRole("USER")
                 .requestMatchers("/document/**", "/document").hasRole("USER").anyRequest()
                 .authenticated());

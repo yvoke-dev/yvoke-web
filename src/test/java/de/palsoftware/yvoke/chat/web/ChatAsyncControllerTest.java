@@ -30,13 +30,34 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
 class ChatAsyncControllerTest {
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticateAsAdmin() {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+        SecurityContextHolder.setContext(context);
+    }
+
+    private static void authenticateAsUser() {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new TestingAuthenticationToken("user", "pass", "ROLE_USER"));
+        SecurityContextHolder.setContext(context);
+    }
 
     private static GenerationConcurrencyLimiter allowingLimiter() {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
@@ -369,6 +390,7 @@ class ChatAsyncControllerTest {
 
     @Test
     void testCrossConversationIdorReturns404() {
+        authenticateAsAdmin();
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
@@ -389,6 +411,7 @@ class ChatAsyncControllerTest {
 
     @Test
     void testZeroToolCallsReturns200WithEmptyList() {
+        authenticateAsAdmin();
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
@@ -420,6 +443,7 @@ class ChatAsyncControllerTest {
 
     @Test
     void testGeneratingMessageTraceStatus() {
+        authenticateAsAdmin();
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
@@ -445,7 +469,25 @@ class ChatAsyncControllerTest {
     }
 
     @Test
+    void testTraceNonAdminThrowsAccessDenied() {
+        authenticateAsUser();
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.getMessageTrace(conversationId, messageId));
+        verify(chatConversationService, never()).verifyOwnership(any(), anyBoolean());
+        verify(chatMessageService, never()).getMessageTrace(any(), any());
+    }
+
+    @Test
     void testTraceUnauthorizedThrowsAccessDenied() {
+        authenticateAsAdmin();
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
@@ -464,6 +506,7 @@ class ChatAsyncControllerTest {
 
     @Test
     void testMasModeTraceReturnsAgentRunAndSteps() {
+        authenticateAsAdmin();
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();

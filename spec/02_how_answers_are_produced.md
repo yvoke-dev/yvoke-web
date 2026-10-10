@@ -92,6 +92,8 @@ in-depth profiles, and can inspect any search or trace.
 
 ## Limits
 
+- **Tool-call traces are persisted only when a generation turn completes.** Aborted, cancelled, or failed
+  generation turns do not write tool-call traces, even if individual tools executed before the turn was stopped.
 - **An in-depth answer costs several times a normal answer and takes minutes rather than seconds.** It
   runs a lead agent, several specialists and up to three review rounds. Do not promise it as a free
   quality upgrade.

@@ -1631,7 +1631,7 @@ public class RagServiceAgenticTest {
 
         String answer = String.join("", tokens);
         assertThat(answer)
-            .contains("🔧 *Calling tool:* oim_search({   \"query\": \"Person\" })\n\n");
+            .contains("🔧 *Calling tool:* oim_search({\n  \"query\": \"Person\"\n})\n\n");
         assertThat(answer).doesNotContain("#call_id_999");
     }
 }
