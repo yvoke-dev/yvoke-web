@@ -21,7 +21,7 @@ in-depth profiles, and can inspect any search or trace.
 | **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where a playbook allows it, the assistant can also write and run small programs; both the code and its result appear in the answer. |
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
 | **Automated review of in-depth answers** | A reviewer agent checks the draft against the evidence the specialists gathered, and either approves it or sends it back with notes. If it still fails after the last attempt, the answer is delivered with a visible warning and the reviewer's notes. |
-| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, its area, the tools it may use, whether code execution is allowed, its role, and whether it is flagged as a prototype (`prototype = true`). Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
+| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, its area, the tools it may use, whether code execution is allowed, its role, an optional designated base instruction set (system prompt), and whether it is flagged as a prototype (`prototype = true`). Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
 | **Administrators manage base instructions** | Managed separately from playbooks, with one marked as the active default. Each belongs to one area. Typed by purpose — chat, graph extraction, summarisation — and the type is enforced wherever one is chosen, so an entry can only be picked for the job it was written for. Importable/exportable as files. |
 | **Administrators configure in-depth profiles** | A profile belongs to one area and names the lead playbook, the reviewer playbook and the available specialists, plus how many review rounds and specialist calls one question may spend, which model each role runs at, and whether it is flagged as a prototype (`prototype = true`). Prototype profiles are hidden by default from regular users. |
 | **Administrators test and audit** | A search console runs any query against a knowledge area and shows the passages, their scores and which search found them. A log lists past searches with the rating the user gave. Every investigation keeps a full trace. |
@@ -41,6 +41,12 @@ in-depth profiles, and can inspect any search or trace.
   The playbook list now badges that case: *"No tools — answers without searching"*. It also badges the
   opposite mistake, tools chosen on a Reviewer or Orchestrator playbook, which are ignored because those
   roles are given a fixed tool list when they run.
+- **A playbook can define its own base instructions (system prompt).** If set, the playbook's chosen
+  system prompt overrides the default chat base instructions for conversations using that playbook (unless an
+  explicit conversation-level prompt override is configured). In multi-agent orchestration, the designated
+  prompt is prepended to orchestrator and reviewer system prompts, and passed as the base instruction override
+  to specialist playbooks. If unconfigured or deleted, it falls back seamlessly to the area or global default
+  base instructions.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft
@@ -122,7 +128,8 @@ in-depth profiles, and can inspect any search or trace.
   altogether. When the cap is reached the assistant is told results were truncated, but not what it
   missed.
 - **If the active base instruction set is deleted or its name mistyped**, the assistant runs with no base
-  instructions at all. Answers quietly get worse and nothing reports an error.
+  instructions at all. Answers quietly get worse and nothing reports an error. If a playbook designates a system
+  prompt that cannot be resolved, it falls back to the default base instructions.
 - **Tool names inside a playbook are never validated.** A tool that is renamed or withdrawn is silently
   dropped from that playbook, so it stops being used with no visible sign.
 - **A playbook's role is stored without validation** (case does not matter). The admin form offers a fixed

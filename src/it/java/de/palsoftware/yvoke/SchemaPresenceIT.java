@@ -221,6 +221,47 @@ public class SchemaPresenceIT {
         }
     }
 
+    @Test
+    public void testMigrationV12PlaybookSystemPromptExists() {
+        assertThat(columnExists("playbooks", "system_prompt"))
+            .withFailMessage("Column playbooks.system_prompt should exist (V12)")
+            .isTrue();
+        assertThat(indexExists("playbooks", "idx_playbooks_system_prompt"))
+            .withFailMessage("Index idx_playbooks_system_prompt should exist (V12)")
+            .isTrue();
+    }
+
+    @Test
+    public void testMigrationV12PlaybookSystemPromptForeignKeyBehavior() {
+        String promptName1 = "v12-it-prompt-orig-" + UUID.randomUUID();
+        String promptName2 = "v12-it-prompt-renamed-" + UUID.randomUUID();
+        String playbookName = "v12-it-playbook-" + UUID.randomUUID();
+
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'CHAT', 'body', 'test')",
+            promptName1);
+        jdbcTemplate.update(
+            "INSERT INTO playbooks (name, title, description, template_text, system_prompt) VALUES (?, 'title', 'desc', 'template', ?)",
+            playbookName, promptName1);
+
+        try {
+            // Verify FK update cascade
+            jdbcTemplate.update("UPDATE system_prompts SET name = ? WHERE name = ?", promptName2, promptName1);
+            String cascadedPrompt = jdbcTemplate.queryForObject(
+                "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, playbookName);
+            assertThat(cascadedPrompt).isEqualTo(promptName2);
+
+            // Verify FK delete set null
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", promptName2);
+            String setNullPrompt = jdbcTemplate.queryForObject(
+                "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, playbookName);
+            assertThat(setNullPrompt).isNull();
+        } finally {
+            jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", playbookName);
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?)", promptName1, promptName2);
+        }
+    }
+
 
     @Test
     public void testUniquenessIndexesExist() {

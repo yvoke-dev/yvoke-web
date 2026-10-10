@@ -175,4 +175,47 @@ class PlaybookMarkdownParserTest {
             """, null);
         assertNull(parsed.area());
     }
+
+    @Test
+    void theSystemPromptIsReadFromTheFrontmatterAndWrittenBack() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            system_prompt: coding-chat
+            ---
+            Body
+            """, null);
+        assertEquals("coding-chat", parsed.systemPrompt());
+
+        String md = PlaybookMarkdownParser.toMarkdown(parsed);
+        assertTrue(md.contains("system_prompt: coding-chat"), md);
+        assertEquals("coding-chat", PlaybookMarkdownParser.parseMarkdown(md, null).systemPrompt());
+    }
+
+    @Test
+    void aliasedSystemPromptCamelCaseIsSupported() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            systemPrompt: special-chat
+            ---
+            Body
+            """, null);
+        assertEquals("special-chat", parsed.systemPrompt());
+    }
+
+    @Test
+    void aFileWithoutASystemPromptParsesWithNull() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            ---
+            Body
+            """, null);
+        assertNull(parsed.systemPrompt());
+    }
 }
+

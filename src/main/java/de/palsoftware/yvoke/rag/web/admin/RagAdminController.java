@@ -227,6 +227,8 @@ public class RagAdminController {
         log.info("RagAdminController: Accessing Playbooks view");
         model.addAttribute("playbooks", playbookService.listAllPlaybooks());
         model.addAttribute("areas", areaService.listAreaNames());
+        model.addAttribute("systemPrompts",
+            systemPromptService.listPromptsByType(SystemPromptType.CHAT));
         model.addAttribute("availableTools",
             ragService.getToolRegistry().keySet().stream().sorted().collect(Collectors.toList()));
         return "admin/playbooks";
@@ -239,9 +241,12 @@ public class RagAdminController {
         @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
         @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam String area, RedirectAttributes redirectAttributes) {
+        @RequestParam String area, @RequestParam(required = false) String systemPrompt,
+        RedirectAttributes redirectAttributes) {
+        String sysPrompt =
+            (systemPrompt != null && !systemPrompt.isBlank()) ? systemPrompt.trim() : null;
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent, prototype, area);
+            targetAgent, prototype, area, sysPrompt);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";

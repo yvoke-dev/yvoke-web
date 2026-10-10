@@ -8,6 +8,8 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -55,11 +57,22 @@ public class OrchestrationService {
     private final AgentStepRepository stepRepository;
     private final ObjectMapper objectMapper;
     private final ConversationRepository conversationRepository;
+    private final SystemPromptService systemPromptService;
 
     public OrchestrationService(RagService ragService, PlaybookService playbookService,
         OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
         AgentRunRepository runRepository, AgentStepRepository stepRepository,
         ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository) {
+        this(ragService, playbookService, properties, profileService, runRepository, stepRepository,
+            objectMapper, conversationRepository, null);
+    }
+
+    @Autowired
+    public OrchestrationService(RagService ragService, PlaybookService playbookService,
+        OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
+        AgentRunRepository runRepository, AgentStepRepository stepRepository,
+        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository,
+        @Nullable SystemPromptService systemPromptService) {
         this.ragService = ragService;
         this.playbookService = playbookService;
         this.properties = properties;
@@ -68,6 +81,7 @@ public class OrchestrationService {
         this.stepRepository = stepRepository;
         this.objectMapper = objectMapper;
         this.conversationRepository = conversationRepository;
+        this.systemPromptService = systemPromptService;
     }
 
     public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
@@ -116,9 +130,12 @@ public class OrchestrationService {
         String content;
 
         try {
-            String orchestratorSystemPrompt = orchestratorPlaybook.templateText()
-                + "\n\n## Available specialists\n" + renderRoster(specialists)
-                + "\n\n## Output contract\n" + ANSWER_MARKER_CONTRACT;
+            String orchestratorBaseSysPrompt = resolvePlaybookSystemPrompt(orchestratorPlaybook);
+            String orchestratorSystemPrompt =
+                (orchestratorBaseSysPrompt != null ? orchestratorBaseSysPrompt + "\n\n" : "")
+                    + orchestratorPlaybook.templateText() + "\n\n## Available specialists\n"
+                    + renderRoster(specialists) + "\n\n## Output contract\n"
+                    + ANSWER_MARKER_CONTRACT;
 
             Verdict lastRejection = null;
             while (true) {
@@ -196,8 +213,12 @@ public class OrchestrationService {
                     // systemPromptOverride is passed unconditionally: RagService.seedMessages
                     // ignores it whenever priorMessages is non-empty, precisely so a resumed turn
                     // cannot have index 0 rewritten under the answers already given to it.
+                    String reviewerBaseSysPrompt = resolvePlaybookSystemPrompt(reviewerPlaybook);
+                    String reviewerSystemPrompt =
+                        (reviewerBaseSysPrompt != null ? reviewerBaseSysPrompt + "\n\n" : "")
+                            + reviewerPlaybook.templateText();
                     AgentOutcome rev = runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
-                        reviewerPlaybook.templateText(), reviewTask, reviewTask, profile.reviewer(),
+                        reviewerSystemPrompt, reviewTask, reviewTask, profile.reviewer(),
                         List.of("verify_citations"), false, List.<ToolCallback>of(submitReview),
                         null, st.reviewerMessages, holder);
                     if (rev.result().messages() != null && !rev.result().messages().isEmpty()) {
@@ -321,6 +342,15 @@ public class OrchestrationService {
         }
     }
 
+    private String resolvePlaybookSystemPrompt(Playbook playbook) {
+        if (systemPromptService == null || playbook == null || playbook.systemPrompt() == null
+            || playbook.systemPrompt().isBlank()) {
+            return null;
+        }
+        return systemPromptService.getPrompt(playbook.systemPrompt().trim())
+            .map(SystemPrompt::systemPrompt).orElse(null);
+    }
+
     /** Invoked by call_specialist: runs one specialist, records the step, harvests its evidence. */
     private String runSpecialist(RunState st, List<Playbook> specialists, String playbookName,
         String subQuestion) {
@@ -348,9 +378,10 @@ public class OrchestrationService {
             allowed.add("ask_clarifying_question");
         }
 
-        AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), null, query, subQuestion,
-            profileSpecialistCfg(st), allowed, pb.codeExecution(), List.<ToolCallback>of(), null,
-            priorSpecialistMessages, null);
+        String specialistSystemPrompt = resolvePlaybookSystemPrompt(pb);
+        AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), specialistSystemPrompt,
+            query, subQuestion, profileSpecialistCfg(st), allowed, pb.codeExecution(),
+            List.<ToolCallback>of(), null, priorSpecialistMessages, null);
 
         if (outcome.result().messages() != null && !outcome.result().messages().isEmpty()) {
             st.specialistMessages.put(pb.name(), outcome.result().messages());

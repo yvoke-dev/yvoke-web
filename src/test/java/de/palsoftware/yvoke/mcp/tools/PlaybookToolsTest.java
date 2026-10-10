@@ -33,11 +33,11 @@ class PlaybookToolsTest {
     private PlaybookTools tools;
 
     private static final Set<String> META_KEYS = Set.of("name", "title", "description", "tools",
-        "codeExecution", "targetAgent", "prototype", "area");
+        "codeExecution", "targetAgent", "prototype", "area", "systemPrompt");
 
     private static final Playbook FULL = new Playbook("oim-full", "OIM full", "Everything OIM",
         "You are the OIM assistant.", List.of("search_corpus", "get_section"), true, "specialist",
-        true, null, null, false, "OIM");
+        true, null, null, false, "OIM", "custom-sys-prompt");
     private static final Playbook BARE = new Playbook("bare", "Bare", null, "Bare text", null,
         false, null, false, null, null, false, "PingID");
     private static final Playbook ORCHESTRATOR = new Playbook("oim-orchestrator", "Lead", "Leads",
@@ -71,6 +71,7 @@ class PlaybookToolsTest {
         assertThat(full.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(full.get("prototype").asBoolean()).isTrue();
         assertThat(full.get("area").asText()).isEqualTo("OIM");
+        assertThat(full.get("systemPrompt").asText()).isEqualTo("custom-sys-prompt");
         // The list is metadata only; the text costs a get_playbook call.
         assertThat(full.has("text")).isFalse();
 
@@ -80,6 +81,7 @@ class PlaybookToolsTest {
         assertThat(bare.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(bare.get("codeExecution").asBoolean()).isFalse();
         assertThat(bare.get("prototype").asBoolean()).isFalse();
+        assertThat(bare.get("systemPrompt").isNull()).isTrue();
     }
 
     @Test
@@ -110,6 +112,7 @@ class PlaybookToolsTest {
         assertThat(pb.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(pb.get("prototype").asBoolean()).isTrue();
         assertThat(pb.get("area").asText()).isEqualTo("OIM");
+        assertThat(pb.get("systemPrompt").asText()).isEqualTo("custom-sys-prompt");
     }
 
     @Test

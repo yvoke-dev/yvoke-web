@@ -407,6 +407,20 @@ class DesktopSyncControllerTest {
         assertThat(playbooks.get(0).tools()).containsExactly("tool1");
         assertThat(playbooks.get(0).codeExecution()).isTrue();
         assertThat(playbooks.get(0).targetAgent()).isEqualTo("specialist");
+        assertThat(playbooks.get(0).systemPrompt()).isNull();
+    }
+
+    @Test
+    void listPlaybooksPropagatesSystemPrompt() {
+        Playbook playbook =
+            new Playbook("prompted", "Prompted", "Description", "template", List.of("tool1"), true,
+                "specialist", false, Instant.now(), Instant.now(), false, "OIM", "prompted-system");
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(playbook));
+
+        List<PlaybookDto> playbooks = controller.listPlaybooks();
+
+        assertThat(playbooks).hasSize(1);
+        assertThat(playbooks.get(0).systemPrompt()).isEqualTo("prompted-system");
     }
 
     @Test
