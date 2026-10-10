@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
@@ -70,6 +71,9 @@ public class ChatAsyncControllerTraceIT {
     private ChatConversationService chatConversationService;
 
     @Autowired
+    private ConversationRepository conversationRepository;
+
+    @Autowired
     private MessageRepository messageRepository;
 
     @Autowired
@@ -104,7 +108,7 @@ public class ChatAsyncControllerTraceIT {
     public void tearDown() {
         for (UUID conversationId : conversationsToDelete) {
             try {
-                chatConversationService.deleteConversation(conversationId);
+                conversationRepository.delete(conversationId);
             } catch (Exception e) {
                 // Ignore
             }
@@ -390,5 +394,24 @@ public class ChatAsyncControllerTraceIT {
         mockMvc.perform(get("/chat/" + convOther.id() + "/messages/" + assistantMessageId + "/trace")
                 .with(login))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    public void testTeardownDeletesConversation() {
+        String userOid = "teardown-user-oid";
+        userRepository.upsert(userOid, "teardown-user@local", "Teardown User");
+        setSecurityContext(userOid, "teardown-user@local", "Teardown User", "ROLE_USER");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        assertThat(conversationRepository.findById(conv.id())).isPresent();
+
+        // Simulate end of request where MockMvc clears SecurityContextHolder
+        SecurityContextHolder.clearContext();
+
+        tearDown();
+
+        assertThat(conversationRepository.findById(conv.id())).isEmpty();
     }
 }
