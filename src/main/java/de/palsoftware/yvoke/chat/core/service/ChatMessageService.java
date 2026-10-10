@@ -492,12 +492,12 @@ public class ChatMessageService {
     private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
         String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
         if (chatPromptName != null && !chatPromptName.isBlank()) {
-            return systemPromptService.getPrompt(chatPromptName.trim())
+            return systemPromptService.findChatPrompt(chatPromptName.trim())
                 .map(SystemPrompt::systemPrompt).orElse(null);
         }
         if (playbook != null && playbook.systemPrompt() != null
             && !playbook.systemPrompt().isBlank()) {
-            return systemPromptService.getPrompt(playbook.systemPrompt().trim())
+            return systemPromptService.findChatPrompt(playbook.systemPrompt().trim())
                 .map(SystemPrompt::systemPrompt).orElse(null);
         }
         return null;

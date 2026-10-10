@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 
 import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,14 +18,16 @@ class PlaybookServiceTest {
 
     private PlaybookRepository playbookRepository;
     private McpSyncServer mcpSyncServer;
+    private SystemPromptService systemPromptService;
     private PlaybookService playbookService;
 
     @BeforeEach
     void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
         mcpSyncServer = mock(McpSyncServer.class);
-        playbookService =
-            new PlaybookService(playbookRepository, mcpSyncServer, TestAreas.withAreas("OIM"));
+        systemPromptService = mock(SystemPromptService.class);
+        playbookService = new PlaybookService(playbookRepository, mcpSyncServer,
+            TestAreas.withAreas("OIM"), systemPromptService);
     }
 
     @Test
@@ -99,14 +103,20 @@ class PlaybookServiceTest {
 
     @Test
     void testSavePlaybookWithSystemPromptSuccess() {
+        when(systemPromptService.requirePrompt("custom-prompt", SystemPromptType.CHAT)).thenReturn(
+            new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Content", "Desc"));
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "orchestrator", true, "OIM", "custom-prompt");
+        verify(systemPromptService).requirePrompt("custom-prompt", SystemPromptType.CHAT);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "orchestrator", true, "OIM", "custom-prompt");
     }
 
     @Test
     void testImportPlaybookWithSystemPromptPropagatesToSave() {
+        when(systemPromptService.requirePrompt("coding-system-prompt", SystemPromptType.CHAT))
+            .thenReturn(
+                new SystemPrompt("coding-system-prompt", SystemPromptType.CHAT, "Content", "Desc"));
         String md = """
             ---
             name: pb-custom-sys
@@ -116,8 +126,37 @@ class PlaybookServiceTest {
             Template content
             """;
         playbookService.importPlaybookFromMarkdown(md, "fallback", "OIM");
+        verify(systemPromptService).requirePrompt("coding-system-prompt", SystemPromptType.CHAT);
         verify(playbookRepository).upsert("pb-custom-sys", "PB Custom Sys", "", "Template content",
             List.of(), false, "specialist", false, "OIM", "coding-system-prompt");
+    }
+
+    @Test
+    void testSavePlaybookRejectsNonExistentSystemPrompt() {
+        when(systemPromptService.requirePrompt("unknown-prompt", SystemPromptType.CHAT))
+            .thenThrow(new IllegalArgumentException(
+                "System prompt 'unknown-prompt' does not exist. Available CHAT prompts: default-chat"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "unknown-prompt"));
+        assertTrue(ex.getMessage().contains("does not exist"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsNonChatSystemPrompt() {
+        when(systemPromptService.requirePrompt("summarize-prompt", SystemPromptType.CHAT))
+            .thenThrow(new IllegalArgumentException(
+                "System prompt 'summarize-prompt' is of type SUMMARIZE, but a CHAT prompt is required."));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "summarize-prompt"));
+        assertTrue(ex.getMessage().contains("is of type SUMMARIZE"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
     }
 
     @Test
@@ -133,7 +172,21 @@ class PlaybookServiceTest {
         verify(mcpSyncServer).addPrompt(captor.capture());
 
         var spec = captor.getValue();
+        // Registration-time metadata
         assertEquals("coding-prompt", spec.prompt().meta().get("systemPrompt"));
+
+        // Execution-time dynamic lookup metadata
+        var result = spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
+        assertEquals("coding-prompt", result.meta().get("systemPrompt"));
+
+        // Dynamic update: verify updated playbook reflects new systemPrompt on subsequent execution
+        Playbook updatedPb = new Playbook("pb-mcp", "PB MCP", "Desc", "Template", List.of("t1"),
+            true, "specialist", false, null, null, false, "OIM", "updated-prompt");
+        when(playbookRepository.findByName("pb-mcp")).thenReturn(Optional.of(updatedPb));
+
+        var updatedResult =
+            spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
+        assertEquals("updated-prompt", updatedResult.meta().get("systemPrompt"));
     }
 
     @Test

@@ -43,7 +43,7 @@ class PlaybookServiceCacheTest {
     private static final String AREA = "OIM";
 
     @Configuration
-    @EnableCaching
+    @EnableCaching(proxyTargetClass = true)
     static class TestConfig {
         @Bean
         PlaybookRepository playbookRepository() {
@@ -63,6 +63,11 @@ class PlaybookServiceCacheTest {
             when(mock.requireArea(any()))
                 .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : AREA);
             return mock;
+        }
+
+        @Bean
+        SystemPromptService systemPromptService() {
+            return mock(SystemPromptService.class);
         }
     }
 

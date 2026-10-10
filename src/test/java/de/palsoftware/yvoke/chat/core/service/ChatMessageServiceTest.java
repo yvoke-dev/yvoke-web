@@ -1587,7 +1587,7 @@ public class ChatMessageServiceTest {
             false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
             "pb-system-prompt");
         when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
-        when(systemPromptService.getPrompt("pb-system-prompt"))
+        when(systemPromptService.findChatPrompt("pb-system-prompt"))
             .thenReturn(Optional.of(new SystemPrompt("pb-system-prompt", SystemPromptType.CHAT,
                 "System Instructions for PB", "Desc")));
 
@@ -1611,7 +1611,7 @@ public class ChatMessageServiceTest {
             false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
             "pb-system-prompt");
         when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
-        when(systemPromptService.getPrompt("override-prompt"))
+        when(systemPromptService.findChatPrompt("override-prompt"))
             .thenReturn(Optional.of(new SystemPrompt("override-prompt", SystemPromptType.CHAT,
                 "Override Instructions", "Desc")));
 
@@ -1636,6 +1636,28 @@ public class ChatMessageServiceTest {
 
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "bare-pb");
+
+        assertThat(prepared.systemPrompt()).isNull();
+    }
+
+    @Test
+    public void testPlaybookSystemPromptIgnoredWhenNotChatType() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("custom-pb", "Custom Playbook", "Desc", "Template", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
+            "summarize-sys-prompt");
+        when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt("summarize-sys-prompt"))
+            .thenReturn(Optional.empty());
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
         assertThat(prepared.systemPrompt()).isNull();
     }

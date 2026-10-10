@@ -1989,11 +1989,11 @@ public class OrchestrationServiceTest {
     @Test
     void playbookSystemPromptsAreResolvedAndPassedToAgents() {
         SystemPromptService sysPromptService = mock(SystemPromptService.class);
-        when(sysPromptService.getPrompt("orch-sys-prompt")).thenReturn(Optional.of(
+        when(sysPromptService.findChatPrompt("orch-sys-prompt")).thenReturn(Optional.of(
             new SystemPrompt("orch-sys-prompt", SystemPromptType.CHAT, "ORCH_BASE_SYS", "desc")));
-        when(sysPromptService.getPrompt("rev-sys-prompt")).thenReturn(Optional
+        when(sysPromptService.findChatPrompt("rev-sys-prompt")).thenReturn(Optional
             .of(new SystemPrompt("rev-sys-prompt", SystemPromptType.CHAT, "REV_BASE_SYS", "desc")));
-        when(sysPromptService.getPrompt("spec-a-sys-prompt"))
+        when(sysPromptService.findChatPrompt("spec-a-sys-prompt"))
             .thenReturn(Optional.of(new SystemPrompt("spec-a-sys-prompt", SystemPromptType.CHAT,
                 "SPEC_A_BASE_SYS", "desc")));
 
@@ -2054,5 +2054,56 @@ public class OrchestrationServiceTest {
                 && "submit_review".equals(r.extraTools().get(0).getToolDefinition().name()))
             .findFirst().orElseThrow();
         assertThat(revReq.systemPromptOverride()).startsWith("REV_BASE_SYS\n\nReviewer template");
+    }
+
+    @Test
+    void playbookSystemPromptIgnoredWhenNotChatType() {
+        SystemPromptService sysPromptService = mock(SystemPromptService.class);
+        when(sysPromptService.findChatPrompt("summarize-prompt")).thenReturn(Optional.empty());
+
+        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template",
+            List.of(), false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM",
+            "summarize-prompt");
+        Playbook revPb =
+            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
+                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM", null);
+        Playbook specAPb =
+            new Playbook("spec-a", "Spec A", "desc", "Spec A template", List.of("search_corpus"),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null);
+
+        when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
+        when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
+            .thenReturn(Optional.of(revPb));
+        when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
+
+        OrchestratorProperties props = new OrchestratorProperties(2, 8,
+            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
+                new RoleConfig("flash", "medium")),
+            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
+                List.of("spec-a"), null, null, null)));
+
+        OrchestrationService promptService = new OrchestrationService(ragService, playbookService,
+            props, null, runRepository, stepRepository, objectMapper, null, sysPromptService);
+
+        List<AgenticRequest> requests = new ArrayList<>();
+        doAnswer(inv -> {
+            AgenticRequest req = inv.getArgument(0);
+            requests.add(req);
+            @SuppressWarnings("unchecked")
+            Consumer<String> sink = inv.getArgument(1);
+            return handleAgentCall(req, sink);
+        }).when(ragService).generateAgenticAnswer(any(), any());
+
+        promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
+            UUID.randomUUID(), "OIM");
+
+        AgenticRequest orchReq = requests.stream()
+            .filter(r -> r.extraTools() != null && !r.extraTools().isEmpty()
+                && "call_specialist".equals(r.extraTools().get(0).getToolDefinition().name()))
+            .findFirst().orElseThrow();
+        // Since findChatPrompt was empty, systemPromptOverride starts with the playbook template
+        // without non-chat base prompt
+        assertThat(orchReq.systemPromptOverride()).startsWith("Orchestrator template");
+        assertThat(orchReq.systemPromptOverride()).doesNotContain("ORCH_BASE_SYS");
     }
 }

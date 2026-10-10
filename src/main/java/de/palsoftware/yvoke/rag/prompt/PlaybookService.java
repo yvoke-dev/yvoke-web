@@ -30,18 +30,26 @@ public class PlaybookService {
      */
     private final ObjectProvider<McpSyncServer> mcpSyncServer;
     private final AreaService areaService;
+    private final SystemPromptService systemPromptService;
 
     @Autowired
     public PlaybookService(PlaybookRepository playbookRepository,
-        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService) {
+        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService,
+        SystemPromptService systemPromptService) {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
         this.areaService = areaService;
+        this.systemPromptService = systemPromptService;
     }
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
     public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
         AreaService areaService) {
+        this(playbookRepository, mcpSyncServer, areaService, null);
+    }
+
+    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
+        AreaService areaService, SystemPromptService systemPromptService) {
         this(playbookRepository, new ObjectProvider<>() {
             @Override
             public McpSyncServer getObject() {
@@ -52,7 +60,7 @@ public class PlaybookService {
             public McpSyncServer getIfAvailable() {
                 return mcpSyncServer;
             }
-        }, areaService);
+        }, areaService, systemPromptService);
     }
 
     public List<Playbook> listAllPlaybooks() {
@@ -105,8 +113,14 @@ public class PlaybookService {
         String agent =
             targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
         String storedArea = areaService.requireArea(area);
-        String prompt =
-            systemPrompt != null && !systemPrompt.isBlank() ? systemPrompt.trim() : null;
+        String prompt = null;
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            prompt =
+                systemPromptService != null
+                    ? systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT)
+                        .name()
+                    : systemPrompt.trim();
+        }
 
         playbookRepository.upsert(name.trim(), title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,

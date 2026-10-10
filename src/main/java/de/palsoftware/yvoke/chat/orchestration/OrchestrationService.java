@@ -347,7 +347,7 @@ public class OrchestrationService {
             || playbook.systemPrompt().isBlank()) {
             return null;
         }
-        return systemPromptService.getPrompt(playbook.systemPrompt().trim())
+        return systemPromptService.findChatPrompt(playbook.systemPrompt().trim())
             .map(SystemPrompt::systemPrompt).orElse(null);
     }
 
