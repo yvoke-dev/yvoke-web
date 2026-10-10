@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -56,5 +59,18 @@ public final class JdbcMappers {
         }
         Object[] values = (Object[]) array.getArray();
         return Arrays.stream(values).filter(Objects::nonNull).map(UUID.class::cast).toList();
+    }
+
+    public static Instant toInstant(Object ts) {
+        if (ts == null) {
+            return null;
+        }
+        if (ts instanceof Timestamp t) {
+            return t.toInstant();
+        }
+        if (ts instanceof OffsetDateTime odt) {
+            return odt.toInstant();
+        }
+        return null;
     }
 }

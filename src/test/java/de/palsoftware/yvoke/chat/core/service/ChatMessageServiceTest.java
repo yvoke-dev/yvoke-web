@@ -10,8 +10,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.contains;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -27,13 +29,23 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.MessageTrace;
+import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentRun;
+import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
+import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
+import de.palsoftware.yvoke.llm.core.model.LlmMessage;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -63,6 +75,11 @@ public class ChatMessageServiceTest {
     private PlatformTransactionManager transactionManager;
     private AsyncTaskExecutor taskExecutor;
     private ChatCancellationService chatCancellationService;
+    private MessageToolCallRepository messageToolCallRepository;
+    private ToolCallTraceExtractor toolCallTraceExtractor;
+    private ChatProperties chatProperties;
+    private AgentRunRepository agentRunRepository;
+    private AgentStepRepository agentStepRepository;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
@@ -76,11 +93,29 @@ public class ChatMessageServiceTest {
         transactionManager = mock(PlatformTransactionManager.class);
         taskExecutor = mock(AsyncTaskExecutor.class);
         chatCancellationService = mock(ChatCancellationService.class);
+        messageToolCallRepository = mock(MessageToolCallRepository.class);
+        toolCallTraceExtractor = mock(ToolCallTraceExtractor.class);
+        chatProperties = new ChatProperties(true, List.of("model1"), true, false);
+        agentRunRepository = mock(AgentRunRepository.class);
+        agentStepRepository = mock(AgentStepRepository.class);
 
-        chatMessageService = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class));
+        chatMessageService =
+            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+                chatConversationService, ragService, retrievalLogRepository, playbookService,
+                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+                mock(OrchestrationService.class), messageToolCallRepository, toolCallTraceExtractor,
+                chatProperties, agentRunRepository, agentStepRepository);
+    }
+
+    private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
+        AgentRunRepository runRepo, AgentStepRepository stepRepo) {
+        return new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+            chatConversationService, ragService, retrievalLogRepository, playbookService,
+            systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+            orchService != null ? orchService : mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor,
+            props != null ? props : chatProperties, runRepo != null ? runRepo : agentRunRepository,
+            stepRepo != null ? stepRepo : agentStepRepository);
     }
 
     @Test
@@ -286,7 +321,7 @@ public class ChatMessageServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true);
+            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
 
         ChatConversationService disabledConversationService =
             new ChatConversationService(mock(ConversationRepository.class), mock(UserService.class),
@@ -300,7 +335,9 @@ public class ChatMessageServiceTest {
         ChatMessageService disabledMessageService = new ChatMessageService(messageRepository,
             mock(ConversationRepository.class), disabledConversationService, ragService,
             retrievalLogRepository, mockPlaybookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, mock(OrchestrationService.class));
+            taskExecutor, chatCancellationService, mock(OrchestrationService.class),
+            messageToolCallRepository, toolCallTraceExtractor, disabledProperties,
+            agentRunRepository, agentStepRepository);
 
         Assertions.assertThrows(IllegalStateException.class, () -> {
             disabledMessageService.prepare(UUID.randomUUID(), "query", "test-playbook");
@@ -912,10 +949,7 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         RagResult ragResult =
             new RagResult(List.of(UUID.randomUUID()), List.of(), null, List.of(), 11, 22, 33, 4, 5);
@@ -995,10 +1029,7 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         UUID searchId = UUID.randomUUID();
         OrchestrationResult result = new OrchestrationResult("Orchestrated answer",
@@ -1177,10 +1208,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenThrow(new CancellationException("stopped by user"));
@@ -1249,10 +1277,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         String flaggedContent = "The kit ships 9.3.1.\n\n> ⚠️ Delivered with reservations.";
         OrchestrationResult flagged = new OrchestrationResult(flaggedContent, List.of(), List.of(),
@@ -1329,10 +1354,7 @@ public class ChatMessageServiceTest {
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
 
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenThrow(new RuntimeException("429 quota key=abc"));
@@ -1541,10 +1563,7 @@ public class ChatMessageServiceTest {
             new Conversation(conversationId, null, "My Chat", settings, null, null, List.of()));
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
-        ChatMessageService service = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService);
+        ChatMessageService service = createService(orchestrationService, null, null, null);
         when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
@@ -1572,6 +1591,247 @@ public class ChatMessageServiceTest {
             .isNotEqualTo(assistantMessageId);
     }
 
+    @Test
+    public void anOrchestratedRunUpdatesAssistantMessageIdOnAgentRun() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of()));
+
+        OrchestrationService orchestrationService = mock(OrchestrationService.class);
+        AgentRunRepository agentRunRepositoryMock = mock(AgentRunRepository.class);
+        ChatMessageService service =
+            createService(orchestrationService, null, agentRunRepositoryMock, null);
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+            .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
+                33, 4, 5, "done"));
+
+        UUID assistantMessageId =
+            service.prepareAndSubmitAsync(conversationId, "Async Query", null);
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskExecutor).submit(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+
+        verify(agentRunRepositoryMock).updateAssistantMessageId(any(UUID.class),
+            eq(assistantMessageId));
+    }
+
+    @Test
+    public void testPersistenceFailureIsolation_DoesNotRollbackAssistantMessage() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        RagResult ragResult =
+            new RagResult(List.of(), List.of(asstMsg, toolMsg), null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag ON
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = createService(null, enabledProps, null, null);
+
+        when(toolCallTraceExtractor.extract(eq(assistantMessageId), any()))
+            .thenReturn(List.of(new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+                "call_1", "tool", "{}", "result", false, Instant.now())));
+        // Simulate repository failure during tool call persistence
+        doThrow(new RuntimeException("Database error during tool trace save"))
+            .when(messageToolCallRepository).insertAll(eq(assistantMessageId), any());
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        List<String> tokens = new ArrayList<>();
+        service.stream(prepared, assistantMessageId, tokens::add);
+
+        // Verify that assistant message is still saved with status "done" despite tool trace
+        // failure
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(2)).save(messageCaptor.capture());
+        Message assistantMessage = messageCaptor.getAllValues().stream()
+            .filter(m -> "assistant".equals(m.role())).findFirst().orElseThrow();
+        assertThat(assistantMessage.status()).isEqualTo("done");
+        assertThat(assistantMessage.id()).isEqualTo(assistantMessageId);
+    }
+
+    @Test
+    public void testFeatureFlagDisabled_SkipsToolCallPersistence() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        RagResult ragResult =
+            new RagResult(List.of(), List.of(asstMsg, toolMsg), null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag OFF
+        ChatProperties disabledProps = new ChatProperties(true, List.of("model1"), true, false);
+        ChatMessageService service = createService(null, disabledProps, null, null);
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        List<String> tokens = new ArrayList<>();
+        service.stream(prepared, assistantMessageId, tokens::add);
+
+        verifyNoInteractions(messageToolCallRepository);
+        verifyNoInteractions(toolCallTraceExtractor);
+    }
+
+    @Test
+    public void testFeatureFlagEnabled_ExtractsAndSavesToolCalls() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        // Feature flag ON
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = createService(null, enabledProps, null, null);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+            "call_1", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(assistantMessageId, messages))
+            .thenReturn(List.of(record));
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        @SuppressWarnings("unchecked")
+        Consumer<String> sink = mock(Consumer.class);
+        service.stream(prepared, assistantMessageId, sink);
+
+        InOrder inOrder = inOrder(transactionManager, sink, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // stream() saveAssistantMessage commit
+        inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
+        inOrder.verify(sink).accept(contains("[DONE]"));
+        verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
+    }
+
+    @Test
+    public void testGenerateSync_ExtractsAndSavesToolCallsOutsideTransaction() {
+        UUID conversationId = UUID.randomUUID();
+        UUID assistantMessageId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_1", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_1", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = createService(null, enabledProps, null, null);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
+            "call_1", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(assistantMessageId, messages))
+            .thenReturn(List.of(record));
+
+        ChatMessageService.PreparedChat prepared =
+            service.prepare(conversationId, "query", "test-pb");
+        service.generateSync(prepared, assistantMessageId);
+
+        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // generateSync() saveAssistantMessage
+                                                          // commit
+        inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
+        verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
+    }
+
+    @Test
+    public void testPrepareAndSubmitAsync_PersistsToolCallsOutsideTransaction() {
+        UUID conversationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Map<String, Object> settings =
+            Map.of(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, userId, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("test-pb", "Title", "Desc", "", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("test-pb")).thenReturn(Optional.of(pb));
+
+        LlmToolCall tc = new LlmToolCall("call_async", "function", "tool", "{}");
+        LlmMessage asstMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
+        LlmMessage toolMsg = new LlmMessage("tool", "result", null, null, "call_async", "tool");
+        List<LlmMessage> messages = List.of(asstMsg, toolMsg);
+        RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
+
+        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatMessageService service = createService(null, enabledProps, null, null);
+
+        ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), UUID.randomUUID(), 0,
+            "call_async", "tool", "{}", "result", false, Instant.now());
+        when(toolCallTraceExtractor.extract(any(), eq(messages))).thenReturn(List.of(record));
+
+        UUID messageId = service.prepareAndSubmitAsync(conversationId, "async query", "test-pb");
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskExecutor).submit(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+
+        verify(messageRepository).updateContentAndStatus(eq(messageId), any(), any(), any(), any(),
+            any(), any(), any(), any(), eq("done"), any());
+
+        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        inOrder.verify(transactionManager).commit(any()); // prepare() commit
+        inOrder.verify(transactionManager).commit(any()); // initial assistant message commit
+        inOrder.verify(messageToolCallRepository).insertAll(eq(messageId), eq(List.of(record)));
+        inOrder.verify(transactionManager).commit(any()); // async completion commit
+    }
+
     private static JsonNode parseDoneEvent(String line) {
         assertThat(line).startsWith("[DONE] {");
         try {
@@ -1579,5 +1839,106 @@ public class ChatMessageServiceTest {
         } catch (Exception e) {
             throw new AssertionError("[DONE] line is not valid JSON: " + line, e);
         }
+    }
+
+    @Test
+    void testCrossConversationIdorReturnsEmpty() {
+        UUID conversationId1 = UUID.randomUUID();
+        UUID conversationId2 = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        Message msg = new Message(messageId, conversationId2, "assistant", "Content", null,
+            List.of(), List.of(), Instant.now(), 10, 20, 30, 0, 0, "done", "model1");
+        when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
+
+        Optional<MessageTrace> trace =
+            chatMessageService.getMessageTrace(conversationId1, messageId);
+
+        assertThat(trace).isEmpty();
+    }
+
+    @Test
+    void testSingleAgentTraceReturnsToolCalls() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        UUID chunkId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "Single answer", null,
+            List.of(chunkId), List.of(), Instant.now(), 10, 20, 30, 4, 5, "done", "gpt-4o");
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.empty());
+
+        ToolCallRecord tc1 = new ToolCallRecord(UUID.randomUUID(), msgId, 0, "call_1", "calc",
+            "{\"a\":1}", "2", false, Instant.now());
+        when(messageToolCallRepository.findByMessageId(msgId)).thenReturn(List.of(tc1));
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("single");
+        assertThat(trace.messageId()).isEqualTo(msgId);
+        assertThat(trace.conversationId()).isEqualTo(convId);
+        assertThat(trace.status()).isEqualTo("done");
+        assertThat(trace.content()).isEqualTo("Single answer");
+        assertThat(trace.model()).isEqualTo("gpt-4o");
+        assertThat(trace.promptTokens()).isEqualTo(10);
+        assertThat(trace.completionTokens()).isEqualTo(20);
+        assertThat(trace.totalTokens()).isEqualTo(30);
+        assertThat(trace.cachedTokens()).isEqualTo(4);
+        assertThat(trace.thoughtTokens()).isEqualTo(5);
+        assertThat(trace.retrievedChunkIds()).containsExactly(chunkId);
+        assertThat(trace.toolCalls()).containsExactly(tc1);
+        assertThat(trace.agentRun()).isNull();
+        assertThat(trace.steps()).isNull();
+    }
+
+    @Test
+    void testMasTraceReturnsAgentRunAndSteps() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "MAS answer", null, List.of(),
+            List.of(), Instant.now(), null, null, null, null, null, "done", "oim");
+        AgentRun run = new AgentRun(runId, convId, msgId, null, "oim", "done", "{}", 1, "approved",
+            100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
+        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
+            "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
+            "ok", null);
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.of(run));
+        when(agentStepRepository.findByRunIdWithoutMessages(runId)).thenReturn(List.of(step1));
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("mas");
+        assertThat(trace.messageId()).isEqualTo(msgId);
+        assertThat(trace.agentRun()).isEqualTo(run);
+        assertThat(trace.steps()).containsExactly(step1);
+        assertThat(trace.promptTokens()).isEqualTo(100);
+        assertThat(trace.completionTokens()).isEqualTo(200);
+        assertThat(trace.totalTokens()).isEqualTo(300);
+        assertThat(trace.cachedTokens()).isEqualTo(40);
+        assertThat(trace.thoughtTokens()).isEqualTo(50);
+        assertThat(trace.toolCalls()).isNull();
+        assertThat(trace.retrievedChunkIds()).isEmpty();
+    }
+
+    @Test
+    void testZeroToolCallsReturnsEmptyList() {
+        UUID convId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        Message msg = new Message(msgId, convId, "assistant", "Simple answer", null, List.of(),
+            List.of(), Instant.now(), 5, 5, 10, 0, 0, "done", "gpt-4o");
+        when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
+        when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.empty());
+        when(messageToolCallRepository.findByMessageId(msgId)).thenReturn(List.of());
+
+        Optional<MessageTrace> traceOpt = chatMessageService.getMessageTrace(convId, msgId);
+
+        assertThat(traceOpt).isPresent();
+        MessageTrace trace = traceOpt.get();
+        assertThat(trace.mode()).isEqualTo("single");
+        assertThat(trace.toolCalls()).isNotNull().isEmpty();
     }
 }

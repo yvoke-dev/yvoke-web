@@ -21,7 +21,9 @@ public record AgenticRequest(
      * REPLACES the seed that {@code history} and {@code systemPromptOverride} would have built, and
      * {@code query} is appended to it as the next user turn.
      */
-    @Nullable List<LlmMessage> priorMessages) {
+    @Nullable List<LlmMessage> priorMessages,
+    boolean traceToolCalls) {
+
 
   public static Builder builder() {
     return new Builder();
@@ -37,6 +39,7 @@ public record AgenticRequest(
     private boolean codeExecution;
     private List<ToolCallback> extraTools;
     private List<LlmMessage> priorMessages;
+    private boolean traceToolCalls;
 
     public Builder query(String query) {
       this.query = query;
@@ -83,8 +86,22 @@ public record AgenticRequest(
       return this;
     }
 
+    public Builder traceToolCalls(boolean traceToolCalls) {
+      this.traceToolCalls = traceToolCalls;
+      return this;
+    }
+
     public AgenticRequest build() {
-      return new AgenticRequest(query, modelOverride, history, systemPromptOverride, allowedTools,
-          thinkingLevel, codeExecution, extraTools, priorMessages);
+      return new AgenticRequest(
+          query,
+          modelOverride,
+          history,
+          systemPromptOverride,
+          allowedTools,
+          thinkingLevel,
+          codeExecution,
+          extraTools,
+          priorMessages,
+          traceToolCalls);
     }
   }}

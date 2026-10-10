@@ -27,6 +27,7 @@ feedback triage and answer traces; every user rates answers.
 | **Mark feedback reviewed, attach notes** | A reviewed switch and a free-text notes field per entry, both saving without leaving the page, so a team can work through unhelpful answers and record what was done. |
 | **Search log behind an answer** | For each question: the query, the area and version searched, and the exact sources returned — each clickable through to the passage — plus how the final source set was composed and the rating that answer received. |
 | **Full trace of an in-depth answer** | Every orchestrated answer recorded run by run: which profile ran, its status, how many review rounds, resources used, and a step-by-step trace of lead, specialists and reviewer — each step's instructions, its output, and the reviewer's verdict. Failed runs carry a plain-language diagnosis. |
+| **Unified message trace** | For any answer, an administrative trace endpoint reveals whether it was produced by a single agent or multi-agent orchestration, including passage IDs, verbatim tool call arguments and results (when single-agent tracing is enabled), or the multi-agent run steps. |
 | **Audit trail** | Permanently records who did what and when: deleting documents, areas and versions, configuring and syncing connectors, starting an import **from the admin screens**, stopping or cancelling jobs, and graph processing. |
 
 ## How it behaves
@@ -73,9 +74,16 @@ feedback triage and answer traces; every user rates answers.
   total conversations, helpful (👍) and unhelpful (👎) answer totals, and distinct user counts in the
   active filter scope. A per-user breakdown displays conversation volume and thumbs up/down counts for
   up to the top 50 active users.
+- **Unified message trace retrieval endpoint (`GET /chat/{id}/messages/{messageId}/trace`).** Returns a
+  standardized trace payload distinguishing single-agent traces (`mode: "single"`, including retrieved
+  passage IDs and verbatim tool call records) from orchestrated multi-agent runs (`mode: "mas"`, including
+  agent runs and execution steps). Access is restricted to system administrators (`ROLE_ADMIN`).
+  Cross-conversation access returns 404 to avoid message ID enumeration.
 
 ## Limits
 
+- **Tool-call traces are persisted only when a generation turn completes.** Aborted, cancelled, or failed
+  generation turns do not write tool-call traces, even if individual tools executed before the turn was stopped.
 - **The per-call view is paged, but the message and conversation views stop at 5,000 rows.** Beyond that
   their totals cover only part of the period, **and nothing on the page says so**.
 - **Costs are estimates.** They are calculated from recorded usage and persisted into the ledger at
@@ -95,6 +103,9 @@ feedback triage and answer traces; every user rates answers.
 - **⚠ Nothing is ever deleted automatically.** Questions, answers, ratings, search records, traces and
   spend rows are kept indefinitely and stay readable by administrators. There is no retention policy and
   nothing expires.
+- **Tool-call traces store arguments and results verbatim without truncation or retention limits.** Rows in
+  `message_tool_calls` are kept indefinitely alongside messages (deleted only via cascade when the parent message
+  is deleted); no periodic retention or truncation job purges large tool outputs.
 - **The audit trail and search log page twenty at a time with no search or filter**, and the run list shows
   only the most recent runs.
 - **Imports started through the integration interface are not audited** — only those started from the

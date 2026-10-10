@@ -42,7 +42,7 @@ public class ChatConversationServiceTest {
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
         ChatProperties chatProperties =
-            new ChatProperties(true, List.of("gemini-3.1-flash-lite"), true);
+            new ChatProperties(true, List.of("gemini-3.1-flash-lite"), true, false);
 
         chatConversationService = new ChatConversationService(conversationRepository, userService,
             chatProperties, tagRepository);
@@ -133,7 +133,7 @@ public class ChatConversationServiceTest {
      */
     @Test
     public void anEmptyAllowedModelListRefusesToCreateAConversationAtAll() {
-        ChatProperties noModels = new ChatProperties(true, List.of(), true);
+        ChatProperties noModels = new ChatProperties(true, List.of(), true, false);
         ChatConversationService withoutModels = new ChatConversationService(conversationRepository,
             userService, noModels, tagRepository);
 
@@ -377,7 +377,7 @@ public class ChatConversationServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true);
+            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
         ChatConversationService disabledService = new ChatConversationService(
             conversationRepository, userService, disabledProperties, tagRepository);
 

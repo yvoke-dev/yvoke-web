@@ -13,11 +13,19 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.model.MessageTrace;
+import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentRun;
+import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
+import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -32,6 +40,7 @@ import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -75,6 +84,11 @@ public class ChatMessageService {
     private final AsyncTaskExecutor taskExecutor;
     private final ChatCancellationService chatCancellationService;
     private final OrchestrationService orchestrationService;
+    private final MessageToolCallRepository messageToolCallRepository;
+    private final ToolCallTraceExtractor toolCallTraceExtractor;
+    private final ChatProperties chatProperties;
+    private final AgentRunRepository agentRunRepository;
+    private final AgentStepRepository agentStepRepository;
 
     public ChatMessageService(MessageRepository messageRepository,
         ConversationRepository conversationRepository,
@@ -82,8 +96,10 @@ public class ChatMessageService {
         RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
         SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
-        ChatCancellationService chatCancellationService,
-        OrchestrationService orchestrationService) {
+        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
+        MessageToolCallRepository messageToolCallRepository,
+        ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
+        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -95,6 +111,11 @@ public class ChatMessageService {
         this.taskExecutor = taskExecutor;
         this.chatCancellationService = chatCancellationService;
         this.orchestrationService = orchestrationService;
+        this.messageToolCallRepository = messageToolCallRepository;
+        this.toolCallTraceExtractor = toolCallTraceExtractor;
+        this.chatProperties = chatProperties;
+        this.agentRunRepository = agentRunRepository;
+        this.agentStepRepository = agentStepRepository;
     }
 
     public List<Message> getMessages(UUID conversationId) {
@@ -185,6 +206,9 @@ public class ChatMessageService {
                     ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
 
                 String generatedContent = assistantContent.toString();
+                // Persist tool-call trace before marking status "done" in database
+                // so clients polling async status find trace available upon completion.
+                saveToolCallTrace(ragResult, assistantMessageId);
                 transactionTemplate.executeWithoutResult(status -> {
                     messageRepository.updateContentAndStatus(assistantMessageId, generatedContent,
                         ragResult.retrievedChunkIds(), Collections.emptyList(),
@@ -267,22 +291,27 @@ public class ChatMessageService {
                     for (UUID searchId : result.searchIds()) {
                         retrievalLogRepository.updateMessageId(searchId, assistantMessageId);
                     }
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
                 });
             } catch (CancellationException e) {
                 Thread.interrupted();
                 log.info("Orchestrated generation cancelled for conversation: {}", conversationId);
-                transactionTemplate.executeWithoutResult(
-                    status -> messageRepository.updateContentAndStatus(assistantMessageId,
+                transactionTemplate.executeWithoutResult(status -> {
+                    messageRepository.updateContentAndStatus(assistantMessageId,
                         "*[Generation stopped by user]*", Collections.emptyList(),
-                        Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null));
+                        Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                });
             } catch (Exception e) {
                 Thread.interrupted();
                 log.error("Error during orchestrated generation for conversation: {}",
                     conversationId, e);
-                transactionTemplate.executeWithoutResult(
-                    status -> messageRepository.updateContentAndStatus(assistantMessageId,
-                        GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0,
-                        0, 0, 0, "error", null));
+                transactionTemplate.executeWithoutResult(status -> {
+                    messageRepository.updateContentAndStatus(assistantMessageId, GENERIC_ERROR_TEXT,
+                        Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0, "error",
+                        null);
+                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                });
             } finally {
                 if (onComplete != null) {
                     try {
@@ -301,6 +330,25 @@ public class ChatMessageService {
 
     public Optional<Message> getMessageStatus(UUID messageId) {
         return messageRepository.findById(messageId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<MessageTrace> getMessageTrace(UUID conversationId, UUID messageId) {
+        Optional<Message> messageOpt = messageRepository.findById(messageId);
+        if (messageOpt.isEmpty() || !conversationId.equals(messageOpt.get().conversationId())) {
+            return Optional.empty();
+        }
+        Message message = messageOpt.get();
+
+        Optional<AgentRun> agentRunOpt = agentRunRepository.findByMessageId(messageId);
+        if (agentRunOpt.isPresent()) {
+            AgentRun run = agentRunOpt.get();
+            List<AgentStep> steps = agentStepRepository.findByRunIdWithoutMessages(run.id());
+            return Optional.of(MessageTrace.forMas(message, run, steps));
+        }
+
+        List<ToolCallRecord> records = messageToolCallRepository.findByMessageId(messageId);
+        return Optional.of(MessageTrace.forSingle(message, records));
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -346,6 +394,9 @@ public class ChatMessageService {
                 status -> saveAssistantMessage(ragResult, prepared.conversationId(),
                     assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
 
+            // Persist tool-call trace before emitting [DONE] so clients reading the trace
+            // immediately upon stream completion observe the persisted tool calls.
+            saveToolCallTrace(ragResult, assistantMessageId);
             sink.accept(formatDoneToken(ragResult, assistantMessageId));
         } catch (CancellationException e) {
             log.info("Streaming generation cancelled by user for conversation: {}",
@@ -398,6 +449,7 @@ public class ChatMessageService {
             String content = assistantContent.toString();
             transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
                 prepared.conversationId(), assistantMessageId, content, prepared.modelToUse()));
+            saveToolCallTrace(ragResult, assistantMessageId);
 
             return new Message(assistantMessageId, prepared.conversationId(), "assistant", content,
                 null, ragResult.retrievedChunkIds(), Collections.emptyList(), Instant.now(),
@@ -546,7 +598,7 @@ public class ChatMessageService {
             .modelOverride(prepared.modelToUse()).history(prepared.history())
             .systemPromptOverride(prepared.systemPrompt()).allowedTools(prepared.allowedTools())
             .thinkingLevel(prepared.thinkingLevel()).codeExecution(prepared.codeExecution())
-            .build();
+            .traceToolCalls(chatProperties.traceToolCalls()).build();
     }
 
     /**
@@ -574,6 +626,22 @@ public class ChatMessageService {
         // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
 
         linkRetrievalLogs(ragResult, assistantMessageId);
+    }
+
+    private void saveToolCallTrace(RagResult ragResult, UUID assistantMessageId) {
+        if (!chatProperties.traceToolCalls() || ragResult == null || ragResult.messages() == null) {
+            return;
+        }
+        try {
+            List<ToolCallRecord> records =
+                toolCallTraceExtractor.extract(assistantMessageId, ragResult.messages());
+            if (!records.isEmpty()) {
+                messageToolCallRepository.insertAll(assistantMessageId, records);
+            }
+        } catch (Exception e) {
+            log.error("Failed to persist tool call trace for assistant message {}",
+                assistantMessageId, e);
+        }
     }
 
     private void linkRetrievalLogs(RagResult ragResult, UUID assistantMessageId) {

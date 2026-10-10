@@ -1,18 +1,16 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Instant;
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.OffsetDateTime;
-import java.util.List;
 
 @Repository
 public class AgentRunRepository {
@@ -67,28 +65,47 @@ public class AgentRunRepository {
         }
     }
 
-    private static final String SELECT_COLUMNS = """
-        SELECT id, conversation_id, message_id, profile_name, status, config::text AS config,
-               review_rounds, final_verdict::text AS final_verdict, prompt_tokens,
-               completion_tokens, total_tokens, cached_tokens, thought_tokens, error,
-               started_at, finished_at
-        FROM agent_runs
-        """;
+    /** Links the delivered assistant message id to this run. */
+    public void updateAssistantMessageId(UUID id, UUID assistantMessageId) {
+        String sql = """
+            UPDATE agent_runs
+            SET assistant_message_id = :assistantMessageId
+            WHERE id = :id
+            """;
+        jdbcClient.sql(sql).param("id", id).param("assistantMessageId", assistantMessageId)
+            .update();
+    }
+
+    private static final String SELECT_COLUMNS =
+        """
+            SELECT id, conversation_id, message_id, assistant_message_id, profile_name, status, config::text AS config,
+                   review_rounds, final_verdict::text AS final_verdict, prompt_tokens,
+                   completion_tokens, total_tokens, cached_tokens, thought_tokens, error,
+                   started_at, finished_at
+            FROM agent_runs
+            """;
 
     private static AgentRun mapRow(ResultSet rs, int n) throws SQLException {
         return new AgentRun(rs.getObject("id", UUID.class),
             rs.getObject("conversation_id", UUID.class), rs.getObject("message_id", UUID.class),
-            rs.getString("profile_name"), rs.getString("status"), rs.getString("config"),
-            rs.getInt("review_rounds"), rs.getString("final_verdict"),
-            (Integer) rs.getObject("prompt_tokens"), (Integer) rs.getObject("completion_tokens"),
-            (Integer) rs.getObject("total_tokens"), (Integer) rs.getObject("cached_tokens"),
-            (Integer) rs.getObject("thought_tokens"), rs.getString("error"),
-            toInstant(rs.getObject("started_at")), toInstant(rs.getObject("finished_at")));
+            rs.getObject("assistant_message_id", UUID.class), rs.getString("profile_name"),
+            rs.getString("status"), rs.getString("config"), rs.getInt("review_rounds"),
+            rs.getString("final_verdict"), (Integer) rs.getObject("prompt_tokens"),
+            (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
+            (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
+            rs.getString("error"), JdbcMappers.toInstant(rs.getObject("started_at")),
+            JdbcMappers.toInstant(rs.getObject("finished_at")));
     }
 
     public Optional<AgentRun> findById(UUID id) {
         return jdbcClient.sql(SELECT_COLUMNS + " WHERE id = :id").param("id", id)
             .query(AgentRunRepository::mapRow).optional();
+    }
+
+    public Optional<AgentRun> findByMessageId(UUID messageId) {
+        return jdbcClient.sql(SELECT_COLUMNS
+            + " WHERE assistant_message_id = :messageId OR message_id = :messageId ORDER BY started_at DESC, id DESC LIMIT 1")
+            .param("messageId", messageId).query(AgentRunRepository::mapRow).optional();
     }
 
     /** Most recent runs first, for the admin trace viewer. */
@@ -107,18 +124,5 @@ public class AgentRunRepository {
             log.warn("Failed to serialize agent_run JSONB payload", e);
             return null;
         }
-    }
-
-    private static Instant toInstant(Object ts) {
-        if (ts == null) {
-            return null;
-        }
-        if (ts instanceof Timestamp t) {
-            return t.toInstant();
-        }
-        if (ts instanceof OffsetDateTime odt) {
-            return odt.toInstant();
-        }
-        return null;
     }
 }
