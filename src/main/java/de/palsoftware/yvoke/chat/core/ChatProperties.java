@@ -6,6 +6,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
-@Validated @ConfigurationProperties(prefix="app.chat")public record ChatProperties(boolean enabled,@NotEmpty List<String>allowedModels,boolean playbookValidationEnabled,boolean traceToolCalls){@ConstructorBinding public ChatProperties(boolean enabled,List<String>allowedModels,boolean playbookValidationEnabled,boolean traceToolCalls){this.enabled=enabled;this.allowedModels=allowedModels;this.playbookValidationEnabled=playbookValidationEnabled;this.traceToolCalls=traceToolCalls;}
+@Validated @ConfigurationProperties(prefix="app.chat")public record ChatProperties(boolean enabled,@NotEmpty List<String>allowedModels,boolean playbookValidationEnabled,boolean traceToolCalls){
 
-public ChatProperties(boolean enabled,List<String>allowedModels,boolean playbookValidationEnabled){this(enabled,allowedModels,playbookValidationEnabled,false);}}
+@ConstructorBinding public ChatProperties(boolean enabled,List<String>allowedModels,boolean playbookValidationEnabled,boolean traceToolCalls){this.enabled=enabled;this.allowedModels=allowedModels;this.playbookValidationEnabled=playbookValidationEnabled;this.traceToolCalls=traceToolCalls;}}

@@ -150,9 +150,9 @@ class ToolCallTraceExtractorTest {
         // Tool 2 returned legitimate result with isError=false
         LlmMessage toolMsg2 = new LlmMessage("tool", "Found 3 matching rows", null, null,
             "call_legit", "search_corpus", false);
-        // Tool 3 returned Error: ... string despite isError=false (Finding 3)
+        // Tool 3 has typed isError=true
         LlmMessage toolMsg3 = new LlmMessage("tool", "Error: connection refused", null, null,
-            "call_str_err", "fetch_url", false);
+            "call_str_err", "fetch_url", true);
 
         List<ToolCallRecord> records =
             extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2, toolMsg3));

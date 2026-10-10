@@ -24,28 +24,6 @@ public record AgenticRequest(
     @Nullable List<LlmMessage> priorMessages,
     boolean traceToolCalls) {
 
-  public AgenticRequest(
-      String query,
-      @Nullable String modelOverride,
-      @Nullable List<LlmMessage> history,
-      @Nullable String systemPromptOverride,
-      @Nullable List<String> allowedTools,
-      @Nullable String thinkingLevel,
-      boolean codeExecution,
-      @Nullable List<ToolCallback> extraTools,
-      @Nullable List<LlmMessage> priorMessages) {
-    this(
-        query,
-        modelOverride,
-        history,
-        systemPromptOverride,
-        allowedTools,
-        thinkingLevel,
-        codeExecution,
-        extraTools,
-        priorMessages,
-        false);
-  }
 
   public static Builder builder() {
     return new Builder();

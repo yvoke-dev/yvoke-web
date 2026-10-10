@@ -1634,4 +1634,49 @@ public class RagServiceAgenticTest {
             .contains("🔧 *Calling tool:* oim_search({\n  \"query\": \"Person\"\n})\n\n");
         assertThat(answer).doesNotContain("#call_id_999");
     }
+
+    @Test
+    void testToolExecution_ErrorParsingArguments_FlagsIsError() {
+        ToolCallback mockSearchTool = mock(ToolCallback.class);
+        ToolDefinition toolDef = mock(ToolDefinition.class);
+        when(toolDef.name()).thenReturn("oim_search");
+        when(toolDef.description()).thenReturn("search tool");
+        when(toolDef.inputSchema()).thenReturn("{\"type\":\"object\"}");
+        when(mockSearchTool.getToolDefinition()).thenReturn(toolDef);
+        when(mockSearchTool.call(anyString()))
+            .thenReturn("Error parsing arguments: Missing required field");
+
+        ragService.getToolRegistry().put("oim_search", mockSearchTool);
+
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null, List.of(
+                        new LlmToolCallDelta(0, "call_err_1", "oim_search", "{\"invalid\":true}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(
+                        new LlmResponseChunk("Done.", null, null, new LlmUsage(40, 50, 90, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        RagResult ragResult = ragService.generateAgenticAnswer(
+            AgenticRequest.builder().query("test").modelOverride("model-override")
+                .allowedTools(List.of("oim_search")).build(),
+            tokens::add);
+
+        LlmMessage toolMsg = ragResult.messages().stream()
+            .filter(m -> "tool".equalsIgnoreCase(m.role())).findFirst().orElseThrow();
+
+        assertThat(toolMsg.isError()).isTrue();
+        assertThat(toolMsg.content()).isEqualTo("Error parsing arguments: Missing required field");
+    }
 }

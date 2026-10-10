@@ -206,6 +206,8 @@ public class ChatMessageService {
                     ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
 
                 String generatedContent = assistantContent.toString();
+                // Persist tool-call trace before marking status "done" in database
+                // so clients polling async status find trace available upon completion.
                 saveToolCallTrace(ragResult, assistantMessageId);
                 transactionTemplate.executeWithoutResult(status -> {
                     messageRepository.updateContentAndStatus(assistantMessageId, generatedContent,
@@ -392,6 +394,8 @@ public class ChatMessageService {
                 status -> saveAssistantMessage(ragResult, prepared.conversationId(),
                     assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
 
+            // Persist tool-call trace before emitting [DONE] so clients reading the trace
+            // immediately upon stream completion observe the persisted tool calls.
             saveToolCallTrace(ragResult, assistantMessageId);
             sink.accept(formatDoneToken(ragResult, assistantMessageId));
         } catch (CancellationException e) {

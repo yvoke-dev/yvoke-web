@@ -321,7 +321,7 @@ public class ChatMessageServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true);
+            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
 
         ChatConversationService disabledConversationService =
             new ChatConversationService(mock(ConversationRepository.class), mock(UserService.class),
@@ -1898,8 +1898,8 @@ public class ChatMessageServiceTest {
         UUID runId = UUID.randomUUID();
         Message msg = new Message(msgId, convId, "assistant", "MAS answer", null, List.of(),
             List.of(), Instant.now(), null, null, null, null, null, "done", "oim");
-        AgentRun run = new AgentRun(runId, convId, msgId, "oim", "done", "{}", 1, "approved", 100,
-            200, 300, 40, 50, null, Instant.now(), Instant.now());
+        AgentRun run = new AgentRun(runId, convId, msgId, null, "oim", "done", "{}", 1, "approved",
+            100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
         AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
             "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
             "ok", null);

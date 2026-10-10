@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -70,6 +71,16 @@ public class AgentStepRepository {
             .param("status", status).param("error", error).update();
     }
 
+    private static final RowMapper<AgentStep> STEP_ROW_MAPPER = (rs, n) -> new AgentStep(
+        rs.getObject("id", UUID.class), rs.getObject("agent_run_id", UUID.class), rs.getInt("seq"),
+        rs.getString("role"), rs.getInt("round"), rs.getString("playbook_name"),
+        rs.getString("model"), rs.getString("thinking_level"), rs.getString("input"),
+        rs.getString("output"), rs.getString("messages"), rs.getString("verdict"),
+        (Integer) rs.getObject("prompt_tokens"), (Integer) rs.getObject("completion_tokens"),
+        (Integer) rs.getObject("total_tokens"), (Integer) rs.getObject("cached_tokens"),
+        (Integer) rs.getObject("thought_tokens"), JdbcMappers.toInstant(rs.getObject("created_at")),
+        rs.getString("status"), rs.getString("error"));
+
     public List<AgentStep> findByRunId(UUID agentRunId) {
         String sql = """
             SELECT id, agent_run_id, seq, role, round, playbook_name, model, thinking_level, input,
@@ -78,21 +89,14 @@ public class AgentStepRepository {
                    status, error
             FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
             """;
-        return jdbcClient.sql(sql).param("agentRunId", agentRunId)
-            .query((rs, n) -> new AgentStep(rs.getObject("id", UUID.class),
-                rs.getObject("agent_run_id", UUID.class), rs.getInt("seq"), rs.getString("role"),
-                rs.getInt("round"), rs.getString("playbook_name"), rs.getString("model"),
-                rs.getString("thinking_level"), rs.getString("input"), rs.getString("output"),
-                rs.getString("messages"), rs.getString("verdict"),
-                (Integer) rs.getObject("prompt_tokens"),
-                (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
-                (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
-                JdbcMappers.toInstant(rs.getObject("created_at")), rs.getString("status"),
-                rs.getString("error")))
-            .list();
+        return jdbcClient.sql(sql).param("agentRunId", agentRunId).query(STEP_ROW_MAPPER).list();
     }
 
-    /** Slim projection omitting messages for trace responses without loading large JSON blobs. */
+    /**
+     * Retrieves steps for an agent run without loading large {@code messages} JSON transcripts.
+     * {@link AgentStep#messages()} is null on returned instances; all other columns (verdict, token
+     * counts, status, error) are fully populated.
+     */
     public List<AgentStep> findByRunIdWithoutMessages(UUID agentRunId) {
         String sql = """
             SELECT id, agent_run_id, seq, role, round, playbook_name, model, thinking_level, input,
@@ -101,17 +105,7 @@ public class AgentStepRepository {
                    status, error
             FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
             """;
-        return jdbcClient.sql(sql).param("agentRunId", agentRunId)
-            .query((rs, n) -> new AgentStep(rs.getObject("id", UUID.class),
-                rs.getObject("agent_run_id", UUID.class), rs.getInt("seq"), rs.getString("role"),
-                rs.getInt("round"), rs.getString("playbook_name"), rs.getString("model"),
-                rs.getString("thinking_level"), rs.getString("input"), rs.getString("output"), null,
-                rs.getString("verdict"), (Integer) rs.getObject("prompt_tokens"),
-                (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
-                (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
-                JdbcMappers.toInstant(rs.getObject("created_at")), rs.getString("status"),
-                rs.getString("error")))
-            .list();
+        return jdbcClient.sql(sql).param("agentRunId", agentRunId).query(STEP_ROW_MAPPER).list();
     }
 
     private String toJson(Object value) {

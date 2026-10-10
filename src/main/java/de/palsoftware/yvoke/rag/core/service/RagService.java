@@ -540,7 +540,8 @@ public class RagService {
                     } else {
                         responseData = callback.call(tc.arguments());
                     }
-                    if (responseData != null && responseData.startsWith("Error:")) {
+                    if (responseData != null && (responseData.startsWith("Error:")
+                        || responseData.startsWith("Error "))) {
                         isError = true;
                     }
                     log.info("Tool {} executed successfully, response length: {}", tc.name(),

@@ -99,8 +99,7 @@ public class ToolCallTraceExtractor {
         for (PendingToolCall pending : pendingCalls) {
             String result =
                 pending.matchedResponse != null ? pending.matchedResponse.content() : null;
-            boolean isError = pending.matchedResponse == null || pending.matchedResponse.isError()
-                || (result != null && result.startsWith("Error:"));
+            boolean isError = pending.matchedResponse == null || pending.matchedResponse.isError();
 
             String callId = pending.toolCall.id();
             if (callId == null || callId.isBlank()) {

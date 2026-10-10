@@ -513,7 +513,7 @@ class ChatAsyncControllerTest {
         UUID messageId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
 
-        AgentRun run = new AgentRun(runId, conversationId, messageId, "oim", "done", "{}", 1,
+        AgentRun run = new AgentRun(runId, conversationId, messageId, null, "oim", "done", "{}", 1,
             "approved", 100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
         AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
             "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),

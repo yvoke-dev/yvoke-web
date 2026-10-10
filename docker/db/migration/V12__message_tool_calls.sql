@@ -1,5 +1,5 @@
 -- Persists single-agent tool call traces for evaluation and debugging.
--- Stores the verbatim tool result; a periodic retention job can purge older rows.
+-- Verbatim tool arguments and results are stored without truncation or retention caps.
 CREATE TABLE message_tool_calls (
     id            UUID PRIMARY KEY,
     message_id    UUID NOT NULL CONSTRAINT fk_message_tool_calls_message REFERENCES messages(id) ON DELETE CASCADE,
