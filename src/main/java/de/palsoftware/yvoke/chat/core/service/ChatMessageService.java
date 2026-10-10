@@ -322,22 +322,33 @@ public class ChatMessageService {
                     for (UUID searchId : result.searchIds()) {
                         retrievalLogRepository.updateMessageId(searchId, assistantMessageId);
                     }
+                    if (agentRunRepository != null) {
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    }
                 });
             } catch (CancellationException e) {
                 Thread.interrupted();
                 log.info("Orchestrated generation cancelled for conversation: {}", conversationId);
-                transactionTemplate.executeWithoutResult(
-                    status -> messageRepository.updateContentAndStatus(assistantMessageId,
+                transactionTemplate.executeWithoutResult(status -> {
+                    messageRepository.updateContentAndStatus(assistantMessageId,
                         "*[Generation stopped by user]*", Collections.emptyList(),
-                        Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null));
+                        Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
+                    if (agentRunRepository != null) {
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    }
+                });
             } catch (Exception e) {
                 Thread.interrupted();
                 log.error("Error during orchestrated generation for conversation: {}",
                     conversationId, e);
-                transactionTemplate.executeWithoutResult(
-                    status -> messageRepository.updateContentAndStatus(assistantMessageId,
-                        GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0,
-                        0, 0, 0, "error", null));
+                transactionTemplate.executeWithoutResult(status -> {
+                    messageRepository.updateContentAndStatus(assistantMessageId, GENERIC_ERROR_TEXT,
+                        Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0, "error",
+                        null);
+                    if (agentRunRepository != null) {
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    }
+                });
             } finally {
                 if (onComplete != null) {
                     try {
@@ -425,9 +436,9 @@ public class ChatMessageService {
             transactionTemplate.executeWithoutResult(
                 status -> saveAssistantMessage(ragResult, prepared.conversationId(),
                     assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
-            saveToolCallTrace(ragResult, assistantMessageId);
 
             sink.accept(formatDoneToken(ragResult, assistantMessageId));
+            saveToolCallTrace(ragResult, assistantMessageId);
         } catch (CancellationException e) {
             log.info("Streaming generation cancelled by user for conversation: {}",
                 prepared.conversationId());

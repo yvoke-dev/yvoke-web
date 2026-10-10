@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.contains;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -1596,6 +1597,37 @@ public class ChatMessageServiceTest {
     }
 
     @Test
+    public void anOrchestratedRunUpdatesAssistantMessageIdOnAgentRun() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of()));
+
+        OrchestrationService orchestrationService = mock(OrchestrationService.class);
+        AgentRunRepository agentRunRepositoryMock = mock(AgentRunRepository.class);
+        ChatMessageService service =
+            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+                chatConversationService, ragService, retrievalLogRepository, playbookService,
+                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+                orchestrationService, messageToolCallRepository, toolCallTraceExtractor,
+                chatProperties, agentRunRepositoryMock, mock(AgentStepRepository.class));
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+            .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
+                33, 4, 5, "done"));
+
+        UUID assistantMessageId =
+            service.prepareAndSubmitAsync(conversationId, "Async Query", null);
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskExecutor).submit(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+
+        verify(agentRunRepositoryMock).updateAssistantMessageId(any(UUID.class),
+            eq(assistantMessageId));
+    }
+
+    @Test
     public void testPersistenceFailureIsolation_DoesNotRollbackAssistantMessage() {
         UUID conversationId = UUID.randomUUID();
         UUID assistantMessageId = UUID.randomUUID();
@@ -1723,12 +1755,14 @@ public class ChatMessageServiceTest {
 
         ChatMessageService.PreparedChat prepared =
             service.prepare(conversationId, "query", "test-pb");
-        List<String> tokens = new ArrayList<>();
-        service.stream(prepared, assistantMessageId, tokens::add);
+        @SuppressWarnings("unchecked")
+        Consumer<String> sink = mock(Consumer.class);
+        service.stream(prepared, assistantMessageId, sink);
 
-        InOrder inOrder = inOrder(transactionManager, messageToolCallRepository);
+        InOrder inOrder = inOrder(transactionManager, sink, messageToolCallRepository);
         inOrder.verify(transactionManager).commit(any()); // prepare() commit
         inOrder.verify(transactionManager).commit(any()); // stream() saveAssistantMessage commit
+        inOrder.verify(sink).accept(contains("[DONE]"));
         inOrder.verify(messageToolCallRepository).insertAll(assistantMessageId, List.of(record));
         verify(toolCallTraceExtractor).extract(assistantMessageId, messages);
     }

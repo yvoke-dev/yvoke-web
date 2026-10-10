@@ -67,23 +67,36 @@ public class AgentRunRepository {
         }
     }
 
-    private static final String SELECT_COLUMNS = """
-        SELECT id, conversation_id, message_id, profile_name, status, config::text AS config,
-               review_rounds, final_verdict::text AS final_verdict, prompt_tokens,
-               completion_tokens, total_tokens, cached_tokens, thought_tokens, error,
-               started_at, finished_at
-        FROM agent_runs
-        """;
+    /** Links the delivered assistant message id to this run. */
+    public void updateAssistantMessageId(UUID id, UUID assistantMessageId) {
+        String sql = """
+            UPDATE agent_runs
+            SET assistant_message_id = :assistantMessageId
+            WHERE id = :id
+            """;
+        jdbcClient.sql(sql).param("id", id).param("assistantMessageId", assistantMessageId)
+            .update();
+    }
+
+    private static final String SELECT_COLUMNS =
+        """
+            SELECT id, conversation_id, message_id, assistant_message_id, profile_name, status, config::text AS config,
+                   review_rounds, final_verdict::text AS final_verdict, prompt_tokens,
+                   completion_tokens, total_tokens, cached_tokens, thought_tokens, error,
+                   started_at, finished_at
+            FROM agent_runs
+            """;
 
     private static AgentRun mapRow(ResultSet rs, int n) throws SQLException {
         return new AgentRun(rs.getObject("id", UUID.class),
             rs.getObject("conversation_id", UUID.class), rs.getObject("message_id", UUID.class),
-            rs.getString("profile_name"), rs.getString("status"), rs.getString("config"),
-            rs.getInt("review_rounds"), rs.getString("final_verdict"),
-            (Integer) rs.getObject("prompt_tokens"), (Integer) rs.getObject("completion_tokens"),
-            (Integer) rs.getObject("total_tokens"), (Integer) rs.getObject("cached_tokens"),
-            (Integer) rs.getObject("thought_tokens"), rs.getString("error"),
-            toInstant(rs.getObject("started_at")), toInstant(rs.getObject("finished_at")));
+            rs.getObject("assistant_message_id", UUID.class), rs.getString("profile_name"),
+            rs.getString("status"), rs.getString("config"), rs.getInt("review_rounds"),
+            rs.getString("final_verdict"), (Integer) rs.getObject("prompt_tokens"),
+            (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
+            (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
+            rs.getString("error"), toInstant(rs.getObject("started_at")),
+            toInstant(rs.getObject("finished_at")));
     }
 
     public Optional<AgentRun> findById(UUID id) {
@@ -92,8 +105,8 @@ public class AgentRunRepository {
     }
 
     public Optional<AgentRun> findByMessageId(UUID messageId) {
-        return jdbcClient
-            .sql(SELECT_COLUMNS + " WHERE message_id = :messageId ORDER BY started_at DESC LIMIT 1")
+        return jdbcClient.sql(SELECT_COLUMNS
+            + " WHERE assistant_message_id = :messageId OR message_id = :messageId ORDER BY started_at DESC, id DESC LIMIT 1")
             .param("messageId", messageId).query(AgentRunRepository::mapRow).optional();
     }
 

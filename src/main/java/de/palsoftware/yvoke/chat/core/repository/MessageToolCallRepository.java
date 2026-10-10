@@ -48,10 +48,10 @@ public class MessageToolCallRepository {
                 ps.setObject(1, record.id() != null ? record.id() : UUID.randomUUID());
                 ps.setObject(2, messageId);
                 ps.setInt(3, record.seq());
-                ps.setString(4, sanitizeNullBytes(record.toolCallId()));
-                ps.setString(5, sanitizeNullBytes(record.toolName()));
-                ps.setString(6, sanitizeNullBytes(record.arguments()));
-                ps.setString(7, sanitizeNullBytes(record.result()));
+                ps.setString(4, record.toolCallId());
+                ps.setString(5, record.toolName());
+                ps.setString(6, record.arguments());
+                ps.setString(7, record.result());
                 ps.setBoolean(8, record.isError());
                 ps.setTimestamp(9,
                     record.createdAt() != null ? Timestamp.from(record.createdAt()) : null);
@@ -89,10 +89,6 @@ public class MessageToolCallRepository {
             rs.getObject("message_id", UUID.class), rs.getInt("seq"), rs.getString("tool_call_id"),
             rs.getString("tool_name"), rs.getString("arguments"), rs.getString("result"),
             rs.getBoolean("is_error"), toInstant(rs.getObject("created_at")));
-    }
-
-    private static String sanitizeNullBytes(String s) {
-        return s != null ? s.replace("\u0000", "") : null;
     }
 
     private static Instant toInstant(Object ts) {

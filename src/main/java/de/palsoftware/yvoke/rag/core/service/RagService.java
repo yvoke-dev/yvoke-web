@@ -532,6 +532,7 @@ public class RagService {
             }
 
             String responseData;
+            boolean isError = false;
             if (callback != null) {
                 try {
                     if (callback instanceof ContextAwareToolCallback contextAware) {
@@ -561,6 +562,7 @@ public class RagService {
                     responseData = "Error: the " + tc.name()
                         + " tool could not be completed. Continue with the evidence you already"
                         + " have and state the gap in your answer.";
+                    isError = true;
                 }
             } else if (tools.denied().contains(tc.name())) {
                 // Registered, but not permitted this run — a stale playbook advertising a tool the
@@ -572,13 +574,16 @@ public class RagService {
                         + "offered this turn (check the playbook's tool list)",
                     tc.name());
                 responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             } else {
                 log.warn("Tool {} not found", tc.name());
                 responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             }
             List<LlmPart> toolParts =
                 List.of(new LlmPart("function_response", responseData, null, null));
-            messages.add(new LlmMessage("tool", responseData, toolParts, null, tc.id(), tc.name()));
+            messages.add(
+                new LlmMessage("tool", responseData, toolParts, null, tc.id(), tc.name(), isError));
         }
     }
 

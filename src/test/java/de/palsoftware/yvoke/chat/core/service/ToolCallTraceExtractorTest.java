@@ -136,22 +136,37 @@ class ToolCallTraceExtractorTest {
     }
 
     @Test
-    void testSanitizeNullBytesAndErrorResult() {
-        LlmToolCall tc = new LlmToolCall("call_err\u0000", "function", "tool\u0000name",
+    void testSanitizeNullBytesAndTypedErrorFlag() {
+        LlmToolCall tcErr = new LlmToolCall("call_err\u0000", "function", "tool\u0000name",
             "{\"arg\":\"val\u0000\"}");
-        LlmMessage assistantMsg = new LlmMessage("assistant", "", null, List.of(tc), null, null);
-        LlmMessage toolMsg = new LlmMessage("tool", "Error: failed\u0000 to fetch", null, null,
-            "call_err\u0000", "tool\u0000name");
+        LlmToolCall tcLegit = new LlmToolCall("call_legit", "function", "search_corpus", "{}");
 
-        List<ToolCallRecord> records = extractor.extract(messageId, List.of(assistantMsg, toolMsg));
+        LlmMessage assistantMsg =
+            new LlmMessage("assistant", "", null, List.of(tcErr, tcLegit), null, null);
+        // Tool 1 failed with isError=true
+        LlmMessage toolMsg1 = new LlmMessage("tool", "Failed\u0000 to fetch", null, null,
+            "call_err\u0000", "tool\u0000name", true);
+        // Tool 2 returned legitimate result starting with 'Error: ' but isError=false
+        LlmMessage toolMsg2 = new LlmMessage("tool", "Error: no matching rows found for query",
+            null, null, "call_legit", "search_corpus", false);
 
-        assertThat(records).hasSize(1);
-        ToolCallRecord r = records.get(0);
-        assertThat(r.toolCallId()).isEqualTo("call_err");
-        assertThat(r.toolName()).isEqualTo("toolname");
-        assertThat(r.arguments()).isEqualTo("{\"arg\":\"val\"}");
-        assertThat(r.result()).isEqualTo("Error: failed to fetch");
-        assertThat(r.isError()).isTrue();
+        List<ToolCallRecord> records =
+            extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2));
+
+        assertThat(records).hasSize(2);
+        ToolCallRecord r0 = records.get(0);
+        assertThat(r0.toolCallId()).isEqualTo("call_err");
+        assertThat(r0.toolName()).isEqualTo("toolname");
+        assertThat(r0.arguments()).isEqualTo("{\"arg\":\"val\"}");
+        assertThat(r0.result()).isEqualTo("Failed to fetch");
+        assertThat(r0.isError()).isTrue();
+
+        ToolCallRecord r1 = records.get(1);
+        assertThat(r1.toolCallId()).isEqualTo("call_legit");
+        assertThat(r1.toolName()).isEqualTo("search_corpus");
+        assertThat(r1.result()).isEqualTo("Error: no matching rows found for query");
+        // Must NOT be classified as error despite starting with 'Error:'
+        assertThat(r1.isError()).isFalse();
     }
 
     @Test

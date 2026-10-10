@@ -24,6 +24,7 @@ import de.palsoftware.yvoke.chat.orchestration.AgentRun;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
 import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
+import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
@@ -101,7 +102,6 @@ public class ChatAsyncControllerTraceIT {
 
     @AfterEach
     public void tearDown() {
-        SecurityContextHolder.clearContext();
         for (UUID conversationId : conversationsToDelete) {
             try {
                 chatConversationService.deleteConversation(conversationId);
@@ -114,6 +114,7 @@ public class ChatAsyncControllerTraceIT {
         } catch (Exception e) {
             // Ignore
         }
+        SecurityContextHolder.clearContext();
     }
 
     private void setSecurityContext(String oid, String email, String name, String role) {
@@ -273,33 +274,47 @@ public class ChatAsyncControllerTraceIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        UUID messageId = UUID.randomUUID();
-        Message assistantMessage = new Message(messageId, conv.id(), "assistant", "MAS synthesis",
+        // Question (user message)
+        UUID userMsgId = UUID.randomUUID();
+        Message userMessage = new Message(userMsgId, conv.id(), "user", "Question triggering MAS",
             null, Collections.emptyList(), Collections.emptyList(), Instant.now(), null, null, null,
             null, null, "done", null);
+        messageRepository.save(userMessage);
+
+        // Answer (assistant message)
+        UUID assistantMessageId = UUID.randomUUID();
+        Message assistantMessage = new Message(assistantMessageId, conv.id(), "assistant",
+            "MAS synthesis", null, Collections.emptyList(), Collections.emptyList(), Instant.now(),
+            null, null, null, null, null, "done", null);
         messageRepository.save(assistantMessage);
 
         UUID runId = UUID.randomUUID();
-        agentRunRepository.create(runId, conv.id(), "deep_research", Collections.emptyMap());
-        agentRunRepository.finish(runId, messageId, "done", 2, "approved", 100, 200, 300, 40, 50,
+        agentRunRepository.create(runId, conv.id(), "deep_research",
+            Map.of("secret_config", "must_not_leak_to_client"));
+        // As in the real web orchestrated path: run is filed under userMessageId!
+        agentRunRepository.finish(runId, userMsgId, "done", 2, "approved", 100, 200, 300, 40, 50,
             null);
+        // Delivered assistant message is linked via updateAssistantMessageId
+        agentRunRepository.updateAssistantMessageId(runId, assistantMessageId);
 
         agentStepRepository.insert(UUID.randomUUID(), runId, 0, "orchestrator", 1, "lead",
             "gemini-3.1-flash-lite", "high", "plan question", "plan output",
-            Collections.emptyList(), "ok", 50, 100, 150, 20, 25);
+            List.of(new LlmMessage("system", "confidential instructions")), "ok", 50, 100, 150, 20, 25);
 
-        mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + messageId + "/trace")
+        mockMvc.perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/trace")
                 .with(testUserLogin(userOid, "user-mas@local", "User Mas", "ROLE_USER")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.mode").value("mas"))
-            .andExpect(jsonPath("$.messageId").value(messageId.toString()))
+            .andExpect(jsonPath("$.messageId").value(assistantMessageId.toString()))
             .andExpect(jsonPath("$.tokens.prompt").value(100))
             .andExpect(jsonPath("$.tokens.completion").value(200))
             .andExpect(jsonPath("$.tokens.total").value(300))
             .andExpect(jsonPath("$.agentRun.id").value(runId.toString()))
             .andExpect(jsonPath("$.agentRun.profileName").value("deep_research"))
+            .andExpect(jsonPath("$.agentRun.config").doesNotExist())
             .andExpect(jsonPath("$.steps.length()").value(1))
-            .andExpect(jsonPath("$.steps[0].role").value("orchestrator"));
+            .andExpect(jsonPath("$.steps[0].role").value("orchestrator"))
+            .andExpect(jsonPath("$.steps[0].messages").doesNotExist());
     }
 
     @Test

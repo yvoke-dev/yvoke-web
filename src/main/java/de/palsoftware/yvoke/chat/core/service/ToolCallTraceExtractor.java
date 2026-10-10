@@ -97,28 +97,23 @@ public class ToolCallTraceExtractor {
         UUID messageId, int startSeq) {
         int seq = startSeq;
         for (PendingToolCall pending : pendingCalls) {
-            String result = pending.matchedResponse != null
-                ? sanitizeNullBytes(pending.matchedResponse.content())
-                : null;
-            boolean isError = (result != null && result.startsWith("Error:")) || (result == null);
+            String result =
+                pending.matchedResponse != null ? pending.matchedResponse.content() : null;
+            boolean isError = pending.matchedResponse == null || pending.matchedResponse.isError();
 
-            String callId = sanitizeNullBytes(pending.toolCall.id());
+            String callId = pending.toolCall.id();
             if (callId == null || callId.isBlank()) {
                 callId = "call_" + seq;
             }
-            String toolName = sanitizeNullBytes(pending.toolCall.name());
+            String toolName = pending.toolCall.name();
             if (toolName == null || toolName.isBlank()) {
                 toolName = "unknown";
             }
 
             records.add(new ToolCallRecord(UUID.randomUUID(), messageId, seq++, callId, toolName,
-                sanitizeNullBytes(pending.toolCall.arguments()), result, isError, Instant.now()));
+                pending.toolCall.arguments(), result, isError, Instant.now()));
         }
         pendingCalls.clear();
         return seq;
-    }
-
-    private static String sanitizeNullBytes(String s) {
-        return s != null ? s.replace("\u0000", "") : null;
     }
 }

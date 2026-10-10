@@ -267,6 +267,11 @@ public class SchemaPresenceIT {
         }
     }
 
+    @Test
+    public void testMigrationV13AgentRunsAssistantMessageIdColumnAndIndex() {
+        assertThat(columnExists("agent_runs", "assistant_message_id")).isTrue();
+        assertThat(indexExists("agent_runs", "idx_agent_runs_assistant_message_id")).isTrue();
+    }
 
     @Test
     public void testUniquenessIndexesExist() {

@@ -61,6 +61,9 @@ public class DesktopOrchestratorRunService {
             req.finalVerdict(), zero(req.promptTokens()), zero(req.completionTokens()),
             zero(req.totalTokens()), zero(req.cachedTokens()), zero(req.thoughtTokens()),
             req.error());
+        if (req.messageId() != null) {
+            agentRunRepository.updateAssistantMessageId(runId, req.messageId());
+        }
 
         List<OrchestratorRunRequest.Step> steps = req.steps() != null ? req.steps() : List.of();
         int autoSeq = 0;

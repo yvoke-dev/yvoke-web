@@ -101,6 +101,9 @@ feedback triage and answer traces; every user rates answers.
 - **⚠ Nothing is ever deleted automatically.** Questions, answers, ratings, search records, traces and
   spend rows are kept indefinitely and stay readable by administrators. There is no retention policy and
   nothing expires.
+- **Tool-call traces store arguments and results verbatim without truncation or retention limits.** Rows in
+  `message_tool_calls` are kept indefinitely alongside messages (deleted only via cascade when the parent message
+  is deleted); no periodic retention or truncation job purges large tool outputs.
 - **The audit trail and search log page twenty at a time with no search or filter**, and the run list shows
   only the most recent runs.
 - **Imports started through the integration interface are not audited** — only those started from the

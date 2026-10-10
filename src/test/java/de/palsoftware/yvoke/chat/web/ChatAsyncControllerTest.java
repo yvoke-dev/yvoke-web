@@ -494,8 +494,14 @@ class ChatAsyncControllerTest {
         assertEquals(messageId, dto.messageId());
         assertEquals(conversationId, dto.conversationId());
         assertEquals(300, dto.tokens().total());
-        assertThat(dto.agentRun()).isEqualTo(run);
-        assertThat(dto.steps()).containsExactly(step1);
+        assertThat(dto.agentRun()).isNotNull();
+        assertEquals(runId, dto.agentRun().id());
+        assertEquals("oim", dto.agentRun().profileName());
+        assertEquals(300, dto.agentRun().totalTokens());
+        assertThat(dto.steps()).hasSize(1);
+        assertEquals(step1.id(), dto.steps().get(0).id());
+        assertEquals("orchestrator", dto.steps().get(0).role());
+        assertEquals("gpt-4o", dto.steps().get(0).model());
         assertThat(dto.toolCalls()).isNull();
         verify(chatConversationService).verifyOwnership(conversationId, true);
     }
