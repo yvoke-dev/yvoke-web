@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.web;
 
 import de.palsoftware.yvoke.chat.api.model.MessageDto;
+import de.palsoftware.yvoke.chat.api.model.MessageTraceDto;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
@@ -13,6 +14,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -97,5 +101,20 @@ public class ChatAsyncController {
         }
         return ResponseEntity
             .ok(Map.of("status", status, "message", MessageDto.from(message, null)));
+    }
+
+    @GetMapping(value = "/chat/{id}/messages/{messageId}/trace",
+        produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<MessageTraceDto> getMessageTrace(@PathVariable UUID id,
+        @PathVariable UUID messageId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null
+            && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            throw new AccessDeniedException("Access denied: trace endpoint requires ROLE_ADMIN");
+        }
+        chatConversationService.verifyOwnership(id, true);
+        return chatMessageService.getMessageTrace(id, messageId).map(MessageTraceDto::from)
+            .map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

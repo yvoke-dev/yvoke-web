@@ -258,7 +258,7 @@ public class RagService {
             }
 
             if (!toolCalls.isEmpty()) {
-                executeToolCalls(toolCalls, messages, sink, ctx, tools);
+                executeToolCalls(toolCalls, messages, sink, ctx, tools, request.traceToolCalls());
                 iterations++;
                 if (ctx.isHaltRequested()) {
                     log.info("Halt requested by a tool (clarifying question / review verdict). "
@@ -496,7 +496,7 @@ public class RagService {
     }
 
     private void executeToolCalls(List<LlmToolCall> toolCalls, List<LlmMessage> messages,
-        Consumer<String> sink, AgenticChatContext ctx, TurnTools tools) {
+        Consumer<String> sink, AgenticChatContext ctx, TurnTools tools, boolean traceToolCalls) {
         for (LlmToolCall tc : toolCalls) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new CancellationException("Chat generation cancelled");
@@ -525,21 +525,24 @@ public class RagService {
                     sink.accept(xml.toString());
                 } catch (Exception e) {
                     log.error("Failed to format clarifying question XML", e);
-                    sink.accept(
-                        String.format("🔧 *Calling tool:* %s(%s)\n\n", tc.name(), tc.arguments()));
+                    emitToolBanner(sink, tc, traceToolCalls);
                 }
             } else {
-                sink.accept(
-                    String.format("🔧 *Calling tool:* %s(%s)\n\n", tc.name(), tc.arguments()));
+                emitToolBanner(sink, tc, traceToolCalls);
             }
 
             String responseData;
+            boolean isError = false;
             if (callback != null) {
                 try {
                     if (callback instanceof ContextAwareToolCallback contextAware) {
                         responseData = contextAware.callWithContext(tc.arguments(), ctx);
                     } else {
                         responseData = callback.call(tc.arguments());
+                    }
+                    if (responseData != null && (responseData.startsWith("Error:")
+                        || responseData.startsWith("Error "))) {
+                        isError = true;
                     }
                     log.info("Tool {} executed successfully, response length: {}", tc.name(),
                         responseData != null ? responseData.length() : 0);
@@ -563,6 +566,7 @@ public class RagService {
                     responseData = "Error: the " + tc.name()
                         + " tool could not be completed. Continue with the evidence you already"
                         + " have and state the gap in your answer.";
+                    isError = true;
                 }
             } else if (tools.denied().contains(tc.name())) {
                 // Registered, but not permitted this run — a stale playbook advertising a tool the
@@ -574,13 +578,28 @@ public class RagService {
                         + "offered this turn (check the playbook's tool list)",
                     tc.name());
                 responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             } else {
                 log.warn("Tool {} not found", tc.name());
                 responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             }
             List<LlmPart> toolParts =
                 List.of(new LlmPart("function_response", responseData, null, null));
-            messages.add(new LlmMessage("tool", responseData, toolParts, null, tc.id(), tc.name()));
+            messages.add(
+                new LlmMessage("tool", responseData, toolParts, null, tc.id(), tc.name(), isError));
+        }
+    }
+
+    private static void emitToolBanner(Consumer<String> sink, LlmToolCall tc,
+        boolean traceToolCalls) {
+        if (traceToolCalls && tc.id() != null && !tc.id().isBlank()) {
+            String argsSingleLine =
+                tc.arguments() != null ? tc.arguments().replaceAll("\\R", " ") : "{}";
+            sink.accept(String.format("🔧 *Calling tool:* %s(%s) #%s\n\n", tc.name(),
+                argsSingleLine, tc.id()));
+        } else {
+            sink.accept(String.format("🔧 *Calling tool:* %s(%s)\n\n", tc.name(), tc.arguments()));
         }
     }
 

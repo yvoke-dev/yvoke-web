@@ -126,4 +126,25 @@ class AssistantTranscriptTest {
         assertThat(AssistantTranscript.toModelText("Error code [500123] occurred."))
             .isEqualTo("Error code [500123] occurred.");
     }
+
+    @Test
+    void testMultilineBannerStripping() {
+        // When multiline args are sanitized to a single line in RagService, the banner (with
+        // #<tool_call_id>) is stripped completely
+        String multilineArgs = "{\n  \"query\": \"multiline\\nquery\"\n}";
+        String sanitizedArgs = multilineArgs.replaceAll("\\R", " ");
+        String banner =
+            String.format("🔧 *Calling tool:* search_corpus(%s) #call_12345\n\nReal prose response",
+                sanitizedArgs);
+
+        assertThat(AssistantTranscript.toModelText(banner)).isEqualTo("Real prose response");
+    }
+
+    @Test
+    void testBannerWithToolCallIdStripped() {
+        String banner =
+            "🔧 *Calling tool:* search_corpus({\"query\":\"test\"}) #call_abc999\n\nAnswer text";
+        assertThat(AssistantTranscript.toModelText(banner)).isEqualTo("Answer text");
+    }
 }
+

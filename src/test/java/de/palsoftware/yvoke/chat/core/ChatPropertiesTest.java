@@ -26,9 +26,23 @@ public class ChatPropertiesTest {
 
     @Test
     public void testValidProperties() {
-        ChatProperties props = new ChatProperties(true, List.of("model1"), true);
+        ChatProperties props = new ChatProperties(true, List.of("model1"), true, false);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isEmpty();
+        assertThat(props.traceToolCalls()).isFalse();
+
+        ChatProperties propsWithTrace = new ChatProperties(true, List.of("model1"), true, true);
+        assertThat(propsWithTrace.traceToolCalls()).isTrue();
+    }
+
+    @Test
+    public void testTraceToolCallsBindsFromPropertySource() {
+        MapConfigurationPropertySource source = new MapConfigurationPropertySource(
+            Map.of("app.chat.enabled", "true", "app.chat.playbook-validation-enabled", "true",
+                "app.chat.allowed-models", "model1", "app.chat.trace-tool-calls", "true"));
+
+        ChatProperties props = new Binder(source).bind("app.chat", ChatProperties.class).get();
+        assertThat(props.traceToolCalls()).isTrue();
     }
 
     /**
@@ -76,7 +90,7 @@ public class ChatPropertiesTest {
 
     @Test
     public void testNullAllowedModels() {
-        ChatProperties props = new ChatProperties(true, null, true);
+        ChatProperties props = new ChatProperties(true, null, true, false);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isNotEmpty();
         assertThat(violations)
@@ -85,7 +99,7 @@ public class ChatPropertiesTest {
 
     @Test
     public void testEmptyAllowedModels() {
-        ChatProperties props = new ChatProperties(true, Collections.emptyList(), true);
+        ChatProperties props = new ChatProperties(true, Collections.emptyList(), true, false);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isNotEmpty();
         assertThat(violations)
