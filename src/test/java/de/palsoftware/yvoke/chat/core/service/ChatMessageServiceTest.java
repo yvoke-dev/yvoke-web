@@ -2556,4 +2556,25 @@ public class ChatMessageServiceTest {
         verify(conversationRepository).lockForUpdate(convId);
         verify(taskExecutor).submit(any(Runnable.class));
     }
+
+    @Test
+    void prepare_whenMixedConversationWithDeletedOrchestratorProfile_performsEarlyPlaybookEqualityCheck() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "deleted-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(convId, "Query", "different-pb"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+
+        verify(conversationRepository, never()).lockForUpdate(convId);
+    }
 }

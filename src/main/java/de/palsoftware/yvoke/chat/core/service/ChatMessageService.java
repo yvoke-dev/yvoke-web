@@ -128,33 +128,24 @@ public class ChatMessageService {
     }
 
     /**
-     * Resolves the locked playbook for a conversation, if one has been set. Note: Does not verify
-     * conversation ownership; callers must have verified ownership prior to calling this method if
-     * user scoping is required.
-     */
-    public Optional<String> findInitialPlaybook(UUID conversationId) {
-        return messageRepository.findInitialPlaybook(conversationId);
-    }
-
-    public boolean hasInDepthTurns(UUID conversationId) {
-        return messageRepository.hasInDepthTurns(conversationId);
-    }
-
-    /**
-     * Validates access, persists the user message and resolves model/history/tools synchronously.
-     * Intended to run on the request thread so authorization/validation failures surface as normal
-     * HTTP responses <em>before</em> any SSE stream is committed.
+     * Resolves the mode and playbook immutability lock state for a conversation based on its
+     * initial playbook, in-depth turns, and active orchestrator profile.
+     *
+     * <p>
+     * Note: Does not verify conversation ownership; callers must verify ownership prior to calling
+     * this method if user scoping is required.
      */
     public ConversationLockState resolveLockState(UUID conversationId, String orchestratorProfile) {
         Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-        boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank();
+        boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank()
+            && orchestrationService.hasProfile(orchestratorProfile.trim());
 
-        // Avoid count query when conversation is neither locked nor configured with an orchestrator
-        // profile
+        // Avoid count query when conversation is neither locked nor configured with an active
+        // orchestrator profile
         boolean hasInDepthTurns = (initialPlaybook.isPresent() || hasActiveProfile)
             && messageRepository.hasInDepthTurns(conversationId);
 
-        return ConversationLockState.from(initialPlaybook, hasInDepthTurns, orchestratorProfile);
+        return ConversationLockState.from(initialPlaybook, hasInDepthTurns, hasActiveProfile);
     }
 
     /**
@@ -179,15 +170,10 @@ public class ChatMessageService {
         String promptName, ConversationLockState lockState) {
         UUID conversationId = conversation.id();
         Map<String, Object> settings = conversation.settings();
-        String orchestratorProfile =
-            (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
 
-        if (!lockState.isSinglePlaybookLocked() && orchestratorProfile != null
-            && !orchestratorProfile.isBlank()) {
-            if (orchestrationService.hasProfile(orchestratorProfile)) {
-                throw new IllegalArgumentException(
-                    "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
-            }
+        if (!lockState.isSinglePlaybookLocked() && lockState.hasActiveProfile()) {
+            throw new IllegalArgumentException(
+                "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
         }
 
         String effectivePlaybookName;
