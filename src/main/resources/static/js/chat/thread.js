@@ -379,7 +379,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 activePlaybookEl.style.display = 'none';
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
             }
             
             const chipsEl = document.getElementById('prompt-chips');
@@ -501,6 +501,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 if (promptChips && messages.length === 0 && !activePlaybookName) {
                     promptChips.style.display = 'flex';
                 }
+            }
+            if (typeof chatInput !== 'undefined' && chatInput) {
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
             }
         }
         applyOrchestratorModeUI();
@@ -1056,7 +1059,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!unanswered) {
                 if (chatInput) {
                     chatInput.disabled = false;
-                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
+                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
                 }
                 const micBtn = document.getElementById('voice-input-btn');
                 if (micBtn) {
@@ -1283,7 +1286,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         voiceBtn.classList.remove('recording');
                         const tooltipEl = voiceBtn.querySelector('.custom-tooltip');
                         if (tooltipEl) tooltipEl.textContent = "Start voice typing";
-                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
+                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
                         adjustChatInputHeight();
                     };
 
@@ -1592,7 +1595,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
             // 1. Append User Message Bubble
             const userMsgId = 'temp-user-' + Date.now();
-            const playbookTagHtml = activePlaybookName ? `<span class="playbook-tag">📋 ${promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS)}</span>` : '';
+            const playbookTagHtml = (activePlaybookName && !orchestratorMode) ? `<span class="playbook-tag">📋 ${promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS)}</span>` : '';
             const userMsgHtml = userMessageMarkup(userMsgId, content, playbookTagHtml);
             messagesContainer.insertAdjacentHTML('beforeend', userMsgHtml);
             scrollToBottom();

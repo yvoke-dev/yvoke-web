@@ -2443,6 +2443,35 @@ public class ChatMessageServiceTest {
         assertThat(asstId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
             any());
+        verify(messageRepository, times(2)).findInitialPlaybook(convId);
+        verify(messageRepository, times(1)).hasInDepthTurns(convId);
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenNoOrchestratorProfile_doesNotDuplicatePreLockQueries() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "gemini-3.1-flash-lite");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId))
+            .thenReturn(Optional.of("locked-playbook"));
+
+        Playbook pb = new Playbook("locked-playbook", "Locked Playbook", "Desc", "PB Instructions",
+            List.of(), false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("locked-playbook")).thenReturn(Optional.of(pb));
+
+        SystemPrompt sp = new SystemPrompt("default-chat", SystemPromptType.CHAT,
+            "Base system instructions", "desc");
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.of(sp));
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "locked-playbook");
+
+        assertThat(asstId).isNotNull();
+        verify(messageRepository, times(2)).findInitialPlaybook(convId);
+        verify(messageRepository, times(1)).hasInDepthTurns(convId);
     }
 
     @Test

@@ -711,6 +711,11 @@ public class ChatThreadRenderingIT {
         assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
         assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
         String longHtml = longConvResult.getResponse().getContentAsString();
+        assertThat(longHtml).contains("isPlaybookLocked: true");
+        assertThat(longHtml).contains("lockedPlaybookName: \"oim-full\"");
+        assertThat(longHtml)
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+
         // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID mixedConvId = chatConversationService.createConversation().id();
@@ -725,10 +730,18 @@ public class ChatThreadRenderingIT {
             .andExpect(status().isOk()).andReturn();
         ModelAndView mixedMav = mixedResult.getModelAndView();
         assertThat(mixedMav).isNotNull();
+        assertThat(mixedMav.getModel().get("isPlaybookLocked")).isEqualTo(false);
+        assertThat(mixedMav.getModel().get("lockedPlaybookName")).isNull();
         @SuppressWarnings("unchecked")
         Map<String, Object> mixedSettings = (Map<String, Object>) mixedMav.getModel().get("settings");
         assertThat(mixedSettings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()))
             .isEqualTo("oim");
+
+        String mixedHtml = mixedResult.getResponse().getContentAsString();
+        assertThat(mixedHtml)
+            .contains("<div id=\"active-playbook\" class=\"active-playbook\" style=\"display: none;\">");
+        assertThat(mixedHtml).doesNotContain("Add your question for");
+        assertThat(mixedHtml).contains("isPlaybookLocked: false");
 
         // Cleanup
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");

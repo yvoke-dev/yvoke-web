@@ -190,15 +190,15 @@ export function promptLabel(name, prompts, labels) {
 }
 
 /** Placeholder for the chat input: playbook-specific when one is active, else the generic hint. */
-export function chatInputDefaultPlaceholder(activePlaybookName, prompts, isLocked = false) {
-    if (activePlaybookName) {
+export function chatInputDefaultPlaceholder(activePlaybookName, prompts, isLocked = false, isOrchestrator = false) {
+    if (activePlaybookName && !isOrchestrator) {
         const playbookObj = Array.isArray(prompts)
             ? prompts.find(p => p && p.name === activePlaybookName)
             : null;
         const title = playbookObj ? playbookObj.title : activePlaybookName;
         return `Add your question for "${title}"...`;
     }
-    if (isLocked) {
+    if (isLocked || isOrchestrator) {
         return 'Ask a question… (Shift + Enter for new line, Enter to send)';
     }
     return 'Ask a question… (type "/" or click "+" to select a playbook, Shift + Enter for new line, Enter to send)';

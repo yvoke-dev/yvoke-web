@@ -145,14 +145,21 @@ public class ChatMessageService {
      * HTTP responses <em>before</em> any SSE stream is committed.
      */
     public PreparedChat prepare(UUID conversationId, String userContent, String promptName) {
+        return prepareInternal(conversationId, userContent, promptName, null, null);
+    }
+
+    PreparedChat prepareInternal(UUID conversationId, String userContent, String promptName,
+        Optional<String> initialPlaybookOpt, Boolean hasInDepthTurnsOpt) {
         chatCancellationService.reset(conversationId);
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-        boolean isSinglePlaybookLocked =
-            initialPlaybook.isPresent() && !messageRepository.hasInDepthTurns(conversationId);
+        Optional<String> initialPlaybook = initialPlaybookOpt != null ? initialPlaybookOpt
+            : messageRepository.findInitialPlaybook(conversationId);
         boolean isLocked = initialPlaybook.isPresent();
+        boolean isSinglePlaybookLocked =
+            isLocked && (hasInDepthTurnsOpt != null ? !hasInDepthTurnsOpt
+                : !messageRepository.hasInDepthTurns(conversationId));
 
         Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
@@ -225,19 +232,25 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-        boolean isSinglePlaybookLocked =
-            initialPlaybook.isPresent() && !messageRepository.hasInDepthTurns(conversationId);
-
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (!isSinglePlaybookLocked && orchestratorProfile != null
-            && !orchestratorProfile.isBlank()) {
-            return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
-                onComplete);
+
+        Optional<String> initialPlaybook = null;
+        Boolean hasInDepthTurns = null;
+
+        if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
+            initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+            hasInDepthTurns =
+                initialPlaybook.isPresent() && messageRepository.hasInDepthTurns(conversationId);
+            boolean isSinglePlaybookLocked = initialPlaybook.isPresent() && !hasInDepthTurns;
+            if (!isSinglePlaybookLocked) {
+                return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
+                    onComplete);
+            }
         }
 
-        PreparedChat prepared = prepare(conversationId, content, promptName);
+        PreparedChat prepared =
+            prepareInternal(conversationId, content, promptName, initialPlaybook, hasInDepthTurns);
         return dispatchAsync(conversation, prepared, onComplete);
     }
 

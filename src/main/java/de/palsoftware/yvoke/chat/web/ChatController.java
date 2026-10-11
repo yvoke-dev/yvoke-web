@@ -110,14 +110,6 @@ public class ChatController {
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
         Optional<String> initialPlaybook = chatMessageService.findInitialPlaybook(id);
-        boolean isPlaybookLocked = initialPlaybook.isPresent();
-        String lockedPlaybookName = initialPlaybook.orElse(null);
-        String lockedPlaybookTitle = null;
-        if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
-            lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
-                .map(Playbook::title).orElse(lockedPlaybookName);
-        }
-        boolean isModeLocked = isPlaybookLocked || !messages.isEmpty();
 
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(orchestratorProfileService.listProfileOptions());
@@ -128,8 +120,20 @@ public class ChatController {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
         }
 
-        boolean isSinglePlaybookLocked =
-            isPlaybookLocked && !chatMessageService.hasInDepthTurns(id);
+        boolean hasActiveProfile = currentProfile != null && !currentProfile.isBlank();
+        boolean hasInDepthTurns = chatMessageService.hasInDepthTurns(id);
+        boolean isInDepthMode = hasInDepthTurns && hasActiveProfile;
+
+        boolean isPlaybookLocked = initialPlaybook.isPresent() && !isInDepthMode;
+        String lockedPlaybookName = isPlaybookLocked ? initialPlaybook.orElse(null) : null;
+        String lockedPlaybookTitle = null;
+        if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
+            lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
+                .map(Playbook::title).orElse(lockedPlaybookName);
+        }
+        boolean isModeLocked = initialPlaybook.isPresent() || !messages.isEmpty();
+
+        boolean isSinglePlaybookLocked = isPlaybookLocked && !hasInDepthTurns;
         Map<String, Object> effectiveSettings = new HashMap<>(conversation.settings());
         if (isSinglePlaybookLocked) {
             effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");

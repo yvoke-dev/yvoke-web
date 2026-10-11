@@ -217,6 +217,13 @@ describe('chatInputDefaultPlaceholder', () => {
         assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true),
             'Add your question for "OIM Full"...');
     });
+
+    test('suppresses active playbook and picker instructions in orchestrator mode', () => {
+        assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true, true),
+            'Ask a question… (Shift + Enter for new line, Enter to send)');
+        assert.equal(chatInputDefaultPlaceholder(null, prompts, false, true),
+            'Ask a question… (Shift + Enter for new line, Enter to send)');
+    });
 });
 
 describe('pollTerminalDecision', () => {

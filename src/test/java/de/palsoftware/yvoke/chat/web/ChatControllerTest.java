@@ -19,6 +19,7 @@ import org.mockito.Mockito;
 import org.springframework.security.access.AccessDeniedException;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
@@ -339,6 +340,37 @@ class ChatControllerTest {
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
         assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+    }
+
+    @Test
+    void threadView_withMixedConversationWithActiveProfile_suppressesPlaybookLockAndRetainsProfile() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("model", "model1", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message userMsg1 = new Message(UUID.randomUUID(), conversationId, "user", "Question 1",
+            "my-playbook", List.of(), List.of(), Instant.now().minusSeconds(10));
+        Message userMsg2 = new Message(UUID.randomUUID(), conversationId, "user", "In-depth turn",
+            null, List.of(), List.of(), Instant.now());
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg1, userMsg2));
+        when(messageService.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("my-playbook"));
+        when(messageService.hasInDepthTurns(conversationId)).thenReturn(true);
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
+        assertNull(model.getAttribute("lockedPlaybookName"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> settings = (Map<String, Object>) model.getAttribute("settings");
+        assertEquals("oim", settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()));
     }
 
     @Test
