@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
+import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -302,5 +304,32 @@ class ChatSseControllerTest {
             "Response must not leak the raw exception message");
         Assertions.assertTrue(content.contains("data:[DONE]"),
             "Response should be completed with [DONE]");
+    }
+
+    @Test
+    void sendMessageStream_playbookChangeRejected_returnsBadRequest() throws Exception {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), eq("diff-playbook")))
+            .thenThrow(new IllegalArgumentException(
+                "Playbook cannot be changed once a conversation has started."));
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatCancellationService, sseExecutor, allowingLimiter());
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        mockMvc
+            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
+                .param("content", "Follow up message").param("promptName", "diff-playbook"))
+            .andExpect(MockMvcResultMatchers.status().isBadRequest())
+            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
+                .value("Playbook cannot be changed once a conversation has started."));
+
+        verify(sseExecutor, never()).submit(any(Runnable.class));
     }
 }

@@ -134,16 +134,35 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        if (promptName == null || promptName.isBlank()) {
-            throw new IllegalArgumentException(
-                "A playbook must be selected before asking a question.");
+        List<Message> priorMessages =
+            messageRepository.findByConversationId(conversationId, 100, 0);
+        Optional<Message> initialPlaybookMessage =
+            priorMessages.stream().filter(msg -> "user".equalsIgnoreCase(msg.role())
+                && msg.playbook() != null && !msg.playbook().isBlank()).findFirst();
+
+        String effectivePlaybookName;
+        if (initialPlaybookMessage.isPresent()) {
+            String lockedPlaybook = initialPlaybookMessage.get().playbook();
+            if (promptName != null && !promptName.isBlank()
+                && !promptName.trim().equals(lockedPlaybook)) {
+                throw new IllegalArgumentException(
+                    "Playbook cannot be changed once a conversation has started.");
+            }
+            effectivePlaybookName = lockedPlaybook;
+        } else {
+            if (promptName == null || promptName.isBlank()) {
+                throw new IllegalArgumentException(
+                    "A playbook must be selected before asking a question.");
+            }
+            effectivePlaybookName = promptName.trim();
         }
-        Playbook playbook = playbookService.getPlaybook(promptName)
+
+        Playbook playbook = playbookService.getPlaybook(effectivePlaybookName)
             .orElseThrow(() -> new IllegalArgumentException("The selected playbook is invalid."));
 
         UUID userMessageId = UUID.randomUUID();
-        String modelContent = transactionTemplate.execute(
-            status -> saveUserMessage(conversationId, userMessageId, userContent, promptName));
+        String modelContent = transactionTemplate.execute(status -> saveUserMessage(conversationId,
+            userMessageId, userContent, effectivePlaybookName));
 
         List<String> allowedTools = playbook.tools();
         boolean codeExecution = playbook.codeExecution();
@@ -155,7 +174,8 @@ public class ChatMessageService {
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
         return new PreparedChat(conversationId, userMessageId, modelContent, modelToUse,
-            systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution);
+            systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution,
+            effectivePlaybookName);
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
@@ -176,7 +196,7 @@ public class ChatMessageService {
         PreparedChat prepared = prepare(conversationId, content, promptName);
         UUID assistantMessageId = UUID.randomUUID();
 
-        String pbName = (promptName != null && !promptName.isBlank()) ? promptName : null;
+        String pbName = prepared.playbookName();
         transactionTemplate.executeWithoutResult(status -> {
             Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
                 "", pbName, Collections.emptyList(), Collections.emptyList(), Instant.now(), null,
@@ -484,38 +504,23 @@ public class ChatMessageService {
     /** Immutable setup produced on the request thread and consumed by the streaming task. */
     public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent, String modelToUse,
         String systemPrompt, List<LlmMessage> history, List<String> allowedTools, String thinkingLevel,
-        boolean codeExecution) {
+        boolean codeExecution, String playbookName) {
+        public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent, String modelToUse,
+            String systemPrompt, List<LlmMessage> history, List<String> allowedTools, String thinkingLevel,
+            boolean codeExecution) {
+            this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history, allowedTools, thinkingLevel, codeExecution, null);
+        }
         public PreparedChat(UUID conversationId, String modelContent, String modelToUse,
             String systemPrompt, List<LlmMessage> history, List<String> allowedTools, String thinkingLevel,
             boolean codeExecution) {
-            this(conversationId, null, modelContent, modelToUse, systemPrompt, history, allowedTools, thinkingLevel, codeExecution);
+            this(conversationId, null, modelContent, modelToUse, systemPrompt, history, allowedTools, thinkingLevel, codeExecution, null);
         }
     }
 
     private String saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
-        String promptName) {
-        boolean isFirstUse = true;
-        if (promptName != null && !promptName.isBlank()) {
-            List<Message> priorMessages =
-                messageRepository.findByConversationId(conversationId, 100, 0);
-            isFirstUse = priorMessages.stream().filter(msg -> "user".equalsIgnoreCase(msg.role()))
-                .noneMatch(msg -> promptName.equals(msg.playbook()));
-        }
-
-        String promptText = (promptName != null && !promptName.isBlank() && isFirstUse)
-            ? playbookService.getPlaybook(promptName).map(Playbook::templateText).orElse(null)
-            : null;
-        boolean hasPrompt = promptText != null && !promptText.isBlank();
-        String modelContent = hasPrompt ? promptText + "\n\n---\n\n" + userContent : userContent;
-
-        boolean playbookHasTemplate = false;
-        if (promptName != null && !promptName.isBlank()) {
-            playbookHasTemplate = playbookService.getPlaybook(promptName)
-                .map(Playbook::templateText).map(t -> !t.isBlank()).orElse(false);
-        }
-
+        String playbookName) {
         Message userMessage = new Message(userMessageId, conversationId, "user", userContent,
-            (promptName != null && !promptName.isBlank()) ? promptName : null,
+            (playbookName != null && !playbookName.isBlank()) ? playbookName : null,
             Collections.emptyList(), Collections.emptyList(), Instant.now());
         messageRepository.save(userMessage);
 
@@ -524,7 +529,7 @@ public class ChatMessageService {
             chatConversationService.autoTitle(conversationId, userContent);
         }
 
-        return modelContent;
+        return userContent;
     }
 
     private String resolveModelToUse(Map<String, Object> settings) {
@@ -542,29 +547,47 @@ public class ChatMessageService {
     }
 
     private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
+        String basePrompt = null;
         String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
         if (chatPromptName != null && !chatPromptName.isBlank()) {
             Optional<SystemPrompt> prompt =
                 systemPromptService.findChatPrompt(chatPromptName.trim());
             if (prompt.isPresent()) {
-                return prompt.get().systemPrompt();
+                basePrompt = prompt.get().systemPrompt();
+            } else {
+                log.warn(
+                    "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
+                    chatPromptName.trim());
             }
-            log.warn(
-                "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
-                chatPromptName.trim());
         }
-        if (playbook != null && playbook.systemPrompt() != null
+        if (basePrompt == null && playbook != null && playbook.systemPrompt() != null
             && !playbook.systemPrompt().isBlank()) {
             Optional<SystemPrompt> prompt =
                 systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
             if (prompt.isPresent()) {
-                return prompt.get().systemPrompt();
+                basePrompt = prompt.get().systemPrompt();
+            } else {
+                log.warn(
+                    "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
+                    playbook.name(), playbook.systemPrompt().trim());
             }
-            log.warn(
-                "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
-                playbook.name(), playbook.systemPrompt().trim());
         }
-        return null;
+        if (basePrompt == null && systemPromptService != null) {
+            basePrompt =
+                systemPromptService.findChatPrompt(null).map(SystemPrompt::systemPrompt).orElse("");
+        }
+
+        String playbookInstructions =
+            (playbook != null && playbook.templateText() != null) ? playbook.templateText() : null;
+
+        if (playbookInstructions != null && !playbookInstructions.isBlank()) {
+            if (basePrompt != null && !basePrompt.isBlank()) {
+                return basePrompt + "\n\n---\n\n" + playbookInstructions;
+            }
+            return playbookInstructions;
+        }
+
+        return (basePrompt != null && !basePrompt.isBlank()) ? basePrompt : null;
     }
 
     private String resolveThinkingLevel(Map<String, Object> settings) {
@@ -576,25 +599,13 @@ public class ChatMessageService {
         List<Message> priorMessages =
             messageRepository.findByConversationId(conversationId, 100, 0);
         List<LlmMessage> history = new ArrayList<>();
-        Set<String> seenPlaybooks = new HashSet<>();
 
         for (Message msg : priorMessages) {
             if (msg.id().equals(excludeMessageId)) {
                 continue;
             }
             if ("user".equalsIgnoreCase(msg.role())) {
-                String content = msg.content();
-                String playbookName = msg.playbook();
-                if (playbookName != null && !playbookName.isBlank()) {
-                    if (seenPlaybooks.add(playbookName)) {
-                        String templateText = playbookService.getPlaybook(playbookName)
-                            .map(Playbook::templateText).orElse("");
-                        if (!templateText.isBlank()) {
-                            content = templateText + "\n\n---\n\n" + content;
-                        }
-                    }
-                }
-                history.add(new LlmMessage("user", content));
+                history.add(new LlmMessage("user", msg.content()));
             } else if ("assistant".equalsIgnoreCase(msg.role())) {
                 if ("generating".equalsIgnoreCase(msg.status()) || msg.content() == null
                     || msg.content().isBlank()) {

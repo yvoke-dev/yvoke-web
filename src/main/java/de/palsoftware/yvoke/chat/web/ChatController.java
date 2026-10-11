@@ -11,11 +11,13 @@ import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +107,18 @@ public class ChatController {
 
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
+        Optional<Message> initialPlaybookMessage =
+            messages.stream().filter(m -> "user".equalsIgnoreCase(m.role()) && m.playbook() != null
+                && !m.playbook().isBlank()).findFirst();
+        boolean isPlaybookLocked = initialPlaybookMessage.isPresent();
+        String lockedPlaybookName =
+            isPlaybookLocked ? initialPlaybookMessage.get().playbook() : null;
+        String lockedPlaybookTitle = null;
+        if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
+            lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
+                .map(Playbook::title).orElse(lockedPlaybookName);
+        }
+
         model.addAttribute("conversation", conversation);
         model.addAttribute("messages", messages);
         model.addAttribute("allowedModels", allowedModels);
@@ -120,6 +134,9 @@ public class ChatController {
         model.addAttribute("playbookValidationEnabled",
             chatConversationService.isPlaybookValidationEnabled());
         model.addAttribute("orchestratorProfiles", orchestratorProfileService.listProfileOptions());
+        model.addAttribute("isPlaybookLocked", isPlaybookLocked);
+        model.addAttribute("lockedPlaybookName", lockedPlaybookName);
+        model.addAttribute("lockedPlaybookTitle", lockedPlaybookTitle);
 
         return "chat/thread";
     }

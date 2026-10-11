@@ -207,6 +207,16 @@ describe('chatInputDefaultPlaceholder', () => {
         assert.equal(chatInputDefaultPlaceholder('oim-full', undefined),
             'Add your question for "oim-full"...');
     });
+
+    test('omits playbook picker instructions when locked without active playbook', () => {
+        assert.equal(chatInputDefaultPlaceholder(null, prompts, true),
+            'Ask a question… (Shift + Enter for new line, Enter to send)');
+    });
+
+    test('names active playbook even when locked', () => {
+        assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true),
+            'Add your question for "OIM Full"...');
+    });
 });
 
 describe('pollTerminalDecision', () => {

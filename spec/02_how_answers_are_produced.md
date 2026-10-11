@@ -43,9 +43,11 @@ in-depth profiles, and can inspect any search or trace.
   roles are given a fixed tool list when they run.
 - **A playbook can define its own base instructions (system prompt).** If set, the playbook's chosen
   system prompt overrides the default chat base instructions for conversations using that playbook (unless an
-  explicit conversation-level prompt override is configured). In multi-agent orchestration, a specialist
-  playbook's designated prompt is passed as its base instruction override. Orchestrator and reviewer playbooks
-  run under their own self-contained instructions and do not inherit chat base instructions (which describe
+  explicit conversation-level prompt override is configured). In web chat, the playbook instructions and its
+  associated base system prompt are combined into the LLM system prompt, separated by `\n\n---\n\n`. Playbook
+  instructions are not prepended to user messages or re-injected across chat history. In multi-agent orchestration,
+  a specialist playbook's designated prompt is passed as its base instruction override. Orchestrator and reviewer
+  playbooks run under their own self-contained instructions and do not inherit chat base instructions (which describe
   retrieval tools they cannot call); configuring a designated system prompt on an orchestrator or reviewer
   playbook is rejected on save and omitted from exports, DTOs, and MCP metadata. If unconfigured or deleted,
   it falls back seamlessly to the default base instructions.
@@ -178,6 +180,7 @@ in-depth profiles, and can inspect any search or trace.
 - Personal or team-private playbooks. The library is global and administrator-managed.
 - Automatic retry of an answer that fails review. It is delivered as it stands.
 - User control over which specialists run, or any way to intervene mid-investigation.
+- Changing or switching playbooks once a conversation has started.
 - Learning from feedback. Ratings are stored but change neither ranking nor future answers.
 
 ---

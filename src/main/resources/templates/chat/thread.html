@@ -69,7 +69,7 @@
             <!-- Messages Thread -->
             <div class="chat-messages-container" id="chat-messages">
                 <!-- Playbook prompt chips for empty conversations -->
-                <div th:if="${#lists.isEmpty(messages) && !isReadOnly}" class="prompt-chips" id="prompt-chips">
+                <div th:if="${#lists.isEmpty(messages) && !isReadOnly && !isPlaybookLocked}" class="prompt-chips" id="prompt-chips">
                     <div class="chips-label">Playbooks from the knowledge base (or type "/"):</div>
                     <button th:each="prompt : ${prompts}" 
                             type="button"
@@ -101,21 +101,21 @@
                 </div>
 
                 <!-- Active playbook indicator -->
-                <div id="active-playbook" class="active-playbook" style="display: none;">
-                    <span class="playbook-tag" id="active-playbook-tag">📋 Playbook Title</span>
-                    <span class="active-playbook-hint">applied to your next message</span>
-                    <button type="button" class="active-playbook-remove" title="Remove playbook" data-action="clear-playbook">
+                <div id="active-playbook" class="active-playbook" th:style="${isPlaybookLocked && lockedPlaybookName != null} ? '' : 'display: none;'">
+                    <span class="playbook-tag" id="active-playbook-tag" th:text="${lockedPlaybookTitle != null ? '📋 ' + lockedPlaybookTitle : (lockedPlaybookName != null ? '📋 ' + lockedPlaybookName : '📋 Playbook Title')}">📋 Playbook Title</span>
+                    <span class="active-playbook-hint" th:style="${isPlaybookLocked} ? 'display: none;' : ''">applied to your next message</span>
+                    <button th:style="${isPlaybookLocked} ? 'display: none;' : ''" type="button" class="active-playbook-remove" title="Remove playbook" data-action="clear-playbook">
                         &times;
                     </button>
                 </div>
 
                 <form id="chat-form" class="chat-input-form">
-                    <input type="hidden" id="chat-prompt-name" name="promptName">
+                    <input type="hidden" id="chat-prompt-name" name="promptName" th:value="${lockedPlaybookName}">
                     <div class="chat-input-box">
-                        <textarea id="chat-input" placeholder="Ask a question… (type &quot;/&quot; or click &quot;+&quot; to select a playbook, Shift + Enter for new line, Enter to send)" class="chat-input" autocomplete="off" required></textarea>
+                        <textarea id="chat-input" th:placeholder="${isPlaybookLocked ? (lockedPlaybookTitle != null ? 'Add your question for &quot;' + lockedPlaybookTitle + '&quot;...' : 'Ask a question… (Shift + Enter for new line, Enter to send)') : 'Ask a question… (type &quot;/&quot; or click &quot;+&quot; to select a playbook, Shift + Enter for new line, Enter to send)'}" class="chat-input" autocomplete="off" required></textarea>
                         <div class="chat-input-footer">
                             <div class="chat-input-footer-left">
-                                <button type="button" id="action-add-btn" class="chat-input-action-btn">
+                                <button type="button" id="action-add-btn" class="chat-input-action-btn" th:style="${isPlaybookLocked} ? 'display: none;' : ''" th:disabled="${isPlaybookLocked}">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <line x1="12" y1="5" x2="12" y2="19"></line>
                                         <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -244,7 +244,10 @@
             streaming: /*[[${settings['streaming']}]]*/ false,
             showThinking: /*[[${settings['show-thinking']}]]*/ false,
             showPrototypes: /*[[${settings['show-prototypes']}]]*/ false,
-            playbookValidationEnabled: /*[[${playbookValidationEnabled}]]*/ false
+            playbookValidationEnabled: /*[[${playbookValidationEnabled}]]*/ false,
+            isPlaybookLocked: /*[[${isPlaybookLocked}]]*/ false,
+            lockedPlaybookName: /*[[${lockedPlaybookName}]]*/ null,
+            lockedPlaybookTitle: /*[[${lockedPlaybookTitle}]]*/ null
         };
     </script>
     <script type="module" th:src="@{/js/chat/thread.js}"></script>

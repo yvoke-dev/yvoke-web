@@ -11,7 +11,7 @@ a register of everyone's conversations.
 | Capability | What happens |
 | --- | --- |
 | **Start a conversation** | *New Chat* opens an empty thread titled *New Conversation*. The first question becomes the title, shortened if long, and is then fixed. Conversations made in the desktop app appear in the same sidebar, marked *Desktop*. |
-| **Pick a playbook** | Before asking, the user picks a named way of answering. Suggestions appear as chips on an empty conversation; typing `/` or clicking **+** opens the full list with descriptions. The active choice is shown above the input. |
+| **Pick a playbook** | Before asking the first question, the user picks a named way of answering. Suggestions appear as chips on an empty conversation; typing `/` or clicking **+** opens the full list with descriptions. The choice is locked for the rest of the conversation once the first question is sent. |
 | **Ask by typing or by voice** | The input grows as you type; Enter sends, Shift+Enter adds a line. A microphone button dictates into the box — tap to start and stop, or hold to record, chosen in voice settings. |
 | **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response*, *Polishing the answer* — and names each research tool as it runs. |
 | **Read a formatted answer** | Answers render headings, tables, code blocks, mathematical formulas and drawn diagrams. Markup an answer quotes — an XML fragment, a configuration snippet, a stray HTML tag — is shown verbatim as source rather than rendered, so it survives intact instead of vanishing; a multi-line fragment is shown as a code block. A link to somewhere outside Yvoke opens in a new tab, so following one never loses the conversation. In Streaming mode a diagram shows as its source text while the answer is still arriving, and is drawn once it finishes. |
@@ -44,8 +44,10 @@ a register of everyone's conversations.
   in depth. A deployment whose only profiles are hidden prototypes shows no profile selector at all.
 - **A playbook is mandatory.** Without one the input shakes, a warning appears, and nothing is sent. The
   server refuses it too. In-depth mode is the only exception; it hides the playbook picker entirely.
-- **A playbook's instructions apply once**, the first time that playbook is used in a conversation — not on
-  every question. Switching playbooks part-way applies the new one once, and both stay in force afterwards.
+- **The playbook is chosen on the first question and locked for the conversation.** Once a message has been
+  sent, the playbook cannot be changed. The playbook selection button (**+**), prompt chips, autocomplete
+  (`/` and `+`), and the remove button are disabled and hidden. Follow-up turns automatically use the locked
+  playbook; attempting to specify a different playbook on a follow-up turn is rejected with an error.
 - **A playbook adds to the base instructions; it does not replace them.** The administrator's base
   instructions always apply, and the playbook is layered on top for the question that uses it. So rules that
   hold for every answer — how sources are cited, never naming an unverified object, always naming a knowledge
@@ -115,7 +117,7 @@ a register of everyone's conversations.
 ## Not supported
 
 - Editing or deleting an individual question or answer. Only the whole conversation can be deleted.
-- Regenerating an answer, retrying with a different playbook, or branching from an earlier point.
+- Regenerating an answer, retrying with a different playbook, switching playbooks mid-thread, or branching from an earlier point.
 - Renaming a conversation or a folder in the web app. The title comes from the first question; **only the
   desktop app can retitle a conversation**.
 - Sharing with a named person or group. A conversation is either private or visible to everyone.

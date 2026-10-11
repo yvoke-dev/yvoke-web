@@ -49,6 +49,8 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
         // Server-provided config, read once from the inline bootstrap (see chat/thread.html).
         const CHAT_CONFIG = window.CHAT_CONFIG || {};
+        let isPlaybookLocked = !!CHAT_CONFIG.isPlaybookLocked;
+        let activePlaybookName = CHAT_CONFIG.lockedPlaybookName || null;
 
         // --- Assistant "thinking" loader (MNT-16: one source for the placeholder markup + rotation,
         //     previously copy-pasted across the sync / streaming / resume paths) ---
@@ -95,9 +97,11 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!el) return;
             switch (el.dataset.action) {
                 case 'select-playbook':
+                    if (isPlaybookLocked) return;
                     selectPlaybook(el.dataset.promptName, el.dataset.promptTitle);
                     break;
                 case 'clear-playbook':
+                    if (isPlaybookLocked) return;
                     clearPlaybook();
                     break;
                 case 'toggle-citation':
@@ -185,6 +189,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         const actionAddBtn = document.getElementById('action-add-btn');
         if (actionAddBtn) {
             actionAddBtn.addEventListener('click', function(e) {
+                if (isPlaybookLocked) return;
                 e.stopPropagation();
                 const popup = document.getElementById('autocomplete-popup');
                 const isPopupOpen = popup && popup.style.display === 'flex';
@@ -334,7 +339,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         const autocompletePopup = document.getElementById('autocomplete-popup');
 
         function selectPlaybook(name, title) {
-            if (typeof orchestratorMode !== 'undefined' && orchestratorMode) return;
+            if (isPlaybookLocked || (typeof orchestratorMode !== 'undefined' && orchestratorMode)) return;
             activePlaybookName = name;
             document.getElementById('chat-prompt-name').value = name;
             
@@ -364,6 +369,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         }
 
         function clearPlaybook() {
+            if (isPlaybookLocked) return;
             activePlaybookName = null;
             const promptInput = document.getElementById('chat-prompt-name');
             if (promptInput) promptInput.value = '';
@@ -372,7 +378,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 activePlaybookEl.style.display = 'none';
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
             }
             
             const chipsEl = document.getElementById('prompt-chips');
@@ -387,7 +393,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         }
 
         function showAutocomplete(promptsList) {
-            if (typeof orchestratorMode !== 'undefined' && orchestratorMode) return;
+            if (isPlaybookLocked || (typeof orchestratorMode !== 'undefined' && orchestratorMode)) return;
             filteredAutocompletePrompts = promptsList;
             if (autocompleteHighlightIndex >= filteredAutocompletePrompts.length) {
                 autocompleteHighlightIndex = 0;
@@ -423,23 +429,60 @@ import { createSseAccumulator } from './sse-accumulator.js';
         // Orchestrator (multi-agent) profile handling. When a profile is selected the run is a
         // multi-agent orchestration (async only): the playbook picker + model/thinking/mode
         // controls are hidden and the mandatory-playbook preflight is skipped.
-        let activePlaybookName = null;
         const orchestratorProfileSelector = document.getElementById('orchestrator-profile-selector');
         let orchestratorMode = !!(orchestratorProfileSelector && orchestratorProfileSelector.value);
+
+        function applyPlaybookLockUI() {
+            const addBtn = document.getElementById('action-add-btn');
+            if (addBtn) {
+                addBtn.style.display = 'none';
+                addBtn.disabled = true;
+            }
+            const promptChips = document.getElementById('prompt-chips');
+            if (promptChips) {
+                promptChips.style.display = 'none';
+            }
+            const removeBtn = document.querySelector('.active-playbook-remove');
+            if (removeBtn) {
+                removeBtn.style.display = 'none';
+            }
+            const hintEl = document.querySelector('.active-playbook-hint');
+            if (hintEl) {
+                hintEl.style.display = 'none';
+            }
+            if (activePlaybookName) {
+                const activePlaybookEl = document.getElementById('active-playbook');
+                if (activePlaybookEl) {
+                    activePlaybookEl.style.display = 'flex';
+                }
+                const tagEl = document.getElementById('active-playbook-tag');
+                if (tagEl) {
+                    const title = CHAT_CONFIG.lockedPlaybookTitle || promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS);
+                    tagEl.textContent = '📋 ' + title;
+                }
+            }
+            hideAutocomplete();
+        }
 
         function applyOrchestratorModeUI() {
             ['model-selector', 'thinking-level-selector', 'action-add-btn', 'mode-standard-btn',
              'mode-streaming-btn', 'show-thinking-btn'].forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.style.display = orchestratorMode ? 'none' : '';
+                if (el) {
+                    if (id === 'action-add-btn') {
+                        el.style.display = (orchestratorMode || isPlaybookLocked) ? 'none' : '';
+                    } else {
+                        el.style.display = orchestratorMode ? 'none' : '';
+                    }
+                }
             });
             const promptChips = document.getElementById('prompt-chips');
-            if (orchestratorMode) {
+            if (orchestratorMode || isPlaybookLocked) {
                 const warn = document.getElementById('playbook-validation-warning');
-                if (warn) warn.style.display = 'none';
+                if (warn && orchestratorMode) warn.style.display = 'none';
                 if (promptChips) promptChips.style.display = 'none';
                 hideAutocomplete();
-                clearPlaybook();
+                if (orchestratorMode) clearPlaybook();
             } else {
                 const messagesContainer = document.getElementById('chat-messages');
                 const messages = messagesContainer ? messagesContainer.querySelectorAll('.message-row:not(#prompt-chips)') : [];
@@ -449,6 +492,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
             }
         }
         applyOrchestratorModeUI();
+        if (isPlaybookLocked) {
+            applyPlaybookLockUI();
+        }
 
         if (orchestratorProfileSelector && !isReadOnly) {
             orchestratorProfileSelector.addEventListener('change', function() {
@@ -997,7 +1043,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!unanswered) {
                 if (chatInput) {
                     chatInput.disabled = false;
-                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts);
+                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
                 }
                 const micBtn = document.getElementById('voice-input-btn');
                 if (micBtn) {
@@ -1098,7 +1144,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
             // Set up input and keydown event listeners for playbook autocomplete
             chatInput.addEventListener('input', function(e) {
-                if (orchestratorMode) {
+                if (isPlaybookLocked || orchestratorMode) {
                     hideAutocomplete();
                     return;
                 }
@@ -1224,7 +1270,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         voiceBtn.classList.remove('recording');
                         const tooltipEl = voiceBtn.querySelector('.custom-tooltip');
                         if (tooltipEl) tooltipEl.textContent = "Start voice typing";
-                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts);
+                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked);
                         adjustChatInputHeight();
                     };
 
@@ -1523,6 +1569,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
             chatInput.value = '';
             chatInput.disabled = true;
             adjustChatInputHeight(); // Reset height
+
+            isPlaybookLocked = true;
+            applyPlaybookLockUI();
 
             // Create AbortController
             currentAbortController = new AbortController();

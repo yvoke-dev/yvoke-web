@@ -23,6 +23,7 @@ import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.orchestration.AgentRun;
 import de.palsoftware.yvoke.chat.orchestration.AgentStep;
+import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.time.Instant;
 import java.util.List;
@@ -38,6 +39,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 class ChatAsyncControllerTest {
@@ -547,5 +552,30 @@ class ChatAsyncControllerTest {
         assertEquals("gpt-4o", dto.steps().get(0).model());
         assertThat(dto.toolCalls()).isNull();
         verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void sendMessageAsync_playbookChangeRejected_returnsBadRequest() throws Exception {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepareAndSubmitAsync(eq(conversationId), anyString(),
+            eq("diff-playbook"), any()))
+            .thenThrow(new IllegalArgumentException(
+                "Playbook cannot be changed once a conversation has started."));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        mockMvc
+            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send-async")
+                .param("content", "Follow up message").param("promptName", "diff-playbook"))
+            .andExpect(MockMvcResultMatchers.status().isBadRequest())
+            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
+                .value("Playbook cannot be changed once a conversation has started."));
     }
 }

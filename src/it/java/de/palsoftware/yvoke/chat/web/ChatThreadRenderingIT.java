@@ -187,7 +187,8 @@ public class ChatThreadRenderingIT {
             .as("every attribute chat/thread.html reads must be present — a missing one degrades "
                 + "the page silently rather than failing the render")
             .containsKeys("conversation", "messages", "allowedModels", "settings", "feedbacks",
-                "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles");
+                "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles",
+                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookTitle");
 
         assertThat(((Conversation) viewModel.get("conversation")).id()).isEqualTo(convId);
         assertThat((List<?>) viewModel.get("messages")).hasSize(1);
@@ -639,6 +640,62 @@ public class ChatThreadRenderingIT {
         chatConversationService.deleteConversation(convId);
         orchestratorProfileRepository.delete("IT_Vis_Ordinary");
         orchestratorProfileRepository.delete("IT_Vis_Prototype");
+    }
+
+    @Test
+    @DisplayName("Locks playbook and hides selection controls when a user message exists")
+    public void locksPlaybookAndHidesSelectionControlsWhenUserMessageExists() throws Exception {
+        String userOid = "playbook-lock-render-oid";
+        userRepository.upsert(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+
+        Conversation conv = chatConversationService.createConversation();
+        UUID convId = conv.id();
+
+        // Fresh conversation: unlocked
+        var login = testUserLogin(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        MvcResult freshResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView freshMav = freshResult.getModelAndView();
+        assertThat(freshMav).isNotNull();
+        assertThat(freshMav.getModel().get("isPlaybookLocked")).isEqualTo(false);
+        assertThat(freshMav.getModel().get("lockedPlaybookName")).isNull();
+
+        String freshHtml = freshResult.getResponse().getContentAsString();
+        assertThat(freshHtml).contains("id=\"prompt-chips\"");
+        assertThat(freshHtml).contains("isPlaybookLocked: false");
+
+        // Add a user message with playbook
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        messageRepository.save(new Message(UUID.randomUUID(), convId, "user", "Hello first question",
+            "oim-full", List.of(), List.of(), Instant.now()));
+
+        MvcResult lockedResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView lockedMav = lockedResult.getModelAndView();
+        assertThat(lockedMav).isNotNull();
+        assertThat(lockedMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
+        assertThat(lockedMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+
+        String lockedHtml = lockedResult.getResponse().getContentAsString();
+        assertThat(lockedHtml).doesNotContain("id=\"prompt-chips\"");
+        assertThat(lockedHtml).contains("isPlaybookLocked: true");
+        assertThat(lockedHtml).contains("lockedPlaybookName: \"oim-full\"");
+        // action-add-btn and active-playbook-remove are hidden
+        assertThat(lockedHtml).contains(
+            "<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
+        assertThat(lockedHtml).contains(
+            "<button style=\"display: none;\" type=\"button\" class=\"active-playbook-remove\"");
+        assertThat(lockedHtml)
+            .contains("<span class=\"active-playbook-hint\" style=\"display: none;\">");
+        assertThat(lockedHtml)
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+
+        // Cleanup
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        chatConversationService.deleteConversation(convId);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
