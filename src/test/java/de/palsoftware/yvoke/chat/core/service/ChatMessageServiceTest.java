@@ -887,6 +887,39 @@ public class ChatMessageServiceTest {
     }
 
     @Test
+    public void prepare_whenConversationHasOrchestratorProfile_throwsIllegalArgumentException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Question", "pb1"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+    }
+
+    @Test
+    public void submitOrchestratedAsync_whenConversationStartedInSinglePlaybookMode_throwsIllegalArgumentException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("pb1"));
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null));
+        assertThat(ex.getMessage()).isEqualTo(
+            "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
+    }
+
+    @Test
     public void testPrepareThrowsIfPlaybookNotSelected() {
         UUID conversationId = UUID.randomUUID();
         IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,

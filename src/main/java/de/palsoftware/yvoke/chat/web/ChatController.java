@@ -115,6 +115,7 @@ public class ChatController {
             lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
                 .map(Playbook::title).orElse(lockedPlaybookName);
         }
+        boolean isModeLocked = isPlaybookLocked || !messages.isEmpty();
 
         model.addAttribute("conversation", conversation);
         model.addAttribute("messages", messages);
@@ -134,6 +135,7 @@ public class ChatController {
         model.addAttribute("isPlaybookLocked", isPlaybookLocked);
         model.addAttribute("lockedPlaybookName", lockedPlaybookName);
         model.addAttribute("lockedPlaybookTitle", lockedPlaybookTitle);
+        model.addAttribute("isModeLocked", isModeLocked);
 
         return "chat/thread";
     }
@@ -197,6 +199,22 @@ public class ChatController {
         @RequestParam(name = "name", required = false) String name) {
         chatConversationService.verifyOwnership(id, false);
         String selected = (name == null) ? "" : name.trim();
+        Conversation conversation = chatConversationService.getConversation(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + id));
+        Map<String, Object> currentSettings = conversation.settings();
+        String currentProfile =
+            currentSettings != null
+                ? (String) currentSettings
+                    .getOrDefault(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "")
+                : "";
+        if (currentProfile == null) {
+            currentProfile = "";
+        }
+        if (chatMessageService.hasMessages(id) && !selected.equals(currentProfile.trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Orchestrator profile cannot be changed once a conversation has started.");
+        }
         if (!selected.isEmpty()) {
             boolean exists = (orchestratorProfileService != null
                 && orchestratorProfileService.getProfile(selected).isPresent())
@@ -207,8 +225,8 @@ public class ChatController {
             }
         }
         log.info("Updating orchestrator-profile for conversation id: {} to '{}'", id, selected);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
+        Map<String, Object> settings =
+            new HashMap<>(currentSettings != null ? currentSettings : Map.of());
         settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), selected);
         chatConversationService.updateSettings(id, settings);
     }

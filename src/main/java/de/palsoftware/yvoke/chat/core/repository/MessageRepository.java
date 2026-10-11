@@ -170,6 +170,6 @@ public class MessageRepository {
             LIMIT 1
             """;
         return jdbcClient.sql(sql).param("conversationId", conversationId).query(String.class)
-            .optional();
+            .optional().map(String::trim);
     }
 }

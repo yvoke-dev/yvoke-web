@@ -109,6 +109,9 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_unknownProfile_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(orchestratorProfileService.getProfile("Unknown")).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
@@ -160,6 +163,39 @@ class ChatControllerTest {
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "  "));
+
+        verify(conversationService).updateSettings(eq(conversationId), any());
+    }
+
+    @Test
+    void updateOrchestratorProfile_whenConversationHasMessagesAndProfileChanged_throwsBadRequest() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(messageService.hasMessages(conversationId)).thenReturn(true);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.updateOrchestratorProfile(conversationId, ""));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Orchestrator profile cannot be changed once a conversation has started.",
+            ex.getReason());
+        verify(conversationService, never()).updateSettings(any(), any());
+    }
+
+    @Test
+    void updateOrchestratorProfile_whenConversationHasMessagesAndSameProfile_succeeds() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(messageService.hasMessages(conversationId)).thenReturn(true);
+        OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
+            List.of(), null, null, null, null, null, null, false, Instant.now(), Instant.now());
+        when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
+
+        assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
         verify(conversationService).updateSettings(eq(conversationId), any());
     }
@@ -300,6 +336,7 @@ class ChatControllerTest {
         controller.threadView(conversationId, model);
 
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
         assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
     }
@@ -318,6 +355,7 @@ class ChatControllerTest {
         controller.threadView(conversationId, model);
 
         assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertFalse((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
         assertNull(model.getAttribute("lockedPlaybookTitle"));
     }
@@ -339,6 +377,7 @@ class ChatControllerTest {
         controller.threadView(conversationId, model);
 
         assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
         assertNull(model.getAttribute("lockedPlaybookTitle"));
     }

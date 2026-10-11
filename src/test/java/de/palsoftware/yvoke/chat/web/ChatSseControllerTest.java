@@ -121,7 +121,7 @@ class ChatSseControllerTest {
 
     private static ChatMessageService.PreparedChat dummyPreparedChat() {
         return new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "content",
-            "model", "systemPrompt", List.of(), List.of(), null, false);
+            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook");
     }
 
     @Test
@@ -129,8 +129,6 @@ class ChatSseControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
-        when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
 
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
         when(limiter.tryAcquire()).thenReturn(false); // at capacity
@@ -142,9 +140,31 @@ class ChatSseControllerTest {
             () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
         Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
 
-        // No slot acquired to release, and no generation started.
+        // Prepare is never called on 429, no slot acquired to release, and no generation started.
+        verify(chatMessageService, never()).prepare(any(UUID.class), any(), any());
         verify(sseExecutor, never()).submit(any(Runnable.class));
         verify(limiter, never()).release();
+    }
+
+    @Test
+    void releasesPermitWhenPrepareFailsAfterAcquiringSlot() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
+            .thenThrow(new IllegalArgumentException("invalid playbook"));
+
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+        when(limiter.tryAcquire()).thenReturn(true);
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatCancellationService, sseExecutor, limiter);
+
+        assertThrows(IllegalArgumentException.class,
+            () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
+
+        verify(limiter).release();
+        verify(sseExecutor, never()).submit(any(Runnable.class));
     }
 
     /**

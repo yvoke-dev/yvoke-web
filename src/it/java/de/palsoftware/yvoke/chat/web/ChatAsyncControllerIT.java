@@ -1162,4 +1162,45 @@ public class ChatAsyncControllerIT {
             } catch (Exception ignored) {}
         }
     }
+
+    @Test
+    public void changingOrchestratorProfileAfterConversationHasStarted_returnsBadRequest()
+        throws Exception {
+        UUID userOid = UUID.randomUUID();
+        setSecurityContext(userOid.toString(), "profile-lock@local", "Profile Lock User");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        playbookService.savePlaybook("pb-lock-orch", "Lock Orch PB", "Desc", "Instructions",
+            List.of(), false, "specialist", false, "OIM", null);
+
+        try {
+            doAnswer(inv -> {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                cb.accept(new LlmResponseChunk("Answer 1", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+                return null;
+            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+            var login = testUserLogin(userOid.toString(), "profile-lock@local", "Profile Lock User");
+
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "First turn")
+                    .param("promptName", "pb-lock-orch"))
+                .andExpect(status().isAccepted());
+
+            mockMvc.perform(post("/chat/" + conv.id() + "/orchestrator-profile")
+                    .with(login)
+                    .with(csrf())
+                    .param("name", "any-profile"))
+                .andExpect(status().isBadRequest())
+                .andExpect(status().reason("Orchestrator profile cannot be changed once a conversation has started."));
+        } finally {
+            try {
+                playbookService.deletePlaybook("pb-lock-orch");
+            } catch (Exception ignored) {}
+        }
+    }
 }

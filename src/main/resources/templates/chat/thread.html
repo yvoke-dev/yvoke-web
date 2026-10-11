@@ -184,7 +184,7 @@
                                 </button>
                             </div>
                             <div class="chat-input-footer-right">
-                                <select th:if="${!#lists.isEmpty(orchestratorProfiles)}" id="orchestrator-profile-selector" class="model-select-borderless" title="Multi-agent knowledge base">
+                                <select th:if="${!#lists.isEmpty(orchestratorProfiles)}" id="orchestrator-profile-selector" class="model-select-borderless" title="Multi-agent knowledge base" th:disabled="${isReadOnly || isModeLocked}">
                                     <option value="" th:selected="${settings['orchestrator-profile'] == null || settings['orchestrator-profile'] == ''}">Single playbook</option>
                                     <option th:each="pf : ${orchestratorProfiles}"
                                             th:value="${pf.name}"
@@ -247,7 +247,8 @@
             playbookValidationEnabled: /*[[${playbookValidationEnabled}]]*/ false,
             isPlaybookLocked: /*[[${isPlaybookLocked}]]*/ false,
             lockedPlaybookName: /*[[${lockedPlaybookName}]]*/ null,
-            lockedPlaybookTitle: /*[[${lockedPlaybookTitle}]]*/ null
+            lockedPlaybookTitle: /*[[${lockedPlaybookTitle}]]*/ null,
+            isModeLocked: /*[[${isModeLocked}]]*/ false
         };
     </script>
     <script type="module" th:src="@{/js/chat/thread.js}"></script>

@@ -50,6 +50,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         // Server-provided config, read once from the inline bootstrap (see chat/thread.html).
         const CHAT_CONFIG = window.CHAT_CONFIG || {};
         let isPlaybookLocked = !!CHAT_CONFIG.isPlaybookLocked;
+        let isModeLocked = !!CHAT_CONFIG.isModeLocked || isPlaybookLocked;
         let activePlaybookName = CHAT_CONFIG.lockedPlaybookName || null;
 
         // --- Assistant "thinking" loader (MNT-16: one source for the placeholder markup + rotation,
@@ -432,7 +433,14 @@ import { createSseAccumulator } from './sse-accumulator.js';
         const orchestratorProfileSelector = document.getElementById('orchestrator-profile-selector');
         let orchestratorMode = !!(orchestratorProfileSelector && orchestratorProfileSelector.value);
 
+        if (orchestratorProfileSelector && (isModeLocked || isPlaybookLocked || isReadOnly)) {
+            orchestratorProfileSelector.disabled = true;
+        }
+
         function applyPlaybookLockUI() {
+            if (orchestratorProfileSelector) {
+                orchestratorProfileSelector.disabled = true;
+            }
             const addBtn = document.getElementById('action-add-btn');
             if (addBtn) {
                 addBtn.style.display = 'none';
@@ -450,7 +458,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (hintEl) {
                 hintEl.style.display = 'none';
             }
-            if (activePlaybookName) {
+            if (activePlaybookName && !orchestratorMode) {
                 const activePlaybookEl = document.getElementById('active-playbook');
                 if (activePlaybookEl) {
                     activePlaybookEl.style.display = 'flex';
@@ -476,6 +484,10 @@ import { createSseAccumulator } from './sse-accumulator.js';
                     }
                 }
             });
+            const activePlaybookEl = document.getElementById('active-playbook');
+            if (activePlaybookEl) {
+                activePlaybookEl.style.display = orchestratorMode ? 'none' : (activePlaybookName ? 'flex' : 'none');
+            }
             const promptChips = document.getElementById('prompt-chips');
             if (orchestratorMode || isPlaybookLocked) {
                 const warn = document.getElementById('playbook-validation-warning');
@@ -498,6 +510,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
         if (orchestratorProfileSelector && !isReadOnly) {
             orchestratorProfileSelector.addEventListener('change', function() {
+                if (isModeLocked || isPlaybookLocked) return;
                 const name = orchestratorProfileSelector.value || '';
                 orchestratorMode = !!name;
                 applyOrchestratorModeUI();
@@ -1624,7 +1637,13 @@ import { createSseAccumulator } from './sse-accumulator.js';
                             chatInput.focus();
                         });
                     }
-                    if (!isPlaybookLocked) {
+                    if (!isModeLocked) {
+                        isModeLocked = true;
+                        if (orchestratorProfileSelector) {
+                            orchestratorProfileSelector.disabled = true;
+                        }
+                    }
+                    if (!isPlaybookLocked && !orchestratorMode && activePlaybookName) {
                         isPlaybookLocked = true;
                         applyPlaybookLockUI();
                     }
@@ -1677,7 +1696,13 @@ import { createSseAccumulator } from './sse-accumulator.js';
                             chatInput.focus();
                         });
                     }
-                    if (!isPlaybookLocked) {
+                    if (!isModeLocked) {
+                        isModeLocked = true;
+                        if (orchestratorProfileSelector) {
+                            orchestratorProfileSelector.disabled = true;
+                        }
+                    }
+                    if (!isPlaybookLocked && !orchestratorMode && activePlaybookName) {
                         isPlaybookLocked = true;
                         applyPlaybookLockUI();
                     }
