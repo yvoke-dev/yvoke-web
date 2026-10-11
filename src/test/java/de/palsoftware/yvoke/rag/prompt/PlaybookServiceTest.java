@@ -107,10 +107,10 @@ class PlaybookServiceTest {
         when(systemPromptService.requirePrompt("custom-prompt", SystemPromptType.CHAT)).thenReturn(
             new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Content", "Desc"));
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM", "custom-prompt");
+            false, "specialist", true, "OIM", "custom-prompt");
         verify(systemPromptService).requirePrompt("custom-prompt", SystemPromptType.CHAT);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM", "custom-prompt");
+            false, "specialist", true, "OIM", "custom-prompt");
     }
 
     @Test
@@ -184,6 +184,42 @@ class PlaybookServiceTest {
             "specialist", false, "OIM", "global-prompt");
         verify(playbookRepository).upsert("pb-ok", "Title", "Desc", "Template", List.of(), false,
             "specialist", false, "OIM", "global-prompt");
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptForOrchestrator() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-orch", "Title", "Desc", "Template", List.of(),
+                false, "orchestrator", false, "OIM", "some-prompt"));
+        assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptForReviewer() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-rev", "Title", "Desc", "Template", List.of(),
+                false, "reviewer", false, "OIM", "some-prompt"));
+        assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testRegisterPlaybookWithMcpExcludesSystemPromptForOrchestratorAndReviewer() {
+        Playbook orch = new Playbook("pb-orch", "PB Orch", "Desc", "Template", List.of(), false,
+            "orchestrator", false, null, null, false, "OIM", "some-prompt");
+        when(playbookRepository.findAll()).thenReturn(List.of(orch));
+        when(playbookRepository.findByName("pb-orch")).thenReturn(Optional.of(orch));
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+            ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+
+        var spec = captor.getValue();
+        assertNull(spec.prompt().meta().get("systemPrompt"));
     }
 
     @Test

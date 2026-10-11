@@ -46,8 +46,9 @@ in-depth profiles, and can inspect any search or trace.
   explicit conversation-level prompt override is configured). In multi-agent orchestration, a specialist
   playbook's designated prompt is passed as its base instruction override. Orchestrator and reviewer playbooks
   run under their own self-contained instructions and do not inherit chat base instructions (which describe
-  retrieval tools they cannot call). If unconfigured or deleted, it falls back seamlessly to the default
-  base instructions.
+  retrieval tools they cannot call); configuring a designated system prompt on an orchestrator or reviewer
+  playbook is rejected on save and omitted from exports, DTOs, and MCP metadata. If unconfigured or deleted,
+  it falls back seamlessly to the default base instructions.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft

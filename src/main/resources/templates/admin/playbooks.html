@@ -470,32 +470,28 @@
                 });
                 filterSystemPromptsForArea(areaSelect.value);
             }
+
+            const targetAgentSelect = document.getElementById('targetAgent');
+            if (targetAgentSelect) {
+                targetAgentSelect.addEventListener('change', function() {
+                    updateRoleState();
+                });
+                updateRoleState();
+            }
         });
+
+        function updateRoleState() {
+            const select = document.getElementById('systemPrompt');
+            const role = document.getElementById('targetAgent')?.value || 'specialist';
+            const isReadOnly = select?.dataset.readOnly === 'true';
+            window.PlaybookPrompt?.updateRoleState(select, role, isReadOnly);
+        }
 
         function filterSystemPromptsForArea(selectedArea, preserveValue) {
             const select = document.getElementById('systemPrompt');
             if (!select) return;
-            const currentArea = (selectedArea || document.getElementById('area')?.value || '').trim().toLowerCase();
-            for (let i = 0; i < select.options.length; i++) {
-                const opt = select.options[i];
-                if (!opt.value || opt.dataset.dynamic === 'true') {
-                    opt.hidden = false;
-                    opt.disabled = false;
-                    continue;
-                }
-                const optArea = (opt.getAttribute('data-area') || '').trim().toLowerCase();
-                const isPreserved = !!preserveValue && opt.value === preserveValue;
-                const matches = !optArea || !currentArea || optArea === currentArea;
-                opt.hidden = !matches && !isPreserved;
-                opt.disabled = !matches && !isPreserved;
-                if (isPreserved && !matches && !opt.dataset.annotated) {
-                    opt.textContent = opt.textContent + ' (area: ' + (opt.getAttribute('data-area') || 'none') + ')';
-                    opt.dataset.annotated = 'true';
-                }
-            }
-            if (select.selectedIndex >= 0 && select.options[select.selectedIndex].disabled) {
-                select.value = '';
-            }
+            const area = selectedArea || document.getElementById('area')?.value || '';
+            window.PlaybookPrompt?.filterSystemPromptsForArea(select, area, preserveValue);
         }
 
         // Selects the area a loaded file or an edited item names. A file naming an area that does
@@ -518,23 +514,8 @@
         function applySystemPrompt(value, isReadOnly) {
             const select = document.getElementById('systemPrompt');
             if (!select) return;
-            Array.from(select.options)
-                .filter(o => o.dataset.dynamic === 'true')
-                .forEach(o => o.remove());
-            if (value && !Array.from(select.options).some(o => o.value === value)) {
-                const opt = document.createElement('option');
-                opt.value = value;
-                opt.textContent = value + ' (inactive / not CHAT)';
-                opt.dataset.dynamic = 'true';
-                select.appendChild(opt);
-            }
-            select.value = value || '';
-            select.disabled = !!isReadOnly;
-            filterSystemPromptsForArea(document.getElementById('area')?.value, value);
-            if (select.selectedIndex >= 0) {
-                select.options[select.selectedIndex].hidden = false;
-                select.options[select.selectedIndex].disabled = false;
-            }
+            const area = document.getElementById('area')?.value || '';
+            window.PlaybookPrompt?.applySystemPrompt(select, value, area, isReadOnly);
         }
 
         function loadTemplateFile() {
@@ -637,6 +618,7 @@
                 applyArea(area);
 
                 applySystemPrompt(systemPrompt, false);
+                updateRoleState();
 
                 // Reset tools selection
                 const toolsSelect = document.getElementById('tools');
@@ -703,7 +685,12 @@
             document.getElementById('area').disabled = isReadOnly;
 
             const systemPrompt = button.getAttribute('data-system-prompt') || '';
+            const sysPromptSelect = document.getElementById('systemPrompt');
+            if (sysPromptSelect) {
+                sysPromptSelect.dataset.readOnly = isReadOnly ? 'true' : 'false';
+            }
             applySystemPrompt(systemPrompt, isReadOnly);
+            updateRoleState();
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
@@ -755,9 +742,14 @@
             document.getElementById('description').value = '';
             document.getElementById('description').readOnly = false;
             
+            const sysPromptSelect = document.getElementById('systemPrompt');
+            if (sysPromptSelect) {
+                delete sysPromptSelect.dataset.readOnly;
+            }
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
+            updateRoleState();
 
             document.getElementById('area').disabled = false;
             applyArea(document.getElementById('area')?.options[0]?.value);
@@ -824,5 +816,6 @@
         }
     </script>
     <script type="module" th:src="@{/js/admin/area-select-bootstrap.js}"></script>
+    <script type="module" th:src="@{/js/admin/playbook-prompt-bootstrap.js}"></script>
 </body>
 </html>

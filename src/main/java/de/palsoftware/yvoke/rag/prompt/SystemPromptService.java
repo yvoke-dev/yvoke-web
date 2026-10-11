@@ -50,8 +50,12 @@ public class SystemPromptService {
             new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS, CacheConfig.APP_CONFIG));
     }
 
-    @Cacheable(cacheNames = CacheConfig.APP_CONFIG, key = "'default-chat-prompt'")
     public String getDefaultChatPromptName() {
+        Cache cache = cacheManager.getCache(CacheConfig.APP_CONFIG);
+        if (cache != null) {
+            return cache.get("default-chat-prompt",
+                () -> appConfigRepository.get("default-chat-prompt", defaultPromptName));
+        }
         return appConfigRepository.get("default-chat-prompt", defaultPromptName);
     }
 
@@ -63,6 +67,14 @@ public class SystemPromptService {
             throw new IllegalArgumentException("Default prompt name cannot be empty.");
         }
         appConfigRepository.set("default-chat-prompt", name.trim());
+        Cache appCache = cacheManager.getCache(CacheConfig.APP_CONFIG);
+        if (appCache != null) {
+            appCache.evict("default-chat-prompt");
+        }
+        Cache sysCache = cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS);
+        if (sysCache != null) {
+            sysCache.clear();
+        }
     }
 
     public List<SystemPrompt> listAllPrompts() {

@@ -100,9 +100,17 @@ public class PlaybookService {
 
         String agent =
             targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
+        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
+            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
+
+        if (!isSpecialist && systemPrompt != null && !systemPrompt.isBlank()) {
+            throw new IllegalArgumentException(
+                "Playbooks for role '" + agent + "' cannot have a designated system prompt.");
+        }
+
         String storedArea = areaService.requireArea(area);
         String prompt = null;
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
+        if (isSpecialist && systemPrompt != null && !systemPrompt.isBlank()) {
             SystemPrompt sp =
                 systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
             if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
@@ -200,7 +208,10 @@ public class PlaybookService {
         meta.put("targetAgent",
             playbook.targetAgent() != null ? playbook.targetAgent() : "specialist");
         meta.put("prototype", playbook.prototype());
-        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
+        String agent = playbook.targetAgent() != null ? playbook.targetAgent() : "specialist";
+        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
+            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
+        if (isSpecialist && playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             meta.put("systemPrompt", playbook.systemPrompt().trim());
         }
         return meta;

@@ -217,5 +217,27 @@ class PlaybookMarkdownParserTest {
             """, null);
         assertNull(parsed.systemPrompt());
     }
+
+    @Test
+    void toMarkdownAndParseMarkdownExcludeSystemPromptForOrchestratorAndReviewer() {
+        Playbook orch = new Playbook("oim-orchestrator", "OIM Orch", "Desc", "Body", List.of(),
+            false, "orchestrator", false, null, null, false, "OIM", "prompt-ignored");
+        String md = PlaybookMarkdownParser.toMarkdown(orch);
+        assertFalse(md.contains("system_prompt:"));
+
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: oim-orchestrator
+            target_agent: orchestrator
+            system_prompt: prompt-ignored
+            ---
+            Body
+            """, "fallback");
+        assertNull(parsed.systemPrompt());
+
+        Playbook rev = new Playbook("oim-reviewer", "OIM Rev", "Desc", "Body", List.of(), false,
+            "reviewer", false, null, null, false, "OIM", "prompt-ignored");
+        assertFalse(PlaybookMarkdownParser.toMarkdown(rev).contains("system_prompt:"));
+    }
 }
 

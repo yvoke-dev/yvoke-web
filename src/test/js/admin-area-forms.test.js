@@ -12,6 +12,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+import { filterSystemPromptsForArea, applySystemPrompt, updateRoleState } from '../../main/resources/static/js/admin/playbook-prompt.js';
+
 const ADMIN = 'src/main/resources/templates/admin';
 
 /** The `<form>` element posting to `action`, as source text. */
@@ -62,9 +64,20 @@ test('the admin sidebar links the Areas page', () => {
     assert.ok(layout.includes('th:href="@{/admin/areas}"'));
 });
 
+test('every page that calls PlaybookPrompt loads its bridge', () => {
+    for (const file of fs.readdirSync(ADMIN)) {
+        const html = fs.readFileSync(`${ADMIN}/${file}`, 'utf8');
+        if (html.includes('PlaybookPrompt.')) {
+            assert.ok(html.includes('/js/admin/playbook-prompt-bootstrap.js'), file);
+        }
+    }
+});
+
 test('playbooks: applySystemPrompt preserves a cross-area stored prompt and does not wipe it', () => {
     const html = fs.readFileSync(`${ADMIN}/playbooks.html`, 'utf8');
-    assert.match(html, /filterSystemPromptsForArea\([^)]*preserveValue/);
+    assert.ok(html.includes('/js/admin/playbook-prompt-bootstrap.js'));
+    assert.match(html, /PlaybookPrompt\?\.filterSystemPromptsForArea/);
+    assert.match(html, /PlaybookPrompt\?\.applySystemPrompt/);
 
     const options = [
         { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' },
@@ -81,39 +94,98 @@ test('playbooks: applySystemPrompt preserves a cross-area stored prompt and does
             selectedIndex = options.findIndex(o => o.value === v);
         }
     };
-    const areaInput = { value: 'PingID' };
 
-    function filterSystemPromptsForArea(selectedArea, preserveValue) {
-        const currentArea = (selectedArea || areaInput.value || '').trim().toLowerCase();
-        for (let i = 0; i < select.options.length; i++) {
-            const opt = select.options[i];
-            if (!opt.value || opt.dataset.dynamic === 'true') {
-                opt.hidden = false;
-                opt.disabled = false;
-                continue;
-            }
-            const optArea = (opt.getAttribute('data-area') || '').trim().toLowerCase();
-            const isPreserved = !!preserveValue && opt.value === preserveValue;
-            const matches = !optArea || !currentArea || optArea === currentArea;
-            opt.hidden = !matches && !isPreserved;
-            opt.disabled = !matches && !isPreserved;
-            if (isPreserved && !matches && !opt.dataset.annotated) {
-                opt.textContent = opt.textContent + ' (area: ' + (opt.getAttribute('data-area') || 'none') + ')';
-                opt.dataset.annotated = 'true';
-            }
-        }
-        if (select.selectedIndex >= 0 && select.options[select.selectedIndex].disabled) {
-            select.value = '';
-        }
-    }
-
-    function applySystemPrompt(value) {
-        select.value = value || '';
-        filterSystemPromptsForArea(areaInput.value, value);
-    }
-
-    applySystemPrompt('p-oim');
+    applySystemPrompt(select, 'p-oim', 'PingID', false);
     assert.equal(select.value, 'p-oim');
     assert.equal(options[1].disabled, false);
     assert.equal(options[1].textContent, 'p-oim (area: OIM)');
+});
+
+test('playbooks: (area: X) annotation cleans up when the prompt is in-area', () => {
+    const options = [
+        { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' },
+        { value: 'p-oim', textContent: 'p-oim', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'OIM' : null },
+        { value: 'p-ping', textContent: 'p-ping', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'PingID' : null }
+    ];
+    let selectedIndex = 0;
+    const select = {
+        options,
+        get selectedIndex() { return selectedIndex; },
+        set selectedIndex(i) { selectedIndex = i; },
+        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
+        set value(v) {
+            selectedIndex = options.findIndex(o => o.value === v);
+        }
+    };
+
+    // Step 1: cross-area edit -> annotated
+    applySystemPrompt(select, 'p-oim', 'PingID', false);
+    assert.equal(options[1].textContent, 'p-oim (area: OIM)');
+
+    // Step 2: edit moves to a playbook in OIM (where p-oim is in-area) -> annotation cleaned up
+    applySystemPrompt(select, 'p-oim', 'OIM', false);
+    assert.equal(options[1].textContent, 'p-oim');
+    assert.equal(options[1].disabled, false);
+    assert.equal(options[1].dataset.annotated, undefined);
+
+    // Step 3: changing area to PingID without preserving p-oim hides/disables it
+    filterSystemPromptsForArea(select, 'PingID', null);
+    assert.equal(options[1].hidden, true);
+    assert.equal(options[1].disabled, true);
+    assert.equal(options[1].textContent, 'p-oim');
+});
+
+test('playbooks: updateRoleState disables and clears prompt for orchestrator and reviewer', () => {
+    const select = { value: 'some-prompt', disabled: false };
+
+    updateRoleState(select, 'orchestrator', false);
+    assert.equal(select.disabled, true);
+    assert.equal(select.value, '');
+
+    select.value = 'some-prompt';
+    updateRoleState(select, 'reviewer', false);
+    assert.equal(select.disabled, true);
+    assert.equal(select.value, '');
+
+    updateRoleState(select, 'specialist', false);
+    assert.equal(select.disabled, false);
+});
+
+test('playbooks: applySystemPrompt creates dynamic option for unlisted/inactive prompts', () => {
+    const options = [
+        { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' }
+    ];
+    let selectedIndex = 0;
+    const select = {
+        options,
+        get selectedIndex() { return selectedIndex; },
+        set selectedIndex(i) { selectedIndex = i; },
+        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
+        set value(v) {
+            selectedIndex = options.findIndex(o => o.value === v);
+        },
+        appendChild(opt) {
+            options.push(opt);
+        }
+    };
+
+    applySystemPrompt(select, 'unlisted-prompt', 'OIM', false);
+    assert.equal(select.value, 'unlisted-prompt');
+    assert.equal(options.length, 2);
+    assert.equal(options[1].value, 'unlisted-prompt');
+    assert.equal(options[1].textContent, 'unlisted-prompt (inactive / not CHAT)');
+    assert.equal(options[1].dataset.dynamic, 'true');
+
+    // Re-applying with empty clears dynamic option
+    applySystemPrompt(select, '', 'OIM', false);
+    assert.equal(select.value, '');
+    assert.equal(options.length, 1);
+});
+
+test('playbooks: null/undefined elements are tolerated safely', () => {
+    assert.doesNotThrow(() => {
+        filterSystemPromptsForArea(null, 'OIM', null);
+        applySystemPrompt(null, 'p-oim', 'OIM', false);
+        updateRoleState(null, 'orchestrator', false);
+    });
 });

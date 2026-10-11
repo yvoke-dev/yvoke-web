@@ -111,6 +111,13 @@ public class PlaybookMarkdownParser {
             title = name;
         }
 
+        boolean isSpecialist = "specialist".equalsIgnoreCase(targetAgent)
+            || (!"orchestrator".equalsIgnoreCase(targetAgent)
+                && !"reviewer".equalsIgnoreCase(targetAgent));
+        if (!isSpecialist) {
+            systemPrompt = null;
+        }
+
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
             prototype, null, null, false, area, systemPrompt);
     }
@@ -123,14 +130,15 @@ public class PlaybookMarkdownParser {
         if (playbook.description() != null && !playbook.description().isBlank()) {
             sb.append("description: ").append(playbook.description()).append("\n");
         }
-        sb.append("target_agent: ")
-            .append(playbook.targetAgent() != null ? playbook.targetAgent() : "specialist")
-            .append("\n");
+        String agent = playbook.targetAgent() != null ? playbook.targetAgent() : "specialist";
+        sb.append("target_agent: ").append(agent).append("\n");
         sb.append("prototype: ").append(playbook.prototype()).append("\n");
         if (playbook.area() != null) {
             sb.append("area: ").append(playbook.area()).append("\n");
         }
-        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
+        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
+            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
+        if (isSpecialist && playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             sb.append("system_prompt: ").append(playbook.systemPrompt().trim()).append("\n");
         }
         if (playbook.tools() != null && !playbook.tools().isEmpty()) {

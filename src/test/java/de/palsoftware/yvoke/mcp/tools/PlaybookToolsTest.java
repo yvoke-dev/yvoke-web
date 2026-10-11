@@ -138,11 +138,14 @@ class PlaybookToolsTest {
 
     @Test
     void anyPlaybookCanBeFetchedByNameNotOnlyListedOnes() throws Exception {
+        Playbook orchWithPrompt = new Playbook("oim-orchestrator", "Lead", "Leads", "You lead.",
+            List.of(), false, "orchestrator", false, null, null, false, "OIM", "ignored-prompt");
         when(playbookRepository.findByName("oim-orchestrator"))
-            .thenReturn(Optional.of(ORCHESTRATOR));
+            .thenReturn(Optional.of(orchWithPrompt));
 
-        assertThat(json.readTree(tools.getPlaybook("oim-orchestrator")).get("targetAgent").asText())
-            .isEqualTo("orchestrator");
+        JsonNode tree = json.readTree(tools.getPlaybook("oim-orchestrator"));
+        assertThat(tree.get("targetAgent").asText()).isEqualTo("orchestrator");
+        assertThat(tree.get("systemPrompt").isNull()).isTrue();
     }
 
     @Test
