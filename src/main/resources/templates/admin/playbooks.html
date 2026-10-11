@@ -227,7 +227,8 @@
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
                                     <span th:if="${playbook.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${playbook.area}">OIM</span>
-                                    <span th:if="${playbook.systemPrompt != null}" title="Base System Prompt" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${'Prompt: ' + playbook.systemPrompt}">default-chat</span>
+                                    <span th:if="${playbook.systemPrompt != null and (playbook.targetAgent == null or #strings.equalsIgnoreCase(playbook.targetAgent, 'specialist'))}" title="Base System Prompt" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${'Prompt: ' + playbook.systemPrompt}">default-chat</span>
+                                    <span th:if="${playbook.systemPrompt != null and playbook.targetAgent != null and !#strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}" title="Orchestrator and reviewer playbooks run under self-contained instructions; designated system prompts are ignored for this role." style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--color-warning, #b45309); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-warning, #b45309); font-weight: 600;" th:text="${'Prompt: ' + playbook.systemPrompt + ' (ignored for ' + playbook.targetAgent + ')'}">Prompt: default-chat (ignored for orchestrator)</span>
                                     <span th:if="${playbook.codeExecution}" title="Gemini server-side code execution is enabled for this playbook" style="font-size: 0.75rem; background-color: var(--color-accent-dim, rgba(59,130,246,0.15)); color: var(--color-accent); border: 1px solid var(--color-accent); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">⚙ Code Execution</span>
                                     <span th:if="${playbook.prototype}" title="Marked as prototype — hidden from normal chat users" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
@@ -256,6 +257,12 @@
                                 <div th:if="${playbook.tools != null and !#lists.isEmpty(playbook.tools) and playbook.targetAgent != null and !#strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}" style="margin-top: 0.4rem; display: flex; align-items: center;">
                                     <span title="Orchestrator and reviewer playbooks are given a fixed tool list when they run, so the tools selected here have no effect."
                                           style="font-size: 0.75rem; color: var(--color-warning, #b45309); font-weight: 600;">⚠ Not used for this role — these tools are ignored</span>
+                                </div>
+
+                                <!-- System prompt IS selected but this role ignores it: orchestrator and reviewer run self-contained. -->
+                                <div th:if="${playbook.systemPrompt != null and playbook.targetAgent != null and !#strings.equalsIgnoreCase(playbook.targetAgent, 'specialist')}" style="margin-top: 0.4rem; display: flex; align-items: center;">
+                                    <span title="Orchestrator and reviewer playbooks run under self-contained instructions; designated system prompts have no effect."
+                                          style="font-size: 0.75rem; color: var(--color-warning, #b45309); font-weight: 600;">⚠ Not used for this role — designated system prompt is ignored</span>
                                 </div>
                             </div>
 
@@ -350,7 +357,7 @@
                                     <option value="">(Default / None)</option>
                                     <option th:each="sp : ${systemPrompts}" th:value="${sp.name}" th:attr="data-area=${sp.area}" th:text="${sp.name + (sp.description != null ? ' - ' + sp.description : '')}"></option>
                                 </select>
-                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Optional base system prompt for this playbook. If not set, the default chat system prompt is used.</span>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Optional base system prompt for this playbook. If not set, the default chat system prompt is used. Reviewer and Orchestrator playbooks ignore this field entirely; they run under self-contained instructions.</span>
                             </div>
                             <div class="form-group">
                                 <label for="tools" class="form-label">Allowed Tools</label>
@@ -465,7 +472,7 @@
             }
         });
 
-        function filterSystemPromptsForArea(selectedArea) {
+        function filterSystemPromptsForArea(selectedArea, preserveValue) {
             const select = document.getElementById('systemPrompt');
             if (!select) return;
             const currentArea = (selectedArea || document.getElementById('area')?.value || '').trim().toLowerCase();
@@ -477,9 +484,14 @@
                     continue;
                 }
                 const optArea = (opt.getAttribute('data-area') || '').trim().toLowerCase();
+                const isPreserved = !!preserveValue && opt.value === preserveValue;
                 const matches = !optArea || !currentArea || optArea === currentArea;
-                opt.hidden = !matches;
-                opt.disabled = !matches;
+                opt.hidden = !matches && !isPreserved;
+                opt.disabled = !matches && !isPreserved;
+                if (isPreserved && !matches && !opt.dataset.annotated) {
+                    opt.textContent = opt.textContent + ' (area: ' + (opt.getAttribute('data-area') || 'none') + ')';
+                    opt.dataset.annotated = 'true';
+                }
             }
             if (select.selectedIndex >= 0 && select.options[select.selectedIndex].disabled) {
                 select.value = '';
@@ -518,7 +530,7 @@
             }
             select.value = value || '';
             select.disabled = !!isReadOnly;
-            filterSystemPromptsForArea(document.getElementById('area')?.value);
+            filterSystemPromptsForArea(document.getElementById('area')?.value, value);
             if (select.selectedIndex >= 0) {
                 select.options[select.selectedIndex].hidden = false;
                 select.options[select.selectedIndex].disabled = false;

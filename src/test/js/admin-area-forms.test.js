@@ -61,3 +61,59 @@ test('the admin sidebar links the Areas page', () => {
     const layout = fs.readFileSync(`${ADMIN}/layout.html`, 'utf8');
     assert.ok(layout.includes('th:href="@{/admin/areas}"'));
 });
+
+test('playbooks: applySystemPrompt preserves a cross-area stored prompt and does not wipe it', () => {
+    const html = fs.readFileSync(`${ADMIN}/playbooks.html`, 'utf8');
+    assert.match(html, /filterSystemPromptsForArea\([^)]*preserveValue/);
+
+    const options = [
+        { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' },
+        { value: 'p-oim', textContent: 'p-oim', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'OIM' : null },
+        { value: 'p-ping', textContent: 'p-ping', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'PingID' : null }
+    ];
+    let selectedIndex = 0;
+    const select = {
+        options,
+        get selectedIndex() { return selectedIndex; },
+        set selectedIndex(i) { selectedIndex = i; },
+        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
+        set value(v) {
+            selectedIndex = options.findIndex(o => o.value === v);
+        }
+    };
+    const areaInput = { value: 'PingID' };
+
+    function filterSystemPromptsForArea(selectedArea, preserveValue) {
+        const currentArea = (selectedArea || areaInput.value || '').trim().toLowerCase();
+        for (let i = 0; i < select.options.length; i++) {
+            const opt = select.options[i];
+            if (!opt.value || opt.dataset.dynamic === 'true') {
+                opt.hidden = false;
+                opt.disabled = false;
+                continue;
+            }
+            const optArea = (opt.getAttribute('data-area') || '').trim().toLowerCase();
+            const isPreserved = !!preserveValue && opt.value === preserveValue;
+            const matches = !optArea || !currentArea || optArea === currentArea;
+            opt.hidden = !matches && !isPreserved;
+            opt.disabled = !matches && !isPreserved;
+            if (isPreserved && !matches && !opt.dataset.annotated) {
+                opt.textContent = opt.textContent + ' (area: ' + (opt.getAttribute('data-area') || 'none') + ')';
+                opt.dataset.annotated = 'true';
+            }
+        }
+        if (select.selectedIndex >= 0 && select.options[select.selectedIndex].disabled) {
+            select.value = '';
+        }
+    }
+
+    function applySystemPrompt(value) {
+        select.value = value || '';
+        filterSystemPromptsForArea(areaInput.value, value);
+    }
+
+    applySystemPrompt('p-oim');
+    assert.equal(select.value, 'p-oim');
+    assert.equal(options[1].disabled, false);
+    assert.equal(options[1].textContent, 'p-oim (area: OIM)');
+});

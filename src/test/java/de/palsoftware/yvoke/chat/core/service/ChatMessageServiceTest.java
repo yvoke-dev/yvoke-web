@@ -1656,8 +1656,7 @@ public class ChatMessageServiceTest {
         when(systemPromptService.getPrompt("summarize-sys-prompt"))
             .thenReturn(Optional.of(new SystemPrompt("summarize-sys-prompt",
                 SystemPromptType.SUMMARIZE, "summarize body", "desc")));
-        when(systemPromptService.findChatPrompt("summarize-sys-prompt"))
-            .thenReturn(Optional.empty());
+        when(systemPromptService.findChatPrompt("summarize-sys-prompt")).thenCallRealMethod();
 
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");

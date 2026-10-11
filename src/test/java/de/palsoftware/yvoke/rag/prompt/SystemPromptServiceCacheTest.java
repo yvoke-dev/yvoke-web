@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -393,5 +394,31 @@ class SystemPromptServiceCacheTest {
         assertEquals("Colon Body", getColon.get().systemPrompt());
         assertTrue(findAlpha.isPresent());
         assertEquals("Alpha Body", findAlpha.get().systemPrompt());
+    }
+
+    @Test
+    void requirePromptBypassesCacheAndReadsFreshRepositoryState() {
+        SystemPrompt cached = new SystemPrompt("prompt-1", SystemPromptType.CHAT, "Body", "Desc",
+            Instant.now(), Instant.now(), false, "OldArea");
+        when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(cached));
+
+        // Populate cache via getPrompt
+        Optional<SystemPrompt> first = systemPromptService.getPrompt("prompt-1");
+        assertTrue(first.isPresent());
+        assertEquals("OldArea", first.get().area());
+
+        // Now repository state changes (e.g. area rename via CASCADE in DB without service
+        // eviction)
+        SystemPrompt updated = new SystemPrompt("prompt-1", SystemPromptType.CHAT, "Body", "Desc",
+            Instant.now(), Instant.now(), false, "NewArea");
+        when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(updated));
+
+        // getPrompt still returns cached old area
+        assertEquals("OldArea", systemPromptService.getPrompt("prompt-1").get().area());
+
+        // requirePrompt must bypass cache and see NewArea directly
+        SystemPrompt required =
+            systemPromptService.requirePrompt("prompt-1", SystemPromptType.CHAT);
+        assertEquals("NewArea", required.area());
     }
 }

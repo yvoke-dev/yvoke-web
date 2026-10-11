@@ -2,16 +2,19 @@ package de.palsoftware.yvoke.rag.prompt;
 
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
+import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 import java.util.*;
+import java.util.Objects;
 import org.yaml.snakeyaml.Yaml;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.stereotype.Service;
-import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 
 @Service
 public class SystemPromptService {
@@ -23,22 +26,28 @@ public class SystemPromptService {
     private final String defaultPromptName;
     private final AppConfigRepository appConfigRepository;
     private final AreaService areaService;
+    private final CacheManager cacheManager;
 
-    @Autowired(required = false)
-    @Lazy
-    private SystemPromptService self;
-
-    private SystemPromptService self() {
-        return self != null ? self : this;
-    }
-
+    @Autowired
     public SystemPromptService(SystemPromptRepository systemPromptRepository,
         @Value("${app.ai.rag.default-prompt-name}") String defaultPromptName,
+        AppConfigRepository appConfigRepository, AreaService areaService,
+        CacheManager cacheManager) {
+        this.areaService = Objects.requireNonNull(areaService, "areaService must not be null");
+        this.systemPromptRepository = Objects.requireNonNull(systemPromptRepository,
+            "systemPromptRepository must not be null");
+        this.defaultPromptName =
+            Objects.requireNonNull(defaultPromptName, "defaultPromptName must not be null");
+        this.appConfigRepository =
+            Objects.requireNonNull(appConfigRepository, "appConfigRepository must not be null");
+        this.cacheManager = Objects.requireNonNull(cacheManager, "cacheManager must not be null");
+    }
+
+    /** For callers outside the container; creates a concurrent map cache manager. */
+    SystemPromptService(SystemPromptRepository systemPromptRepository, String defaultPromptName,
         AppConfigRepository appConfigRepository, AreaService areaService) {
-        this.areaService = areaService;
-        this.systemPromptRepository = systemPromptRepository;
-        this.defaultPromptName = defaultPromptName;
-        this.appConfigRepository = appConfigRepository;
+        this(systemPromptRepository, defaultPromptName, appConfigRepository, areaService,
+            new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS, CacheConfig.APP_CONFIG));
     }
 
     @Cacheable(cacheNames = CacheConfig.APP_CONFIG, key = "'default-chat-prompt'")
@@ -46,7 +55,9 @@ public class SystemPromptService {
         return appConfigRepository.get("default-chat-prompt", defaultPromptName);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.APP_CONFIG, key = "'default-chat-prompt'")
+    @Caching(
+        evict = {@CacheEvict(cacheNames = CacheConfig.APP_CONFIG, key = "'default-chat-prompt'"),
+            @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)})
     public void setDefaultChatPromptName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Default prompt name cannot be empty.");
@@ -84,7 +95,7 @@ public class SystemPromptService {
             throw new IllegalArgumentException("No " + expectedType
                 + " system prompt was specified. Available: " + availableNames(expectedType));
         }
-        SystemPrompt prompt = self().getPrompt(name)
+        SystemPrompt prompt = systemPromptRepository.findByName(name.trim())
             .orElseThrow(() -> new IllegalArgumentException(
                 "System prompt '" + name.trim() + "' does not exist. Available " + expectedType
                     + " prompts: " + availableNames(expectedType)));
@@ -106,15 +117,17 @@ public class SystemPromptService {
         return names.isEmpty() ? "(none registered)" : String.join(", ", names);
     }
 
-    @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
     public Optional<SystemPrompt> getPrompt(String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
 
-        // Try database
-        return systemPromptRepository.findByName(name.trim());
+        String trimmed = name.trim();
+        Cache cache = cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS);
+        if (cache != null) {
+            return cache.get(trimmed, () -> systemPromptRepository.findByName(trimmed));
+        }
+        return systemPromptRepository.findByName(trimmed);
     }
 
     /**
@@ -135,9 +148,8 @@ public class SystemPromptService {
      */
     public Optional<SystemPrompt> findChatPrompt(String name) {
         String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
-        String resolved =
-            DEFAULT_CHAT.equals(requested) ? self().getDefaultChatPromptName() : requested;
-        return self().getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
+        String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
+        return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
     @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
@@ -238,7 +250,7 @@ public class SystemPromptService {
             }
         }
 
-        self().savePrompt(name, type, body, description, area);
-        return self().getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
+        savePrompt(name, type, body, description, area);
+        return getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
     }
 }

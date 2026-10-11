@@ -2067,7 +2067,7 @@ public class OrchestrationServiceTest {
         when(localSysPromptService.getPrompt("summarize-prompt"))
             .thenReturn(Optional.of(new SystemPrompt("summarize-prompt", SystemPromptType.SUMMARIZE,
                 "SUMMARIZE body", "desc")));
-        when(localSysPromptService.findChatPrompt("summarize-prompt")).thenReturn(Optional.empty());
+        when(localSysPromptService.findChatPrompt("summarize-prompt")).thenCallRealMethod();
 
         Playbook orchPb =
             new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template", List.of(),
