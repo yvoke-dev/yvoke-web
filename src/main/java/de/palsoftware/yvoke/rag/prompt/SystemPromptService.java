@@ -135,20 +135,20 @@ public class SystemPromptService {
     }
 
     /**
-     * The base instructions an MCP client asked for by name, or empty.
+     * Resolves the base instructions for chat requested by name, or empty.
      *
      * <p>
      * {@code default-chat}, or a blank name, means the prompt an admin made active, resolved
-     * exactly as the web chat resolves it ({@code RagService.loadAgenticSystemPrompt}), so the two
-     * surfaces answer under the same instructions. Any other name is looked up as given. This
-     * deliberately differs from {@code DesktopSyncController.getSystemPrompt}, where a stored row
-     * literally named {@code default-chat} wins over the admin's choice; since that row ships in
-     * every deployment, following it would leave the plugin on the generic prompt after an admin
-     * switched.
+     * exactly as the web chat resolves it ({@code RagService.loadAgenticSystemPrompt}), so that web
+     * chat, MCP tools ({@code GetSystemPromptTool}), and desktop sync
+     * ({@code DesktopSyncController.getSystemPrompt}) all answer under the same instructions. Any
+     * other name is looked up as given. A stored row literally named {@code default-chat} is
+     * ignored in favor of the active default prompt; since that row ships in every deployment,
+     * following it literally would leave clients on the generic prompt after an admin switched.
      *
      * <p>
-     * Only CHAT prompts are returned, on both paths: KG and SUMMARIZE prompts share the namespace
-     * but are not base instructions, and nothing a client does needs them.
+     * Only CHAT prompts are returned: KG and SUMMARIZE prompts share the namespace but are not base
+     * instructions, and nothing a client does needs them.
      */
     public Optional<SystemPrompt> findChatPrompt(String name) {
         String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
