@@ -4,24 +4,31 @@ import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class PlaybookServiceTest {
 
     private PlaybookRepository playbookRepository;
     private McpSyncServer mcpSyncServer;
+    private SystemPromptService systemPromptService;
     private PlaybookService playbookService;
 
     @BeforeEach
     void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
         mcpSyncServer = mock(McpSyncServer.class);
-        playbookService =
-            new PlaybookService(playbookRepository, mcpSyncServer, TestAreas.withAreas("OIM"));
+        systemPromptService = mock(SystemPromptService.class);
+        playbookService = new PlaybookService(playbookRepository, mcpSyncServer,
+            TestAreas.withAreas("OIM"), systemPromptService);
     }
 
     @Test
@@ -90,9 +97,214 @@ class PlaybookServiceTest {
     @Test
     void testSavePlaybookSuccess() {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM");
+            false, "orchestrator", true, "OIM", null);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM");
+            false, "orchestrator", true, "OIM", null);
+    }
+
+    @Test
+    void testSavePlaybookWithSystemPromptSuccess() {
+        when(systemPromptService.requirePrompt("custom-prompt", SystemPromptType.CHAT)).thenReturn(
+            new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Content", "Desc"));
+        playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
+            false, "specialist", true, "OIM", "custom-prompt");
+        verify(systemPromptService).requirePrompt("custom-prompt", SystemPromptType.CHAT);
+        verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
+            false, "specialist", true, "OIM", "custom-prompt");
+    }
+
+    @Test
+    void testImportPlaybookWithSystemPromptPropagatesToSave() {
+        when(systemPromptService.requirePrompt("coding-system-prompt", SystemPromptType.CHAT))
+            .thenReturn(
+                new SystemPrompt("coding-system-prompt", SystemPromptType.CHAT, "Content", "Desc"));
+        String md = """
+            ---
+            name: pb-custom-sys
+            title: PB Custom Sys
+            system_prompt: coding-system-prompt
+            ---
+            Template content
+            """;
+        playbookService.importPlaybookFromMarkdown(md, "fallback", "OIM");
+        verify(systemPromptService).requirePrompt("coding-system-prompt", SystemPromptType.CHAT);
+        verify(playbookRepository).upsert("pb-custom-sys", "PB Custom Sys", "", "Template content",
+            List.of(), false, "specialist", false, "OIM", "coding-system-prompt");
+    }
+
+    @Test
+    void testSavePlaybookRejectsNonExistentSystemPrompt() {
+        when(systemPromptService.requirePrompt("unknown-prompt", SystemPromptType.CHAT))
+            .thenThrow(new IllegalArgumentException(
+                "System prompt 'unknown-prompt' does not exist. Available CHAT prompts: default-chat"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "unknown-prompt"));
+        assertTrue(ex.getMessage().contains("does not exist"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsNonChatSystemPrompt() {
+        when(systemPromptService.requirePrompt("summarize-prompt", SystemPromptType.CHAT))
+            .thenThrow(new IllegalArgumentException(
+                "System prompt 'summarize-prompt' is of type SUMMARIZE, but a CHAT prompt is required."));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "summarize-prompt"));
+        assertTrue(ex.getMessage().contains("is of type SUMMARIZE"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptFromDifferentArea() {
+        when(systemPromptService.requirePrompt("cross-area-prompt", SystemPromptType.CHAT))
+            .thenReturn(new SystemPrompt("cross-area-prompt", SystemPromptType.CHAT, "Content",
+                "Desc", Instant.now(), Instant.now(), false, "Finance"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "cross-area-prompt"));
+        assertTrue(ex.getMessage().contains("belongs to area 'Finance'"));
+        assertTrue(ex.getMessage().contains("playbook belongs to area 'OIM'"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookAllowsGlobalSystemPrompt() {
+        when(systemPromptService.requirePrompt("global-prompt", SystemPromptType.CHAT)).thenReturn(
+            new SystemPrompt("global-prompt", SystemPromptType.CHAT, "Content", "Desc"));
+
+        playbookService.savePlaybook("pb-ok", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, "OIM", "global-prompt");
+        verify(playbookRepository).upsert("pb-ok", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, "OIM", "global-prompt");
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptForOrchestrator() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-orch", "Title", "Desc", "Template", List.of(),
+                false, "orchestrator", false, "OIM", "some-prompt"));
+        assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptForReviewer() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-rev", "Title", "Desc", "Template", List.of(),
+                false, "reviewer", false, "OIM", "some-prompt"));
+        assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testImportPlaybookFromMarkdownRejectsSystemPromptForOrchestratorAndReviewer() {
+        String orchMd = """
+            ---
+            name: pb-orch
+            target_agent: orchestrator
+            system_prompt: some-prompt
+            ---
+            Body
+            """;
+        IllegalArgumentException ex1 = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown(orchMd, "pb-orch", "OIM"));
+        assertTrue(ex1.getMessage().contains("cannot have a designated system prompt"));
+
+        String revMd = """
+            ---
+            name: pb-rev
+            target_agent: reviewer
+            system_prompt: some-prompt
+            ---
+            Body
+            """;
+        IllegalArgumentException ex2 = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown(revMd, "pb-rev", "OIM"));
+        assertTrue(ex2.getMessage().contains("cannot have a designated system prompt"));
+    }
+
+    @Test
+    void playbookRecordNormalisesSystemPromptToNullForNonSpecialistsAndRetainsForSpecialists() {
+        Playbook orch = new Playbook("pb-orch", "PB Orch", "Desc", "Template", List.of(), false,
+            "orchestrator", false, null, null, false, "OIM", "some-prompt");
+        assertNull(orch.systemPrompt());
+        assertFalse(orch.isSpecialist());
+
+        Playbook rev = new Playbook("pb-rev", "PB Rev", "Desc", "Template", List.of(), false,
+            "reviewer", false, null, null, false, "OIM", "some-prompt");
+        assertNull(rev.systemPrompt());
+        assertFalse(rev.isSpecialist());
+
+        Playbook specialist = new Playbook("pb-spec", "PB Spec", "Desc", "Template", List.of(),
+            false, "specialist", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", specialist.systemPrompt());
+        assertTrue(specialist.isSpecialist());
+
+        Playbook analyst = new Playbook("pb-analyst", "PB Analyst", "Desc", "Template", List.of(),
+            false, "analyst", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", analyst.systemPrompt());
+        assertTrue(analyst.isSpecialist());
+
+        Playbook paddedRole = new Playbook("pb-padded", "PB Padded", "Desc", "Template", List.of(),
+            false, " reviewer ", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", paddedRole.systemPrompt());
+        assertTrue(paddedRole.isSpecialist());
+    }
+
+    @Test
+    void testRegisterPlaybookWithMcpExcludesSystemPromptForOrchestratorAndReviewer() {
+        Playbook orch = new Playbook("pb-orch", "PB Orch", "Desc", "Template", List.of(), false,
+            "orchestrator", false, null, null, false, "OIM", "some-prompt");
+        when(playbookRepository.findAll()).thenReturn(List.of(orch));
+        when(playbookRepository.findByName("pb-orch")).thenReturn(Optional.of(orch));
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+            ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+
+        var spec = captor.getValue();
+        assertNull(spec.prompt().meta().get("systemPrompt"));
+    }
+
+    @Test
+    void testRegisterPlaybookWithMcpIncludesSystemPromptInMeta() {
+        Playbook pb = new Playbook("pb-mcp", "PB MCP", "Desc", "Template", List.of("t1"), true,
+            "specialist", false, null, null, false, "OIM", "coding-prompt");
+        when(playbookRepository.findAll()).thenReturn(List.of(pb));
+        when(playbookRepository.findByName("pb-mcp")).thenReturn(Optional.of(pb));
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+            ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+
+        var spec = captor.getValue();
+        // Registration-time metadata
+        assertEquals("coding-prompt", spec.prompt().meta().get("systemPrompt"));
+
+        // Execution-time dynamic lookup metadata
+        var result = spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
+        assertEquals("coding-prompt", result.meta().get("systemPrompt"));
+
+        // Dynamic update: verify updated playbook reflects new systemPrompt on subsequent execution
+        Playbook updatedPb = new Playbook("pb-mcp", "PB MCP", "Desc", "Template", List.of("t1"),
+            true, "specialist", false, null, null, false, "OIM", "updated-prompt");
+        when(playbookRepository.findByName("pb-mcp")).thenReturn(Optional.of(updatedPb));
+
+        var updatedResult =
+            spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
+        assertEquals("updated-prompt", updatedResult.meta().get("systemPrompt"));
     }
 
     @Test
@@ -170,29 +382,29 @@ class PlaybookServiceTest {
 
     @Test
     void savePlaybookStoresTheAreasStoredName() {
-        playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false,
-            " oim ");
+        playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false, " oim ",
+            null);
         verify(playbookRepository).upsert("pb", "PB", "", "Body", List.of(), false, "specialist",
-            false, "OIM");
+            false, "OIM", null);
     }
 
     @Test
     void savePlaybookRefusesAnUnknownOrMissingArea() {
         IllegalArgumentException unknown =
             assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb",
-                "PB", "", "Body", List.of(), false, null, false, "SAP"));
+                "PB", "", "Body", List.of(), false, null, false, "SAP", null));
         assertEquals("Area 'SAP' does not exist.", unknown.getMessage());
         assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb", "PB",
-            "", "Body", List.of(), false, null, false, null));
+            "", "Body", List.of(), false, null, false, null, null));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
-            any(), anyBoolean(), any());
+            any(), anyBoolean(), any(), any());
     }
 
     /** The file's own area wins over the one picked on the import form. */
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
         PlaybookService twoAreas = new PlaybookService(playbookRepository, mcpSyncServer,
-            TestAreas.withAreas("OIM", "PingID"));
+            TestAreas.withAreas("OIM", "PingID"), systemPromptService);
         twoAreas.importPlaybookFromMarkdown("""
             ---
             name: pb
@@ -202,7 +414,7 @@ class PlaybookServiceTest {
             Body
             """, null, "OIM");
         verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
-            anyBoolean(), eq("PingID"));
+            anyBoolean(), eq("PingID"), any());
     }
 
     @Test
@@ -215,6 +427,6 @@ class PlaybookServiceTest {
             Body
             """, null, "OIM");
         verify(playbookRepository).upsert(eq("pb"), any(), any(), any(), any(), anyBoolean(), any(),
-            anyBoolean(), eq("OIM"));
+            anyBoolean(), eq("OIM"), any());
     }
 }

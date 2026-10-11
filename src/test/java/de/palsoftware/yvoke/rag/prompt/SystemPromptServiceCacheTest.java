@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -15,8 +17,11 @@ import static org.mockito.Mockito.when;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -52,7 +57,15 @@ class SystemPromptServiceCacheTest {
 
         @Bean
         AppConfigRepository appConfigRepository() {
-            return mock(AppConfigRepository.class);
+            AppConfigRepository mock = mock(AppConfigRepository.class);
+            Map<String, String> config = new HashMap<>();
+            when(mock.get(any(), any()))
+                .thenAnswer(inv -> config.getOrDefault(inv.getArgument(0), inv.getArgument(1)));
+            doAnswer(inv -> {
+                config.put(inv.getArgument(0), inv.getArgument(1));
+                return null;
+            }).when(mock).set(any(), any());
+            return mock;
         }
 
         @Bean
@@ -64,6 +77,8 @@ class SystemPromptServiceCacheTest {
         }
     }
 
+    private static final Map<String, String> appConfigStore = new HashMap<>();
+
     @Autowired
     private SystemPromptService systemPromptService;
 
@@ -71,14 +86,30 @@ class SystemPromptServiceCacheTest {
     private SystemPromptRepository systemPromptRepository;
 
     @Autowired
+    private AppConfigRepository appConfigRepository;
+
+    @Autowired
     private CacheManager cacheManager;
 
     @BeforeEach
     void clearCache() {
         reset(systemPromptRepository);
+        reset(appConfigRepository);
+        appConfigStore.clear();
+        when(appConfigRepository.get(any(), any()))
+            .thenAnswer(inv -> appConfigStore.getOrDefault(inv.getArgument(0), inv.getArgument(1)));
+        doAnswer(inv -> {
+            appConfigStore.put(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(appConfigRepository).set(any(), any());
+
         Cache cache = cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS);
         if (cache != null) {
             cache.clear();
+        }
+        Cache appCache = cacheManager.getCache(CacheConfig.APP_CONFIG);
+        if (appCache != null) {
+            appCache.clear();
         }
     }
 
@@ -301,5 +332,146 @@ class SystemPromptServiceCacheTest {
 
         assertTrue(saveSuccesses.get() > 0);
         assertTrue(getSuccesses.get() > 0);
+    }
+
+    @Test
+    void findChatPromptHitsCacheAndDoesNotInvokeRepositoryTwice() {
+        SystemPrompt prompt =
+            new SystemPrompt("cached-chat", SystemPromptType.CHAT, "Body", "Desc");
+        when(systemPromptRepository.findByName("cached-chat")).thenReturn(Optional.of(prompt));
+
+        Optional<SystemPrompt> first = systemPromptService.findChatPrompt("cached-chat");
+        assertTrue(first.isPresent());
+        assertEquals("cached-chat", first.get().name());
+        verify(systemPromptRepository, times(1)).findByName("cached-chat");
+
+        Optional<SystemPrompt> second = systemPromptService.findChatPrompt("cached-chat");
+        assertTrue(second.isPresent());
+        assertEquals("cached-chat", second.get().name());
+        verify(systemPromptRepository, times(1)).findByName("cached-chat");
+    }
+
+    @Test
+    void setDefaultChatPromptNameImmediatelyUpdatesFindChatPromptDefaultChat() {
+        SystemPrompt promptA =
+            new SystemPrompt("prompt-a", SystemPromptType.CHAT, "Body A", "Desc A");
+        SystemPrompt promptB =
+            new SystemPrompt("prompt-b", SystemPromptType.CHAT, "Body B", "Desc B");
+        when(systemPromptRepository.findByName("prompt-a")).thenReturn(Optional.of(promptA));
+        when(systemPromptRepository.findByName("prompt-b")).thenReturn(Optional.of(promptB));
+
+        systemPromptService.setDefaultChatPromptName("prompt-a");
+        Optional<SystemPrompt> first = systemPromptService.findChatPrompt("default-chat");
+        assertTrue(first.isPresent());
+        assertEquals("Body A", first.get().systemPrompt());
+
+        systemPromptService.setDefaultChatPromptName("prompt-b");
+        Optional<SystemPrompt> second = systemPromptService.findChatPrompt("default-chat");
+        assertTrue(second.isPresent());
+        assertEquals("Body B", second.get().systemPrompt());
+    }
+
+    @Test
+    void importPromptFromMarkdownEvictsCacheForSubsequentFindChatPrompt() {
+        SystemPrompt promptV1 =
+            new SystemPrompt("import-chat", SystemPromptType.CHAT, "V1 Body", "Desc");
+        when(systemPromptRepository.findByName("import-chat")).thenReturn(Optional.of(promptV1));
+
+        Optional<SystemPrompt> before = systemPromptService.findChatPrompt("import-chat");
+        assertTrue(before.isPresent());
+        assertEquals("V1 Body", before.get().systemPrompt());
+
+        SystemPrompt promptV2 =
+            new SystemPrompt("import-chat", SystemPromptType.CHAT, "V2 Body", "Desc");
+        when(systemPromptRepository.findByName("import-chat")).thenReturn(Optional.of(promptV2));
+
+        String md = "---\nname: import-chat\ntype: CHAT\narea: OIM\n---\n\nV2 Body";
+        systemPromptService.importPromptFromMarkdown(md, "import-chat", AREA);
+
+        Optional<SystemPrompt> after = systemPromptService.findChatPrompt("import-chat");
+        assertTrue(after.isPresent());
+        assertEquals("V2 Body", after.get().systemPrompt());
+    }
+
+    @Test
+    void findChatPromptAndGetPromptWithColonPrefixDoNotCollide() {
+        SystemPrompt promptColon =
+            new SystemPrompt("chat:alpha", SystemPromptType.CHAT, "Colon Body", "Desc");
+        SystemPrompt promptAlpha =
+            new SystemPrompt("alpha", SystemPromptType.CHAT, "Alpha Body", "Desc");
+        when(systemPromptRepository.findByName("chat:alpha")).thenReturn(Optional.of(promptColon));
+        when(systemPromptRepository.findByName("alpha")).thenReturn(Optional.of(promptAlpha));
+
+        Optional<SystemPrompt> getColon = systemPromptService.getPrompt("chat:alpha");
+        Optional<SystemPrompt> findAlpha = systemPromptService.findChatPrompt("alpha");
+
+        assertTrue(getColon.isPresent());
+        assertEquals("Colon Body", getColon.get().systemPrompt());
+        assertTrue(findAlpha.isPresent());
+        assertEquals("Alpha Body", findAlpha.get().systemPrompt());
+    }
+
+    @Test
+    void requirePromptBypassesCacheAndReadsFreshRepositoryState() {
+        SystemPrompt cached = new SystemPrompt("prompt-1", SystemPromptType.CHAT, "Body", "Desc",
+            Instant.now(), Instant.now(), false, "OldArea");
+        when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(cached));
+
+        // Populate cache via getPrompt
+        Optional<SystemPrompt> first = systemPromptService.getPrompt("prompt-1");
+        assertTrue(first.isPresent());
+        assertEquals("OldArea", first.get().area());
+
+        // Now repository state changes (e.g. area rename via CASCADE in DB without service
+        // eviction)
+        SystemPrompt updated = new SystemPrompt("prompt-1", SystemPromptType.CHAT, "Body", "Desc",
+            Instant.now(), Instant.now(), false, "NewArea");
+        when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(updated));
+
+        // getPrompt still returns cached old area
+        assertEquals("OldArea", systemPromptService.getPrompt("prompt-1").get().area());
+
+        // requirePrompt must bypass cache and see NewArea directly
+        SystemPrompt required =
+            systemPromptService.requirePrompt("prompt-1", SystemPromptType.CHAT);
+        assertEquals("NewArea", required.area());
+    }
+
+    @Test
+    void findChatPromptForDefaultChatCachesDefaultPromptNameFromAppConfig() {
+        appConfigStore.put("default-chat-prompt", "cached-default");
+        when(systemPromptRepository.findByName("cached-default")).thenReturn(
+            Optional.of(new SystemPrompt("cached-default", SystemPromptType.CHAT, "Body", "Desc")));
+
+        Optional<SystemPrompt> p1 = systemPromptService.findChatPrompt(null);
+        Optional<SystemPrompt> p2 = systemPromptService.findChatPrompt(null);
+        Optional<SystemPrompt> p3 = systemPromptService.findChatPrompt("default-chat");
+
+        assertTrue(p1.isPresent());
+        assertEquals(p1, p2);
+        assertEquals(p1, p3);
+
+        verify(appConfigRepository, times(1)).get(eq("default-chat-prompt"), any());
+        verify(systemPromptRepository, times(1)).findByName("cached-default");
+    }
+
+    @Test
+    void setDefaultChatPromptNameEvictsAppConfigCache() {
+        when(systemPromptRepository.findByName("first-default")).thenReturn(Optional
+            .of(new SystemPrompt("first-default", SystemPromptType.CHAT, "Body 1", "Desc")));
+        when(systemPromptRepository.findByName("second-default")).thenReturn(Optional
+            .of(new SystemPrompt("second-default", SystemPromptType.CHAT, "Body 2", "Desc")));
+
+        systemPromptService.setDefaultChatPromptName("first-default");
+        Optional<SystemPrompt> first = systemPromptService.findChatPrompt(null);
+        assertTrue(first.isPresent());
+        assertEquals("first-default", first.get().name());
+
+        // Update default prompt
+        systemPromptService.setDefaultChatPromptName("second-default");
+
+        Optional<SystemPrompt> second = systemPromptService.findChatPrompt(null);
+        assertTrue(second.isPresent());
+        assertEquals("second-default", second.get().name());
     }
 }

@@ -36,6 +36,9 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +70,7 @@ public class OrchestrationServiceTest {
     private AgentRunRepository runRepository;
     private AgentStepRepository stepRepository;
     private OrchestrationService service;
+    private SystemPromptService sysPromptService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -121,6 +125,7 @@ public class OrchestrationServiceTest {
         playbookService = mock(PlaybookService.class);
         runRepository = mock(AgentRunRepository.class);
         stepRepository = mock(AgentStepRepository.class);
+        sysPromptService = mock(SystemPromptService.class);
 
         OrchestratorProperties props = new OrchestratorProperties(2, 8,
             new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
@@ -129,7 +134,7 @@ public class OrchestrationServiceTest {
                 List.of("spec-a", "spec-b"), null, null, null)));
 
         service = new OrchestrationService(ragService, playbookService, props, null, runRepository,
-            stepRepository, objectMapper, null);
+            stepRepository, objectMapper, null, sysPromptService);
 
         when(playbookService.getPlaybook(any())).thenAnswer(inv -> {
             String name = inv.getArgument(0);
@@ -214,7 +219,7 @@ public class OrchestrationServiceTest {
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
                 List.of("spec-a", "spec-b"), null, null, null)));
         OrchestrationService budgeted = new OrchestrationService(ragService, playbookService,
-            oneCall, null, runRepository, stepRepository, objectMapper, null);
+            oneCall, null, runRepository, stepRepository, objectMapper, null, sysPromptService);
 
         OrchestrationService.OrchestrationResult r =
             budgeted.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
@@ -1981,5 +1986,129 @@ public class OrchestrationServiceTest {
         return new HybridSearchResult(id, UUID.randomUUID(), body, List.of("Columns"), "Columns", 2,
             0, "10.0", title, "table", "OIM", Map.of(), 0.9,
             new TelemetryInfo(true, false, 1, 0, 1));
+    }
+
+    @Test
+    void playbookSystemPromptsAreResolvedAndPassedToAgents() {
+        SystemPromptService sysPromptService = mock(SystemPromptService.class);
+        when(sysPromptService.findChatPrompt("orch-sys-prompt")).thenReturn(Optional.of(
+            new SystemPrompt("orch-sys-prompt", SystemPromptType.CHAT, "ORCH_BASE_SYS", "desc")));
+        when(sysPromptService.findChatPrompt("rev-sys-prompt")).thenReturn(Optional
+            .of(new SystemPrompt("rev-sys-prompt", SystemPromptType.CHAT, "REV_BASE_SYS", "desc")));
+        when(sysPromptService.findChatPrompt("spec-a-sys-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("spec-a-sys-prompt", SystemPromptType.CHAT,
+                "SPEC_A_BASE_SYS", "desc")));
+
+        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template",
+            List.of(), false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM",
+            "orch-sys-prompt");
+        Playbook revPb = new Playbook("oim-orchestrator-reviewer", "Rev", "desc",
+            "Reviewer template", List.of(), false, "reviewer", false, Instant.now(), Instant.now(),
+            false, "OIM", "rev-sys-prompt");
+        Playbook specAPb = new Playbook("spec-a", "Spec A", "desc", "Spec A template",
+            List.of("search_corpus"), false, "specialist", false, Instant.now(), Instant.now(),
+            false, "OIM", "spec-a-sys-prompt");
+
+        when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
+        when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
+            .thenReturn(Optional.of(revPb));
+        when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
+
+        OrchestratorProperties props = new OrchestratorProperties(2, 8,
+            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
+                new RoleConfig("flash", "medium")),
+            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
+                List.of("spec-a"), null, null, null)));
+
+        OrchestrationService promptService = new OrchestrationService(ragService, playbookService,
+            props, null, runRepository, stepRepository, objectMapper, null, sysPromptService);
+
+        List<AgenticRequest> requests = new ArrayList<>();
+        doAnswer(inv -> {
+            AgenticRequest req = inv.getArgument(0);
+            requests.add(req);
+            @SuppressWarnings("unchecked")
+            Consumer<String> sink = inv.getArgument(1);
+            return handleAgentCall(req, sink);
+        }).when(ragService).generateAgenticAnswer(any(), any());
+
+        promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
+            UUID.randomUUID(), "OIM");
+
+        assertThat(requests).hasSize(3);
+
+        // Specialist request
+        AgenticRequest specReq = requests.stream()
+            .filter(r -> r.allowedTools().contains("search_corpus")).findFirst().orElseThrow();
+        assertThat(specReq.systemPromptOverride()).isEqualTo("SPEC_A_BASE_SYS");
+
+        // Orchestrator request uses its self-contained playbook template and does not inherit chat
+        // base instructions
+        AgenticRequest orchReq = requests.stream()
+            .filter(r -> r.extraTools() != null && !r.extraTools().isEmpty()
+                && "call_specialist".equals(r.extraTools().get(0).getToolDefinition().name()))
+            .findFirst().orElseThrow();
+        assertThat(orchReq.systemPromptOverride()).startsWith("Orchestrator template");
+        assertThat(orchReq.systemPromptOverride()).doesNotContain("ORCH_BASE_SYS");
+
+        // Reviewer request uses its self-contained playbook template and does not inherit chat base
+        // instructions
+        AgenticRequest revReq = requests.stream()
+            .filter(r -> r.extraTools() != null && !r.extraTools().isEmpty()
+                && "submit_review".equals(r.extraTools().get(0).getToolDefinition().name()))
+            .findFirst().orElseThrow();
+        assertThat(revReq.systemPromptOverride()).startsWith("Reviewer template");
+        assertThat(revReq.systemPromptOverride()).doesNotContain("REV_BASE_SYS");
+    }
+
+    @Test
+    void playbookSystemPromptIgnoredWhenNotChatType() {
+        SystemPromptService localSysPromptService = mock(SystemPromptService.class);
+        when(localSysPromptService.getPrompt("summarize-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("summarize-prompt", SystemPromptType.SUMMARIZE,
+                "SUMMARIZE body", "desc")));
+        when(localSysPromptService.findChatPrompt("summarize-prompt")).thenCallRealMethod();
+
+        Playbook orchPb =
+            new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template", List.of(),
+                false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM", null);
+        Playbook revPb =
+            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
+                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM", null);
+        Playbook specAPb = new Playbook("spec-a", "Spec A", "desc", "Spec A template",
+            List.of("search_corpus"), false, "specialist", false, Instant.now(), Instant.now(),
+            false, "OIM", "summarize-prompt");
+
+        when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
+        when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
+            .thenReturn(Optional.of(revPb));
+        when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
+
+        OrchestratorProperties props = new OrchestratorProperties(2, 8,
+            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
+                new RoleConfig("flash", "medium")),
+            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
+                List.of("spec-a"), null, null, null)));
+
+        OrchestrationService promptService = new OrchestrationService(ragService, playbookService,
+            props, null, runRepository, stepRepository, objectMapper, null, localSysPromptService);
+
+        List<AgenticRequest> requests = new ArrayList<>();
+        doAnswer(inv -> {
+            AgenticRequest req = inv.getArgument(0);
+            requests.add(req);
+            @SuppressWarnings("unchecked")
+            Consumer<String> sink = inv.getArgument(1);
+            return handleAgentCall(req, sink);
+        }).when(ragService).generateAgenticAnswer(any(), any());
+
+        promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
+            UUID.randomUUID(), "OIM");
+
+        AgenticRequest specReq = requests.stream()
+            .filter(r -> r.allowedTools().contains("search_corpus")).findFirst().orElseThrow();
+        // Since findChatPrompt was empty, systemPromptOverride is null (it does not pick up
+        // non-CHAT prompts)
+        assertThat(specReq.systemPromptOverride()).isNull();
     }
 }

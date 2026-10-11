@@ -65,12 +65,12 @@ class AreaMembersIT {
     @Test
     void aPlaybooksAreaRoundTripsAndCanBeMoved() {
         playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, "OIM");
+            "specialist", false, "OIM", null);
         assertThat(playbookRepository.findByName("it-members-pb")).get()
             .extracting(Playbook::area).isEqualTo("OIM");
 
         playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, OTHER);
+            "specialist", false, OTHER, null);
         assertThat(playbookRepository.findByName("it-members-pb")).get()
             .extracting(Playbook::area).isEqualTo(OTHER);
         assertThat(playbookRepository.findAll()).filteredOn(p -> p.name().equals("it-members-pb"))
@@ -136,11 +136,11 @@ class AreaMembersIT {
         systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
         collectionRepository.create("it-members-col", "", OTHER);
         playbookRepository.upsert("it-members-spec", "S", "", "t", List.of(), false, "specialist",
-            false, OTHER);
+            false, OTHER, null);
         playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false,
-            "Orchestrator", false, OTHER);
+            "Orchestrator", false, OTHER, null);
         playbookRepository.upsert("it-members-rev", "R", "", "t", List.of(), false, "reviewer",
-            false, OTHER);
+            false, OTHER, null);
         jdbcClient.sql("""
             INSERT INTO playbooks (name, title, template_text, target_agent, area)
             VALUES ('it-members-none', 'N', 't', '', :area)""").param("area", OTHER).update();

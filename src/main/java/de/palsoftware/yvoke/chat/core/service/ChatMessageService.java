@@ -150,7 +150,7 @@ public class ChatMessageService {
 
         Map<String, Object> settings = conversation.settings();
         String modelToUse = resolveModelToUse(settings);
-        String systemPrompt = resolveSystemPrompt(settings);
+        String systemPrompt = resolveSystemPrompt(settings, playbook);
         String thinkingLevel = resolveThinkingLevel(settings);
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
@@ -541,11 +541,28 @@ public class ChatMessageService {
         return modelToUse;
     }
 
-    private String resolveSystemPrompt(Map<String, Object> settings) {
+    private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
         String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
         if (chatPromptName != null && !chatPromptName.isBlank()) {
-            return systemPromptService.getPrompt(chatPromptName.trim())
-                .map(SystemPrompt::systemPrompt).orElse(null);
+            Optional<SystemPrompt> prompt =
+                systemPromptService.findChatPrompt(chatPromptName.trim());
+            if (prompt.isPresent()) {
+                return prompt.get().systemPrompt();
+            }
+            log.warn(
+                "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
+                chatPromptName.trim());
+        }
+        if (playbook != null && playbook.systemPrompt() != null
+            && !playbook.systemPrompt().isBlank()) {
+            Optional<SystemPrompt> prompt =
+                systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
+            if (prompt.isPresent()) {
+                return prompt.get().systemPrompt();
+            }
+            log.warn(
+                "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
+                playbook.name(), playbook.systemPrompt().trim());
         }
         return null;
     }

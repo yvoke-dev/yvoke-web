@@ -55,6 +55,10 @@ running corpus scripts and the evaluation harness.
 - **Asking for base instructions that do not exist is an error**, not an empty answer, so a client can
   refuse to start without them rather than run with none. Only chat instructions are handed out; the
   prompts used to import content are not.
+- **The desktop base instructions endpoint (`GET /api/chat/v1/prompts/system/{name}`) serves only CHAT
+  prompts**, returning an empty string for non-chat prompts or unknown names. Requesting `default-chat`
+  dynamically resolves to the administrator's active default chat prompt, ignoring any stored database row
+  literally named `default-chat`.
 - **The desktop app lists only the conversations it created.** Web chat conversations, and conversations
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second

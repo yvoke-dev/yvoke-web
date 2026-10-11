@@ -65,9 +65,11 @@ class SystemPromptServiceTest {
             "the fallback name must resolve to a real prompt, or every answer runs ungoverned");
 
         // An admin-set row still wins over the configured default.
+        SystemPromptService configuredService = new SystemPromptService(repository, "default-chat",
+            appConfigRepository, TestAreas.withAreas("OIM"));
         when(appConfigRepository.get(eq("default-chat-prompt"), anyString()))
             .thenReturn("oim-agentic");
-        assertEquals("oim-agentic", service.getDefaultChatPromptName());
+        assertEquals("oim-agentic", configuredService.getDefaultChatPromptName());
     }
 
     @Test

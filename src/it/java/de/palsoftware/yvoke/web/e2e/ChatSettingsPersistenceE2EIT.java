@@ -38,7 +38,7 @@ class ChatSettingsPersistenceE2EIT extends AbstractE2E {
   }
 
   private String openConversation() {
-    playbookService.savePlaybook(PLAYBOOK, "E2E Settings", "d", "Answer.", List.of(), false, "specialist", false, "OIM");
+    playbookService.savePlaybook(PLAYBOOK, "E2E Settings", "d", "Answer.", List.of(), false, "specialist", false, "OIM", null);
     loginAs("user");
     return newConversation();
   }

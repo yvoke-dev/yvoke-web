@@ -109,14 +109,7 @@ public class DesktopSyncController {
     @GetMapping("/prompts/system/{name}")
     public ResponseEntity<Map<String, String>> getSystemPrompt(@PathVariable String name) {
         String systemPromptText =
-            systemPromptService.getPrompt(name).map(SystemPrompt::systemPrompt).orElseGet(() -> {
-                if ("default-chat".equals(name)) {
-                    String activeName = systemPromptService.getDefaultChatPromptName();
-                    return systemPromptService.getPrompt(activeName).map(SystemPrompt::systemPrompt)
-                        .orElse("");
-                }
-                return "";
-            });
+            systemPromptService.findChatPrompt(name).map(SystemPrompt::systemPrompt).orElse("");
         return ResponseEntity.ok(Map.of("systemPrompt", systemPromptText));
     }
 

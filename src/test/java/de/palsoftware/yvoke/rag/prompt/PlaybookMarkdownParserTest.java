@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlaybookMarkdownParserTest {
@@ -175,4 +176,82 @@ class PlaybookMarkdownParserTest {
             """, null);
         assertNull(parsed.area());
     }
+
+    @Test
+    void theSystemPromptIsReadFromTheFrontmatterAndWrittenBack() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            system_prompt: coding-chat
+            ---
+            Body
+            """, null);
+        assertEquals("coding-chat", parsed.systemPrompt());
+
+        String md = PlaybookMarkdownParser.toMarkdown(parsed);
+        assertTrue(md.contains("system_prompt: coding-chat"), md);
+        assertEquals("coding-chat", PlaybookMarkdownParser.parseMarkdown(md, null).systemPrompt());
+    }
+
+    @Test
+    void aliasedSystemPromptCamelCaseIsSupported() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            systemPrompt: special-chat
+            ---
+            Body
+            """, null);
+        assertEquals("special-chat", parsed.systemPrompt());
+    }
+
+    @Test
+    void aFileWithoutASystemPromptParsesWithNull() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: pb
+            title: PB
+            ---
+            Body
+            """, null);
+        assertNull(parsed.systemPrompt());
+    }
+
+    @Test
+    void parseMarkdownRejectsSystemPromptForOrchestratorAndReviewer() {
+        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: oim-orchestrator
+            target_agent: orchestrator
+            system_prompt: prompt-ignored
+            ---
+            Body
+            """, "fallback"));
+
+        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: oim-reviewer
+            target_agent: reviewer
+            system_prompt: prompt-ignored
+            ---
+            Body
+            """, "fallback"));
+    }
+
+    @Test
+    void toMarkdownExcludesSystemPromptWhenTargetAgentIsNotSpecialist() {
+        Playbook orch = new Playbook("oim-orchestrator", "OIM Orch", "Desc", "Body", List.of(),
+            false, "orchestrator", false, null, null, false, "OIM", "prompt-ignored");
+        assertNull(orch.systemPrompt());
+        String md = PlaybookMarkdownParser.toMarkdown(orch);
+        assertFalse(md.contains("system_prompt:"));
+
+        Playbook rev = new Playbook("oim-reviewer", "OIM Rev", "Desc", "Body", List.of(), false,
+            "reviewer", false, null, null, false, "OIM", "prompt-ignored");
+        assertNull(rev.systemPrompt());
+        assertFalse(PlaybookMarkdownParser.toMarkdown(rev).contains("system_prompt:"));
+    }
 }
+

@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 
@@ -216,13 +217,36 @@ class RagAdminControllerTest {
             .param("templateText", "text").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
         verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("PingID"));
+            anyBoolean(), any(), anyBoolean(), eq("PingID"), isNull());
 
         mvc.perform(post("/admin/prompts").param("name", "p").param("type", "CHAT")
             .param("systemPrompt", "text").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
         verify(systemPromptService).savePrompt(eq("p"), eq(SystemPromptType.CHAT), eq("text"),
             any(), eq("PingID"));
+    }
+
+    @Test
+    void thePostedSystemPromptReachesTheSavedPlaybook() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
+            .param("templateText", "text").param("area", "OIM")
+            .param("systemPrompt", "custom-sys-prompt")).andExpect(status().is3xxRedirection());
+        verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
+            anyBoolean(), any(), anyBoolean(), eq("OIM"), eq("custom-sys-prompt"));
+    }
+
+    @Test
+    void viewPlaybooksAddsChatSystemPromptsToModel() {
+        SystemPrompt prompt =
+            new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "body", "desc");
+        when(systemPromptService.listPromptsByType(SystemPromptType.CHAT))
+            .thenReturn(List.of(prompt));
+
+        controller.viewPlaybooks(model);
+
+        verify(model).addAttribute("systemPrompts", List.of(prompt));
     }
 
     @Test

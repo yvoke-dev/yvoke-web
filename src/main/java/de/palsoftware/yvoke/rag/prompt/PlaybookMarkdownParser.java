@@ -34,6 +34,7 @@ public class PlaybookMarkdownParser {
         boolean codeExecution = false;
         boolean prototype = false;
         String area = null;
+        String systemPrompt = null;
 
         if (!yamlFrontmatter.isBlank()) {
             try {
@@ -62,6 +63,14 @@ public class PlaybookMarkdownParser {
 
                     if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
                         area = String.valueOf(map.get("area")).trim();
+                    }
+
+                    Object sysPromptObj = map.get("system_prompt");
+                    if (sysPromptObj == null) {
+                        sysPromptObj = map.get("systemPrompt");
+                    }
+                    if (sysPromptObj != null && !String.valueOf(sysPromptObj).isBlank()) {
+                        systemPrompt = String.valueOf(sysPromptObj).trim();
                     }
 
                     Object protoObj = map.get("prototype");
@@ -102,8 +111,14 @@ public class PlaybookMarkdownParser {
             title = name;
         }
 
+        if (!Playbook.isSpecialist(targetAgent) && systemPrompt != null
+            && !systemPrompt.isBlank()) {
+            throw new IllegalArgumentException(
+                "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
+        }
+
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
-            prototype, null, null, false, area);
+            prototype, null, null, false, area, systemPrompt);
     }
 
     public static String toMarkdown(Playbook playbook) {
@@ -114,12 +129,14 @@ public class PlaybookMarkdownParser {
         if (playbook.description() != null && !playbook.description().isBlank()) {
             sb.append("description: ").append(playbook.description()).append("\n");
         }
-        sb.append("target_agent: ")
-            .append(playbook.targetAgent() != null ? playbook.targetAgent() : "specialist")
-            .append("\n");
+        String agent = playbook.targetAgent() != null ? playbook.targetAgent() : "specialist";
+        sb.append("target_agent: ").append(agent).append("\n");
         sb.append("prototype: ").append(playbook.prototype()).append("\n");
         if (playbook.area() != null) {
             sb.append("area: ").append(playbook.area()).append("\n");
+        }
+        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
+            sb.append("system_prompt: ").append(playbook.systemPrompt().trim()).append("\n");
         }
         if (playbook.tools() != null && !playbook.tools().isEmpty()) {
             sb.append("tools:\n");

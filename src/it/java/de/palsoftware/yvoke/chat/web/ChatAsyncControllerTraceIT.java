@@ -341,7 +341,7 @@ public class ChatAsyncControllerTraceIT {
         conversationsToDelete.add(convOther.id());
 
         playbookService.savePlaybook("trace-playbook", "Trace Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM");
+            List.of(), false, "specialist", false, "OIM", null);
 
         doAnswer(new Answer<Void>() {
             private int callCount = 0;
