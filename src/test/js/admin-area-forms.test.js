@@ -12,9 +12,49 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { filterSystemPromptsForArea, applySystemPrompt, updateRoleState } from '../../main/resources/static/js/admin/playbook-prompt.js';
+import { filterSystemPromptsForArea, applySystemPrompt, updateRoleState, isSpecialistRole } from '../../main/resources/static/js/admin/playbook-prompt.js';
 
 const ADMIN = 'src/main/resources/templates/admin';
+
+function createSelectDouble(initialOptions) {
+    const options = initialOptions.map(opt => ({
+        ...opt,
+        dataset: { ...opt.dataset },
+        remove() {
+            const idx = options.indexOf(this);
+            if (idx >= 0) options.splice(idx, 1);
+        }
+    }));
+    let selectedIndex = 0;
+    const select = {
+        options,
+        get selectedIndex() { return selectedIndex; },
+        set selectedIndex(i) { selectedIndex = i; },
+        get value() { return selectedIndex >= 0 && options[selectedIndex] ? options[selectedIndex].value : ''; },
+        set value(v) {
+            selectedIndex = options.findIndex(o => o.value === v);
+        },
+        appendChild(opt) {
+            options.push(opt);
+        },
+        ownerDocument: {
+            createElement(tagName) {
+                assert.equal(tagName, 'option');
+                const element = {
+                    value: '',
+                    textContent: '',
+                    dataset: {},
+                    remove() {
+                        const idx = options.indexOf(this);
+                        if (idx >= 0) options.splice(idx, 1);
+                    }
+                };
+                return element;
+            }
+        }
+    };
+    return select;
+}
 
 /** The `<form>` element posting to `action`, as source text. */
 function formPostingTo(html, action) {
@@ -79,63 +119,45 @@ test('playbooks: applySystemPrompt preserves a cross-area stored prompt and does
     assert.match(html, /PlaybookPrompt\?\.filterSystemPromptsForArea/);
     assert.match(html, /PlaybookPrompt\?\.applySystemPrompt/);
 
-    const options = [
+    const initialOptions = [
         { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' },
         { value: 'p-oim', textContent: 'p-oim', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'OIM' : null },
         { value: 'p-ping', textContent: 'p-ping', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'PingID' : null }
     ];
-    let selectedIndex = 0;
-    const select = {
-        options,
-        get selectedIndex() { return selectedIndex; },
-        set selectedIndex(i) { selectedIndex = i; },
-        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
-        set value(v) {
-            selectedIndex = options.findIndex(o => o.value === v);
-        }
-    };
+    const select = createSelectDouble(initialOptions);
 
     applySystemPrompt(select, 'p-oim', 'PingID', false);
     assert.equal(select.value, 'p-oim');
-    assert.equal(options[1].disabled, false);
-    assert.equal(options[1].textContent, 'p-oim (area: OIM)');
+    assert.equal(select.options[1].disabled, false);
+    assert.equal(select.options[1].textContent, 'p-oim (area: OIM)');
 });
 
 test('playbooks: (area: X) annotation cleans up when the prompt is in-area', () => {
-    const options = [
+    const initialOptions = [
         { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' },
         { value: 'p-oim', textContent: 'p-oim', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'OIM' : null },
         { value: 'p-ping', textContent: 'p-ping', dataset: {}, getAttribute: (attr) => attr === 'data-area' ? 'PingID' : null }
     ];
-    let selectedIndex = 0;
-    const select = {
-        options,
-        get selectedIndex() { return selectedIndex; },
-        set selectedIndex(i) { selectedIndex = i; },
-        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
-        set value(v) {
-            selectedIndex = options.findIndex(o => o.value === v);
-        }
-    };
+    const select = createSelectDouble(initialOptions);
 
     // Step 1: cross-area edit -> annotated
     applySystemPrompt(select, 'p-oim', 'PingID', false);
-    assert.equal(options[1].textContent, 'p-oim (area: OIM)');
+    assert.equal(select.options[1].textContent, 'p-oim (area: OIM)');
 
     // Step 2: edit moves to a playbook in OIM (where p-oim is in-area) -> annotation cleaned up
     applySystemPrompt(select, 'p-oim', 'OIM', false);
-    assert.equal(options[1].textContent, 'p-oim');
-    assert.equal(options[1].disabled, false);
-    assert.equal(options[1].dataset.annotated, undefined);
+    assert.equal(select.options[1].textContent, 'p-oim');
+    assert.equal(select.options[1].disabled, false);
+    assert.equal(select.options[1].dataset.annotated, undefined);
 
     // Step 3: changing area to PingID without preserving p-oim hides/disables it
     filterSystemPromptsForArea(select, 'PingID', null);
-    assert.equal(options[1].hidden, true);
-    assert.equal(options[1].disabled, true);
-    assert.equal(options[1].textContent, 'p-oim');
+    assert.equal(select.options[1].hidden, true);
+    assert.equal(select.options[1].disabled, true);
+    assert.equal(select.options[1].textContent, 'p-oim');
 });
 
-test('playbooks: updateRoleState disables and clears prompt for orchestrator and reviewer', () => {
+test('playbooks: updateRoleState disables and clears prompt for orchestrator and reviewer, allows unlisted roles', () => {
     const select = { value: 'some-prompt', disabled: false };
 
     updateRoleState(select, 'orchestrator', false);
@@ -147,39 +169,47 @@ test('playbooks: updateRoleState disables and clears prompt for orchestrator and
     assert.equal(select.disabled, true);
     assert.equal(select.value, '');
 
+    // Unlisted roles like 'analyst' are specialists and retain prompts
+    select.value = 'some-prompt';
+    updateRoleState(select, 'analyst', false);
+    assert.equal(select.disabled, false);
+    assert.equal(select.value, 'some-prompt');
+
     updateRoleState(select, 'specialist', false);
     assert.equal(select.disabled, false);
+
+    assert.equal(isSpecialistRole('specialist'), true);
+    assert.equal(isSpecialistRole('analyst'), true);
+    assert.equal(isSpecialistRole(null), true);
+    assert.equal(isSpecialistRole(''), true);
+    assert.equal(isSpecialistRole('orchestrator'), false);
+    assert.equal(isSpecialistRole('reviewer'), false);
 });
 
-test('playbooks: applySystemPrompt creates dynamic option for unlisted/inactive prompts', () => {
-    const options = [
+test('playbooks: applySystemPrompt creates dynamic option for unlisted/inactive prompts via createElement', () => {
+    let createdCount = 0;
+    const initialOptions = [
         { value: '', textContent: '(Default / None)', dataset: {}, getAttribute: () => '' }
     ];
-    let selectedIndex = 0;
-    const select = {
-        options,
-        get selectedIndex() { return selectedIndex; },
-        set selectedIndex(i) { selectedIndex = i; },
-        get value() { return selectedIndex >= 0 ? options[selectedIndex].value : ''; },
-        set value(v) {
-            selectedIndex = options.findIndex(o => o.value === v);
-        },
-        appendChild(opt) {
-            options.push(opt);
-        }
+    const select = createSelectDouble(initialOptions);
+    const origCreateElement = select.ownerDocument.createElement;
+    select.ownerDocument.createElement = function(tagName) {
+        createdCount++;
+        return origCreateElement.call(this, tagName);
     };
 
     applySystemPrompt(select, 'unlisted-prompt', 'OIM', false);
     assert.equal(select.value, 'unlisted-prompt');
-    assert.equal(options.length, 2);
-    assert.equal(options[1].value, 'unlisted-prompt');
-    assert.equal(options[1].textContent, 'unlisted-prompt (inactive / not CHAT)');
-    assert.equal(options[1].dataset.dynamic, 'true');
+    assert.equal(createdCount, 1);
+    assert.equal(select.options.length, 2);
+    assert.equal(select.options[1].value, 'unlisted-prompt');
+    assert.equal(select.options[1].textContent, 'unlisted-prompt (inactive / not CHAT)');
+    assert.equal(select.options[1].dataset.dynamic, 'true');
 
     // Re-applying with empty clears dynamic option
     applySystemPrompt(select, '', 'OIM', false);
     assert.equal(select.value, '');
-    assert.equal(options.length, 1);
+    assert.equal(select.options.length, 1);
 });
 
 test('playbooks: null/undefined elements are tolerated safely', () => {

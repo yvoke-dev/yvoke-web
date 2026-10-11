@@ -111,11 +111,10 @@ public class PlaybookMarkdownParser {
             title = name;
         }
 
-        boolean isSpecialist = "specialist".equalsIgnoreCase(targetAgent)
-            || (!"orchestrator".equalsIgnoreCase(targetAgent)
-                && !"reviewer".equalsIgnoreCase(targetAgent));
-        if (!isSpecialist) {
-            systemPrompt = null;
+        if (!Playbook.isSpecialist(targetAgent) && systemPrompt != null
+            && !systemPrompt.isBlank()) {
+            throw new IllegalArgumentException(
+                "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
         }
 
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
@@ -136,9 +135,7 @@ public class PlaybookMarkdownParser {
         if (playbook.area() != null) {
             sb.append("area: ").append(playbook.area()).append("\n");
         }
-        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
-            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
-        if (isSpecialist && playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
+        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             sb.append("system_prompt: ").append(playbook.systemPrompt().trim()).append("\n");
         }
         if (playbook.tools() != null && !playbook.tools().isEmpty()) {

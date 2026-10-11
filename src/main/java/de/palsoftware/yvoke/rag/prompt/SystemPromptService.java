@@ -67,14 +67,6 @@ public class SystemPromptService {
             throw new IllegalArgumentException("Default prompt name cannot be empty.");
         }
         appConfigRepository.set("default-chat-prompt", name.trim());
-        Cache appCache = cacheManager.getCache(CacheConfig.APP_CONFIG);
-        if (appCache != null) {
-            appCache.evict("default-chat-prompt");
-        }
-        Cache sysCache = cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS);
-        if (sysCache != null) {
-            sysCache.clear();
-        }
     }
 
     public List<SystemPrompt> listAllPrompts() {

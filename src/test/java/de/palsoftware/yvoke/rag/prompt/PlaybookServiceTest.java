@@ -207,6 +207,56 @@ class PlaybookServiceTest {
     }
 
     @Test
+    void testImportPlaybookFromMarkdownRejectsSystemPromptForOrchestratorAndReviewer() {
+        String orchMd = """
+            ---
+            name: pb-orch
+            target_agent: orchestrator
+            system_prompt: some-prompt
+            ---
+            Body
+            """;
+        IllegalArgumentException ex1 = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown(orchMd, "pb-orch", "OIM"));
+        assertTrue(ex1.getMessage().contains("cannot have a designated system prompt"));
+
+        String revMd = """
+            ---
+            name: pb-rev
+            target_agent: reviewer
+            system_prompt: some-prompt
+            ---
+            Body
+            """;
+        IllegalArgumentException ex2 = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown(revMd, "pb-rev", "OIM"));
+        assertTrue(ex2.getMessage().contains("cannot have a designated system prompt"));
+    }
+
+    @Test
+    void playbookRecordNormalisesSystemPromptToNullForNonSpecialistsAndRetainsForSpecialists() {
+        Playbook orch = new Playbook("pb-orch", "PB Orch", "Desc", "Template", List.of(), false,
+            "orchestrator", false, null, null, false, "OIM", "some-prompt");
+        assertNull(orch.systemPrompt());
+        assertFalse(orch.isSpecialist());
+
+        Playbook rev = new Playbook("pb-rev", "PB Rev", "Desc", "Template", List.of(), false,
+            "reviewer", false, null, null, false, "OIM", "some-prompt");
+        assertNull(rev.systemPrompt());
+        assertFalse(rev.isSpecialist());
+
+        Playbook specialist = new Playbook("pb-spec", "PB Spec", "Desc", "Template", List.of(),
+            false, "specialist", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", specialist.systemPrompt());
+        assertTrue(specialist.isSpecialist());
+
+        Playbook analyst = new Playbook("pb-analyst", "PB Analyst", "Desc", "Template", List.of(),
+            false, "analyst", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", analyst.systemPrompt());
+        assertTrue(analyst.isSpecialist());
+    }
+
+    @Test
     void testRegisterPlaybookWithMcpExcludesSystemPromptForOrchestratorAndReviewer() {
         Playbook orch = new Playbook("pb-orch", "PB Orch", "Desc", "Template", List.of(), false,
             "orchestrator", false, null, null, false, "OIM", "some-prompt");

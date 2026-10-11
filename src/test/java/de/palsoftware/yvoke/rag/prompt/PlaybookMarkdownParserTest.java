@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlaybookMarkdownParserTest {
@@ -219,24 +220,37 @@ class PlaybookMarkdownParserTest {
     }
 
     @Test
-    void toMarkdownAndParseMarkdownExcludeSystemPromptForOrchestratorAndReviewer() {
-        Playbook orch = new Playbook("oim-orchestrator", "OIM Orch", "Desc", "Body", List.of(),
-            false, "orchestrator", false, null, null, false, "OIM", "prompt-ignored");
-        String md = PlaybookMarkdownParser.toMarkdown(orch);
-        assertFalse(md.contains("system_prompt:"));
-
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+    void parseMarkdownRejectsSystemPromptForOrchestratorAndReviewer() {
+        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
             ---
             name: oim-orchestrator
             target_agent: orchestrator
             system_prompt: prompt-ignored
             ---
             Body
-            """, "fallback");
-        assertNull(parsed.systemPrompt());
+            """, "fallback"));
+
+        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: oim-reviewer
+            target_agent: reviewer
+            system_prompt: prompt-ignored
+            ---
+            Body
+            """, "fallback"));
+    }
+
+    @Test
+    void toMarkdownExcludesSystemPromptWhenTargetAgentIsNotSpecialist() {
+        Playbook orch = new Playbook("oim-orchestrator", "OIM Orch", "Desc", "Body", List.of(),
+            false, "orchestrator", false, null, null, false, "OIM", "prompt-ignored");
+        assertNull(orch.systemPrompt());
+        String md = PlaybookMarkdownParser.toMarkdown(orch);
+        assertFalse(md.contains("system_prompt:"));
 
         Playbook rev = new Playbook("oim-reviewer", "OIM Rev", "Desc", "Body", List.of(), false,
             "reviewer", false, null, null, false, "OIM", "prompt-ignored");
+        assertNull(rev.systemPrompt());
         assertFalse(PlaybookMarkdownParser.toMarkdown(rev).contains("system_prompt:"));
     }
 }

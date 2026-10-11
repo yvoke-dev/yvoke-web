@@ -65,11 +65,7 @@ public class PlaybookService {
     }
 
     public List<Playbook> listSpecializedPlaybooks() {
-        return listAllPlaybooks().stream()
-            .filter(p -> "specialist".equalsIgnoreCase(p.targetAgent()) || p.targetAgent() == null
-                || (!"orchestrator".equalsIgnoreCase(p.targetAgent())
-                    && !"reviewer".equalsIgnoreCase(p.targetAgent())))
-            .toList();
+        return listAllPlaybooks().stream().filter(Playbook::isSpecialist).toList();
     }
 
     @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
@@ -100,17 +96,15 @@ public class PlaybookService {
 
         String agent =
             targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
-        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
-            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
 
-        if (!isSpecialist && systemPrompt != null && !systemPrompt.isBlank()) {
+        if (!Playbook.isSpecialist(agent) && systemPrompt != null && !systemPrompt.isBlank()) {
             throw new IllegalArgumentException(
                 "Playbooks for role '" + agent + "' cannot have a designated system prompt.");
         }
 
         String storedArea = areaService.requireArea(area);
         String prompt = null;
-        if (isSpecialist && systemPrompt != null && !systemPrompt.isBlank()) {
+        if (Playbook.isSpecialist(agent) && systemPrompt != null && !systemPrompt.isBlank()) {
             SystemPrompt sp =
                 systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
             if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
@@ -208,10 +202,7 @@ public class PlaybookService {
         meta.put("targetAgent",
             playbook.targetAgent() != null ? playbook.targetAgent() : "specialist");
         meta.put("prototype", playbook.prototype());
-        String agent = playbook.targetAgent() != null ? playbook.targetAgent() : "specialist";
-        boolean isSpecialist = "specialist".equalsIgnoreCase(agent)
-            || (!"orchestrator".equalsIgnoreCase(agent) && !"reviewer".equalsIgnoreCase(agent));
-        if (isSpecialist && playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
+        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             meta.put("systemPrompt", playbook.systemPrompt().trim());
         }
         return meta;

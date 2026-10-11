@@ -69,29 +69,20 @@ export function filterSystemPromptsForArea(select, selectedArea, preserveValue) 
 export function applySystemPrompt(select, value, areaValue, isReadOnly) {
     if (!select || !select.options) return;
 
-    Array.from(select.options)
-        .filter(o => o.dataset?.dynamic === 'true')
-        .forEach(o => {
-            if (typeof o.remove === 'function') {
-                o.remove();
-            } else if (Array.isArray(select.options)) {
-                const idx = select.options.indexOf(o);
-                if (idx >= 0) select.options.splice(idx, 1);
-            }
-        });
+    for (let i = select.options.length - 1; i >= 0; i--) {
+        const opt = select.options[i];
+        if (opt.dataset?.dynamic === 'true') {
+            opt.remove();
+        }
+    }
 
     if (value && !Array.from(select.options).some(o => o.value === value)) {
-        const doc = select.ownerDocument || (typeof document !== 'undefined' ? document : null);
-        const opt = doc ? doc.createElement('option') : { dataset: {} };
-        if (!opt.dataset) opt.dataset = {};
+        const doc = select.ownerDocument || document;
+        const opt = doc.createElement('option');
         opt.value = value;
         opt.textContent = `${value} (inactive / not CHAT)`;
         opt.dataset.dynamic = 'true';
-        if (typeof select.appendChild === 'function') {
-            select.appendChild(opt);
-        } else if (Array.isArray(select.options)) {
-            select.options.push(opt);
-        }
+        select.appendChild(opt);
     }
 
     select.value = value || '';
@@ -101,6 +92,18 @@ export function applySystemPrompt(select, value, areaValue, isReadOnly) {
         select.options[select.selectedIndex].hidden = false;
         select.options[select.selectedIndex].disabled = false;
     }
+}
+
+/**
+ * Returns whether a role is considered a specialist (all roles except orchestrator and reviewer).
+ *
+ * @param {string} role The role name.
+ * @returns {boolean} True if the role is a specialist.
+ */
+export function isSpecialistRole(role) {
+    if (!role) return true;
+    const r = role.trim().toLowerCase();
+    return r !== 'orchestrator' && r !== 'reviewer';
 }
 
 /**
@@ -114,9 +117,7 @@ export function applySystemPrompt(select, value, areaValue, isReadOnly) {
  */
 export function updateRoleState(sysPromptSelect, targetAgent, isReadOnly) {
     if (!sysPromptSelect) return;
-    const agent = (targetAgent || 'specialist').trim().toLowerCase();
-    const isSpecialist = agent === 'specialist';
-    if (!isSpecialist) {
+    if (!isSpecialistRole(targetAgent)) {
         sysPromptSelect.value = '';
         sysPromptSelect.disabled = true;
     } else if (!isReadOnly) {
