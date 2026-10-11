@@ -971,6 +971,101 @@ public class ChatAsyncControllerIT {
     }
 
     @Test
+    public void followUpPastFirst100MessagesWithoutPlaybookStillEnforcesLock() throws Exception {
+        String userAOid = "user-a-async-long-oid";
+        userRepository.upsert(userAOid, "user-a-async-long@local", "User A");
+        setSecurityContext(userAOid, "user-a-async-long@local", "User A");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        playbookService.savePlaybook("pb-lock-past100", "Lock Past 100", "Desc", "Instructions",
+            List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("pb-lock-other", "Lock Other", "Desc", "Instructions",
+            List.of(), false, "specialist", false, "OIM", null);
+
+        // Populate 100 messages without playbook (e.g. desktop synced)
+        for (int i = 0; i < 100; i++) {
+            messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Desktop " + i,
+                null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+        }
+        // Message 101 has playbook pb-lock-past100
+        messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Message 101",
+            "pb-lock-past100", List.of(), List.of(), Instant.now()));
+
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        var login = testUserLogin(userAOid, "user-a-async-long@local", "User A");
+
+        // Sending with different playbook must be rejected
+        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                .with(login)
+                .with(csrf())
+                .param("content", "Follow up with wrong pb")
+                .param("promptName", "pb-lock-other"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error")
+                .value("Playbook cannot be changed once a conversation has started."));
+
+        // Sending with same playbook must succeed
+        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                .with(login)
+                .with(csrf())
+                .param("content", "Follow up with same pb")
+                .param("promptName", "pb-lock-past100"))
+            .andExpect(status().isAccepted());
+
+        playbookService.deletePlaybook("pb-lock-past100");
+        playbookService.deletePlaybook("pb-lock-other");
+    }
+
+    @Test
+    public void followUpWithDeletedLockedPlaybookReturnsActionableError() throws Exception {
+        String userAOid = "user-a-async-del-oid";
+        userRepository.upsert(userAOid, "user-a-async-del@local", "User A");
+        setSecurityContext(userAOid, "user-a-async-del@local", "User A");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        playbookService.savePlaybook("pb-to-delete", "To Delete", "Desc", "Instructions",
+            List.of(), false, "specialist", false, "OIM", null);
+
+        doAnswer(inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+            return null;
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        var login = testUserLogin(userAOid, "user-a-async-del@local", "User A");
+
+        // Send first message with pb-to-delete
+        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                .with(login)
+                .with(csrf())
+                .param("content", "First question")
+                .param("promptName", "pb-to-delete"))
+            .andExpect(status().isAccepted());
+
+        // Admin deletes the locked playbook
+        playbookService.deletePlaybook("pb-to-delete");
+
+        // Follow up question returns actionable 400 error
+        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                .with(login)
+                .with(csrf())
+                .param("content", "Second question")
+                .param("promptName", "pb-to-delete"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error")
+                .value("The locked playbook 'pb-to-delete' no longer exists; please start a new conversation."));
+    }
+
+    @Test
     public void promptAssemblyCombinesSystemPromptAndPlaybookWithoutPrependingToUser()
         throws Exception {
         String userAOid = "user-a-async-oid";
@@ -980,6 +1075,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
+        String previousDefault = systemPromptService.getDefaultChatPromptName();
         systemPromptService.savePrompt("default-chat", SystemPromptType.CHAT,
             "Default Base Instructions", "Desc", "OIM");
         systemPromptService.setDefaultChatPromptName("default-chat");
@@ -1037,8 +1133,15 @@ public class ChatAsyncControllerIT {
             assertThat(dbUserMsg.content()).isEqualTo("My clean user query");
             assertThat(dbUserMsg.playbook()).isEqualTo("pb-assemble");
         } finally {
-            playbookService.deletePlaybook("pb-assemble");
-            systemPromptService.deletePrompt("default-chat");
+            if (previousDefault != null && !previousDefault.isBlank()) {
+                systemPromptService.setDefaultChatPromptName(previousDefault);
+            }
+            try {
+                playbookService.deletePlaybook("pb-assemble");
+            } catch (Exception ignored) {}
+            try {
+                systemPromptService.deletePrompt("default-chat");
+            } catch (Exception ignored) {}
         }
     }
 }

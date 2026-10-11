@@ -703,6 +703,7 @@ public class ChatMessageServiceTest {
             "Answer 1", List.of(), List.of(), Instant.now());
         when(messageRepository.findByConversationId(conversationId, 100, 0))
             .thenReturn(List.of(priorUserMsg, priorAnsMsg));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
         IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "Message 2", "PB2"));
@@ -732,6 +733,7 @@ public class ChatMessageServiceTest {
             "Answer 1", List.of(), List.of(), Instant.now());
         when(messageRepository.findByConversationId(conversationId, 100, 0))
             .thenReturn(List.of(priorUserMsg, priorAnsMsg));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
         // Submitting with same playbook succeeds
         ChatMessageService.PreparedChat prepSame =
@@ -782,6 +784,7 @@ public class ChatMessageServiceTest {
 
         when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(
             List.of(msg0DesktopUser, msg1DesktopAssistant, msg2WebUser, msg3WebAssistant));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
         // Submitting with diff playbook should be rejected
         IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
@@ -795,6 +798,56 @@ public class ChatMessageServiceTest {
         assertThat(prep.playbookName()).isEqualTo("PB1");
         assertThat(prep.systemPrompt())
             .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+    }
+
+    @Test
+    public void prepare_whenLockedPlaybookIsPastFirst100Messages_stillEnforcesLock() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        List<Message> first100 = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            first100.add(new Message(UUID.randomUUID(), conversationId, "user", "Old msg " + i,
+                null, List.of(), List.of(), Instant.now().minusSeconds(1000 - i)));
+        }
+        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(first100);
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
+
+        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Message 102", "PB2"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Message 102", null);
+        assertThat(prep.playbookName()).isEqualTo("PB1");
+    }
+
+    @Test
+    public void prepare_whenLockedPlaybookIsDeleted_throwsActionableException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        when(messageRepository.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("deleted-pb"));
+        when(playbookService.getPlaybook("deleted-pb")).thenReturn(Optional.empty());
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Follow-up question", null));
+        assertThat(ex.getMessage()).isEqualTo(
+            "The locked playbook 'deleted-pb' no longer exists; please start a new conversation.");
     }
 
     @Test
@@ -821,6 +874,7 @@ public class ChatMessageServiceTest {
 
         when(messageRepository.findByConversationId(conversationId, 100, 0))
             .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
         ChatMessageService.PreparedChat prep =
             chatMessageService.prepare(conversationId, "Message 3", null);

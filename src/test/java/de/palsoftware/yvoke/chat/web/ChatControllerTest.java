@@ -290,6 +290,8 @@ class ChatControllerTest {
         Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question",
             "my-playbook", List.of(), List.of(), Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
+        when(messageService.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("my-playbook"));
         when(playbookService.getPlaybook("my-playbook"))
             .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
                 List.of(), false, Instant.now(), Instant.now(), false)));
@@ -356,6 +358,8 @@ class ChatControllerTest {
             "my-playbook", List.of(), List.of(), Instant.now());
         when(messageService.getMessages(conversationId))
             .thenReturn(List.of(desktopUserMsg, webUserMsg));
+        when(messageService.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("my-playbook"));
         when(playbookService.getPlaybook("my-playbook"))
             .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
                 List.of(), false, Instant.now(), Instant.now(), false)));
@@ -366,6 +370,30 @@ class ChatControllerTest {
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
         assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+    }
+
+    @Test
+    void threadView_whenPlaybookPastFirst100Messages_locksPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+        when(messageService.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("past100-pb"));
+        when(playbookService.getPlaybook("past100-pb"))
+            .thenReturn(Optional.of(new Playbook("past100-pb", "Past 100 Title", "Desc", "Tmpl",
+                List.of(), false, Instant.now(), Instant.now(), false)));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertEquals("past100-pb", model.getAttribute("lockedPlaybookName"));
+        assertEquals("Past 100 Title", model.getAttribute("lockedPlaybookTitle"));
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

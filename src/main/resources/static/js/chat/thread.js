@@ -97,11 +97,11 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!el) return;
             switch (el.dataset.action) {
                 case 'select-playbook':
-                    if (isPlaybookLocked) return;
+                    if (isPlaybookLocked || currentAbortController) return;
                     selectPlaybook(el.dataset.promptName, el.dataset.promptTitle);
                     break;
                 case 'clear-playbook':
-                    if (isPlaybookLocked) return;
+                    if (isPlaybookLocked || currentAbortController) return;
                     clearPlaybook();
                     break;
                 case 'toggle-citation':
@@ -189,7 +189,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         const actionAddBtn = document.getElementById('action-add-btn');
         if (actionAddBtn) {
             actionAddBtn.addEventListener('click', function(e) {
-                if (isPlaybookLocked) return;
+                if (isPlaybookLocked || currentAbortController) return;
                 e.stopPropagation();
                 const popup = document.getElementById('autocomplete-popup');
                 const isPopupOpen = popup && popup.style.display === 'flex';
@@ -1570,9 +1570,6 @@ import { createSseAccumulator } from './sse-accumulator.js';
             chatInput.disabled = true;
             adjustChatInputHeight(); // Reset height
 
-            isPlaybookLocked = true;
-            applyPlaybookLockUI();
-
             // Create AbortController
             currentAbortController = new AbortController();
             const signal = currentAbortController.signal;
@@ -1627,6 +1624,10 @@ import { createSseAccumulator } from './sse-accumulator.js';
                             chatInput.focus();
                         });
                     }
+                    if (!isPlaybookLocked) {
+                        isPlaybookLocked = true;
+                        applyPlaybookLockUI();
+                    }
                     return response.json();
                 })
                 .then(data => {
@@ -1675,6 +1676,10 @@ import { createSseAccumulator } from './sse-accumulator.js';
                             chatInput.disabled = false;
                             chatInput.focus();
                         });
+                    }
+                    if (!isPlaybookLocked) {
+                        isPlaybookLocked = true;
+                        applyPlaybookLockUI();
                     }
 
                     const reader = response.body.getReader();

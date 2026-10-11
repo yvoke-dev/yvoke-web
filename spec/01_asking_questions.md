@@ -47,7 +47,9 @@ a register of everyone's conversations.
 - **The playbook is chosen on the first question and locked for the conversation.** Once a message has been
   sent, the playbook cannot be changed. The playbook selection button (**+**), prompt chips, autocomplete
   (`/` and `+`), and the remove button are disabled and hidden. Follow-up turns automatically use the locked
-  playbook; attempting to specify a different playbook on a follow-up turn is rejected with an error.
+  playbook; attempting to specify a different playbook on a follow-up turn is rejected with an error. If
+  the locked playbook is subsequently deleted, follow-up turns are refused with an error advising the user
+  to start a new conversation.
 - **A playbook adds to the base instructions; it does not replace them.** The administrator's base
   instructions always apply, and the playbook is layered on top for the question that uses it. So rules that
   hold for every answer — how sources are cited, never naming an unverified object, always naming a knowledge

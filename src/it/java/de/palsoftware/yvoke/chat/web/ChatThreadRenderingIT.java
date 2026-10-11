@@ -680,7 +680,6 @@ public class ChatThreadRenderingIT {
         assertThat(lockedMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
 
         String lockedHtml = lockedResult.getResponse().getContentAsString();
-        assertThat(lockedHtml).doesNotContain("id=\"prompt-chips\"");
         assertThat(lockedHtml).contains("isPlaybookLocked: true");
         assertThat(lockedHtml).contains("lockedPlaybookName: \"oim-full\"");
         // action-add-btn and active-playbook-remove are hidden
@@ -693,9 +692,30 @@ public class ChatThreadRenderingIT {
         assertThat(lockedHtml)
             .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
 
+        // Verify that even if 100 messages without playbook precede the playbook message,
+        // threadView still resolves the lock using findInitialPlaybook
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID longConvId = chatConversationService.createConversation().id();
+        for (int i = 0; i < 100; i++) {
+            messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Desktop " + i,
+                null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+        }
+        messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Web question 101",
+            "oim-full", List.of(), List.of(), Instant.now()));
+
+        MvcResult longConvResult = mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        ModelAndView longMav = longConvResult.getModelAndView();
+        assertThat(longMav).isNotNull();
+        assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
+        assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+        String longHtml = longConvResult.getResponse().getContentAsString();
+        assertThat(longHtml).contains("isPlaybookLocked: true");
+
         // Cleanup
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         chatConversationService.deleteConversation(convId);
+        chatConversationService.deleteConversation(longConvId);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */

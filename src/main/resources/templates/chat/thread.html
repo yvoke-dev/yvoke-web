@@ -69,7 +69,7 @@
             <!-- Messages Thread -->
             <div class="chat-messages-container" id="chat-messages">
                 <!-- Playbook prompt chips for empty conversations -->
-                <div th:if="${#lists.isEmpty(messages) && !isReadOnly && !isPlaybookLocked}" class="prompt-chips" id="prompt-chips">
+                <div th:if="${#lists.isEmpty(messages) && !isReadOnly}" class="prompt-chips" id="prompt-chips">
                     <div class="chips-label">Playbooks from the knowledge base (or type "/"):</div>
                     <button th:each="prompt : ${prompts}" 
                             type="button"

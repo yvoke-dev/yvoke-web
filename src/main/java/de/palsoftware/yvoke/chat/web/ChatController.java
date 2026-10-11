@@ -107,12 +107,9 @@ public class ChatController {
 
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
-        Optional<Message> initialPlaybookMessage =
-            messages.stream().filter(m -> "user".equalsIgnoreCase(m.role()) && m.playbook() != null
-                && !m.playbook().isBlank()).findFirst();
-        boolean isPlaybookLocked = initialPlaybookMessage.isPresent();
-        String lockedPlaybookName =
-            isPlaybookLocked ? initialPlaybookMessage.get().playbook() : null;
+        Optional<String> initialPlaybook = chatMessageService.findInitialPlaybook(id);
+        boolean isPlaybookLocked = initialPlaybook.isPresent();
+        String lockedPlaybookName = initialPlaybook.orElse(null);
         String lockedPlaybookTitle = null;
         if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
             lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)

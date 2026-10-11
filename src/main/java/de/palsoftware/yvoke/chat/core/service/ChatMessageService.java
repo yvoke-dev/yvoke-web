@@ -124,6 +124,10 @@ public class ChatMessageService {
         return messageRepository.findByConversationId(conversationId, 100, 0);
     }
 
+    public Optional<String> findInitialPlaybook(UUID conversationId) {
+        return messageRepository.findInitialPlaybook(conversationId);
+    }
+
     /**
      * Validates access, persists the user message and resolves model/history/tools synchronously.
      * Intended to run on the request thread so authorization/validation failures surface as normal
@@ -134,15 +138,12 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        List<Message> priorMessages =
-            messageRepository.findByConversationId(conversationId, 100, 0);
-        Optional<Message> initialPlaybookMessage =
-            priorMessages.stream().filter(msg -> "user".equalsIgnoreCase(msg.role())
-                && msg.playbook() != null && !msg.playbook().isBlank()).findFirst();
+        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean isLocked = initialPlaybook.isPresent();
 
         String effectivePlaybookName;
-        if (initialPlaybookMessage.isPresent()) {
-            String lockedPlaybook = initialPlaybookMessage.get().playbook();
+        if (isLocked) {
+            String lockedPlaybook = initialPlaybook.get();
             if (promptName != null && !promptName.isBlank()
                 && !promptName.trim().equals(lockedPlaybook)) {
                 throw new IllegalArgumentException(
@@ -157,8 +158,13 @@ public class ChatMessageService {
             effectivePlaybookName = promptName.trim();
         }
 
-        Playbook playbook = playbookService.getPlaybook(effectivePlaybookName)
-            .orElseThrow(() -> new IllegalArgumentException("The selected playbook is invalid."));
+        Playbook playbook = playbookService.getPlaybook(effectivePlaybookName).orElseThrow(() -> {
+            if (isLocked) {
+                return new IllegalArgumentException("The locked playbook '" + effectivePlaybookName
+                    + "' no longer exists; please start a new conversation.");
+            }
+            return new IllegalArgumentException("The selected playbook is invalid.");
+        });
 
         UUID userMessageId = UUID.randomUUID();
         String modelContent = transactionTemplate.execute(status -> saveUserMessage(conversationId,
@@ -573,6 +579,11 @@ public class ChatMessageService {
             }
         }
         if (basePrompt == null && systemPromptService != null) {
+            // Note: Falling back to findChatPrompt(null) here mirrors
+            // RagService.loadAgenticSystemPrompt().
+            // Because PreparedChat passes this resolved system prompt down into AgenticRagRequest,
+            // RagService's own fallback is effectively bypassed for web chat, ensuring consistent
+            // prompt resolution.
             basePrompt =
                 systemPromptService.findChatPrompt(null).map(SystemPrompt::systemPrompt).orElse("");
         }
