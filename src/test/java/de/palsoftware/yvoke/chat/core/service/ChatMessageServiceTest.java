@@ -1653,6 +1653,9 @@ public class ChatMessageServiceTest {
             false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
             "summarize-sys-prompt");
         when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
+        when(systemPromptService.getPrompt("summarize-sys-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("summarize-sys-prompt",
+                SystemPromptType.SUMMARIZE, "summarize body", "desc")));
         when(systemPromptService.findChatPrompt("summarize-sys-prompt"))
             .thenReturn(Optional.empty());
 

@@ -4,10 +4,12 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import java.util.*;
 import org.yaml.snakeyaml.Yaml;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 
@@ -21,6 +23,14 @@ public class SystemPromptService {
     private final String defaultPromptName;
     private final AppConfigRepository appConfigRepository;
     private final AreaService areaService;
+
+    @Autowired(required = false)
+    @Lazy
+    private SystemPromptService self;
+
+    private SystemPromptService self() {
+        return self != null ? self : this;
+    }
 
     public SystemPromptService(SystemPromptRepository systemPromptRepository,
         @Value("${app.ai.rag.default-prompt-name}") String defaultPromptName,
@@ -74,9 +84,10 @@ public class SystemPromptService {
             throw new IllegalArgumentException("No " + expectedType
                 + " system prompt was specified. Available: " + availableNames(expectedType));
         }
-        SystemPrompt prompt = getPrompt(name).orElseThrow(() -> new IllegalArgumentException(
-            "System prompt '" + name.trim() + "' does not exist. Available " + expectedType
-                + " prompts: " + availableNames(expectedType)));
+        SystemPrompt prompt = self().getPrompt(name)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "System prompt '" + name.trim() + "' does not exist. Available " + expectedType
+                    + " prompts: " + availableNames(expectedType)));
         if (expectedType != null && prompt.type() != expectedType) {
             throw new IllegalArgumentException("System prompt '" + prompt.name() + "' is of type "
                 + prompt.type() + ", but a " + expectedType + " prompt is required. Available: "
@@ -122,12 +133,11 @@ public class SystemPromptService {
      * Only CHAT prompts are returned, on both paths: KG and SUMMARIZE prompts share the namespace
      * but are not base instructions, and nothing a client does needs them.
      */
-    @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS,
-        key = "'chat:' + (#name != null ? #name.trim() : 'default-chat')")
     public Optional<SystemPrompt> findChatPrompt(String name) {
         String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
-        String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
-        return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
+        String resolved =
+            DEFAULT_CHAT.equals(requested) ? self().getDefaultChatPromptName() : requested;
+        return self().getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
     @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
@@ -179,8 +189,8 @@ public class SystemPromptService {
      * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
      * into {@code fallbackArea}, the area picked on the import form.
      */
-    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#result?.name()?.trim()",
-        condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
+    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
+        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
     public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
         if (mdContent == null) {
@@ -228,7 +238,7 @@ public class SystemPromptService {
             }
         }
 
-        savePrompt(name, type, body, description, area);
-        return getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
+        self().savePrompt(name, type, body, description, area);
+        return self().getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
     }
 }

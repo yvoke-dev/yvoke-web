@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import io.modelcontextprotocol.server.McpSyncServer;
 import java.util.List;
 import java.util.Optional;
@@ -22,7 +23,7 @@ public class PromptsServiceTest {
     public void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
         prompts = new PromptsService(new PlaybookService(playbookRepository, (McpSyncServer) null,
-            TestAreas.withAreas("OIM"), null));
+            TestAreas.withAreas("OIM"), mock(SystemPromptService.class)));
     }
 
     @Test

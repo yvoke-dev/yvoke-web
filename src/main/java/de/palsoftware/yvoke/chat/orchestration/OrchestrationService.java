@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -60,20 +61,12 @@ public class OrchestrationService {
     private final ConversationRepository conversationRepository;
     private final SystemPromptService systemPromptService;
 
-    public OrchestrationService(RagService ragService, PlaybookService playbookService,
-        OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
-        AgentRunRepository runRepository, AgentStepRepository stepRepository,
-        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository) {
-        this(ragService, playbookService, properties, profileService, runRepository, stepRepository,
-            objectMapper, conversationRepository, null);
-    }
-
     @Autowired
     public OrchestrationService(RagService ragService, PlaybookService playbookService,
         OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
         AgentRunRepository runRepository, AgentStepRepository stepRepository,
         ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository,
-        @Nullable SystemPromptService systemPromptService) {
+        SystemPromptService systemPromptService) {
         this.ragService = ragService;
         this.playbookService = playbookService;
         this.properties = properties;
@@ -82,7 +75,8 @@ public class OrchestrationService {
         this.stepRepository = stepRepository;
         this.objectMapper = objectMapper;
         this.conversationRepository = conversationRepository;
-        this.systemPromptService = systemPromptService;
+        this.systemPromptService =
+            Objects.requireNonNull(systemPromptService, "systemPromptService must not be null");
     }
 
     public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
@@ -131,13 +125,9 @@ public class OrchestrationService {
         String content;
 
         try {
-            String orchestratorBaseSysPrompt = resolvePlaybookSystemPrompt(orchestratorPlaybook);
-            String reviewerBaseSysPrompt = resolvePlaybookSystemPrompt(reviewerPlaybook);
-            String orchestratorSystemPrompt =
-                (orchestratorBaseSysPrompt != null ? orchestratorBaseSysPrompt + "\n\n" : "")
-                    + orchestratorPlaybook.templateText() + "\n\n## Available specialists\n"
-                    + renderRoster(specialists) + "\n\n## Output contract\n"
-                    + ANSWER_MARKER_CONTRACT;
+            String orchestratorSystemPrompt = orchestratorPlaybook.templateText()
+                + "\n\n## Available specialists\n" + renderRoster(specialists)
+                + "\n\n## Output contract\n" + ANSWER_MARKER_CONTRACT;
 
             Verdict lastRejection = null;
             while (true) {
@@ -215,9 +205,7 @@ public class OrchestrationService {
                     // systemPromptOverride is passed unconditionally: RagService.seedMessages
                     // ignores it whenever priorMessages is non-empty, precisely so a resumed turn
                     // cannot have index 0 rewritten under the answers already given to it.
-                    String reviewerSystemPrompt =
-                        (reviewerBaseSysPrompt != null ? reviewerBaseSysPrompt + "\n\n" : "")
-                            + reviewerPlaybook.templateText();
+                    String reviewerSystemPrompt = reviewerPlaybook.templateText();
                     AgentOutcome rev = runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
                         reviewerSystemPrompt, reviewTask, reviewTask, profile.reviewer(),
                         List.of("verify_citations"), false, List.<ToolCallback>of(submitReview),
@@ -344,7 +332,7 @@ public class OrchestrationService {
     }
 
     private String resolvePlaybookSystemPrompt(Playbook playbook) {
-        if (systemPromptService == null || playbook == null || playbook.systemPrompt() == null
+        if (playbook == null || playbook.systemPrompt() == null
             || playbook.systemPrompt().isBlank()) {
             return null;
         }

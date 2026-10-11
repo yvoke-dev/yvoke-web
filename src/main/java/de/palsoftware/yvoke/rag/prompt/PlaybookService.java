@@ -8,6 +8,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +40,8 @@ public class PlaybookService {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
         this.areaService = areaService;
-        this.systemPromptService = systemPromptService;
+        this.systemPromptService =
+            Objects.requireNonNull(systemPromptService, "systemPromptService must not be null");
     }
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
@@ -101,18 +103,14 @@ public class PlaybookService {
         String storedArea = areaService.requireArea(area);
         String prompt = null;
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            if (systemPromptService == null) {
-                prompt = systemPrompt.trim();
-            } else {
-                SystemPrompt sp =
-                    systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
-                if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
-                    throw new IllegalArgumentException(
-                        "System prompt '" + sp.name() + "' belongs to area '" + sp.area()
-                            + "', but playbook belongs to area '" + storedArea + "'.");
-                }
-                prompt = sp.name();
+            SystemPrompt sp =
+                systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
+            if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
+                throw new IllegalArgumentException(
+                    "System prompt '" + sp.name() + "' belongs to area '" + sp.area()
+                        + "', but playbook belongs to area '" + storedArea + "'.");
             }
+            prompt = sp.name();
         }
 
         playbookRepository.upsert(name.trim(), title.trim(),

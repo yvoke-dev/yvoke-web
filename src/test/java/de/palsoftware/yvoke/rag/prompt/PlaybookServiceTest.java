@@ -313,7 +313,7 @@ class PlaybookServiceTest {
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
         PlaybookService twoAreas = new PlaybookService(playbookRepository, mcpSyncServer,
-            TestAreas.withAreas("OIM", "PingID"), null);
+            TestAreas.withAreas("OIM", "PingID"), systemPromptService);
         twoAreas.importPlaybookFromMarkdown("""
             ---
             name: pb

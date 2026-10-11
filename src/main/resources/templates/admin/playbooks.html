@@ -348,7 +348,7 @@
                                 <label for="systemPrompt" class="form-label">System Prompt</label>
                                 <select id="systemPrompt" name="systemPrompt" class="form-input">
                                     <option value="">(Default / None)</option>
-                                    <option th:each="sp : ${systemPrompts}" th:value="${sp.name}" th:text="${sp.name + (sp.description != null ? ' - ' + sp.description : '')}"></option>
+                                    <option th:each="sp : ${systemPrompts}" th:value="${sp.name}" th:attr="data-area=${sp.area}" th:text="${sp.name + (sp.description != null ? ' - ' + sp.description : '')}"></option>
                                 </select>
                                 <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Optional base system prompt for this playbook. If not set, the default chat system prompt is used.</span>
                             </div>
@@ -455,7 +455,36 @@
                     closeViewModal();
                 }
             });
+
+            const areaSelect = document.getElementById('area');
+            if (areaSelect) {
+                areaSelect.addEventListener('change', function() {
+                    filterSystemPromptsForArea(this.value);
+                });
+                filterSystemPromptsForArea(areaSelect.value);
+            }
         });
+
+        function filterSystemPromptsForArea(selectedArea) {
+            const select = document.getElementById('systemPrompt');
+            if (!select) return;
+            const currentArea = (selectedArea || document.getElementById('area')?.value || '').trim().toLowerCase();
+            for (let i = 0; i < select.options.length; i++) {
+                const opt = select.options[i];
+                if (!opt.value || opt.dataset.dynamic === 'true') {
+                    opt.hidden = false;
+                    opt.disabled = false;
+                    continue;
+                }
+                const optArea = (opt.getAttribute('data-area') || '').trim().toLowerCase();
+                const matches = !optArea || !currentArea || optArea === currentArea;
+                opt.hidden = !matches;
+                opt.disabled = !matches;
+            }
+            if (select.selectedIndex >= 0 && select.options[select.selectedIndex].disabled) {
+                select.value = '';
+            }
+        }
 
         // Selects the area a loaded file or an edited item names. A file naming an area that does
         // not exist yet keeps the current choice and says so; the save would be refused anyway.
@@ -468,6 +497,7 @@
             const match = window.AreaSelect.matchArea(options, value);
             if (match) {
                 select.value = match;
+                filterSystemPromptsForArea(match);
             } else {
                 alert('Area "' + value + '" does not exist. Create it on the Areas page first.');
             }
@@ -488,6 +518,11 @@
             }
             select.value = value || '';
             select.disabled = !!isReadOnly;
+            filterSystemPromptsForArea(document.getElementById('area')?.value);
+            if (select.selectedIndex >= 0) {
+                select.options[select.selectedIndex].hidden = false;
+                select.options[select.selectedIndex].disabled = false;
+            }
         }
 
         function loadTemplateFile() {
@@ -586,6 +621,9 @@
                 targetAgentSelect.value = targetAgent || 'specialist';
                 targetAgentSelect.disabled = false;
 
+                document.getElementById('area').disabled = false;
+                applyArea(area);
+
                 applySystemPrompt(systemPrompt, false);
 
                 // Reset tools selection
@@ -602,9 +640,6 @@
                 const protoCheckbox = document.getElementById('prototype');
                 protoCheckbox.checked = prototype;
                 protoCheckbox.disabled = false;
-
-                document.getElementById('area').disabled = false;
-                applyArea(area);
 
                 // Set value in EasyMDE
                 if (easyMDE) {
@@ -652,11 +687,11 @@
             targetAgentSelect.value = targetAgent;
             targetAgentSelect.disabled = isReadOnly;
 
-            const systemPrompt = button.getAttribute('data-system-prompt') || '';
-            applySystemPrompt(systemPrompt, isReadOnly);
-
             applyArea(button.getAttribute('data-area'));
             document.getElementById('area').disabled = isReadOnly;
+
+            const systemPrompt = button.getAttribute('data-system-prompt') || '';
+            applySystemPrompt(systemPrompt, isReadOnly);
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
@@ -712,9 +747,10 @@
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
 
-            applySystemPrompt('', false);
-
             document.getElementById('area').disabled = false;
+            applyArea(document.getElementById('area')?.options[0]?.value);
+
+            applySystemPrompt('', false);
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {

@@ -43,9 +43,10 @@ in-depth profiles, and can inspect any search or trace.
   roles are given a fixed tool list when they run.
 - **A playbook can define its own base instructions (system prompt).** If set, the playbook's chosen
   system prompt overrides the default chat base instructions for conversations using that playbook (unless an
-  explicit conversation-level prompt override is configured). In multi-agent orchestration, the designated
-  prompt is prepended to orchestrator and reviewer system prompts, and passed as the base instruction override
-  to specialist playbooks. If unconfigured or deleted, it falls back seamlessly to the default
+  explicit conversation-level prompt override is configured). In multi-agent orchestration, a specialist
+  playbook's designated prompt is passed as its base instruction override. Orchestrator and reviewer playbooks
+  run under their own self-contained instructions and do not inherit chat base instructions (which describe
+  retrieval tools they cannot call). If unconfigured or deleted, it falls back seamlessly to the default
   base instructions.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.

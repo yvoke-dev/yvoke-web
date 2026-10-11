@@ -202,11 +202,23 @@ class DesktopSyncControllerTest {
             .extracting(OrchestratorProfileDto::orchestratorPlaybook)
             .containsExactly("oim-orchestrator");
 
-        when(systemPromptService.getPrompt("no-such-prompt")).thenReturn(Optional.empty());
+        when(systemPromptService.findChatPrompt("no-such-prompt")).thenReturn(Optional.empty());
 
         ResponseEntity<Map<String, String>> unknown = dbBacked.getSystemPrompt("no-such-prompt");
         assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(unknown.getBody()).containsEntry("systemPrompt", "");
+    }
+
+    @Test
+    void getSystemPromptResolvesDefaultChatViaFindChatPrompt() {
+        when(systemPromptService.findChatPrompt("default-chat"))
+            .thenReturn(Optional.of(new SystemPrompt("active-prompt", SystemPromptType.CHAT,
+                "Active base prompt", "desc")));
+
+        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("default-chat");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("systemPrompt", "Active base prompt");
+        verify(systemPromptService).findChatPrompt("default-chat");
     }
 
     @Test
@@ -360,7 +372,7 @@ class DesktopSyncControllerTest {
     void getSystemPromptReturnsPromptFromService() {
         SystemPrompt prompt =
             new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Hello System", "desc");
-        when(systemPromptService.getPrompt("custom-prompt")).thenReturn(Optional.of(prompt));
+        when(systemPromptService.findChatPrompt("custom-prompt")).thenReturn(Optional.of(prompt));
 
         ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("custom-prompt");
 
@@ -370,11 +382,9 @@ class DesktopSyncControllerTest {
 
     @Test
     void getSystemPromptFallsBackForDefaultChat() {
-        when(systemPromptService.getPrompt("default-chat")).thenReturn(Optional.empty());
-        when(systemPromptService.getDefaultChatPromptName()).thenReturn("active-chat");
         SystemPrompt fallback =
             new SystemPrompt("active-chat", SystemPromptType.CHAT, "Hello Fallback", "desc");
-        when(systemPromptService.getPrompt("active-chat")).thenReturn(Optional.of(fallback));
+        when(systemPromptService.findChatPrompt("default-chat")).thenReturn(Optional.of(fallback));
 
         ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("default-chat");
 
