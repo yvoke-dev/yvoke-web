@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -109,8 +110,6 @@ public class ChatController {
 
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
-        Optional<String> initialPlaybook = chatMessageService.findInitialPlaybook(id);
-
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(orchestratorProfileService.listProfileOptions());
         String currentProfile = (String) conversation.settings()
@@ -120,22 +119,19 @@ public class ChatController {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
         }
 
-        boolean hasActiveProfile = currentProfile != null && !currentProfile.isBlank();
-        boolean hasInDepthTurns = chatMessageService.hasInDepthTurns(id);
-        boolean isInDepthMode = hasInDepthTurns && hasActiveProfile;
+        ConversationLockState lockState = chatMessageService.resolveLockState(id, currentProfile);
 
-        boolean isPlaybookLocked = initialPlaybook.isPresent() && !isInDepthMode;
-        String lockedPlaybookName = isPlaybookLocked ? initialPlaybook.orElse(null) : null;
+        boolean isPlaybookLocked = lockState.isPlaybookLocked();
+        String lockedPlaybookName = lockState.lockedPlaybookName();
         String lockedPlaybookTitle = null;
         if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
             lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
                 .map(Playbook::title).orElse(lockedPlaybookName);
         }
-        boolean isModeLocked = initialPlaybook.isPresent() || !messages.isEmpty();
+        boolean isModeLocked = lockState.initialPlaybook().isPresent() || !messages.isEmpty();
 
-        boolean isSinglePlaybookLocked = isPlaybookLocked && !hasInDepthTurns;
         Map<String, Object> effectiveSettings = new HashMap<>(conversation.settings());
-        if (isSinglePlaybookLocked) {
+        if (lockState.isSinglePlaybookLocked()) {
             effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");
         }
 

@@ -34,6 +34,7 @@ import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
@@ -2472,6 +2473,19 @@ public class ChatMessageServiceTest {
         assertThat(asstId).isNotNull();
         verify(messageRepository, times(2)).findInitialPlaybook(convId);
         verify(messageRepository, times(1)).hasInDepthTurns(convId);
+    }
+
+    @Test
+    void resolveLockState_whenNoInitialPlaybookAndNoProfile_doesNotQueryInDepthTurns() {
+        UUID convId = UUID.randomUUID();
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+
+        ConversationLockState lockState = chatMessageService.resolveLockState(convId, null);
+
+        assertThat(lockState.isPlaybookLocked()).isFalse();
+        assertThat(lockState.isSinglePlaybookLocked()).isFalse();
+        assertThat(lockState.isInDepthMode()).isFalse();
+        verify(messageRepository, never()).hasInDepthTurns(convId);
     }
 
     @Test

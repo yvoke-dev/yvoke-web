@@ -743,11 +743,23 @@ public class ChatThreadRenderingIT {
         assertThat(mixedHtml).doesNotContain("Add your question for");
         assertThat(mixedHtml).contains("isPlaybookLocked: false");
 
+        // Fresh conversation with orchestrator profile: action-add-btn is hidden but NOT disabled
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID profileConvId = chatConversationService.createConversation().id();
+        chatConversationService.updateSettings(profileConvId,
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+        MvcResult profileResult = mockMvc.perform(get("/chat/" + profileConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        String profileHtml = profileResult.getResponse().getContentAsString();
+        assertThat(profileHtml).contains("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\">");
+        assertThat(profileHtml).doesNotContain("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
+
         // Cleanup
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         chatConversationService.deleteConversation(convId);
         chatConversationService.deleteConversation(longConvId);
         chatConversationService.deleteConversation(mixedConvId);
+        chatConversationService.deleteConversation(profileConvId);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */

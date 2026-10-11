@@ -479,6 +479,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 if (el) {
                     if (id === 'action-add-btn') {
                         el.style.display = (orchestratorMode || isPlaybookLocked) ? 'none' : '';
+                        el.disabled = isPlaybookLocked;
                     } else {
                         el.style.display = orchestratorMode ? 'none' : '';
                     }

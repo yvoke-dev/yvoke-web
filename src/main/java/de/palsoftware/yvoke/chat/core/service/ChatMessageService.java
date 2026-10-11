@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
@@ -144,27 +145,44 @@ public class ChatMessageService {
      * Intended to run on the request thread so authorization/validation failures surface as normal
      * HTTP responses <em>before</em> any SSE stream is committed.
      */
-    public PreparedChat prepare(UUID conversationId, String userContent, String promptName) {
-        return prepareInternal(conversationId, userContent, promptName, null, null);
+    public ConversationLockState resolveLockState(UUID conversationId, String orchestratorProfile) {
+        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank();
+
+        // Avoid count query when conversation is neither locked nor configured with an orchestrator
+        // profile
+        boolean hasInDepthTurns = (initialPlaybook.isPresent() || hasActiveProfile)
+            && messageRepository.hasInDepthTurns(conversationId);
+
+        return ConversationLockState.from(initialPlaybook, hasInDepthTurns, orchestratorProfile);
     }
 
-    PreparedChat prepareInternal(UUID conversationId, String userContent, String promptName,
-        Optional<String> initialPlaybookOpt, Boolean hasInDepthTurnsOpt) {
+    /**
+     * Validates access, persists the user message and resolves model/history/tools synchronously.
+     * Intended to run on the request thread so authorization/validation failures surface as normal
+     * HTTP responses <em>before</em> any SSE stream is committed.
+     */
+    public PreparedChat prepare(UUID conversationId, String userContent, String promptName) {
         chatCancellationService.reset(conversationId);
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        Optional<String> initialPlaybook = initialPlaybookOpt != null ? initialPlaybookOpt
-            : messageRepository.findInitialPlaybook(conversationId);
-        boolean isLocked = initialPlaybook.isPresent();
-        boolean isSinglePlaybookLocked =
-            isLocked && (hasInDepthTurnsOpt != null ? !hasInDepthTurnsOpt
-                : !messageRepository.hasInDepthTurns(conversationId));
-
         Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
             (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (!isSinglePlaybookLocked && orchestratorProfile != null
+
+        ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
+        return prepareWithLockState(conversation, userContent, promptName, lockState);
+    }
+
+    private PreparedChat prepareWithLockState(Conversation conversation, String userContent,
+        String promptName, ConversationLockState lockState) {
+        UUID conversationId = conversation.id();
+        Map<String, Object> settings = conversation.settings();
+        String orchestratorProfile =
+            (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
+
+        if (!lockState.isSinglePlaybookLocked() && orchestratorProfile != null
             && !orchestratorProfile.isBlank()) {
             if (orchestrationService.hasProfile(orchestratorProfile)) {
                 throw new IllegalArgumentException(
@@ -173,8 +191,8 @@ public class ChatMessageService {
         }
 
         String effectivePlaybookName;
-        if (isLocked) {
-            String lockedPlaybook = initialPlaybook.get().trim();
+        if (lockState.isPlaybookLocked()) {
+            String lockedPlaybook = lockState.lockedPlaybookName();
             if (promptName != null && !promptName.isBlank()
                 && !promptName.trim().equals(lockedPlaybook)) {
                 throw new IllegalArgumentException(
@@ -190,7 +208,7 @@ public class ChatMessageService {
         }
 
         Playbook playbook = playbookService.getPlaybook(effectivePlaybookName).orElseThrow(() -> {
-            if (isLocked) {
+            if (lockState.isPlaybookLocked()) {
                 return new IllegalArgumentException("The locked playbook '" + effectivePlaybookName
                     + "' no longer exists; please start a new conversation.");
             }
@@ -235,22 +253,15 @@ public class ChatMessageService {
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
 
-        Optional<String> initialPlaybook = null;
-        Boolean hasInDepthTurns = null;
+        ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
 
-        if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
-            initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-            hasInDepthTurns =
-                initialPlaybook.isPresent() && messageRepository.hasInDepthTurns(conversationId);
-            boolean isSinglePlaybookLocked = initialPlaybook.isPresent() && !hasInDepthTurns;
-            if (!isSinglePlaybookLocked) {
-                return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
-                    onComplete);
-            }
+        if (!lockState.isSinglePlaybookLocked() && orchestratorProfile != null
+            && !orchestratorProfile.isBlank()) {
+            return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
+                onComplete);
         }
 
-        PreparedChat prepared =
-            prepareInternal(conversationId, content, promptName, initialPlaybook, hasInDepthTurns);
+        PreparedChat prepared = prepareWithLockState(conversation, content, promptName, lockState);
         return dispatchAsync(conversation, prepared, onComplete);
     }
 

@@ -19,6 +19,7 @@ import org.mockito.Mockito;
 import org.springframework.security.access.AccessDeniedException;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -75,6 +76,8 @@ class ChatControllerTest {
         controller = new ChatController(conversationService, messageService, feedbackService,
             cancellationService, playbookService, orchestratorProperties,
             orchestratorProfileService);
+        when(messageService.resolveLockState(any(), any()))
+            .thenReturn(ConversationLockState.from(Optional.empty(), false, null));
     }
 
     @Test
@@ -327,8 +330,8 @@ class ChatControllerTest {
         Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question",
             "my-playbook", List.of(), List.of(), Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
-        when(messageService.findInitialPlaybook(conversationId))
-            .thenReturn(Optional.of("my-playbook"));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, null));
         when(playbookService.getPlaybook("my-playbook"))
             .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
                 List.of(), false, Instant.now(), Instant.now(), false)));
@@ -357,9 +360,8 @@ class ChatControllerTest {
         Message userMsg2 = new Message(UUID.randomUUID(), conversationId, "user", "In-depth turn",
             null, List.of(), List.of(), Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg1, userMsg2));
-        when(messageService.findInitialPlaybook(conversationId))
-            .thenReturn(Optional.of("my-playbook"));
-        when(messageService.hasInDepthTurns(conversationId)).thenReturn(true);
+        when(messageService.resolveLockState(eq(conversationId), eq("oim")))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), true, "oim"));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -390,6 +392,8 @@ class ChatControllerTest {
         assertFalse((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
         assertNull(model.getAttribute("lockedPlaybookTitle"));
+        verify(messageService).resolveLockState(conversationId, null);
+        verify(messageService, never()).hasInDepthTurns(any());
     }
 
     @Test
@@ -429,8 +433,8 @@ class ChatControllerTest {
             "my-playbook", List.of(), List.of(), Instant.now());
         when(messageService.getMessages(conversationId))
             .thenReturn(List.of(desktopUserMsg, webUserMsg));
-        when(messageService.findInitialPlaybook(conversationId))
-            .thenReturn(Optional.of("my-playbook"));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, null));
         when(playbookService.getPlaybook("my-playbook"))
             .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
                 List.of(), false, Instant.now(), Instant.now(), false)));
@@ -453,8 +457,8 @@ class ChatControllerTest {
             Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
 
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
-        when(messageService.findInitialPlaybook(conversationId))
-            .thenReturn(Optional.of("past100-pb"));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("past100-pb"), false, null));
         when(playbookService.getPlaybook("past100-pb"))
             .thenReturn(Optional.of(new Playbook("past100-pb", "Past 100 Title", "Desc", "Tmpl",
                 List.of(), false, Instant.now(), Instant.now(), false)));

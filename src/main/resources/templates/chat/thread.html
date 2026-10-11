@@ -115,7 +115,7 @@
                         <textarea id="chat-input" th:placeholder="${isPlaybookLocked ? (lockedPlaybookTitle != null ? 'Add your question for &quot;' + lockedPlaybookTitle + '&quot;...' : 'Ask a question… (Shift + Enter for new line, Enter to send)') : (settings['orchestrator-profile'] != null and settings['orchestrator-profile'] != '' ? 'Ask a question… (Shift + Enter for new line, Enter to send)' : 'Ask a question… (type &quot;/&quot; or click &quot;+&quot; to select a playbook, Shift + Enter for new line, Enter to send)')}" class="chat-input" autocomplete="off" required></textarea>
                         <div class="chat-input-footer">
                             <div class="chat-input-footer-left">
-                                <button type="button" id="action-add-btn" class="chat-input-action-btn" th:style="${isPlaybookLocked || (settings['orchestrator-profile'] != null and settings['orchestrator-profile'] != '')} ? 'display: none;' : ''" th:disabled="${isPlaybookLocked || (settings['orchestrator-profile'] != null and settings['orchestrator-profile'] != '')}">
+                                <button type="button" id="action-add-btn" class="chat-input-action-btn" th:style="${isPlaybookLocked || (settings['orchestrator-profile'] != null and settings['orchestrator-profile'] != '')} ? 'display: none;' : ''" th:disabled="${isPlaybookLocked}">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <line x1="12" y1="5" x2="12" y2="19"></line>
                                         <line x1="5" y1="12" x2="19" y2="12"></line>
