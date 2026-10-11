@@ -93,4 +93,18 @@ public class MessageRepositoryTest {
         verify(jdbcClient).sql(contains("SELECT id, conversation_id"));
         verify(statementSpec).param("id", id);
     }
+
+    @Test
+    public void testFindInitialPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        JdbcClient.MappedQuerySpec<String> stringQuerySpec = mock(JdbcClient.MappedQuerySpec.class);
+        when(statementSpec.query(String.class)).thenReturn(stringQuerySpec);
+        when(stringQuerySpec.optional()).thenReturn(Optional.of("my-playbook"));
+
+        Optional<String> result = messageRepository.findInitialPlaybook(conversationId);
+
+        assertThat(result).contains("my-playbook");
+        verify(jdbcClient).sql(contains("SELECT playbook"));
+        verify(statementSpec).param("conversationId", conversationId);
+    }
 }

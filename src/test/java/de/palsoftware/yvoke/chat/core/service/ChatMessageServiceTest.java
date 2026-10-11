@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -33,6 +34,7 @@ import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
@@ -82,11 +84,14 @@ public class ChatMessageServiceTest {
     private ChatProperties chatProperties;
     private AgentRunRepository agentRunRepository;
     private AgentStepRepository agentStepRepository;
+    private OrchestrationService orchestrationService;
+    private ConversationRepository conversationRepository;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
     public void setUp() {
         messageRepository = mock(MessageRepository.class);
+        conversationRepository = mock(ConversationRepository.class);
         chatConversationService = mock(ChatConversationService.class);
         ragService = mock(RagService.class);
         retrievalLogRepository = mock(RetrievalLogRepository.class);
@@ -100,23 +105,31 @@ public class ChatMessageServiceTest {
         chatProperties = new ChatProperties(true, List.of("model1"), true, false);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
+        orchestrationService = mock(OrchestrationService.class);
 
-        chatMessageService =
-            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
-                chatConversationService, ragService, retrievalLogRepository, playbookService,
-                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
-                mock(OrchestrationService.class), messageToolCallRepository, toolCallTraceExtractor,
-                chatProperties, agentRunRepository, agentStepRepository);
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default base instructions", "Desc")));
+        when(orchestrationService.hasProfile(anyString())).thenReturn(true);
+
+        chatMessageService = new ChatMessageService(messageRepository, conversationRepository,
+            chatConversationService, ragService, retrievalLogRepository, playbookService,
+            systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+            orchestrationService, messageToolCallRepository, toolCallTraceExtractor, chatProperties,
+            agentRunRepository, agentStepRepository);
     }
 
     private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
         AgentRunRepository runRepo, AgentStepRepository stepRepo) {
-        return new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+        if (orchService != null) {
+            when(orchService.hasProfile(anyString())).thenReturn(true);
+        }
+        return new ChatMessageService(messageRepository, conversationRepository,
             chatConversationService, ragService, retrievalLogRepository, playbookService,
             systemPromptService, transactionManager, taskExecutor, chatCancellationService,
-            orchService != null ? orchService : mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor,
-            props != null ? props : chatProperties, runRepo != null ? runRepo : agentRunRepository,
+            orchService != null ? orchService : orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, props != null ? props : chatProperties,
+            runRepo != null ? runRepo : agentRunRepository,
             stepRepo != null ? stepRepo : agentStepRepository);
     }
 
@@ -190,8 +203,10 @@ public class ChatMessageServiceTest {
             Consumer<String> ragSink = inv.getArgument(1);
             ragSink.accept("Result");
             return ragResult;
-        }).when(ragService).generateAgenticAnswer(argThat((AgenticRequest req) -> req.query()
-            .equals("Table Playbook Content\n\n---\n\nUser query")), any());
+        }).when(ragService)
+            .generateAgenticAnswer(argThat((AgenticRequest req) -> req.query().equals("User query")
+                && req.systemPromptOverride() != null
+                && req.systemPromptOverride().contains("Table Playbook Content")), any());
 
         List<String> results = new ArrayList<>();
         ChatMessageService.PreparedChat prepared =
@@ -583,7 +598,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void testPlaybookSequenceDeduplication() {
+    public void prepare_combinesActiveDefaultChatPromptAndPlaybookTextInSystemPrompt() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -591,111 +606,342 @@ public class ChatMessageServiceTest {
             new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
-        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Template", List.of(), false,
-            Instant.now(), Instant.now(), false);
-        Playbook pb2 = new Playbook("PB2", "Playbook 2", "Desc", "PB2 Template", List.of(), false,
-            Instant.now(), Instant.now(), false);
-        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
-        when(playbookService.getPlaybook("PB2")).thenReturn(Optional.of(pb2));
+        Playbook pb = new Playbook("pb1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default System Prompt", "Desc")));
 
-        // Message 1 (PB1) -> should prepend
         when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(List.of());
-        ChatMessageService.PreparedChat prep1 =
-            chatMessageService.prepare(conversationId, "Message 1", "PB1");
-        assertThat(prep1.modelContent()).isEqualTo("PB1 Template\n\n---\n\nMessage 1");
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "What is an account?", "pb1");
+
+        assertThat(prepared.modelContent()).isEqualTo("What is an account?");
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+
+        ArgumentCaptor<Message> savedMessage = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository).save(savedMessage.capture());
+        assertThat(savedMessage.getValue().content()).isEqualTo("What is an account?");
+        assertThat(savedMessage.getValue().playbook()).isEqualTo("pb1");
+    }
+
+    @Test
+    public void prepare_assemblesPlaybookInstructionsAndConversationChatPrompt() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.CHAT_PROMPT.getValue(), "custom-chat-prompt");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("pb1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt("custom-chat-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("custom-chat-prompt", SystemPromptType.CHAT,
+                "Custom Base Prompt", "Desc")));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "What is an account?", "pb1");
+
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("Custom Base Prompt\n\n---\n\nPB1 Instructions");
+        assertThat(prepared.modelContent()).isEqualTo("What is an account?");
+    }
+
+    @Test
+    public void prepare_assemblesPlaybookInstructionsAndPlaybookDesignatedSystemPrompt() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("pb1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
+            "designated-prompt");
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt("designated-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("designated-prompt", SystemPromptType.CHAT,
+                "Designated Base Prompt", "Desc")));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "What is an account?", "pb1");
+
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("Designated Base Prompt\n\n---\n\nPB1 Instructions");
+        assertThat(prepared.modelContent()).isEqualTo("What is an account?");
+    }
+
+    @Test
+    public void prepare_withBlankPlaybookTemplateText_doesNotAppendDelimiter() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("pb1", "Playbook 1", "Desc", "   ", List.of(), false,
+            Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default Base Prompt", "Desc")));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "What is an account?", "pb1");
+
+        assertThat(prepared.systemPrompt()).isEqualTo("Default Base Prompt");
+        assertThat(prepared.modelContent()).isEqualTo("What is an account?");
+    }
+
+    @Test
+    public void prepare_subsequentMessageWithDifferentPlaybookThrowsIllegalArgumentException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Message priorUserMsg = new Message(UUID.randomUUID(), conversationId, "user", "Message 1",
+            "PB1", List.of(), List.of(), Instant.now());
+        Message priorAnsMsg = new Message(UUID.randomUUID(), conversationId, "assistant",
+            "Answer 1", List.of(), List.of(), Instant.now());
+        when(messageRepository.findByConversationId(conversationId, 100, 0))
+            .thenReturn(List.of(priorUserMsg, priorAnsMsg));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Message 2", "PB2"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+    }
+
+    @Test
+    public void prepare_subsequentMessageWithSamePlaybookOrOmittingPlaybookSucceedsWithLockedPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default System Prompt", "Desc")));
+
+        Message priorUserMsg = new Message(UUID.randomUUID(), conversationId, "user", "Message 1",
+            "PB1", List.of(), List.of(), Instant.now());
+        Message priorAnsMsg = new Message(UUID.randomUUID(), conversationId, "assistant",
+            "Answer 1", List.of(), List.of(), Instant.now());
+        when(messageRepository.findByConversationId(conversationId, 100, 0))
+            .thenReturn(List.of(priorUserMsg, priorAnsMsg));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
+
+        // Submitting with same playbook succeeds
+        ChatMessageService.PreparedChat prepSame =
+            chatMessageService.prepare(conversationId, "Message 2 with PB1", "PB1");
+        assertThat(prepSame.modelContent()).isEqualTo("Message 2 with PB1");
+        assertThat(prepSame.systemPrompt())
+            .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+
+        // Submitting omitting playbook (null) succeeds using locked playbook
+        ChatMessageService.PreparedChat prepNull =
+            chatMessageService.prepare(conversationId, "Message 3 omitted pb", null);
+        assertThat(prepNull.modelContent()).isEqualTo("Message 3 omitted pb");
+        assertThat(prepNull.systemPrompt())
+            .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+
+        // Submitting omitting playbook (blank) succeeds using locked playbook
+        ChatMessageService.PreparedChat prepBlank =
+            chatMessageService.prepare(conversationId, "Message 4 blank pb", "   ");
+        assertThat(prepBlank.modelContent()).isEqualTo("Message 4 blank pb");
+        assertThat(prepBlank.systemPrompt())
+            .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+    }
+
+    @Test
+    public void prepare_conversationWithDesktopUserMessageWithoutPlaybookThenPlaybookUserMessage_locksToInitialPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default System Prompt", "Desc")));
+
+        Message msg0DesktopUser = new Message(UUID.randomUUID(), conversationId, "user",
+            "Desktop user question", null, List.of(), List.of(), Instant.now().minusSeconds(60));
+        Message msg1DesktopAssistant = new Message(UUID.randomUUID(), conversationId, "assistant",
+            "Desktop answer", null, List.of(), List.of(), Instant.now().minusSeconds(50));
+        Message msg2WebUser = new Message(UUID.randomUUID(), conversationId, "user",
+            "Web user question 1", "PB1", List.of(), List.of(), Instant.now().minusSeconds(40));
+        Message msg3WebAssistant = new Message(UUID.randomUUID(), conversationId, "assistant",
+            "Web answer 1", "PB1", List.of(), List.of(), Instant.now().minusSeconds(30));
+
+        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(
+            List.of(msg0DesktopUser, msg1DesktopAssistant, msg2WebUser, msg3WebAssistant));
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
+
+        // Submitting with diff playbook should be rejected
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Web user question 2", "PB2"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+
+        // Submitting with null playbook should succeed using locked playbook PB1
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Web user question 2", null);
+        assertThat(prep.playbookName()).isEqualTo("PB1");
+        assertThat(prep.systemPrompt())
+            .isEqualTo("Default System Prompt\n\n---\n\nPB1 Instructions");
+    }
+
+    @Test
+    public void prepare_whenLockedPlaybookIsPastFirst100Messages_stillEnforcesLock() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        List<Message> first100 = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            first100.add(new Message(UUID.randomUUID(), conversationId, "user", "Old msg " + i,
+                null, List.of(), List.of(), Instant.now().minusSeconds(1000 - i)));
+        }
+        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(first100);
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
+
+        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Message 102", "PB2"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Message 102", null);
+        assertThat(prep.playbookName()).isEqualTo("PB1");
+    }
+
+    @Test
+    public void prepare_whenLockedPlaybookIsDeleted_throwsActionableException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        when(messageRepository.findInitialPlaybook(conversationId))
+            .thenReturn(Optional.of("deleted-pb"));
+        when(playbookService.getPlaybook("deleted-pb")).thenReturn(Optional.empty());
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Follow-up question", null));
+        assertThat(ex.getMessage()).isEqualTo(
+            "The locked playbook 'deleted-pb' no longer exists; please start a new conversation.");
+    }
+
+    @Test
+    public void prepare_priorHistoryDoesNotPrependPlaybookText() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb1));
 
         Message msg1 = new Message(UUID.randomUUID(), conversationId, "user", "Message 1", "PB1",
             List.of(), List.of(), Instant.now());
         Message msg1Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 1",
             List.of(), List.of(), Instant.now());
-
-        // Message 2 (PB1) -> should not prepend
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
-            .thenReturn(List.of(msg1, msg1Ans));
-        ChatMessageService.PreparedChat prep2 =
-            chatMessageService.prepare(conversationId, "Message 2", "PB1");
-        assertThat(prep2.modelContent()).isEqualTo("Message 2");
-
         Message msg2 = new Message(UUID.randomUUID(), conversationId, "user", "Message 2", "PB1",
             List.of(), List.of(), Instant.now());
         Message msg2Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 2",
             List.of(), List.of(), Instant.now());
 
-        // Message 3 (PB1) -> should not prepend
         when(messageRepository.findByConversationId(conversationId, 100, 0))
             .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans));
-        ChatMessageService.PreparedChat prep3 =
-            chatMessageService.prepare(conversationId, "Message 3", "PB1");
-        assertThat(prep3.modelContent()).isEqualTo("Message 3");
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
-        Message msg3 = new Message(UUID.randomUUID(), conversationId, "user", "Message 3", "PB1",
-            List.of(), List.of(), Instant.now());
-        Message msg3Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 3",
-            List.of(), List.of(), Instant.now());
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Message 3", null);
 
-        // Message 4 (PB2) -> should prepend (first PB2)
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
-            .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans, msg3, msg3Ans));
-        ChatMessageService.PreparedChat prep4 =
-            chatMessageService.prepare(conversationId, "Message 4", "PB2");
-        assertThat(prep4.modelContent()).isEqualTo("PB2 Template\n\n---\n\nMessage 4");
+        assertThat(prep.history()).hasSize(4);
+        assertThat(prep.history().get(0).content()).isEqualTo("Message 1");
+        assertThat(prep.history().get(1).content()).isEqualTo("Answer 1");
+        assertThat(prep.history().get(2).content()).isEqualTo("Message 2");
+        assertThat(prep.history().get(3).content()).isEqualTo("Answer 2");
+    }
 
-        Message msg4 = new Message(UUID.randomUUID(), conversationId, "user", "Message 4", "PB2",
-            List.of(), List.of(), Instant.now());
-        Message msg4Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 4",
-            List.of(), List.of(), Instant.now());
+    @Test
+    public void prepare_whenConversationHasOrchestratorProfile_throwsIllegalArgumentException() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
 
-        // Message 5 (PB2) -> should not prepend
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
-            .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans, msg3, msg3Ans, msg4, msg4Ans));
-        ChatMessageService.PreparedChat prep5 =
-            chatMessageService.prepare(conversationId, "Message 5", "PB2");
-        assertThat(prep5.modelContent()).isEqualTo("Message 5");
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Question", "pb1"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+    }
 
-        Message msg5 = new Message(UUID.randomUUID(), conversationId, "user", "Message 5", "PB2",
-            List.of(), List.of(), Instant.now());
-        Message msg5Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 5",
-            List.of(), List.of(), Instant.now());
+    @Test
+    public void prepareAndSubmitAsync_whenConversationStartedInSinglePlaybookModeWithStoredProfile_routesToSinglePlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("pb1"));
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(new Playbook("pb1", "Title",
+            "Desc", "Instructions", List.of(), false, Instant.now(), Instant.now(), false)));
 
-        // Message 6 (PB1) -> should not prepend (already used in Message 1)
-        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(
-            List.of(msg1, msg1Ans, msg2, msg2Ans, msg3, msg3Ans, msg4, msg4Ans, msg5, msg5Ans));
-        ChatMessageService.PreparedChat prep6 =
-            chatMessageService.prepare(conversationId, "Message 6", "PB1");
-        assertThat(prep6.modelContent()).isEqualTo("Message 6");
-
-        Message msg6 = new Message(UUID.randomUUID(), conversationId, "user", "Message 6", "PB1",
-            List.of(), List.of(), Instant.now());
-        Message msg6Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 6",
-            List.of(), List.of(), Instant.now());
-
-        // Message 7 (PB2) -> should not prepend (already used in Message 4)
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
-            .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans, msg3, msg3Ans, msg4, msg4Ans, msg5,
-                msg5Ans, msg6, msg6Ans));
-        ChatMessageService.PreparedChat prep7 =
-            chatMessageService.prepare(conversationId, "Message 7", "PB2");
-        assertThat(prep7.modelContent()).isEqualTo("Message 7");
-
-        // Verify full history reconstruction for prep7
-        assertThat(prep7.history()).hasSize(12);
-        assertThat(prep7.history().get(0).content()).isEqualTo("PB1 Template\n\n---\n\nMessage 1");
-        assertThat(prep7.history().get(1).content()).isEqualTo("Answer 1");
-        assertThat(prep7.history().get(2).content()).isEqualTo("Message 2");
-        assertThat(prep7.history().get(3).content()).isEqualTo("Answer 2");
-        assertThat(prep7.history().get(4).content()).isEqualTo("Message 3");
-        assertThat(prep7.history().get(5).content()).isEqualTo("Answer 3");
-        assertThat(prep7.history().get(6).content()).isEqualTo("PB2 Template\n\n---\n\nMessage 4");
-        assertThat(prep7.history().get(7).content()).isEqualTo("Answer 4");
-        assertThat(prep7.history().get(8).content()).isEqualTo("Message 5");
-        assertThat(prep7.history().get(9).content()).isEqualTo("Answer 5");
-        assertThat(prep7.history().get(10).content()).isEqualTo("Message 6");
-        assertThat(prep7.history().get(11).content()).isEqualTo("Answer 6");
+        UUID assistantMessageId =
+            chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null);
+        assertThat(assistantMessageId).isNotNull();
+        verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
+            any());
     }
 
     @Test
     public void testPrepareThrowsIfPlaybookNotSelected() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
         IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", null));
         assertThat(exception.getMessage())
@@ -705,7 +951,11 @@ public class ChatMessageServiceTest {
     @Test
     public void testPrepareThrowsIfPlaybookInvalid() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
         when(playbookService.getPlaybook("invalid-pb")).thenReturn(Optional.empty());
+
         IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", "invalid-pb"));
         assertThat(exception.getMessage()).isEqualTo("The selected playbook is invalid.");
@@ -971,12 +1221,12 @@ public class ChatMessageServiceTest {
         // "" is OFF: the orchestrator was never consulted, not even to resolve the profile.
         verifyNoInteractions(orchestrationService);
 
-        // ...and the plain path really ran, with the user's playbook template prepended — which the
-        // orchestrated path deliberately never does.
-        verify(ragService).generateAgenticAnswer(
-            argThat(
-                (AgenticRequest req) -> "PB1 Template\n\n---\n\nAsync Query".equals(req.query())),
-            any());
+        // ...and the plain path really ran, with the user's playbook template in
+        // systemPromptOverride
+        verify(ragService)
+            .generateAgenticAnswer(argThat((AgenticRequest req) -> "Async Query".equals(req.query())
+                && req.systemPromptOverride() != null
+                && req.systemPromptOverride().contains("PB1 Template")), any());
 
         ArgumentCaptor<Message> saved = ArgumentCaptor.forClass(Message.class);
         verify(messageRepository, times(2)).save(saved.capture());
@@ -1613,7 +1863,8 @@ public class ChatMessageServiceTest {
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
-        assertThat(prepared.systemPrompt()).isEqualTo("System Instructions for PB");
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("System Instructions for PB\n\n---\n\nTemplate");
     }
 
     @Test
@@ -1637,7 +1888,7 @@ public class ChatMessageServiceTest {
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
-        assertThat(prepared.systemPrompt()).isEqualTo("Override Instructions");
+        assertThat(prepared.systemPrompt()).isEqualTo("Override Instructions\n\n---\n\nTemplate");
     }
 
     @Test
@@ -1656,7 +1907,8 @@ public class ChatMessageServiceTest {
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "bare-pb");
 
-        assertThat(prepared.systemPrompt()).isNull();
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("Default base instructions\n\n---\n\nTemplate");
     }
 
     @Test
@@ -1676,11 +1928,34 @@ public class ChatMessageServiceTest {
             .thenReturn(Optional.of(new SystemPrompt("summarize-sys-prompt",
                 SystemPromptType.SUMMARIZE, "summarize body", "desc")));
         when(systemPromptService.findChatPrompt("summarize-sys-prompt")).thenCallRealMethod();
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default Base Prompt", "Desc")));
 
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
-        assertThat(prepared.systemPrompt()).isNull();
+        assertThat(prepared.systemPrompt()).isEqualTo("Default Base Prompt\n\n---\n\nTemplate");
+    }
+
+    @Test
+    public void testPrepareThrowsIllegalStateExceptionWhenNoBaseSystemPromptConfigured() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("custom-pb", "Custom Playbook", "Desc", "Template", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null);
+        when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(conversationId, "User query", "custom-pb"));
+        assertThat(ex.getMessage()).isEqualTo(
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
     }
 
     @Test
@@ -1706,7 +1981,7 @@ public class ChatMessageServiceTest {
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
-        assertThat(prepared.systemPrompt()).isEqualTo("PB System Instructions");
+        assertThat(prepared.systemPrompt()).isEqualTo("PB System Instructions\n\n---\n\nTemplate");
     }
 
     @Test
@@ -2058,5 +2333,248 @@ public class ChatMessageServiceTest {
         MessageTrace trace = traceOpt.get();
         assertThat(trace.mode()).isEqualTo("single");
         assertThat(trace.toolCalls()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void prepare_conversationWithInitialPlaybookAndOrchestratorProfile_allowsSinglePlaybookSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "OIM"), Instant.now(), Instant.now(),
+            List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("my-playbook"));
+
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prep = chatMessageService.prepare(convId, "Query", null);
+        assertThat(prep.playbookName()).isEqualTo("my-playbook");
+    }
+
+    @Test
+    void submitOrchestratedAsync_existingMixedModeConversationWithInDepthTurns_allowsInDepthSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "oim"), Instant.now(), Instant.now(),
+            List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("my-playbook"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+
+        UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(convId, "Query", null);
+        assertThat(assistantMessageId).isNotNull();
+    }
+
+    @Test
+    void prepare_whenOrchestratorProfileDeleted_allowsSinglePlaybookSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "deleted-profile"), Instant.now(),
+            Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(convId, "Query", "my-playbook");
+        assertThat(prep.playbookName()).isEqualTo("my-playbook");
+    }
+
+    @Test
+    void submitOrchestratedAsync_whenLockedProfileDeleted_throwsActionableError() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "deleted-profile"), Instant.now(),
+            Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(convId, "Query", null));
+        assertThat(ex.getMessage()).isEqualTo(
+            "The locked orchestrator profile 'deleted-profile' no longer exists; please start a new conversation.");
+    }
+
+    @Test
+    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalStateException() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(convId, "Query", "my-playbook"));
+        assertThat(ex.getMessage()).isEqualTo(
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenPlaybookLockedAndStoredProfilePresent_routesToSinglePlaybook() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "gemini-3.1-flash-lite");
+        settings.put("orchestrator-profile", "in-depth-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId))
+            .thenReturn(Optional.of("locked-playbook"));
+
+        Playbook pb = new Playbook("locked-playbook", "Locked Playbook", "Desc", "PB Instructions",
+            List.of(), false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("locked-playbook")).thenReturn(Optional.of(pb));
+
+        SystemPrompt sp = new SystemPrompt("default-chat", SystemPromptType.CHAT,
+            "Base system instructions", "desc");
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.of(sp));
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "locked-playbook");
+
+        assertThat(asstId).isNotNull();
+        verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
+            any());
+        verify(messageRepository, times(2)).findInitialPlaybook(convId);
+        verify(messageRepository, times(1)).hasInDepthTurns(convId);
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenNoOrchestratorProfile_doesNotDuplicatePreLockQueries() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "gemini-3.1-flash-lite");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId))
+            .thenReturn(Optional.of("locked-playbook"));
+
+        Playbook pb = new Playbook("locked-playbook", "Locked Playbook", "Desc", "PB Instructions",
+            List.of(), false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("locked-playbook")).thenReturn(Optional.of(pb));
+
+        SystemPrompt sp = new SystemPrompt("default-chat", SystemPromptType.CHAT,
+            "Base system instructions", "desc");
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.of(sp));
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "locked-playbook");
+
+        assertThat(asstId).isNotNull();
+        verify(messageRepository, times(2)).findInitialPlaybook(convId);
+        verify(messageRepository, times(1)).hasInDepthTurns(convId);
+    }
+
+    @Test
+    void resolveLockState_whenNoInitialPlaybookAndNoProfile_doesNotQueryInDepthTurns() {
+        UUID convId = UUID.randomUUID();
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+
+        ConversationLockState lockState = chatMessageService.resolveLockState(convId, null);
+
+        assertThat(lockState.isPlaybookLocked()).isFalse();
+        assertThat(lockState.isSinglePlaybookLocked()).isFalse();
+        assertThat(lockState.isInDepthMode()).isFalse();
+        verify(messageRepository, never()).hasInDepthTurns(convId);
+    }
+
+    @Test
+    void prepare_acquiresRowLockOnConversation() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("pb1", "Title", "Desc", "Instructions", List.of(), false,
+            Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+
+        chatMessageService.prepare(convId, "Query", "pb1");
+
+        verify(conversationRepository).lockForUpdate(convId);
+    }
+
+    @Test
+    void submitOrchestratedAsync_acquiresRowLockOnConversation() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        chatMessageService.prepareAndSubmitAsync(convId, "Query", null);
+
+        verify(conversationRepository).lockForUpdate(convId);
+    }
+
+    @Test
+    void prepare_whenMixedLegacyConversationWithOrchestratorProfile_throwsIllegalArgumentException() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(convId, "Query", "pb1"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenMixedLegacyConversationWithOrchestratorProfile_routesToOrchestrator() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "pb1");
+        assertThat(asstId).isNotNull();
+        verify(conversationRepository).lockForUpdate(convId);
+        verify(taskExecutor).submit(any(Runnable.class));
+    }
+
+    @Test
+    void prepare_whenMixedConversationWithDeletedOrchestratorProfile_performsEarlyPlaybookEqualityCheck() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "deleted-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(convId, "Query", "different-pb"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Playbook cannot be changed once a conversation has started.");
+
+        verify(conversationRepository, never()).lockForUpdate(convId);
     }
 }

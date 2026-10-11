@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
@@ -187,7 +188,8 @@ public class ChatThreadRenderingIT {
             .as("every attribute chat/thread.html reads must be present — a missing one degrades "
                 + "the page silently rather than failing the render")
             .containsKeys("conversation", "messages", "allowedModels", "settings", "feedbacks",
-                "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles");
+                "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles",
+                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookTitle");
 
         assertThat(((Conversation) viewModel.get("conversation")).id()).isEqualTo(convId);
         assertThat((List<?>) viewModel.get("messages")).hasSize(1);
@@ -639,6 +641,125 @@ public class ChatThreadRenderingIT {
         chatConversationService.deleteConversation(convId);
         orchestratorProfileRepository.delete("IT_Vis_Ordinary");
         orchestratorProfileRepository.delete("IT_Vis_Prototype");
+    }
+
+    @Test
+    @DisplayName("Locks playbook and hides selection controls when a user message exists")
+    public void locksPlaybookAndHidesSelectionControlsWhenUserMessageExists() throws Exception {
+        String userOid = "playbook-lock-render-oid";
+        userRepository.upsert(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+
+        Conversation conv = chatConversationService.createConversation();
+        UUID convId = conv.id();
+
+        // Fresh conversation: unlocked
+        var login = testUserLogin(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        MvcResult freshResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView freshMav = freshResult.getModelAndView();
+        assertThat(freshMav).isNotNull();
+        assertThat(freshMav.getModel().get("isPlaybookLocked")).isEqualTo(false);
+        assertThat(freshMav.getModel().get("lockedPlaybookName")).isNull();
+
+        String freshHtml = freshResult.getResponse().getContentAsString();
+        assertThat(freshHtml).contains("id=\"prompt-chips\"");
+        assertThat(freshHtml).contains("isPlaybookLocked: false");
+
+        // Add a user message with playbook
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        messageRepository.save(new Message(UUID.randomUUID(), convId, "user", "Hello first question",
+            "oim-full", List.of(), List.of(), Instant.now()));
+
+        MvcResult lockedResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+
+        ModelAndView lockedMav = lockedResult.getModelAndView();
+        assertThat(lockedMav).isNotNull();
+        assertThat(lockedMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
+        assertThat(lockedMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+
+        String lockedHtml = lockedResult.getResponse().getContentAsString();
+        assertThat(lockedHtml).contains("isPlaybookLocked: true");
+        assertThat(lockedHtml).contains("lockedPlaybookName: \"oim-full\"");
+        // action-add-btn and active-playbook-remove are hidden
+        assertThat(lockedHtml).contains(
+            "<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
+        assertThat(lockedHtml).contains(
+            "<button style=\"display: none;\" type=\"button\" class=\"active-playbook-remove\"");
+        assertThat(lockedHtml)
+            .contains("<span class=\"active-playbook-hint\" style=\"display: none;\">");
+        assertThat(lockedHtml)
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+
+        // Verify that even if 100 messages without playbook precede the playbook message,
+        // threadView still resolves the lock using findInitialPlaybook
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID longConvId = chatConversationService.createConversation().id();
+        for (int i = 0; i < 100; i++) {
+            messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Desktop " + i,
+                null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+        }
+        messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Web question 101",
+            "oim-full", List.of(), List.of(), Instant.now()));
+
+        MvcResult longConvResult = mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        ModelAndView longMav = longConvResult.getModelAndView();
+        assertThat(longMav).isNotNull();
+        assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
+        assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+        String longHtml = longConvResult.getResponse().getContentAsString();
+        assertThat(longHtml).contains("isPlaybookLocked: true");
+        assertThat(longHtml).contains("lockedPlaybookName: \"oim-full\"");
+        assertThat(longHtml)
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+
+        // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID mixedConvId = chatConversationService.createConversation().id();
+        chatConversationService.updateSettings(mixedConvId,
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+        messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "Question 1",
+            "oim-full", List.of(), List.of(), Instant.now().minusSeconds(10)));
+        messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "In-depth turn",
+            null, List.of(), List.of(), Instant.now()));
+
+        MvcResult mixedResult = mockMvc.perform(get("/chat/" + mixedConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        ModelAndView mixedMav = mixedResult.getModelAndView();
+        assertThat(mixedMav).isNotNull();
+        assertThat(mixedMav.getModel().get("isPlaybookLocked")).isEqualTo(false);
+        assertThat(mixedMav.getModel().get("lockedPlaybookName")).isNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mixedSettings = (Map<String, Object>) mixedMav.getModel().get("settings");
+        assertThat(mixedSettings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()))
+            .isEqualTo("oim");
+
+        String mixedHtml = mixedResult.getResponse().getContentAsString();
+        assertThat(mixedHtml)
+            .contains("<div id=\"active-playbook\" class=\"active-playbook\" style=\"display: none;\">");
+        assertThat(mixedHtml).doesNotContain("Add your question for");
+        assertThat(mixedHtml).contains("isPlaybookLocked: false");
+
+        // Fresh conversation with orchestrator profile: action-add-btn is hidden but NOT disabled
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID profileConvId = chatConversationService.createConversation().id();
+        chatConversationService.updateSettings(profileConvId,
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+        MvcResult profileResult = mockMvc.perform(get("/chat/" + profileConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        String profileHtml = profileResult.getResponse().getContentAsString();
+        assertThat(profileHtml).contains("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\">");
+        assertThat(profileHtml).doesNotContain("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
+
+        // Cleanup
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        chatConversationService.deleteConversation(convId);
+        chatConversationService.deleteConversation(longConvId);
+        chatConversationService.deleteConversation(mixedConvId);
+        chatConversationService.deleteConversation(profileConvId);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */

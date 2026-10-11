@@ -31,7 +31,9 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.chat.ChatTestFixtures;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -94,6 +96,9 @@ public class ChatAsyncControllerTraceIT {
     @Autowired
     private PlaybookService playbookService;
 
+    @Autowired
+    private SystemPromptService systemPromptService;
+
     @MockitoBean(name = "llmProviderClient")
     private LlmClient llmClient;
 
@@ -105,6 +110,7 @@ public class ChatAsyncControllerTraceIT {
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         conversationsToDelete = new ArrayList<>();
+        ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
     }
 
     @AfterEach

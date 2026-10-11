@@ -17,10 +17,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.assertj.core.api.Assertions;
+import de.palsoftware.yvoke.chat.ChatTestFixtures;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -59,6 +62,7 @@ public abstract class AbstractE2E {
   @LocalServerPort protected int port;
 
   @MockitoBean(name = "llmProviderClient") protected LlmClient llmClient;
+  @Autowired protected SystemPromptService systemPromptService;
 
   private static Playwright playwright;
   private static Browser browser;
@@ -89,6 +93,7 @@ public abstract class AbstractE2E {
 
   @BeforeEach
   void openPage() {
+    ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
     browserContext = browser.newContext();
     browserContext.setDefaultTimeout(DEFAULT_TIMEOUT_MS);
     // Every off-origin request is refused, so the suite cannot pass because a CDN happened to be

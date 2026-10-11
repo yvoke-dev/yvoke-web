@@ -5,17 +5,22 @@ import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +110,31 @@ public class ChatController {
 
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
+        List<OrchestratorProfileOption> orchestratorProfiles =
+            new ArrayList<>(orchestratorProfileService.listProfileOptions());
+        String currentProfile = (String) conversation.settings()
+            .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
+        if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
+            .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
+            orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
+        }
+
+        ConversationLockState lockState = chatMessageService.resolveLockState(id, currentProfile);
+
+        boolean isPlaybookLocked = lockState.isPlaybookLocked();
+        String lockedPlaybookName = lockState.lockedPlaybookName();
+        String lockedPlaybookTitle = null;
+        if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
+            lockedPlaybookTitle = playbookService.getPlaybook(lockedPlaybookName)
+                .map(Playbook::title).orElse(lockedPlaybookName);
+        }
+        boolean isModeLocked = lockState.initialPlaybook().isPresent() || !messages.isEmpty();
+
+        Map<String, Object> effectiveSettings = new HashMap<>(conversation.settings());
+        if (lockState.isSinglePlaybookLocked()) {
+            effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");
+        }
+
         model.addAttribute("conversation", conversation);
         model.addAttribute("messages", messages);
         model.addAttribute("allowedModels", allowedModels);
@@ -113,13 +143,17 @@ public class ChatController {
         // conversation is not on. This is the value the send path will actually use.
         model.addAttribute("effectiveModel", chatConversationService.effectiveModel(
             (String) conversation.settings().get(ConversationSetting.MODEL.getValue())));
-        model.addAttribute("settings", conversation.settings());
+        model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
         model.addAttribute("prompts", playbookService.listSpecializedPlaybooks());
         model.addAttribute("isReadOnly", isReadOnly);
         model.addAttribute("playbookValidationEnabled",
             chatConversationService.isPlaybookValidationEnabled());
-        model.addAttribute("orchestratorProfiles", orchestratorProfileService.listProfileOptions());
+        model.addAttribute("orchestratorProfiles", orchestratorProfiles);
+        model.addAttribute("isPlaybookLocked", isPlaybookLocked);
+        model.addAttribute("lockedPlaybookName", lockedPlaybookName);
+        model.addAttribute("lockedPlaybookTitle", lockedPlaybookTitle);
+        model.addAttribute("isModeLocked", isModeLocked);
 
         return "chat/thread";
     }
@@ -183,6 +217,22 @@ public class ChatController {
         @RequestParam(name = "name", required = false) String name) {
         chatConversationService.verifyOwnership(id, false);
         String selected = (name == null) ? "" : name.trim();
+        Conversation conversation = chatConversationService.getConversation(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + id));
+        Map<String, Object> currentSettings = conversation.settings();
+        String currentProfile =
+            currentSettings != null
+                ? (String) currentSettings
+                    .getOrDefault(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "")
+                : "";
+        if (currentProfile == null) {
+            currentProfile = "";
+        }
+        if (chatMessageService.hasMessages(id) && !selected.equals(currentProfile.trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Orchestrator profile cannot be changed once a conversation has started.");
+        }
         if (!selected.isEmpty()) {
             boolean exists = (orchestratorProfileService != null
                 && orchestratorProfileService.getProfile(selected).isPresent())
@@ -193,8 +243,8 @@ public class ChatController {
             }
         }
         log.info("Updating orchestrator-profile for conversation id: {} to '{}'", id, selected);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
+        Map<String, Object> settings =
+            new HashMap<>(currentSettings != null ? currentSettings : Map.of());
         settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), selected);
         chatConversationService.updateSettings(id, settings);
     }

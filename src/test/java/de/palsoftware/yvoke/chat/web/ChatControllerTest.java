@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,6 +19,8 @@ import org.mockito.Mockito;
 import org.springframework.security.access.AccessDeniedException;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
@@ -29,6 +32,7 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,6 +76,8 @@ class ChatControllerTest {
         controller = new ChatController(conversationService, messageService, feedbackService,
             cancellationService, playbookService, orchestratorProperties,
             orchestratorProfileService);
+        when(messageService.resolveLockState(any(), any()))
+            .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
     }
 
     @Test
@@ -107,6 +113,9 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_unknownProfile_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(orchestratorProfileService.getProfile("Unknown")).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
@@ -158,6 +167,39 @@ class ChatControllerTest {
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "  "));
+
+        verify(conversationService).updateSettings(eq(conversationId), any());
+    }
+
+    @Test
+    void updateOrchestratorProfile_whenConversationHasMessagesAndProfileChanged_throwsBadRequest() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(messageService.hasMessages(conversationId)).thenReturn(true);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.updateOrchestratorProfile(conversationId, ""));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Orchestrator profile cannot be changed once a conversation has started.",
+            ex.getReason());
+        verify(conversationService, never()).updateSettings(any(), any());
+    }
+
+    @Test
+    void updateOrchestratorProfile_whenConversationHasMessagesAndSameProfile_succeeds() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(messageService.hasMessages(conversationId)).thenReturn(true);
+        OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
+            List.of(), null, null, null, null, null, null, false, Instant.now(), Instant.now());
+        when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
+
+        assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
         verify(conversationService).updateSettings(eq(conversationId), any());
     }
@@ -274,6 +316,158 @@ class ChatControllerTest {
             List.of(new OrchestratorProfileOption("OIM", false),
                 new OrchestratorProfileOption("OIM - Browsing", true)),
             model.getAttribute("orchestratorProfiles"));
+    }
+
+    @Test
+    void threadView_withExistingUserMessage_locksPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question",
+            "my-playbook", List.of(), List.of(), Instant.now());
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
+        when(playbookService.getPlaybook("my-playbook"))
+            .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
+                List.of(), false, Instant.now(), Instant.now(), false)));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
+        assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
+        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+    }
+
+    @Test
+    void threadView_withMixedConversationWithActiveProfile_suppressesPlaybookLockAndRetainsProfile() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Map.of("model", "model1", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message userMsg1 = new Message(UUID.randomUUID(), conversationId, "user", "Question 1",
+            "my-playbook", List.of(), List.of(), Instant.now().minusSeconds(10));
+        Message userMsg2 = new Message(UUID.randomUUID(), conversationId, "user", "In-depth turn",
+            null, List.of(), List.of(), Instant.now());
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg1, userMsg2));
+        when(messageService.resolveLockState(eq(conversationId), eq("oim")))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), true, true));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
+        assertNull(model.getAttribute("lockedPlaybookName"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> settings = (Map<String, Object>) model.getAttribute("settings");
+        assertEquals("oim", settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()));
+    }
+
+    @Test
+    void threadView_withoutUserMessage_doesNotLockPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertFalse((Boolean) model.getAttribute("isModeLocked"));
+        assertNull(model.getAttribute("lockedPlaybookName"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
+        verify(messageService).resolveLockState(conversationId, null);
+    }
+
+    @Test
+    void threadView_withUserMessageWithoutPlaybook_doesNotLockPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question", null,
+            List.of(), List.of(), Instant.now());
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertTrue((Boolean) model.getAttribute("isModeLocked"));
+        assertNull(model.getAttribute("lockedPlaybookName"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
+    }
+
+    @Test
+    void threadView_withDesktopUserMessageWithoutPlaybookThenPlaybookUserMessage_locksPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message desktopUserMsg = new Message(UUID.randomUUID(), conversationId, "user",
+            "Desktop question", null, List.of(), List.of(), Instant.now().minusSeconds(60));
+        Message webUserMsg = new Message(UUID.randomUUID(), conversationId, "user", "Web question",
+            "my-playbook", List.of(), List.of(), Instant.now());
+        when(messageService.getMessages(conversationId))
+            .thenReturn(List.of(desktopUserMsg, webUserMsg));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
+        when(playbookService.getPlaybook("my-playbook"))
+            .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
+                List.of(), false, Instant.now(), Instant.now(), false)));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
+        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+    }
+
+    @Test
+    void threadView_whenPlaybookPastFirst100Messages_locksPlaybook() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("past100-pb"), false, false));
+        when(playbookService.getPlaybook("past100-pb"))
+            .thenReturn(Optional.of(new Playbook("past100-pb", "Past 100 Title", "Desc", "Tmpl",
+                List.of(), false, Instant.now(), Instant.now(), false)));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
+        assertEquals("past100-pb", model.getAttribute("lockedPlaybookName"));
+        assertEquals("Past 100 Title", model.getAttribute("lockedPlaybookTitle"));
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

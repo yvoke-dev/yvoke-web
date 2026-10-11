@@ -3,18 +3,17 @@ package de.palsoftware.yvoke.chat.core.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
@@ -124,6 +123,31 @@ public class ChatMessageService {
         return messageRepository.findByConversationId(conversationId, 100, 0);
     }
 
+    public boolean hasMessages(UUID conversationId) {
+        return messageRepository.countByConversationId(conversationId) > 0;
+    }
+
+    /**
+     * Resolves the mode and playbook immutability lock state for a conversation based on its
+     * initial playbook, in-depth turns, and active orchestrator profile.
+     *
+     * <p>
+     * Note: Does not verify conversation ownership; callers must verify ownership prior to calling
+     * this method if user scoping is required.
+     */
+    public ConversationLockState resolveLockState(UUID conversationId, String orchestratorProfile) {
+        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank()
+            && orchestrationService.hasProfile(orchestratorProfile.trim());
+
+        // Avoid count query when conversation is neither locked nor configured with an active
+        // orchestrator profile
+        boolean hasInDepthTurns = (initialPlaybook.isPresent() || hasActiveProfile)
+            && messageRepository.hasInDepthTurns(conversationId);
+
+        return ConversationLockState.from(initialPlaybook, hasInDepthTurns, hasActiveProfile);
+    }
+
     /**
      * Validates access, persists the user message and resolves model/history/tools synchronously.
      * Intended to run on the request thread so authorization/validation failures surface as normal
@@ -134,28 +158,73 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        if (promptName == null || promptName.isBlank()) {
-            throw new IllegalArgumentException(
-                "A playbook must be selected before asking a question.");
-        }
-        Playbook playbook = playbookService.getPlaybook(promptName)
-            .orElseThrow(() -> new IllegalArgumentException("The selected playbook is invalid."));
+        Map<String, Object> settings = conversation.settings();
+        String orchestratorProfile =
+            (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
 
-        UUID userMessageId = UUID.randomUUID();
-        String modelContent = transactionTemplate.execute(
-            status -> saveUserMessage(conversationId, userMessageId, userContent, promptName));
+        ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
+        return prepareWithLockState(conversation, userContent, promptName, lockState);
+    }
+
+    private PreparedChat prepareWithLockState(Conversation conversation, String userContent,
+        String promptName, ConversationLockState lockState) {
+        UUID conversationId = conversation.id();
+        Map<String, Object> settings = conversation.settings();
+
+        if (!lockState.isSinglePlaybookLocked() && lockState.hasActiveProfile()) {
+            throw new IllegalArgumentException(
+                "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+        }
+
+        String effectivePlaybookName;
+        if (lockState.isPlaybookLocked()) {
+            String lockedPlaybook = lockState.lockedPlaybookName();
+            if (promptName != null && !promptName.isBlank()
+                && !promptName.trim().equals(lockedPlaybook)) {
+                throw new IllegalArgumentException(
+                    "Playbook cannot be changed once a conversation has started.");
+            }
+            effectivePlaybookName = lockedPlaybook;
+        } else {
+            if (promptName == null || promptName.isBlank()) {
+                throw new IllegalArgumentException(
+                    "A playbook must be selected before asking a question.");
+            }
+            effectivePlaybookName = promptName.trim();
+        }
+
+        Playbook playbook = playbookService.getPlaybook(effectivePlaybookName).orElseThrow(() -> {
+            if (lockState.isPlaybookLocked()) {
+                return new IllegalArgumentException("The locked playbook '" + effectivePlaybookName
+                    + "' no longer exists; please start a new conversation.");
+            }
+            return new IllegalArgumentException("The selected playbook is invalid.");
+        });
 
         List<String> allowedTools = playbook.tools();
         boolean codeExecution = playbook.codeExecution();
 
-        Map<String, Object> settings = conversation.settings();
         String modelToUse = resolveModelToUse(settings);
         String systemPrompt = resolveSystemPrompt(settings, playbook);
         String thinkingLevel = resolveThinkingLevel(settings);
+
+        UUID userMessageId = UUID.randomUUID();
+        transactionTemplate.executeWithoutResult(status -> {
+            conversationRepository.lockForUpdate(conversationId);
+            Optional<String> currentInitial = messageRepository.findInitialPlaybook(conversationId);
+            if (currentInitial.isPresent()
+                && !currentInitial.get().trim().equals(effectivePlaybookName)) {
+                throw new IllegalArgumentException(
+                    "Playbook cannot be changed once a conversation has started.");
+            }
+            saveUserMessage(conversationId, userMessageId, userContent, effectivePlaybookName);
+        });
+
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
-        return new PreparedChat(conversationId, userMessageId, modelContent, modelToUse,
-            systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution);
+        return new PreparedChat(conversationId, userMessageId, userContent, modelToUse,
+            systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution,
+            effectivePlaybookName);
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
@@ -166,17 +235,28 @@ public class ChatMessageService {
         Runnable onComplete) {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
+
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
+
+        ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
+
+        if (!lockState.isSinglePlaybookLocked() && orchestratorProfile != null
+            && !orchestratorProfile.isBlank()) {
             return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
                 onComplete);
         }
 
-        PreparedChat prepared = prepare(conversationId, content, promptName);
+        PreparedChat prepared = prepareWithLockState(conversation, content, promptName, lockState);
+        return dispatchAsync(conversation, prepared, onComplete);
+    }
+
+    private UUID dispatchAsync(Conversation conversation, PreparedChat prepared,
+        Runnable onComplete) {
+        UUID conversationId = conversation.id();
         UUID assistantMessageId = UUID.randomUUID();
 
-        String pbName = (promptName != null && !promptName.isBlank()) ? promptName : null;
+        String pbName = prepared.playbookName();
         transactionTemplate.executeWithoutResult(status -> {
             Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
                 "", pbName, Collections.emptyList(), Collections.emptyList(), Instant.now(), null,
@@ -260,10 +340,21 @@ public class ChatMessageService {
      */
     private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName,
         Runnable onComplete) {
+        if (!orchestrationService.hasProfile(profileName)) {
+            throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
+                + "' no longer exists; please start a new conversation.");
+        }
         chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
-        transactionTemplate
-            .execute(status -> saveUserMessage(conversationId, userMessageId, content, null));
+        transactionTemplate.executeWithoutResult(status -> {
+            conversationRepository.lockForUpdate(conversationId);
+            if (messageRepository.findInitialPlaybook(conversationId).isPresent()
+                && !messageRepository.hasInDepthTurns(conversationId)) {
+                throw new IllegalArgumentException(
+                    "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
+            }
+            saveUserMessage(conversationId, userMessageId, content, null);
+        });
         List<LlmMessage> history = getPriorHistory(conversationId, userMessageId);
 
         UUID assistantMessageId = UUID.randomUUID();
@@ -482,40 +573,14 @@ public class ChatMessageService {
 
 
     /** Immutable setup produced on the request thread and consumed by the streaming task. */
-    public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent, String modelToUse,
-        String systemPrompt, List<LlmMessage> history, List<String> allowedTools, String thinkingLevel,
-        boolean codeExecution) {
-        public PreparedChat(UUID conversationId, String modelContent, String modelToUse,
-            String systemPrompt, List<LlmMessage> history, List<String> allowedTools, String thinkingLevel,
-            boolean codeExecution) {
-            this(conversationId, null, modelContent, modelToUse, systemPrompt, history, allowedTools, thinkingLevel, codeExecution);
-        }
-    }
+    public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
+        String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
+        String thinkingLevel, boolean codeExecution, String playbookName) {}
 
-    private String saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
-        String promptName) {
-        boolean isFirstUse = true;
-        if (promptName != null && !promptName.isBlank()) {
-            List<Message> priorMessages =
-                messageRepository.findByConversationId(conversationId, 100, 0);
-            isFirstUse = priorMessages.stream().filter(msg -> "user".equalsIgnoreCase(msg.role()))
-                .noneMatch(msg -> promptName.equals(msg.playbook()));
-        }
-
-        String promptText = (promptName != null && !promptName.isBlank() && isFirstUse)
-            ? playbookService.getPlaybook(promptName).map(Playbook::templateText).orElse(null)
-            : null;
-        boolean hasPrompt = promptText != null && !promptText.isBlank();
-        String modelContent = hasPrompt ? promptText + "\n\n---\n\n" + userContent : userContent;
-
-        boolean playbookHasTemplate = false;
-        if (promptName != null && !promptName.isBlank()) {
-            playbookHasTemplate = playbookService.getPlaybook(promptName)
-                .map(Playbook::templateText).map(t -> !t.isBlank()).orElse(false);
-        }
-
+    private void saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
+        String playbookName) {
         Message userMessage = new Message(userMessageId, conversationId, "user", userContent,
-            (promptName != null && !promptName.isBlank()) ? promptName : null,
+            (playbookName != null && !playbookName.isBlank()) ? playbookName.trim() : null,
             Collections.emptyList(), Collections.emptyList(), Instant.now());
         messageRepository.save(userMessage);
 
@@ -523,8 +588,6 @@ public class ChatMessageService {
         if (messageCount == 1) {
             chatConversationService.autoTitle(conversationId, userContent);
         }
-
-        return modelContent;
     }
 
     private String resolveModelToUse(Map<String, Object> settings) {
@@ -542,29 +605,54 @@ public class ChatMessageService {
     }
 
     private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
+        String basePrompt = null;
         String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
         if (chatPromptName != null && !chatPromptName.isBlank()) {
             Optional<SystemPrompt> prompt =
                 systemPromptService.findChatPrompt(chatPromptName.trim());
             if (prompt.isPresent()) {
-                return prompt.get().systemPrompt();
+                basePrompt = prompt.get().systemPrompt();
+            } else {
+                log.warn(
+                    "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
+                    chatPromptName.trim());
             }
-            log.warn(
-                "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
-                chatPromptName.trim());
         }
-        if (playbook != null && playbook.systemPrompt() != null
+        if (basePrompt == null && playbook != null && playbook.systemPrompt() != null
             && !playbook.systemPrompt().isBlank()) {
             Optional<SystemPrompt> prompt =
                 systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
             if (prompt.isPresent()) {
-                return prompt.get().systemPrompt();
+                basePrompt = prompt.get().systemPrompt();
+            } else {
+                log.warn(
+                    "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
+                    playbook.name(), playbook.systemPrompt().trim());
             }
-            log.warn(
-                "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
-                playbook.name(), playbook.systemPrompt().trim());
         }
-        return null;
+        if (basePrompt == null && systemPromptService != null) {
+            // Note: Falling back to findChatPrompt(null) here mirrors
+            // RagService.loadAgenticSystemPrompt().
+            // Because PreparedChat passes this resolved system prompt down into AgenticRagRequest,
+            // RagService's own fallback is effectively bypassed for web chat, ensuring consistent
+            // prompt resolution.
+            basePrompt =
+                systemPromptService.findChatPrompt(null).map(SystemPrompt::systemPrompt).orElse("");
+        }
+
+        if (basePrompt == null || basePrompt.isBlank()) {
+            throw new IllegalStateException(
+                "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
+        }
+
+        String playbookInstructions =
+            (playbook != null && playbook.templateText() != null) ? playbook.templateText() : null;
+
+        if (playbookInstructions != null && !playbookInstructions.isBlank()) {
+            return basePrompt + "\n\n---\n\n" + playbookInstructions;
+        }
+
+        return basePrompt;
     }
 
     private String resolveThinkingLevel(Map<String, Object> settings) {
@@ -576,25 +664,13 @@ public class ChatMessageService {
         List<Message> priorMessages =
             messageRepository.findByConversationId(conversationId, 100, 0);
         List<LlmMessage> history = new ArrayList<>();
-        Set<String> seenPlaybooks = new HashSet<>();
 
         for (Message msg : priorMessages) {
             if (msg.id().equals(excludeMessageId)) {
                 continue;
             }
             if ("user".equalsIgnoreCase(msg.role())) {
-                String content = msg.content();
-                String playbookName = msg.playbook();
-                if (playbookName != null && !playbookName.isBlank()) {
-                    if (seenPlaybooks.add(playbookName)) {
-                        String templateText = playbookService.getPlaybook(playbookName)
-                            .map(Playbook::templateText).orElse("");
-                        if (!templateText.isBlank()) {
-                            content = templateText + "\n\n---\n\n" + content;
-                        }
-                    }
-                }
-                history.add(new LlmMessage("user", content));
+                history.add(new LlmMessage("user", msg.content()));
             } else if ("assistant".equalsIgnoreCase(msg.role())) {
                 if ("generating".equalsIgnoreCase(msg.status()) || msg.content() == null
                     || msg.content().isBlank()) {

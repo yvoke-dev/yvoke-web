@@ -157,4 +157,31 @@ public class MessageRepository {
         return jdbcClient.sql(sql).param("conversationId", conversationId).query(Long.class)
             .single();
     }
+
+    public Optional<String> findInitialPlaybook(UUID conversationId) {
+        String sql = """
+            SELECT playbook
+            FROM messages
+            WHERE conversation_id = :conversationId
+              AND LOWER(role) = 'user'
+              AND playbook IS NOT NULL
+              AND btrim(playbook) <> ''
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+            """;
+        return jdbcClient.sql(sql).param("conversationId", conversationId).query(String.class)
+            .optional().map(String::trim);
+    }
+
+    public boolean hasInDepthTurns(UUID conversationId) {
+        String sql = """
+            SELECT count(*) FROM messages
+            WHERE conversation_id = :conversationId
+              AND LOWER(role) = 'user'
+              AND (playbook IS NULL OR btrim(playbook) = '')
+            """;
+        Long count =
+            jdbcClient.sql(sql).param("conversationId", conversationId).query(Long.class).single();
+        return count > 0;
+    }
 }

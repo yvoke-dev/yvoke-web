@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService.PreparedChat;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
+import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.io.IOException;
 import java.util.UUID;
@@ -25,15 +26,18 @@ public class ChatSseController {
     private static final Logger log = LoggerFactory.getLogger(ChatSseController.class);
 
     private final ChatMessageService chatMessageService;
+    private final ChatConversationService chatConversationService;
     private final ChatCancellationService chatCancellationService;
     private final AsyncTaskExecutor sseExecutor;
     private final GenerationConcurrencyLimiter concurrencyLimiter;
 
     public ChatSseController(ChatMessageService chatMessageService,
+        ChatConversationService chatConversationService,
         ChatCancellationService chatCancellationService,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor sseExecutor,
         GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatMessageService = chatMessageService;
+        this.chatConversationService = chatConversationService;
         this.chatCancellationService = chatCancellationService;
         this.sseExecutor = sseExecutor;
         this.concurrencyLimiter = concurrencyLimiter;
@@ -80,21 +84,30 @@ public class ChatSseController {
             return emitter;
         }
 
-        UUID assistantMessageId = UUID.randomUUID();
-
-        // Validate + persist the user message on the request thread so authorization/validation
-        // failures propagate as normal HTTP errors BEFORE the SSE response is committed. Only the
-        // (long-running) generation streams asynchronously.
-        PreparedChat prepared = chatMessageService.prepare(id, content, promptName);
+        // Verify conversation ownership before acquiring a concurrency permit (SEC-10)
+        chatConversationService.verifyOwnership(id, false);
 
         // Global generation cap (PRF-15): acquire a slot on the request thread so we can still
-        // reject
-        // with a clean 429 before the SSE response is committed. The slot is released when the
-        // streaming task finishes (success, error, or cancellation).
+        // reject with a clean 429 before the SSE response is committed. The slot is released when
+        // the streaming task finishes (success, error, or cancellation), or immediately if
+        // prepare() fails.
         if (!concurrencyLimiter.tryAcquire()) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "The assistant is at capacity right now. Please retry in a moment.");
         }
+
+        // Validate + persist the user message on the request thread so authorization/validation
+        // failures propagate as normal HTTP errors BEFORE the SSE response is committed. Only the
+        // (long-running) generation streams asynchronously.
+        PreparedChat prepared;
+        try {
+            prepared = chatMessageService.prepare(id, content, promptName);
+        } catch (Exception e) {
+            concurrencyLimiter.release();
+            throw e;
+        }
+
+        UUID assistantMessageId = UUID.randomUUID();
 
         AtomicReference<Future<?>> taskRef = new AtomicReference<>();
         // Tokens written so far. Only ever read to describe a failure — the citation filter emits
