@@ -128,8 +128,10 @@ public class ChatController {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
         }
 
+        boolean isSinglePlaybookLocked =
+            isPlaybookLocked && !chatMessageService.hasInDepthTurns(id);
         Map<String, Object> effectiveSettings = new HashMap<>(conversation.settings());
-        if (isPlaybookLocked) {
+        if (isSinglePlaybookLocked) {
             effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");
         }
 

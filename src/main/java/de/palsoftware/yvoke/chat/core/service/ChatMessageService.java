@@ -150,12 +150,15 @@ public class ChatMessageService {
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
         Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean isSinglePlaybookLocked =
+            initialPlaybook.isPresent() && !messageRepository.hasInDepthTurns(conversationId);
         boolean isLocked = initialPlaybook.isPresent();
 
         Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
             (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (!isLocked && orchestratorProfile != null && !orchestratorProfile.isBlank()) {
+        if (!isSinglePlaybookLocked && orchestratorProfile != null
+            && !orchestratorProfile.isBlank()) {
             if (orchestrationService.hasProfile(orchestratorProfile)) {
                 throw new IllegalArgumentException(
                     "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
@@ -628,8 +631,8 @@ public class ChatMessageService {
         }
 
         if (basePrompt == null || basePrompt.isBlank()) {
-            throw new IllegalArgumentException(
-                "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
+            throw new IllegalStateException(
+                "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
         }
 
         String playbookInstructions =

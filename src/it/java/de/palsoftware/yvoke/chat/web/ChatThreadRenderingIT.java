@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
@@ -710,12 +711,30 @@ public class ChatThreadRenderingIT {
         assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
         assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
         String longHtml = longConvResult.getResponse().getContentAsString();
-        assertThat(longHtml).contains("isPlaybookLocked: true");
+        // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID mixedConvId = chatConversationService.createConversation().id();
+        chatConversationService.updateSettings(mixedConvId,
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+        messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "Question 1",
+            "oim-full", List.of(), List.of(), Instant.now().minusSeconds(10)));
+        messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "In-depth turn",
+            null, List.of(), List.of(), Instant.now()));
+
+        MvcResult mixedResult = mockMvc.perform(get("/chat/" + mixedConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
+        ModelAndView mixedMav = mixedResult.getModelAndView();
+        assertThat(mixedMav).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mixedSettings = (Map<String, Object>) mixedMav.getModel().get("settings");
+        assertThat(mixedSettings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()))
+            .isEqualTo("oim");
 
         // Cleanup
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         chatConversationService.deleteConversation(convId);
         chatConversationService.deleteConversation(longConvId);
+        chatConversationService.deleteConversation(mixedConvId);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */

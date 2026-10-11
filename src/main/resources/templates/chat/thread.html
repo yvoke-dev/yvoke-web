@@ -101,7 +101,7 @@
                 </div>
 
                 <!-- Active playbook indicator -->
-                <div id="active-playbook" class="active-playbook" th:style="${isPlaybookLocked && lockedPlaybookName != null} ? '' : 'display: none;'">
+                <div id="active-playbook" class="active-playbook" th:style="${isPlaybookLocked && lockedPlaybookName != null && (settings['orchestrator-profile'] == null || settings['orchestrator-profile'] == '')} ? '' : 'display: none;'">
                     <span class="playbook-tag" id="active-playbook-tag" th:text="${lockedPlaybookTitle != null ? '📋 ' + lockedPlaybookTitle : (lockedPlaybookName != null ? '📋 ' + lockedPlaybookName : '📋 Playbook Title')}">📋 Playbook Title</span>
                     <span class="active-playbook-hint" th:style="${isPlaybookLocked} ? 'display: none;' : ''">applied to your next message</span>
                     <button th:style="${isPlaybookLocked} ? 'display: none;' : ''" type="button" class="active-playbook-remove" title="Remove playbook" data-action="clear-playbook">

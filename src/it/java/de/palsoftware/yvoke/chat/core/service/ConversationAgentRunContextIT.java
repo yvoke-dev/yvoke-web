@@ -13,9 +13,9 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.chat.ChatTestFixtures;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
@@ -122,11 +122,7 @@ public class ConversationAgentRunContextIT {
                 new LlmUsage(100, 20, 120, 0, 0))
         );
 
-        if (systemPromptService.findChatPrompt(null).isEmpty()) {
-            systemPromptService.savePrompt("default-chat", SystemPromptType.CHAT,
-                "Base system prompt for IT", "Default Chat IT", "OIM");
-            systemPromptService.setDefaultChatPromptName("default-chat");
-        }
+        ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
 
         playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", null);
         playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", null);

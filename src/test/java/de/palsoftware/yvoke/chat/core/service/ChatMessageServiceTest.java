@@ -84,11 +84,13 @@ public class ChatMessageServiceTest {
     private AgentRunRepository agentRunRepository;
     private AgentStepRepository agentStepRepository;
     private OrchestrationService orchestrationService;
+    private ConversationRepository conversationRepository;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
     public void setUp() {
         messageRepository = mock(MessageRepository.class);
+        conversationRepository = mock(ConversationRepository.class);
         chatConversationService = mock(ChatConversationService.class);
         ragService = mock(RagService.class);
         retrievalLogRepository = mock(RetrievalLogRepository.class);
@@ -109,11 +111,11 @@ public class ChatMessageServiceTest {
                 "Default base instructions", "Desc")));
         when(orchestrationService.hasProfile(anyString())).thenReturn(true);
 
-        chatMessageService = new ChatMessageService(messageRepository,
-            mock(ConversationRepository.class), chatConversationService, ragService,
-            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
-            taskExecutor, chatCancellationService, orchestrationService, messageToolCallRepository,
-            toolCallTraceExtractor, chatProperties, agentRunRepository, agentStepRepository);
+        chatMessageService = new ChatMessageService(messageRepository, conversationRepository,
+            chatConversationService, ragService, retrievalLogRepository, playbookService,
+            systemPromptService, transactionManager, taskExecutor, chatCancellationService,
+            orchestrationService, messageToolCallRepository, toolCallTraceExtractor, chatProperties,
+            agentRunRepository, agentStepRepository);
     }
 
     private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
@@ -121,7 +123,7 @@ public class ChatMessageServiceTest {
         if (orchService != null) {
             when(orchService.hasProfile(anyString())).thenReturn(true);
         }
-        return new ChatMessageService(messageRepository, mock(ConversationRepository.class),
+        return new ChatMessageService(messageRepository, conversationRepository,
             chatConversationService, ragService, retrievalLogRepository, playbookService,
             systemPromptService, transactionManager, taskExecutor, chatCancellationService,
             orchService != null ? orchService : orchestrationService, messageToolCallRepository,
@@ -1936,7 +1938,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void testPrepareThrowsIllegalArgumentExceptionWhenNoBaseSystemPromptConfigured() {
+    public void testPrepareThrowsIllegalStateExceptionWhenNoBaseSystemPromptConfigured() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -1949,10 +1951,10 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
         when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
 
-        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
             () -> chatMessageService.prepare(conversationId, "User query", "custom-pb"));
         assertThat(ex.getMessage()).isEqualTo(
-            "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
     }
 
     @Test
@@ -2399,7 +2401,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalArgumentException() {
+    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalStateException() {
         UUID convId = UUID.randomUUID();
         Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
             Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
@@ -2409,10 +2411,10 @@ public class ChatMessageServiceTest {
             false, Instant.now(), Instant.now(), false);
         when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
 
-        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
             () -> chatMessageService.prepare(convId, "Query", "my-playbook"));
         assertThat(ex.getMessage()).isEqualTo(
-            "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
     }
 
     @Test
@@ -2441,5 +2443,74 @@ public class ChatMessageServiceTest {
         assertThat(asstId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
             any());
+    }
+
+    @Test
+    void prepare_acquiresRowLockOnConversation() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("pb1", "Title", "Desc", "Instructions", List.of(), false,
+            Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
+
+        chatMessageService.prepare(convId, "Query", "pb1");
+
+        verify(conversationRepository).lockForUpdate(convId);
+    }
+
+    @Test
+    void submitOrchestratedAsync_acquiresRowLockOnConversation() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        chatMessageService.prepareAndSubmitAsync(convId, "Query", null);
+
+        verify(conversationRepository).lockForUpdate(convId);
+    }
+
+    @Test
+    void prepare_whenMixedLegacyConversationWithOrchestratorProfile_throwsIllegalArgumentException() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(convId, "Query", "pb1"));
+        assertThat(ex.getMessage())
+            .isEqualTo("Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenMixedLegacyConversationWithOrchestratorProfile_routesToOrchestrator() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "model1");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "test-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+        when(orchestrationService.hasProfile("test-profile")).thenReturn(true);
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "pb1");
+        assertThat(asstId).isNotNull();
+        verify(conversationRepository).lockForUpdate(convId);
+        verify(taskExecutor).submit(any(Runnable.class));
     }
 }

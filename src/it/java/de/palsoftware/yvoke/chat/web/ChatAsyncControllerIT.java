@@ -27,6 +27,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import de.palsoftware.yvoke.chat.ChatTestFixtures;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
@@ -106,11 +107,7 @@ public class ChatAsyncControllerIT {
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         conversationsToDelete = new ArrayList<>();
-        if (systemPromptService.findChatPrompt(null).isEmpty()) {
-            systemPromptService.savePrompt("default-chat", SystemPromptType.CHAT,
-                "Default Base Instructions", "Desc", "OIM");
-            systemPromptService.setDefaultChatPromptName("default-chat");
-        }
+        ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
     }
 
     @AfterEach
