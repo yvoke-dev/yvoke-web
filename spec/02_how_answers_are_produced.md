@@ -45,7 +45,7 @@ in-depth profiles, and can inspect any search or trace.
   system prompt overrides the default chat base instructions for conversations using that playbook (unless an
   explicit conversation-level prompt override is configured). In multi-agent orchestration, the designated
   prompt is prepended to orchestrator and reviewer system prompts, and passed as the base instruction override
-  to specialist playbooks. If unconfigured or deleted, it falls back seamlessly to the area or global default
+  to specialist playbooks. If unconfigured or deleted, it falls back seamlessly to the default
   base instructions.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.

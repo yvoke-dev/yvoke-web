@@ -1662,6 +1662,32 @@ public class ChatMessageServiceTest {
         assertThat(prepared.systemPrompt()).isNull();
     }
 
+    @Test
+    public void testConversationChatPromptFallbackToPlaybookPromptWhenInvalid() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.CHAT_PROMPT.getValue(), "non-existent-prompt");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("custom-pb", "Custom Playbook", "Desc", "Template", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM",
+            "pb-system-prompt");
+        when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt("non-existent-prompt"))
+            .thenReturn(Optional.empty());
+        when(systemPromptService.findChatPrompt("pb-system-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("pb-system-prompt", SystemPromptType.CHAT,
+                "PB System Instructions", "Desc")));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "User query", "custom-pb");
+
+        assertThat(prepared.systemPrompt()).isEqualTo("PB System Instructions");
+    }
+
     private static JsonNode parseDoneEvent(String line) {
         assertThat(line).startsWith("[DONE] {");
         try {

@@ -22,7 +22,7 @@ public class PromptsServiceTest {
     public void setUp() {
         playbookRepository = mock(PlaybookRepository.class);
         prompts = new PromptsService(new PlaybookService(playbookRepository, (McpSyncServer) null,
-            TestAreas.withAreas("OIM")));
+            TestAreas.withAreas("OIM"), null));
     }
 
     @Test

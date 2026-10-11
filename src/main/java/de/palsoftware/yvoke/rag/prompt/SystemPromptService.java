@@ -7,6 +7,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 
@@ -121,14 +122,16 @@ public class SystemPromptService {
      * Only CHAT prompts are returned, on both paths: KG and SUMMARIZE prompts share the namespace
      * but are not base instructions, and nothing a client does needs them.
      */
+    @Cacheable(cacheNames = CacheConfig.SYSTEM_PROMPTS,
+        key = "'chat:' + (#name != null ? #name.trim() : 'default-chat')")
     public Optional<SystemPrompt> findChatPrompt(String name) {
         String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
         String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
         return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
+    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
+        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
     public void savePrompt(String name, SystemPromptType type, String systemPrompt,
         String description, String area) {
         if (name == null || name.isBlank()) {
@@ -145,8 +148,8 @@ public class SystemPromptService {
             description != null ? description.trim() : "", storedArea);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
+    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
+        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
     public void deletePrompt(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Prompt name cannot be empty.");

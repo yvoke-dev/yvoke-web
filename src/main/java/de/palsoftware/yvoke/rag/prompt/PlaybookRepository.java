@@ -58,12 +58,6 @@ public class PlaybookRepository {
             }).optional();
     }
 
-    public void upsert(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area) {
-        upsert(name, title, description, templateText, tools, codeExecution, targetAgent, prototype,
-            area, null);
-    }
 
     public void upsert(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,

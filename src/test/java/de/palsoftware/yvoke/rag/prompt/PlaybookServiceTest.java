@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -96,7 +97,7 @@ class PlaybookServiceTest {
     @Test
     void testSavePlaybookSuccess() {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM");
+            false, "orchestrator", true, "OIM", null);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "orchestrator", true, "OIM", null);
     }
@@ -157,6 +158,32 @@ class PlaybookServiceTest {
         assertTrue(ex.getMessage().contains("is of type SUMMARIZE"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookRejectsSystemPromptFromDifferentArea() {
+        when(systemPromptService.requirePrompt("cross-area-prompt", SystemPromptType.CHAT))
+            .thenReturn(new SystemPrompt("cross-area-prompt", SystemPromptType.CHAT, "Content",
+                "Desc", Instant.now(), Instant.now(), false, "Finance"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
+                false, "specialist", false, "OIM", "cross-area-prompt"));
+        assertTrue(ex.getMessage().contains("belongs to area 'Finance'"));
+        assertTrue(ex.getMessage().contains("playbook belongs to area 'OIM'"));
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void testSavePlaybookAllowsGlobalSystemPrompt() {
+        when(systemPromptService.requirePrompt("global-prompt", SystemPromptType.CHAT)).thenReturn(
+            new SystemPrompt("global-prompt", SystemPromptType.CHAT, "Content", "Desc"));
+
+        playbookService.savePlaybook("pb-ok", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, "OIM", "global-prompt");
+        verify(playbookRepository).upsert("pb-ok", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, "OIM", "global-prompt");
     }
 
     @Test
@@ -264,8 +291,8 @@ class PlaybookServiceTest {
 
     @Test
     void savePlaybookStoresTheAreasStoredName() {
-        playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false,
-            " oim ");
+        playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false, " oim ",
+            null);
         verify(playbookRepository).upsert("pb", "PB", "", "Body", List.of(), false, "specialist",
             false, "OIM", null);
     }
@@ -274,10 +301,10 @@ class PlaybookServiceTest {
     void savePlaybookRefusesAnUnknownOrMissingArea() {
         IllegalArgumentException unknown =
             assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb",
-                "PB", "", "Body", List.of(), false, null, false, "SAP"));
+                "PB", "", "Body", List.of(), false, null, false, "SAP", null));
         assertEquals("Area 'SAP' does not exist.", unknown.getMessage());
         assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb", "PB",
-            "", "Body", List.of(), false, null, false, null));
+            "", "Body", List.of(), false, null, false, null, null));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any());
     }
@@ -286,7 +313,7 @@ class PlaybookServiceTest {
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
         PlaybookService twoAreas = new PlaybookService(playbookRepository, mcpSyncServer,
-            TestAreas.withAreas("OIM", "PingID"));
+            TestAreas.withAreas("OIM", "PingID"), null);
         twoAreas.importPlaybookFromMarkdown("""
             ---
             name: pb

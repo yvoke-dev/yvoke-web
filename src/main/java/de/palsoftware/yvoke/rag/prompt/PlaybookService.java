@@ -44,11 +44,6 @@ public class PlaybookService {
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
     public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
-        AreaService areaService) {
-        this(playbookRepository, mcpSyncServer, areaService, null);
-    }
-
-    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
         AreaService areaService, SystemPromptService systemPromptService) {
         this(playbookRepository, new ObjectProvider<>() {
             @Override
@@ -90,15 +85,6 @@ public class PlaybookService {
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area) {
-        savePlaybook(name, title, description, templateText, tools, codeExecution, targetAgent,
-            prototype, area, null);
-    }
-
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
-    public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
         String area, String systemPrompt) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
@@ -115,11 +101,18 @@ public class PlaybookService {
         String storedArea = areaService.requireArea(area);
         String prompt = null;
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            prompt =
-                systemPromptService != null
-                    ? systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT)
-                        .name()
-                    : systemPrompt.trim();
+            if (systemPromptService == null) {
+                prompt = systemPrompt.trim();
+            } else {
+                SystemPrompt sp =
+                    systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
+                if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
+                    throw new IllegalArgumentException(
+                        "System prompt '" + sp.name() + "' belongs to area '" + sp.area()
+                            + "', but playbook belongs to area '" + storedArea + "'.");
+                }
+                prompt = sp.name();
+            }
         }
 
         playbookRepository.upsert(name.trim(), title.trim(),
@@ -202,7 +195,7 @@ public class PlaybookService {
         });
     }
 
-    private void doRegister(Playbook playbook, McpSyncServer server) {
+    private Map<String, Object> buildMcpMetadata(Playbook playbook) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("tools", playbook.tools() != null ? playbook.tools() : List.of());
         meta.put("codeExecution", playbook.codeExecution());
@@ -212,6 +205,11 @@ public class PlaybookService {
         if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             meta.put("systemPrompt", playbook.systemPrompt().trim());
         }
+        return meta;
+    }
+
+    private void doRegister(Playbook playbook, McpSyncServer server) {
+        Map<String, Object> meta = buildMcpMetadata(playbook);
 
         var promptSpec = McpSchema.Prompt.builder(playbook.name())
             .description(playbook.description()).meta(meta).build();
@@ -220,15 +218,7 @@ public class PlaybookService {
             new McpServerFeatures.SyncPromptSpecification(promptSpec, (exchange, request) -> {
                 // Dynamic lookup on execution to support live database template updates
                 Playbook current = getPlaybook(playbook.name()).orElse(playbook);
-                Map<String, Object> execMeta = new HashMap<>();
-                execMeta.put("tools", current.tools() != null ? current.tools() : List.of());
-                execMeta.put("codeExecution", current.codeExecution());
-                execMeta.put("targetAgent",
-                    current.targetAgent() != null ? current.targetAgent() : "specialist");
-                execMeta.put("prototype", current.prototype());
-                if (current.systemPrompt() != null && !current.systemPrompt().isBlank()) {
-                    execMeta.put("systemPrompt", current.systemPrompt().trim());
-                }
+                Map<String, Object> execMeta = buildMcpMetadata(current);
                 return McpSchema.GetPromptResult
                     .builder(List.of(new McpSchema.PromptMessage(McpSchema.Role.USER,
                         McpSchema.TextContent.builder(current.templateText()).build())))

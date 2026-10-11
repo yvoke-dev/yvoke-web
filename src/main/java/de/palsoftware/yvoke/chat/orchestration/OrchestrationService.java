@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -131,6 +132,7 @@ public class OrchestrationService {
 
         try {
             String orchestratorBaseSysPrompt = resolvePlaybookSystemPrompt(orchestratorPlaybook);
+            String reviewerBaseSysPrompt = resolvePlaybookSystemPrompt(reviewerPlaybook);
             String orchestratorSystemPrompt =
                 (orchestratorBaseSysPrompt != null ? orchestratorBaseSysPrompt + "\n\n" : "")
                     + orchestratorPlaybook.templateText() + "\n\n## Available specialists\n"
@@ -213,7 +215,6 @@ public class OrchestrationService {
                     // systemPromptOverride is passed unconditionally: RagService.seedMessages
                     // ignores it whenever priorMessages is non-empty, precisely so a resumed turn
                     // cannot have index 0 rewritten under the answers already given to it.
-                    String reviewerBaseSysPrompt = resolvePlaybookSystemPrompt(reviewerPlaybook);
                     String reviewerSystemPrompt =
                         (reviewerBaseSysPrompt != null ? reviewerBaseSysPrompt + "\n\n" : "")
                             + reviewerPlaybook.templateText();
@@ -347,8 +348,15 @@ public class OrchestrationService {
             || playbook.systemPrompt().isBlank()) {
             return null;
         }
-        return systemPromptService.findChatPrompt(playbook.systemPrompt().trim())
-            .map(SystemPrompt::systemPrompt).orElse(null);
+        Optional<SystemPrompt> prompt =
+            systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
+        if (prompt.isPresent()) {
+            return prompt.get().systemPrompt();
+        }
+        log.warn(
+            "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
+            playbook.name(), playbook.systemPrompt().trim());
+        return null;
     }
 
     /** Invoked by call_specialist: runs one specialist, records the step, harvests its evidence. */

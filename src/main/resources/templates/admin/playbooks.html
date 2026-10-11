@@ -473,6 +473,23 @@
             }
         }
 
+        function applySystemPrompt(value, isReadOnly) {
+            const select = document.getElementById('systemPrompt');
+            if (!select) return;
+            Array.from(select.options)
+                .filter(o => o.dataset.dynamic === 'true')
+                .forEach(o => o.remove());
+            if (value && !Array.from(select.options).some(o => o.value === value)) {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = value + ' (inactive / not CHAT)';
+                opt.dataset.dynamic = 'true';
+                select.appendChild(opt);
+            }
+            select.value = value || '';
+            select.disabled = !!isReadOnly;
+        }
+
         function loadTemplateFile() {
             const fileInput = document.getElementById('template-file-input');
             const file = fileInput.files[0];
@@ -569,11 +586,7 @@
                 targetAgentSelect.value = targetAgent || 'specialist';
                 targetAgentSelect.disabled = false;
 
-                const sysPromptSelect = document.getElementById('systemPrompt');
-                if (sysPromptSelect) {
-                    sysPromptSelect.value = systemPrompt;
-                    sysPromptSelect.disabled = false;
-                }
+                applySystemPrompt(systemPrompt, false);
 
                 // Reset tools selection
                 const toolsSelect = document.getElementById('tools');
@@ -640,11 +653,7 @@
             targetAgentSelect.disabled = isReadOnly;
 
             const systemPrompt = button.getAttribute('data-system-prompt') || '';
-            const sysPromptSelect = document.getElementById('systemPrompt');
-            if (sysPromptSelect) {
-                sysPromptSelect.value = systemPrompt;
-                sysPromptSelect.disabled = isReadOnly;
-            }
+            applySystemPrompt(systemPrompt, isReadOnly);
 
             applyArea(button.getAttribute('data-area'));
             document.getElementById('area').disabled = isReadOnly;
@@ -703,11 +712,7 @@
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
 
-            const sysPromptSelect = document.getElementById('systemPrompt');
-            if (sysPromptSelect) {
-                sysPromptSelect.value = '';
-                sysPromptSelect.disabled = false;
-            }
+            applySystemPrompt('', false);
 
             document.getElementById('area').disabled = false;
 
