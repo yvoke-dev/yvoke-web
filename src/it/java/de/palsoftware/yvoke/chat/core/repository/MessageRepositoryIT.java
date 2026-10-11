@@ -6,11 +6,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -124,12 +128,42 @@ public class MessageRepositoryIT {
     }
 
     @Test
-    void lockForUpdate_executesSuccessfullyInsideTransaction() {
-        assertThatCode(() -> {
+    void lockForUpdate_acquiresRowLockPreventingConcurrentLock() throws Exception {
+        CountDownLatch lockAcquired = new CountDownLatch(1);
+        CountDownLatch releaseLock = new CountDownLatch(1);
+        AtomicBoolean secondAttemptFailed = new AtomicBoolean(false);
+
+        Thread tx1 = new Thread(() -> {
             transactionTemplate.executeWithoutResult(status -> {
                 conversationRepository.lockForUpdate(conversationId);
+                lockAcquired.countDown();
+                try {
+                    releaseLock.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             });
-        }).doesNotThrowAnyException();
+        });
+
+        tx1.start();
+        assertThat(lockAcquired.await(5, TimeUnit.SECONDS)).isTrue();
+
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                jdbcTemplate.queryForObject(
+                    "SELECT id FROM conversations WHERE id = ? FOR UPDATE NOWAIT",
+                    UUID.class, conversationId);
+            });
+        } catch (DataAccessException e) {
+            secondAttemptFailed.set(true);
+        } finally {
+            releaseLock.countDown();
+            tx1.join(5000);
+        }
+
+        assertThat(secondAttemptFailed.get())
+            .as("Concurrent lock with NOWAIT should fail while row is locked FOR UPDATE")
+            .isTrue();
     }
 
     @Test

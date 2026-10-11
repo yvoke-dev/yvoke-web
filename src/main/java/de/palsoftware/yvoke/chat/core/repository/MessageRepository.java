@@ -182,6 +182,6 @@ public class MessageRepository {
             """;
         Long count =
             jdbcClient.sql(sql).param("conversationId", conversationId).query(Long.class).single();
-        return count != null && count > 0;
+        return count > 0;
     }
 }

@@ -135,6 +135,10 @@ public class ChatMessageService {
         return messageRepository.findInitialPlaybook(conversationId);
     }
 
+    public boolean hasInDepthTurns(UUID conversationId) {
+        return messageRepository.hasInDepthTurns(conversationId);
+    }
+
     /**
      * Validates access, persists the user message and resolves model/history/tools synchronously.
      * Intended to run on the request thread so authorization/validation failures surface as normal
@@ -148,13 +152,11 @@ public class ChatMessageService {
         Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
         boolean isLocked = initialPlaybook.isPresent();
 
-        Map<String, Object> settings =
-            conversation != null ? conversation.settings() : Collections.emptyMap();
+        Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
             (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
         if (!isLocked && orchestratorProfile != null && !orchestratorProfile.isBlank()) {
-            if (orchestrationService != null
-                && orchestrationService.hasProfile(orchestratorProfile)) {
+            if (orchestrationService.hasProfile(orchestratorProfile)) {
                 throw new IllegalArgumentException(
                     "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
             }
@@ -220,9 +222,14 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
+        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean isSinglePlaybookLocked =
+            initialPlaybook.isPresent() && !messageRepository.hasInDepthTurns(conversationId);
+
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
+        if (!isSinglePlaybookLocked && orchestratorProfile != null
+            && !orchestratorProfile.isBlank()) {
             return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
                 onComplete);
         }
@@ -320,7 +327,7 @@ public class ChatMessageService {
      */
     private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName,
         Runnable onComplete) {
-        if (orchestrationService != null && !orchestrationService.hasProfile(profileName)) {
+        if (!orchestrationService.hasProfile(profileName)) {
             throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
                 + "' no longer exists; please start a new conversation.");
         }
@@ -621,8 +628,8 @@ public class ChatMessageService {
         }
 
         if (basePrompt == null || basePrompt.isBlank()) {
-            throw new IllegalStateException(
-                "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
+            throw new IllegalArgumentException(
+                "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
         }
 
         String playbookInstructions =

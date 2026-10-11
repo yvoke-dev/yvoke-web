@@ -913,7 +913,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void submitOrchestratedAsync_whenConversationStartedInSinglePlaybookMode_throwsIllegalArgumentException() {
+    public void prepareAndSubmitAsync_whenConversationStartedInSinglePlaybookModeWithStoredProfile_routesToSinglePlaybook() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -922,16 +922,23 @@ public class ChatMessageServiceTest {
             new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
         when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("pb1"));
+        when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(new Playbook("pb1", "Title",
+            "Desc", "Instructions", List.of(), false, Instant.now(), Instant.now(), false)));
 
-        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
-            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null));
-        assertThat(ex.getMessage()).isEqualTo(
-            "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
+        UUID assistantMessageId =
+            chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null);
+        assertThat(assistantMessageId).isNotNull();
+        verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
+            any());
     }
 
     @Test
     public void testPrepareThrowsIfPlaybookNotSelected() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
         IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", null));
         assertThat(exception.getMessage())
@@ -941,7 +948,11 @@ public class ChatMessageServiceTest {
     @Test
     public void testPrepareThrowsIfPlaybookInvalid() {
         UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
         when(playbookService.getPlaybook("invalid-pb")).thenReturn(Optional.empty());
+
         IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", "invalid-pb"));
         assertThat(exception.getMessage()).isEqualTo("The selected playbook is invalid.");
@@ -1925,7 +1936,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void testPrepareThrowsIllegalStateExceptionWhenNoBaseSystemPromptConfigured() {
+    public void testPrepareThrowsIllegalArgumentExceptionWhenNoBaseSystemPromptConfigured() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -1938,10 +1949,10 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
         when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
 
-        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", "custom-pb"));
         assertThat(ex.getMessage()).isEqualTo(
-            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
+            "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
     }
 
     @Test
@@ -2388,7 +2399,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalStateException() {
+    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalArgumentException() {
         UUID convId = UUID.randomUUID();
         Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
             Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
@@ -2398,9 +2409,37 @@ public class ChatMessageServiceTest {
             false, Instant.now(), Instant.now(), false);
         when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
 
-        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(convId, "Query", "my-playbook"));
         assertThat(ex.getMessage()).isEqualTo(
-            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
+            "No active default CHAT base system prompt is configured; cannot send message without base instructions.");
+    }
+
+    @Test
+    void prepareAndSubmitAsync_whenPlaybookLockedAndStoredProfilePresent_routesToSinglePlaybook() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put("model", "gemini-3.1-flash-lite");
+        settings.put("orchestrator-profile", "in-depth-profile");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId))
+            .thenReturn(Optional.of("locked-playbook"));
+
+        Playbook pb = new Playbook("locked-playbook", "Locked Playbook", "Desc", "PB Instructions",
+            List.of(), false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("locked-playbook")).thenReturn(Optional.of(pb));
+
+        SystemPrompt sp = new SystemPrompt("default-chat", SystemPromptType.CHAT,
+            "Base system instructions", "desc");
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.of(sp));
+
+        UUID asstId = chatMessageService.prepareAndSubmitAsync(convId, "Query", "locked-playbook");
+
+        assertThat(asstId).isNotNull();
+        verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
+            any());
     }
 }

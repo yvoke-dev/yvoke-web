@@ -121,18 +121,14 @@ public class ChatController {
 
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(orchestratorProfileService.listProfileOptions());
-        String currentProfile =
-            conversation.settings() != null
-                ? (String) conversation.settings()
-                    .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue())
-                : null;
+        String currentProfile = (String) conversation.settings()
+            .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
         if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
             .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
         }
 
-        Map<String, Object> effectiveSettings =
-            new HashMap<>(conversation.settings() != null ? conversation.settings() : Map.of());
+        Map<String, Object> effectiveSettings = new HashMap<>(conversation.settings());
         if (isPlaybookLocked) {
             effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");
         }
