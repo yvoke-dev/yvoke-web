@@ -15,7 +15,7 @@ public Playbook{if(!isSpecialist(targetAgent)){systemPrompt=null;}}
 
 public boolean isSpecialist(){return isSpecialist(targetAgent);}
 
-public static boolean isSpecialist(String targetAgent){if(targetAgent==null||targetAgent.isBlank()){return true;}String trimmed=targetAgent.trim();return!"orchestrator".equalsIgnoreCase(trimmed)&&!"reviewer".equalsIgnoreCase(trimmed);}
+public static boolean isSpecialist(String targetAgent){if(targetAgent==null||targetAgent.isBlank()){return true;}return!"orchestrator".equalsIgnoreCase(targetAgent)&&!"reviewer".equalsIgnoreCase(targetAgent);}
 
 public Playbook(String name,String title,String description,String templateText,List<String>tools,boolean codeExecution,String targetAgent,boolean prototype,Instant createdAt,Instant updatedAt,boolean readOnly,String area){this(name,title,description,templateText,tools,codeExecution,targetAgent,prototype,createdAt,updatedAt,readOnly,area,null);}
 

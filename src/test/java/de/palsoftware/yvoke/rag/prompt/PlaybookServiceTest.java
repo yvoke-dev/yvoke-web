@@ -254,6 +254,11 @@ class PlaybookServiceTest {
             false, "analyst", false, null, null, false, "OIM", "some-prompt");
         assertEquals("some-prompt", analyst.systemPrompt());
         assertTrue(analyst.isSpecialist());
+
+        Playbook paddedRole = new Playbook("pb-padded", "PB Padded", "Desc", "Template", List.of(),
+            false, " reviewer ", false, null, null, false, "OIM", "some-prompt");
+        assertEquals("some-prompt", paddedRole.systemPrompt());
+        assertTrue(paddedRole.isSpecialist());
     }
 
     @Test
