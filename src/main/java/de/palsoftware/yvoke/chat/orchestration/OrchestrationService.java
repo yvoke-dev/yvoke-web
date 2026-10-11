@@ -79,6 +79,15 @@ public class OrchestrationService {
             Objects.requireNonNull(systemPromptService, "systemPromptService must not be null");
     }
 
+    public boolean hasProfile(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String trimmed = name.trim();
+        return (profileService != null && profileService.getProfile(trimmed).isPresent())
+            || properties.profile(trimmed).isPresent();
+    }
+
     public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
         List<UUID> searchIds, int promptTokens, int completionTokens, int totalTokens,
         int cachedTokens, int thoughtTokens, String status) {}

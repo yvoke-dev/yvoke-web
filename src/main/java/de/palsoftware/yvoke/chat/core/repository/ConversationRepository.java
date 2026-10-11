@@ -55,6 +55,16 @@ public class ConversationRepository {
             .optional();
     }
 
+    public void lockForUpdate(UUID id) {
+        String sql = """
+            SELECT id
+            FROM conversations
+            WHERE id = :id
+            FOR UPDATE
+            """;
+        jdbcClient.sql(sql).param("id", id).query(UUID.class).optional();
+    }
+
     public List<Conversation> listAll(UUID userId, int limit, int offset) {
         String sql =
             """

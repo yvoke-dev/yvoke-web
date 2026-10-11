@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -82,6 +83,7 @@ public class ChatMessageServiceTest {
     private ChatProperties chatProperties;
     private AgentRunRepository agentRunRepository;
     private AgentStepRepository agentStepRepository;
+    private OrchestrationService orchestrationService;
     private ChatMessageService chatMessageService;
 
     @BeforeEach
@@ -100,23 +102,31 @@ public class ChatMessageServiceTest {
         chatProperties = new ChatProperties(true, List.of("model1"), true, false);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
+        orchestrationService = mock(OrchestrationService.class);
 
-        chatMessageService =
-            new ChatMessageService(messageRepository, mock(ConversationRepository.class),
-                chatConversationService, ragService, retrievalLogRepository, playbookService,
-                systemPromptService, transactionManager, taskExecutor, chatCancellationService,
-                mock(OrchestrationService.class), messageToolCallRepository, toolCallTraceExtractor,
-                chatProperties, agentRunRepository, agentStepRepository);
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default base instructions", "Desc")));
+        when(orchestrationService.hasProfile(anyString())).thenReturn(true);
+
+        chatMessageService = new ChatMessageService(messageRepository,
+            mock(ConversationRepository.class), chatConversationService, ragService,
+            retrievalLogRepository, playbookService, systemPromptService, transactionManager,
+            taskExecutor, chatCancellationService, orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, chatProperties, agentRunRepository, agentStepRepository);
     }
 
     private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
         AgentRunRepository runRepo, AgentStepRepository stepRepo) {
+        if (orchService != null) {
+            when(orchService.hasProfile(anyString())).thenReturn(true);
+        }
         return new ChatMessageService(messageRepository, mock(ConversationRepository.class),
             chatConversationService, ragService, retrievalLogRepository, playbookService,
             systemPromptService, transactionManager, taskExecutor, chatCancellationService,
-            orchService != null ? orchService : mock(OrchestrationService.class),
-            messageToolCallRepository, toolCallTraceExtractor,
-            props != null ? props : chatProperties, runRepo != null ? runRepo : agentRunRepository,
+            orchService != null ? orchService : orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, props != null ? props : chatProperties,
+            runRepo != null ? runRepo : agentRunRepository,
             stepRepo != null ? stepRepo : agentStepRepository);
     }
 
@@ -1883,7 +1893,8 @@ public class ChatMessageServiceTest {
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "bare-pb");
 
-        assertThat(prepared.systemPrompt()).isEqualTo("Template");
+        assertThat(prepared.systemPrompt())
+            .isEqualTo("Default base instructions\n\n---\n\nTemplate");
     }
 
     @Test
@@ -1903,11 +1914,34 @@ public class ChatMessageServiceTest {
             .thenReturn(Optional.of(new SystemPrompt("summarize-sys-prompt",
                 SystemPromptType.SUMMARIZE, "summarize body", "desc")));
         when(systemPromptService.findChatPrompt("summarize-sys-prompt")).thenCallRealMethod();
+        when(systemPromptService.findChatPrompt(null))
+            .thenReturn(Optional.of(new SystemPrompt("default-chat", SystemPromptType.CHAT,
+                "Default Base Prompt", "Desc")));
 
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "User query", "custom-pb");
 
-        assertThat(prepared.systemPrompt()).isEqualTo("Template");
+        assertThat(prepared.systemPrompt()).isEqualTo("Default Base Prompt\n\n---\n\nTemplate");
+    }
+
+    @Test
+    public void testPrepareThrowsIllegalStateExceptionWhenNoBaseSystemPromptConfigured() {
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv =
+            new Conversation(conversationId, null, "My Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("custom-pb", "Custom Playbook", "Desc", "Template", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null);
+        when(playbookService.getPlaybook("custom-pb")).thenReturn(Optional.of(pb));
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(conversationId, "User query", "custom-pb"));
+        assertThat(ex.getMessage()).isEqualTo(
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
     }
 
     @Test
@@ -2285,5 +2319,88 @@ public class ChatMessageServiceTest {
         MessageTrace trace = traceOpt.get();
         assertThat(trace.mode()).isEqualTo("single");
         assertThat(trace.toolCalls()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void prepare_conversationWithInitialPlaybookAndOrchestratorProfile_allowsSinglePlaybookSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "OIM"), Instant.now(), Instant.now(),
+            List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("my-playbook"));
+
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prep = chatMessageService.prepare(convId, "Query", null);
+        assertThat(prep.playbookName()).isEqualTo("my-playbook");
+    }
+
+    @Test
+    void submitOrchestratedAsync_existingMixedModeConversationWithInDepthTurns_allowsInDepthSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "oim"), Instant.now(), Instant.now(),
+            List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("my-playbook"));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(true);
+
+        UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(convId, "Query", null);
+        assertThat(assistantMessageId).isNotNull();
+    }
+
+    @Test
+    void prepare_whenOrchestratorProfileDeleted_allowsSinglePlaybookSend() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "deleted-profile"), Instant.now(),
+            Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(convId, "Query", "my-playbook");
+        assertThat(prep.playbookName()).isEqualTo("my-playbook");
+    }
+
+    @Test
+    void submitOrchestratedAsync_whenLockedProfileDeleted_throwsActionableError() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1", "orchestrator-profile", "deleted-profile"), Instant.now(),
+            Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.empty());
+        when(orchestrationService.hasProfile("deleted-profile")).thenReturn(false);
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(convId, "Query", null));
+        assertThat(ex.getMessage()).isEqualTo(
+            "The locked orchestrator profile 'deleted-profile' no longer exists; please start a new conversation.");
+    }
+
+    @Test
+    void resolveSystemPrompt_whenNoBasePromptConfigured_throwsIllegalStateException() {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat",
+            Map.of("model", "model1"), Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+        when(systemPromptService.findChatPrompt(null)).thenReturn(Optional.empty());
+        Playbook pb = new Playbook("my-playbook", "Playbook", "Desc", "PB Instructions", List.of(),
+            false, Instant.now(), Instant.now(), false);
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(Optional.of(pb));
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(convId, "Query", "my-playbook"));
+        assertThat(ex.getMessage()).isEqualTo(
+            "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
     }
 }

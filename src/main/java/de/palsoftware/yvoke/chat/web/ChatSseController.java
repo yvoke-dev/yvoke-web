@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService.PreparedChat;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
+import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.io.IOException;
 import java.util.UUID;
@@ -25,15 +26,18 @@ public class ChatSseController {
     private static final Logger log = LoggerFactory.getLogger(ChatSseController.class);
 
     private final ChatMessageService chatMessageService;
+    private final ChatConversationService chatConversationService;
     private final ChatCancellationService chatCancellationService;
     private final AsyncTaskExecutor sseExecutor;
     private final GenerationConcurrencyLimiter concurrencyLimiter;
 
     public ChatSseController(ChatMessageService chatMessageService,
+        ChatConversationService chatConversationService,
         ChatCancellationService chatCancellationService,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor sseExecutor,
         GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatMessageService = chatMessageService;
+        this.chatConversationService = chatConversationService;
         this.chatCancellationService = chatCancellationService;
         this.sseExecutor = sseExecutor;
         this.concurrencyLimiter = concurrencyLimiter;
@@ -79,6 +83,9 @@ public class ChatSseController {
             }
             return emitter;
         }
+
+        // Verify conversation ownership before acquiring a concurrency permit (SEC-10)
+        chatConversationService.verifyOwnership(id, false);
 
         // Global generation cap (PRF-15): acquire a slot on the request thread so we can still
         // reject with a clean 429 before the SSE response is committed. The slot is released when

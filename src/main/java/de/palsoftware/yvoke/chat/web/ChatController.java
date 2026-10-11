@@ -9,10 +9,12 @@ import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +119,24 @@ public class ChatController {
         }
         boolean isModeLocked = isPlaybookLocked || !messages.isEmpty();
 
+        List<OrchestratorProfileOption> orchestratorProfiles =
+            new ArrayList<>(orchestratorProfileService.listProfileOptions());
+        String currentProfile =
+            conversation.settings() != null
+                ? (String) conversation.settings()
+                    .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue())
+                : null;
+        if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
+            .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
+            orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
+        }
+
+        Map<String, Object> effectiveSettings =
+            new HashMap<>(conversation.settings() != null ? conversation.settings() : Map.of());
+        if (isPlaybookLocked) {
+            effectiveSettings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "");
+        }
+
         model.addAttribute("conversation", conversation);
         model.addAttribute("messages", messages);
         model.addAttribute("allowedModels", allowedModels);
@@ -125,13 +145,13 @@ public class ChatController {
         // conversation is not on. This is the value the send path will actually use.
         model.addAttribute("effectiveModel", chatConversationService.effectiveModel(
             (String) conversation.settings().get(ConversationSetting.MODEL.getValue())));
-        model.addAttribute("settings", conversation.settings());
+        model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
         model.addAttribute("prompts", playbookService.listSpecializedPlaybooks());
         model.addAttribute("isReadOnly", isReadOnly);
         model.addAttribute("playbookValidationEnabled",
             chatConversationService.isPlaybookValidationEnabled());
-        model.addAttribute("orchestratorProfiles", orchestratorProfileService.listProfileOptions());
+        model.addAttribute("orchestratorProfiles", orchestratorProfiles);
         model.addAttribute("isPlaybookLocked", isPlaybookLocked);
         model.addAttribute("lockedPlaybookName", lockedPlaybookName);
         model.addAttribute("lockedPlaybookTitle", lockedPlaybookTitle);

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,8 @@ import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
@@ -39,10 +42,35 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 class ChatSseControllerTest {
 
+    private final ChatConversationService chatConversationService =
+        mock(ChatConversationService.class);
+
     private static GenerationConcurrencyLimiter allowingLimiter() {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
         when(limiter.tryAcquire()).thenReturn(true);
         return limiter;
+    }
+
+    @Test
+    void unownedConversationFailsBeforeAcquiringConcurrencyPermit() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
+
+        UUID conversationId = UUID.randomUUID();
+        doThrow(new AccessDeniedException("not your conversation")).when(chatConversationService)
+            .verifyOwnership(conversationId, false);
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        assertThrows(AccessDeniedException.class,
+            () -> controller.sendMessageStream(conversationId, "hello", null));
+
+        verify(limiter, never()).tryAcquire();
+        verify(limiter, never()).release();
+        verify(chatMessageService, never()).prepare(any(), any(), any());
     }
 
     /**
@@ -60,7 +88,7 @@ class ChatSseControllerTest {
             .thenThrow(new AccessDeniedException("Access denied to conversation"));
 
         ChatSseController controller = new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, allowingLimiter());
+            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
 
         assertThrows(AccessDeniedException.class,
             () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
@@ -104,7 +132,7 @@ class ChatSseControllerTest {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
 
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, limiter)).build();
+            chatConversationService, chatCancellationService, sseExecutor, limiter)).build();
 
         String body =
             mockMvc.perform(post("/chat/" + UUID.randomUUID() + "/send").param("content", "   "))
@@ -134,7 +162,7 @@ class ChatSseControllerTest {
         when(limiter.tryAcquire()).thenReturn(false); // at capacity
 
         ChatSseController controller = new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, limiter);
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
             () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
@@ -158,7 +186,7 @@ class ChatSseControllerTest {
         when(limiter.tryAcquire()).thenReturn(true);
 
         ChatSseController controller = new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, limiter);
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
 
         assertThrows(IllegalArgumentException.class,
             () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
@@ -199,9 +227,9 @@ class ChatSseControllerTest {
             }).when(chatMessageService).stream(any(), any(), any());
 
             GenerationConcurrencyLimiter limiter = allowingLimiter();
-            new ChatSseController(chatMessageService, chatCancellationService, sseExecutor, limiter)
+            new ChatSseController(chatMessageService, chatConversationService,
+                chatCancellationService, sseExecutor, limiter)
                 .sendMessageStream(UUID.randomUUID(), "hello", null);
-
             verify(limiter).tryAcquire();
             verify(limiter).release();
             verify(chatCancellationService).deregister(any(UUID.class), any(Thread.class));
@@ -242,8 +270,8 @@ class ChatSseControllerTest {
             return null;
         }).when(chatMessageService).stream(any(), any(), any());
 
-        new ChatSseController(chatMessageService, chatCancellationService, sseExecutor,
-            allowingLimiter()).sendMessageStream(UUID.randomUUID(), "hello", null);
+        new ChatSseController(chatMessageService, chatConversationService, chatCancellationService,
+            sseExecutor, allowingLimiter()).sendMessageStream(UUID.randomUUID(), "hello", null);
 
         assertThatThrownBy(() -> sinkRef.get().accept("E")).hasMessageContaining("token #2")
             .hasCauseInstanceOf(IllegalStateException.class);
@@ -280,8 +308,9 @@ class ChatSseControllerTest {
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
             .thenReturn(dummyPreparedChat());
 
-        SseEmitter emitter = new ChatSseController(chatMessageService, chatCancellationService,
-            sseExecutor, allowingLimiter()).sendMessageStream(UUID.randomUUID(), "hello", null);
+        SseEmitter emitter = new ChatSseController(chatMessageService, chatConversationService,
+            chatCancellationService, sseExecutor, allowingLimiter())
+            .sendMessageStream(UUID.randomUUID(), "hello", null);
 
         // Ten minutes, deliberately an order of magnitude above WebMvcConfig's 60 s default.
         assertThat(emitter.getTimeout()).isEqualTo(600_000L);
@@ -306,7 +335,7 @@ class ChatSseControllerTest {
 
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         ChatSseController controller = new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, allowingLimiter());
+            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
 
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
@@ -338,7 +367,7 @@ class ChatSseControllerTest {
                 "Playbook cannot be changed once a conversation has started."));
 
         ChatSseController controller = new ChatSseController(chatMessageService,
-            chatCancellationService, sseExecutor, allowingLimiter());
+            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
 
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
             .setControllerAdvice(new ApiExceptionHandler()).build();

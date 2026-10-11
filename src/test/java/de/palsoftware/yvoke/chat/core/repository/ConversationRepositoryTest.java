@@ -167,4 +167,17 @@ public class ConversationRepositoryTest {
         verify(jdbcClient).sql(contains("SELECT id, user_id, title"));
         verify(statementSpec).param("id", id);
     }
+
+    @Test
+    public void testLockForUpdate() {
+        UUID id = UUID.randomUUID();
+        JdbcClient.MappedQuerySpec<UUID> mockQuery = mock(JdbcClient.MappedQuerySpec.class);
+        when(statementSpec.query(UUID.class)).thenReturn(mockQuery);
+
+        conversationRepository.lockForUpdate(id);
+
+        verify(jdbcClient).sql(contains("FOR UPDATE"));
+        verify(statementSpec).param("id", id);
+        verify(mockQuery).optional();
+    }
 }

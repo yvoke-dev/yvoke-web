@@ -106,6 +106,11 @@ public class ChatAsyncControllerIT {
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         conversationsToDelete = new ArrayList<>();
+        if (systemPromptService.findChatPrompt(null).isEmpty()) {
+            systemPromptService.savePrompt("default-chat", SystemPromptType.CHAT,
+                "Default Base Instructions", "Desc", "OIM");
+            systemPromptService.setDefaultChatPromptName("default-chat");
+        }
     }
 
     @AfterEach
@@ -1156,9 +1161,6 @@ public class ChatAsyncControllerIT {
             }
             try {
                 playbookService.deletePlaybook("pb-assemble");
-            } catch (Exception ignored) {}
-            try {
-                systemPromptService.deletePrompt("default-chat");
             } catch (Exception ignored) {}
         }
     }

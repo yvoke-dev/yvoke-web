@@ -145,17 +145,20 @@ public class ChatMessageService {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
+        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        boolean isLocked = initialPlaybook.isPresent();
+
         Map<String, Object> settings =
             conversation != null ? conversation.settings() : Collections.emptyMap();
         String orchestratorProfile =
             (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
-        if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
-            throw new IllegalArgumentException(
-                "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+        if (!isLocked && orchestratorProfile != null && !orchestratorProfile.isBlank()) {
+            if (orchestrationService != null
+                && orchestrationService.hasProfile(orchestratorProfile)) {
+                throw new IllegalArgumentException(
+                    "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+            }
         }
-
-        Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-        boolean isLocked = initialPlaybook.isPresent();
 
         String effectivePlaybookName;
         if (isLocked) {
@@ -191,6 +194,7 @@ public class ChatMessageService {
 
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
+            conversationRepository.lockForUpdate(conversationId);
             Optional<String> currentInitial = messageRepository.findInitialPlaybook(conversationId);
             if (currentInitial.isPresent()
                 && !currentInitial.get().trim().equals(effectivePlaybookName)) {
@@ -215,6 +219,7 @@ public class ChatMessageService {
         Runnable onComplete) {
         chatConversationService.checkChatEnabled();
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
+
         String orchestratorProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
         if (orchestratorProfile != null && !orchestratorProfile.isBlank()) {
@@ -223,6 +228,12 @@ public class ChatMessageService {
         }
 
         PreparedChat prepared = prepare(conversationId, content, promptName);
+        return dispatchAsync(conversation, prepared, onComplete);
+    }
+
+    private UUID dispatchAsync(Conversation conversation, PreparedChat prepared,
+        Runnable onComplete) {
+        UUID conversationId = conversation.id();
         UUID assistantMessageId = UUID.randomUUID();
 
         String pbName = prepared.playbookName();
@@ -309,10 +320,16 @@ public class ChatMessageService {
      */
     private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName,
         Runnable onComplete) {
+        if (orchestrationService != null && !orchestrationService.hasProfile(profileName)) {
+            throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
+                + "' no longer exists; please start a new conversation.");
+        }
         chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
-            if (messageRepository.findInitialPlaybook(conversationId).isPresent()) {
+            conversationRepository.lockForUpdate(conversationId);
+            if (messageRepository.findInitialPlaybook(conversationId).isPresent()
+                && !messageRepository.hasInDepthTurns(conversationId)) {
                 throw new IllegalArgumentException(
                     "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
             }
@@ -604,21 +621,18 @@ public class ChatMessageService {
         }
 
         if (basePrompt == null || basePrompt.isBlank()) {
-            log.warn(
-                "No base system prompt could be resolved (neither conversation-level, nor playbook-level, nor default CHAT prompt); proceeding with playbook instructions only or null.");
+            throw new IllegalStateException(
+                "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
         }
 
         String playbookInstructions =
             (playbook != null && playbook.templateText() != null) ? playbook.templateText() : null;
 
         if (playbookInstructions != null && !playbookInstructions.isBlank()) {
-            if (basePrompt != null && !basePrompt.isBlank()) {
-                return basePrompt + "\n\n---\n\n" + playbookInstructions;
-            }
-            return playbookInstructions;
+            return basePrompt + "\n\n---\n\n" + playbookInstructions;
         }
 
-        return (basePrompt != null && !basePrompt.isBlank()) ? basePrompt : null;
+        return basePrompt;
     }
 
     private String resolveThinkingLevel(Map<String, Object> settings) {
