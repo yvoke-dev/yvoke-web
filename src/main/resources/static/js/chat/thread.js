@@ -1144,7 +1144,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
             // Set up input and keydown event listeners for playbook autocomplete
             chatInput.addEventListener('input', function(e) {
-                if (isPlaybookLocked || orchestratorMode) {
+                if (isPlaybookLocked || orchestratorMode || currentAbortController) {
                     hideAutocomplete();
                     return;
                 }

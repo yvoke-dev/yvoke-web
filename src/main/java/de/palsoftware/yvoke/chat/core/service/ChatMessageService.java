@@ -124,6 +124,11 @@ public class ChatMessageService {
         return messageRepository.findByConversationId(conversationId, 100, 0);
     }
 
+    /**
+     * Resolves the locked playbook for a conversation, if one has been set. Note: Does not verify
+     * conversation ownership; callers must have verified ownership prior to calling this method if
+     * user scoping is required.
+     */
     public Optional<String> findInitialPlaybook(UUID conversationId) {
         return messageRepository.findInitialPlaybook(conversationId);
     }

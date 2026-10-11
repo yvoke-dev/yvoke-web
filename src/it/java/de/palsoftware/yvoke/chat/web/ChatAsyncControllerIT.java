@@ -925,49 +925,55 @@ public class ChatAsyncControllerIT {
         playbookService.savePlaybook("pb-lock-2", "Playbook 2", "Desc", "Template 2", List.of(),
             false, "specialist", false, "OIM", null);
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Answer 1", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        try {
+            doAnswer(inv -> {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                cb.accept(new LlmResponseChunk("Answer 1", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+                return null;
+            }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
-        var login = testUserLogin(userAOid, "user-a-async@local", "User A");
+            var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        // First message with pb-lock-1 succeeds
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "First question")
-                .param("promptName", "pb-lock-1"))
-            .andExpect(status().isAccepted());
+            // First message with pb-lock-1 succeeds
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "First question")
+                    .param("promptName", "pb-lock-1"))
+                .andExpect(status().isAccepted());
 
-        // Follow-up with pb-lock-2 is rejected with 400
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Second question")
-                .param("promptName", "pb-lock-2"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error")
-                .value("Playbook cannot be changed once a conversation has started."));
+            // Follow-up with pb-lock-2 is rejected with 400
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Second question")
+                    .param("promptName", "pb-lock-2"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                    .value("Playbook cannot be changed once a conversation has started."));
 
-        // Follow-up with same pb-lock-1 succeeds
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Second question same playbook")
-                .param("promptName", "pb-lock-1"))
-            .andExpect(status().isAccepted());
+            // Follow-up with same pb-lock-1 succeeds
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Second question same playbook")
+                    .param("promptName", "pb-lock-1"))
+                .andExpect(status().isAccepted());
 
-        // Follow-up omitting promptName succeeds with locked playbook
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Third question omitted playbook"))
-            .andExpect(status().isAccepted());
-
-        playbookService.deletePlaybook("pb-lock-1");
-        playbookService.deletePlaybook("pb-lock-2");
+            // Follow-up omitting promptName succeeds with locked playbook
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Third question omitted playbook"))
+                .andExpect(status().isAccepted());
+        } finally {
+            try {
+                playbookService.deletePlaybook("pb-lock-1");
+            } catch (Exception ignored) {}
+            try {
+                playbookService.deletePlaybook("pb-lock-2");
+            } catch (Exception ignored) {}
+        }
     }
 
     @Test
@@ -984,43 +990,49 @@ public class ChatAsyncControllerIT {
         playbookService.savePlaybook("pb-lock-other", "Lock Other", "Desc", "Instructions",
             List.of(), false, "specialist", false, "OIM", null);
 
-        // Populate 100 messages without playbook (e.g. desktop synced)
-        for (int i = 0; i < 100; i++) {
-            messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Desktop " + i,
-                null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+        try {
+            // Populate 100 messages without playbook (e.g. desktop synced)
+            for (int i = 0; i < 100; i++) {
+                messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Desktop " + i,
+                    null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+            }
+            // Message 101 has playbook pb-lock-past100
+            messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Message 101",
+                "pb-lock-past100", List.of(), List.of(), Instant.now()));
+
+            doAnswer(inv -> {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+                return null;
+            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+            var login = testUserLogin(userAOid, "user-a-async-long@local", "User A");
+
+            // Sending with different playbook must be rejected
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Follow up with wrong pb")
+                    .param("promptName", "pb-lock-other"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                    .value("Playbook cannot be changed once a conversation has started."));
+
+            // Sending with same playbook must succeed
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Follow up with same pb")
+                    .param("promptName", "pb-lock-past100"))
+                .andExpect(status().isAccepted());
+        } finally {
+            try {
+                playbookService.deletePlaybook("pb-lock-past100");
+            } catch (Exception ignored) {}
+            try {
+                playbookService.deletePlaybook("pb-lock-other");
+            } catch (Exception ignored) {}
         }
-        // Message 101 has playbook pb-lock-past100
-        messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Message 101",
-            "pb-lock-past100", List.of(), List.of(), Instant.now()));
-
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
-
-        var login = testUserLogin(userAOid, "user-a-async-long@local", "User A");
-
-        // Sending with different playbook must be rejected
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Follow up with wrong pb")
-                .param("promptName", "pb-lock-other"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error")
-                .value("Playbook cannot be changed once a conversation has started."));
-
-        // Sending with same playbook must succeed
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Follow up with same pb")
-                .param("promptName", "pb-lock-past100"))
-            .andExpect(status().isAccepted());
-
-        playbookService.deletePlaybook("pb-lock-past100");
-        playbookService.deletePlaybook("pb-lock-other");
     }
 
     @Test
@@ -1035,34 +1047,40 @@ public class ChatAsyncControllerIT {
         playbookService.savePlaybook("pb-to-delete", "To Delete", "Desc", "Instructions",
             List.of(), false, "specialist", false, "OIM", null);
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        try {
+            doAnswer(inv -> {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
+                return null;
+            }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
-        var login = testUserLogin(userAOid, "user-a-async-del@local", "User A");
+            var login = testUserLogin(userAOid, "user-a-async-del@local", "User A");
 
-        // Send first message with pb-to-delete
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "First question")
-                .param("promptName", "pb-to-delete"))
-            .andExpect(status().isAccepted());
+            // Send first message with pb-to-delete
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "First question")
+                    .param("promptName", "pb-to-delete"))
+                .andExpect(status().isAccepted());
 
-        // Admin deletes the locked playbook
-        playbookService.deletePlaybook("pb-to-delete");
+            // Admin deletes the locked playbook
+            playbookService.deletePlaybook("pb-to-delete");
 
-        // Follow up question returns actionable 400 error
-        mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
-                .with(login)
-                .with(csrf())
-                .param("content", "Second question")
-                .param("promptName", "pb-to-delete"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error")
-                .value("The locked playbook 'pb-to-delete' no longer exists; please start a new conversation."));
+            // Follow up question returns actionable 400 error
+            mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
+                    .with(login)
+                    .with(csrf())
+                    .param("content", "Second question")
+                    .param("promptName", "pb-to-delete"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                    .value("The locked playbook 'pb-to-delete' no longer exists; please start a new conversation."));
+        } finally {
+            try {
+                playbookService.deletePlaybook("pb-to-delete");
+            } catch (Exception ignored) {}
+        }
     }
 
     @Test
