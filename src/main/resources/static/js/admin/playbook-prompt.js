@@ -101,8 +101,8 @@ export function applySystemPrompt(select, value, areaValue, isReadOnly) {
  * @returns {boolean} True if the role is a specialist.
  */
 export function isSpecialistRole(role) {
-    if (!role) return true;
-    const r = role.trim().toLowerCase();
+    if (!role || (typeof role === 'string' && role.trim() === '')) return true;
+    const r = role.toLowerCase();
     return r !== 'orchestrator' && r !== 'reviewer';
 }
 

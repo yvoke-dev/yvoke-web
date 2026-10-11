@@ -169,9 +169,14 @@ test('playbooks: updateRoleState disables and clears prompt for orchestrator and
     assert.equal(select.disabled, true);
     assert.equal(select.value, '');
 
-    // Unlisted roles like 'analyst' are specialists and retain prompts
+    // Unlisted roles like 'analyst' or padded roles like ' reviewer ' are specialists and retain prompts
     select.value = 'some-prompt';
     updateRoleState(select, 'analyst', false);
+    assert.equal(select.disabled, false);
+    assert.equal(select.value, 'some-prompt');
+
+    select.value = 'some-prompt';
+    updateRoleState(select, ' reviewer ', false);
     assert.equal(select.disabled, false);
     assert.equal(select.value, 'some-prompt');
 
@@ -182,8 +187,13 @@ test('playbooks: updateRoleState disables and clears prompt for orchestrator and
     assert.equal(isSpecialistRole('analyst'), true);
     assert.equal(isSpecialistRole(null), true);
     assert.equal(isSpecialistRole(''), true);
+    assert.equal(isSpecialistRole('   '), true);
     assert.equal(isSpecialistRole('orchestrator'), false);
+    assert.equal(isSpecialistRole('Orchestrator'), false);
     assert.equal(isSpecialistRole('reviewer'), false);
+    assert.equal(isSpecialistRole('Reviewer'), false);
+    assert.equal(isSpecialistRole(' reviewer '), true);
+    assert.equal(isSpecialistRole(' orchestrator '), true);
 });
 
 test('playbooks: applySystemPrompt creates dynamic option for unlisted/inactive prompts via createElement', () => {
