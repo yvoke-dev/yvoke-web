@@ -60,7 +60,7 @@ public class MessageToolCallRepositoryIT {
     @Test
     void testBatchInsertAndFindByMessageIdOrderedBySeq() {
         ToolCallRecord call2 = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 2, "call_2", "calculate", "{\"expr\":\"1+1\"}", "2", false, Instant.now());
+            UUID.randomUUID(), messageId, 2, "call_2", "get_toc", "{\"doc\":\"1\"}", "toc", false, Instant.now());
         ToolCallRecord call0 = new ToolCallRecord(
             UUID.randomUUID(), messageId, 0, "call_0", "search_corpus", "{\"q\":\"search\"}", "results", false, Instant.now());
         ToolCallRecord call1 = new ToolCallRecord(
@@ -89,9 +89,9 @@ public class MessageToolCallRepositoryIT {
 
         assertThat(retrieved.get(2).seq()).isEqualTo(2);
         assertThat(retrieved.get(2).toolCallId()).isEqualTo("call_2");
-        assertThat(retrieved.get(2).toolName()).isEqualTo("calculate");
-        assertThat(retrieved.get(2).arguments()).isEqualTo("{\"expr\":\"1+1\"}");
-        assertThat(retrieved.get(2).result()).isEqualTo("2");
+        assertThat(retrieved.get(2).toolName()).isEqualTo("get_toc");
+        assertThat(retrieved.get(2).arguments()).isEqualTo("{\"doc\":\"1\"}");
+        assertThat(retrieved.get(2).result()).isEqualTo("toc");
         assertThat(retrieved.get(2).isError()).isFalse();
     }
 

@@ -32,13 +32,13 @@ class ToolCallTraceExtractorTest {
     void testExtractToolCalls_HappyPath() {
         LlmToolCall tc1 =
             new LlmToolCall("call_1", "function", "search_corpus", "{\"query\":\"test\"}");
-        LlmToolCall tc2 = new LlmToolCall("call_2", "function", "calculate", "{\"expr\":\"2+2\"}");
+        LlmToolCall tc2 = new LlmToolCall("call_2", "function", "get_toc", "{\"doc\":\"1\"}");
 
         LlmMessage assistantMsg =
             new LlmMessage("assistant", "", null, List.of(tc1, tc2), null, null);
         LlmMessage toolMsg1 =
             new LlmMessage("tool", "search results", null, null, "call_1", "search_corpus");
-        LlmMessage toolMsg2 = new LlmMessage("tool", "4", null, null, "call_2", "calculate");
+        LlmMessage toolMsg2 = new LlmMessage("tool", "toc", null, null, "call_2", "get_toc");
         LlmMessage finalAssistantMsg =
             new LlmMessage("assistant", "Here is the final answer.", null, null, null, null);
 
@@ -64,9 +64,9 @@ class ToolCallTraceExtractorTest {
         assertThat(r1.messageId()).isEqualTo(messageId);
         assertThat(r1.seq()).isEqualTo(1);
         assertThat(r1.toolCallId()).isEqualTo("call_2");
-        assertThat(r1.toolName()).isEqualTo("calculate");
-        assertThat(r1.arguments()).isEqualTo("{\"expr\":\"2+2\"}");
-        assertThat(r1.result()).isEqualTo("4");
+        assertThat(r1.toolName()).isEqualTo("get_toc");
+        assertThat(r1.arguments()).isEqualTo("{\"doc\":\"1\"}");
+        assertThat(r1.result()).isEqualTo("toc");
         assertThat(r1.isError()).isFalse();
         assertThat(r1.id()).isNotNull();
     }
