@@ -647,7 +647,10 @@ public class ChatThreadRenderingIT {
     @DisplayName("Locks playbook and hides selection controls when a user message exists")
     public void locksPlaybookAndHidesSelectionControlsWhenUserMessageExists() throws Exception {
         String userOid = "playbook-lock-render-oid";
+        String profileName = "IT_Lock_Profile";
         userRepository.upsert(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        orchestratorProfileRepository.upsert(new OrchestratorProfile(profileName, 2, 8,
+            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
 
         Conversation conv = chatConversationService.createConversation();
@@ -720,7 +723,7 @@ public class ChatThreadRenderingIT {
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID mixedConvId = chatConversationService.createConversation().id();
         chatConversationService.updateSettings(mixedConvId,
-            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
         messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "Question 1",
             "oim-full", List.of(), List.of(), Instant.now().minusSeconds(10)));
         messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "In-depth turn",
@@ -735,7 +738,7 @@ public class ChatThreadRenderingIT {
         @SuppressWarnings("unchecked")
         Map<String, Object> mixedSettings = (Map<String, Object>) mixedMav.getModel().get("settings");
         assertThat(mixedSettings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()))
-            .isEqualTo("oim");
+            .isEqualTo(profileName);
 
         String mixedHtml = mixedResult.getResponse().getContentAsString();
         assertThat(mixedHtml)
@@ -747,7 +750,7 @@ public class ChatThreadRenderingIT {
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID profileConvId = chatConversationService.createConversation().id();
         chatConversationService.updateSettings(profileConvId,
-            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"));
+            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
         MvcResult profileResult = mockMvc.perform(get("/chat/" + profileConvId).with(login).with(csrf()))
             .andExpect(status().isOk()).andReturn();
         String profileHtml = profileResult.getResponse().getContentAsString();
@@ -760,6 +763,7 @@ public class ChatThreadRenderingIT {
         chatConversationService.deleteConversation(longConvId);
         chatConversationService.deleteConversation(mixedConvId);
         chatConversationService.deleteConversation(profileConvId);
+        orchestratorProfileRepository.delete(profileName);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
