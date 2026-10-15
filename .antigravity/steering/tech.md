@@ -95,6 +95,7 @@
   - `APP_RATE_LIMIT_*` (`ENABLED`/`CAPACITY`/`REFILL_SECONDS`): per-principal token-bucket rate limit on the generation/ingest endpoints (SEC-03).
   - `APP_GENERATION_MAX_CONCURRENT`: app-wide cap on concurrently-running SSE generations; excess requests get 429 (PRF-15). 0 disables.
   - `APP_CHAT_COST_EXPLORER_MAX_ROWS`: hard row cap for the per-call/per-message cost-explorer views so a wide date range cannot load the whole `llm_call_logs` table into heap (PRF-01).
+  - `APP_WEB_SEARCH_*` (`ENABLED`/`ALLOWED_DOMAINS`/`MODEL`/`MAX_RESULTS`/`TIMEOUT_SECONDS`): deployment ceiling for the in-app `WebSearch` tool (`app.web-search.*`). Fails closed (`enabled` defaults to `false`, `allowed-domains` defaults to `""`, and requires a non-placeholder `GEMINI_API_KEY` / `GOOGLE_API_KEY`). When enabled alongside a playbook that lists `WebSearch` in `tools:`, runs Gemini Grounding with Google Search scoped to `allowed-domains` (host + optional path prefix) and post-filters returned URLs.
   - `SPRING_DATASOURCE_URL`: PostgreSQL connection URL.
   - `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`: DB credentials.
 

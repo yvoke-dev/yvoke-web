@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.llm.core.LlmModelRoutes;
 import de.palsoftware.yvoke.llm.core.LlmRouteId;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchPolicy;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchPolicy.AllowEntry;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -620,6 +622,27 @@ public class ApplicationYamlInvariantsTest {
             .as("mock auth defaulting to on would let anyone sign in as anyone; the SEC-09 profile"
                 + " guard is a backstop, not the primary control")
             .isEqualToIgnoringCase("false");
+        assertThat(text("app", "web-search", "enabled"))
+            .as("web search must ship disabled by default so external vendor search requires"
+                + " explicit administrator opt-in")
+            .isEqualToIgnoringCase("false");
+        assertThat(text("app", "web-search", "allowed-domains"))
+            .as("web search allowed-domains must ship empty by default so enabling web search"
+                + " without an explicit allow-list still fails closed")
+            .isEmpty();
+    }
+
+    @Test
+    void theDeployedWebSearchConfigIsFailClosedAndParsesApprovedVendorAllowList() throws Exception {
+        Map<String, String> data = deployedConfigMap();
+        assertThat(data.get("APP_WEB_SEARCH_ENABLED"))
+            .as("deployed ConfigMap must explicitly set APP_WEB_SEARCH_ENABLED to false by default")
+            .isEqualTo("false");
+        assertThat(WebSearchPolicy.parseAllowEntries(data.get("APP_WEB_SEARCH_ALLOWED_DOMAINS")))
+            .as("deployed APP_WEB_SEARCH_ALLOWED_DOMAINS must parse cleanly into the approved"
+                + " One Identity support and community scopes")
+            .containsExactly(new AllowEntry("support.oneidentity.com", ""),
+                new AllowEntry("www.oneidentity.com", "/community"));
     }
 
     // ------------------------------------------------------------------------

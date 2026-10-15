@@ -99,7 +99,8 @@ yvoke/
 │   │   │   ├── rag/        # RAG pipeline, retrieval, and prompt generation
 │   │   │   │   ├── core/   # RAG service, context, request, and result models
 │   │   │   │   │   ├── model/ # RAG context/request/result records
-│   │   │   │   │   └── service/ # RagService + streaming tool-call accumulator, citation verifier
+│   │   │   │   │   ├── service/ # RagService + streaming tool-call accumulator, citation verifier
+│   │   │   │   │   └── websearch/ # Domain-scoped WebSearch policy, Gemini Grounding service, and chat tool callback
 │   │   │   │   ├── prompt/ # Prompt management, system prompt enums, and services
 │   │   │   │   ├── retrieval/ # Vector and keyword retrieval services, telemetry, and configs
 │   │   │   │   └── web/    # RAG admin UI layer
