@@ -17,6 +17,8 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchService;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchToolCallback;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
@@ -48,6 +50,7 @@ public class RagService {
     private final CitationVerifier citationVerifier;
     private final ObjectMapper objectMapper;
     private final SystemPromptService systemPromptService;
+    private final WebSearchService webSearchService;
     private final int maxIterations;
     private final int maxTokens;
     private final double temperature;
@@ -65,7 +68,15 @@ public class RagService {
         CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
         int maxTokens, double temperature) {
         this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
-            temperature, null, true, null, List.of());
+            temperature, null, true, null, List.of(), null);
+    }
+
+    public RagService(HybridSearch hybridSearch, LlmClient llmClient,
+        CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
+        int maxTokens, double temperature, String thinkingLevel, boolean chatEnabled,
+        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks) {
+        this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
+            temperature, thinkingLevel, chatEnabled, systemPromptService, toolCallbacks, null);
     }
 
     @Autowired
@@ -76,11 +87,13 @@ public class RagService {
         @Value("${app.ai.rag.temperature}") double temperature,
         @Value("${app.ai.rag.thinking-level}") String thinkingLevel,
         @Value("${app.chat.enabled}") boolean chatEnabled,
-        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks) {
+        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks,
+        @Nullable WebSearchService webSearchService) {
         this.llmClient = llmClient;
         this.citationVerifier = citationVerifier;
         this.objectMapper = objectMapper;
         this.systemPromptService = systemPromptService;
+        this.webSearchService = webSearchService;
         this.maxIterations = maxIterations;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
@@ -92,6 +105,10 @@ public class RagService {
                 log.info("Registered agentic tool: {}", callback.getToolDefinition().name());
             }
         }
+        WebSearchToolCallback webSearchCallback =
+            new WebSearchToolCallback(webSearchService, objectMapper);
+        toolRegistry.put(webSearchCallback.getToolDefinition().name(), webSearchCallback);
+        log.info("Registered agentic tool: {}", webSearchCallback.getToolDefinition().name());
     }
 
     /** Per-turn streaming state, accumulated on the (single) calling thread. */
@@ -475,6 +492,11 @@ public class RagService {
             // list.
             if (!alwaysInclude.contains(toolName)
                 && (allowedTools == null || !allowedTools.contains(toolName))) {
+                denied.add(toolName);
+                continue;
+            }
+            if (WebSearchToolCallback.TOOL_NAME.equals(toolName)
+                && (webSearchService == null || !webSearchService.isAvailable())) {
                 denied.add(toolName);
                 continue;
             }
