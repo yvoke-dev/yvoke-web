@@ -17,6 +17,7 @@ in-depth profiles, and can inspect any search or trace.
 | **Playbooks — expert strategies users pick** | A named, reusable instruction set telling the assistant how to attack a class of question and which tools it may use. Its instructions stay invisible in the conversation. |
 | **Playbook recommendation** | Before the first message is sent, the system checks whether the chosen playbook fits. If not it offers a one-click switch and a **Send Anyway** button. |
 | **A toolbox, not just a search box** | While answering, the assistant can list a knowledge area's documents, open a document's table of contents, read a whole section, look up a thing and its connections in the knowledge graph, and query structured records. |
+| **Supplement the knowledge base with approved web search** | When both the deployment and the chosen playbook enable `WebSearch`, the assistant can search an administrator-approved allow-list of vendor domains and path prefixes (such as support advisories and community forums) and cite returned pages as links. |
 | **It can ask instead of guessing** | When a question is ambiguous the assistant pauses and asks, optionally with ready-made choices, then continues from the answer. |
 | **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where tool call tracing is enabled, verbatim tool arguments and execution traces are recorded with correlated call IDs, while normal transcript replay strips tool banners cleanly without leaking arguments or reasoning. Where a playbook enables code execution (`code_execution`), the assistant can also write and run Python programs in a server-side sandbox for calculations, statistics, and date or data analysis; both the code and its result appear in the answer. |
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
@@ -41,6 +42,15 @@ in-depth profiles, and can inspect any search or trace.
   The playbook list now badges that case: *"No tools — answers without searching"*. It also badges the
   opposite mistake, tools chosen on a Reviewer or Orchestrator playbook, which are ignored because those
   roles are given a fixed tool list when they run.
+- **Approved web search (`WebSearch`) is gated at two levels.** A playbook can include `WebSearch` in its
+  allowed tools, and the tool is active on a turn only when both the playbook includes it and the deployment
+  has web search enabled with at least one valid allowed domain and a Gemini API key; if either level is off,
+  `WebSearch` is neither offered to the model nor executable. Every query is scoped to the administrator's
+  allow-list of domains and path prefixes, and every returned URL (including resolved grounding redirects) is
+  verified against that same allow-list before reaching the assistant. Web sources carry no corpus passage ids
+  and are cited as standard markdown links (`[Title](https://...)`) rather than passage markers, so the corpus
+  citation check leaves them untouched and in-depth mode passes specialist web search outputs in full to the
+  reviewer.
 - **A playbook can define its own base instructions (system prompt).** If set, the playbook's chosen
   system prompt overrides the default chat base instructions for conversations using that playbook (unless an
   explicit conversation-level prompt override is configured). In web chat, the playbook instructions and its
@@ -139,6 +149,9 @@ in-depth profiles, and can inspect any search or trace.
   single request, and an oversized request is rejected, which would quietly drop the re-ranking step
   altogether. When the cap is reached the assistant is told results were truncated, but not what it
   missed.
+- **One web search returns 8 results by default, 20 at most, with a 15-second request timeout.** Allow-list
+  entries require a valid multi-part hostname (with an optional path prefix); bare single-word hosts, raw IP
+  addresses, and invalid entries are ignored when the allow-list is parsed.
 - **If the active base instruction set is deleted or its name mistyped**, the assistant runs with no base
   instructions at all. Answers quietly get worse and nothing reports an error. If a playbook designates a system
   prompt that cannot be resolved, it falls back to the default base instructions.
@@ -170,6 +183,8 @@ in-depth profiles, and can inspect any search or trace.
 
 ## Not supported
 
+- Unrestricted open-web browsing or fetching full web pages (`WebFetch`). Web access is limited to search
+  snippets and links from the administrator's allowed domains and path prefixes.
 - Automatic switching to another AI service when the chosen one fails or is busy. A model is answered by
   the one service it is mapped to, and a failure there is reported rather than retried elsewhere.
 - Version history for playbooks, base instructions or profiles. Saving overwrites, deletion is immediate, and

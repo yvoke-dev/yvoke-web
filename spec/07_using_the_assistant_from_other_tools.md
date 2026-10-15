@@ -62,8 +62,10 @@ running corpus scripts and the evaluation harness.
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second
   one. Clients should follow that job rather than read the response as a failure.
-- **AI clients and the in-app assistant share one tool set.** Adding, renaming or re-describing a tool
-  changes both surfaces at once; there is no way to ship one without the other.
+- **AI clients and the in-app assistant share one knowledge-base and playbook tool set.** All 14 corpus and
+  playbook tools are shared identically between connected AI clients and the in-app assistant — adding,
+  renaming or re-describing one changes both surfaces at once — while `WebSearch` is an in-app chat-only tool
+  because connected AI clients provide their own web tools.
 - **A connecting client is told which build of the assistant it is talking to.** The version it receives
   when it connects is the version that was released, so a client or a bug report can state which build
   produced an answer. Builds that are not a release identify themselves as such rather than borrowing
