@@ -466,13 +466,15 @@ public class RagService {
      * @param denied names present in the registry that this run's allow-list refused. Carried for
      *        diagnosis only — a String cannot be invoked — so a stale playbook advertising a tool a
      *        role no longer has is distinguishable in the log from a model inventing a name.
+     * @param unavailable names permitted by the run's allow-list that were withheld by a
+     *        deployment-level gate (e.g. {@code WebSearch} when {@code app.web-search.*} is off).
      */
     private record TurnTools(List<LlmTool> declarations, Map<String, ToolCallback> dispatch,
-        Set<String> denied) {
+        Set<String> denied, Set<String> unavailable) {
 
         /** The forced post-cap turn: offered nothing, so it may execute nothing. */
         static TurnTools none() {
-            return new TurnTools(List.of(), Map.of(), Set.of());
+            return new TurnTools(List.of(), Map.of(), Set.of(), Set.of());
         }
     }
 
@@ -482,6 +484,7 @@ public class RagService {
         List<LlmTool> declarations = new ArrayList<>();
         Map<String, ToolCallback> dispatch = new HashMap<>();
         Set<String> denied = new HashSet<>();
+        Set<String> unavailable = new HashSet<>();
         for (ToolCallback callback : runRegistry.values()) {
             String toolName = callback.getToolDefinition().name();
             // Deny by default: null is treated exactly like an empty list. Skipping the filter when
@@ -497,7 +500,7 @@ public class RagService {
             }
             if (WebSearchToolCallback.TOOL_NAME.equals(toolName)
                 && (webSearchService == null || !webSearchService.isAvailable())) {
-                denied.add(toolName);
+                unavailable.add(toolName);
                 continue;
             }
             try {
@@ -514,7 +517,7 @@ public class RagService {
                 log.error("Failed to parse schema for tool {}", toolName, e);
             }
         }
-        return new TurnTools(declarations, dispatch, denied);
+        return new TurnTools(declarations, dispatch, denied, unavailable);
     }
 
     private void executeToolCalls(List<LlmToolCall> toolCalls, List<LlmMessage> messages,
@@ -590,6 +593,14 @@ public class RagService {
                         + " have and state the gap in your answer.";
                     isError = true;
                 }
+            } else if (tools.unavailable().contains(tc.name())) {
+                log.warn(
+                    "Tool {} was withheld by the deployment gate; it is permitted by the playbook "
+                        + "but disabled or unconfigured in this deployment (check app.web-search.* "
+                        + "and app.ai.gemini.api-key)",
+                    tc.name());
+                responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             } else if (tools.denied().contains(tc.name())) {
                 // Registered, but not permitted this run — a stale playbook advertising a tool the
                 // role no longer has, which costs a turn every time it happens. Worth telling apart

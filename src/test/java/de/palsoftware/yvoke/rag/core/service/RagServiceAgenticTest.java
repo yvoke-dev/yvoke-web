@@ -53,9 +53,13 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import java.util.concurrent.CancellationException;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 public class RagServiceAgenticTest {
 
     private HybridSearch hybridSearch;
@@ -1741,7 +1745,7 @@ public class RagServiceAgenticTest {
     }
 
     @Test
-    void webSearchIsWithheldAndRefusedWhenLevel1DeploymentGateIsUnavailable() {
+    void webSearchIsWithheldAndRefusedWhenLevel1DeploymentGateIsUnavailable(CapturedOutput output) {
         WebSearchService unavailableWebSearch = mock(WebSearchService.class);
         when(unavailableWebSearch.isAvailable()).thenReturn(false);
 
@@ -1787,10 +1791,12 @@ public class RagServiceAgenticTest {
             .findFirst().orElseThrow();
         assertThat(toolMsg.isError()).isTrue();
         assertThat(toolMsg.content()).isEqualTo("Error: Tool WebSearch not found.");
+        assertThat(output.getOut()).contains("Tool WebSearch was withheld by the deployment gate")
+            .doesNotContain("denied by this run's allow-list");
     }
 
     @Test
-    void webSearchIsWithheldAndRefusedWhenLevel2PlaybookGateOmitsIt() {
+    void webSearchIsWithheldAndRefusedWhenLevel2PlaybookGateOmitsIt(CapturedOutput output) {
         WebSearchService availableWebSearch = mock(WebSearchService.class);
         when(availableWebSearch.isAvailable()).thenReturn(true);
 
@@ -1837,6 +1843,8 @@ public class RagServiceAgenticTest {
             .findFirst().orElseThrow();
         assertThat(toolMsg.isError()).isTrue();
         assertThat(toolMsg.content()).isEqualTo("Error: Tool WebSearch not found.");
+        assertThat(output.getOut()).contains("Tool WebSearch was denied by this run's allow-list")
+            .doesNotContain("withheld by the deployment gate");
     }
 
     @Test

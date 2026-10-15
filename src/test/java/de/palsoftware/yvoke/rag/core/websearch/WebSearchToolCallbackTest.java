@@ -30,6 +30,7 @@ class WebSearchToolCallbackTest {
         JsonNode schema = objectMapper.readTree(def.inputSchema());
         assertThat(schema.path("type").asText()).isEqualTo("object");
         assertThat(schema.path("properties").fieldNames()).toIterable().containsExactly("query");
+        assertThat(schema.at("/properties/query/maxLength").asInt()).isEqualTo(500);
         assertThat(schema.path("properties").has("allowed_domains")).isFalse();
         assertThat(schema.path("properties").has("blocked_domains")).isFalse();
         assertThat(schema.path("required")).hasSize(1);
@@ -69,6 +70,17 @@ class WebSearchToolCallbackTest {
         WebSearchToolCallback callback = new WebSearchToolCallback(service, objectMapper);
 
         assertThat(callback.call(args)).isEqualTo("Error: 'query' is required for WebSearch.");
+    }
+
+    @Test
+    void callReturnsValidationErrorWhenQueryExceedsMaxLength() {
+        WebSearchService service = mock(WebSearchService.class);
+        when(service.isAvailable()).thenReturn(true);
+        WebSearchToolCallback callback = new WebSearchToolCallback(service, objectMapper);
+
+        String oversized = "q".repeat(501);
+        assertThat(callback.call("{\"query\": \"" + oversized + "\"}"))
+            .isEqualTo("Error: 'query' exceeds maximum length of 500 characters.");
     }
 
     @Test

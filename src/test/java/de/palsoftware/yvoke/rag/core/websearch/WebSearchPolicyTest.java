@@ -133,5 +133,9 @@ class WebSearchPolicyTest {
             .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> WebSearchPolicy.buildScopedQuery("   ", allowed))
             .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> WebSearchPolicy.buildScopedQuery("q".repeat(501), allowed))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("500");
+        assertThat(WebSearchPolicy.buildScopedQuery("q".repeat(500), allowed))
+            .startsWith("q".repeat(500) + " (site:support.oneidentity.com)");
     }
 }

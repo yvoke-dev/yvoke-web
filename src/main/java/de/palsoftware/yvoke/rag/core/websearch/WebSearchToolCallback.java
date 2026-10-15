@@ -54,6 +54,7 @@ public class WebSearchToolCallback implements ContextAwareToolCallback {
                       "properties": {
                         "query": {
                           "type": "string",
+                          "maxLength": 500,
                           "description": "Focused search query (e.g. product name, version, KB or defect number, error message, or module)."
                         }
                       },
@@ -94,6 +95,10 @@ public class WebSearchToolCallback implements ContextAwareToolCallback {
         String query = rawQuery instanceof String s ? s.trim() : null;
         if (query == null || query.isEmpty()) {
             return "Error: 'query' is required for WebSearch.";
+        }
+        if (query.length() > WebSearchPolicy.MAX_QUERY_LENGTH) {
+            return "Error: 'query' exceeds maximum length of " + WebSearchPolicy.MAX_QUERY_LENGTH
+                + " characters.";
         }
 
         if (webSearchService == null || !webSearchService.isAvailable()) {

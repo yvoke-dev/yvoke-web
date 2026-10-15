@@ -86,6 +86,10 @@ class WebSearchServiceTest {
             new WebSearchService(true, "", MODEL, 8, 15, baseUrl, API_KEY, objectMapper, null),
             new WebSearchService(true, "localhost, 127.0.0.1", MODEL, 8, 15, baseUrl, API_KEY,
                 objectMapper, null),
+            new WebSearchService(true, ALLOWED_DOMAINS, "", 8, 15, baseUrl, API_KEY, objectMapper,
+                null),
+            new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 8, 15, "   ", API_KEY, objectMapper,
+                null),
             new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 8, 15, baseUrl, null, objectMapper,
                 null),
             new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 8, 15, baseUrl, "   ", objectMapper,
@@ -346,9 +350,22 @@ class WebSearchServiceTest {
     }
 
     @Test
-    void searchClampsMaxResultsAndSurvivesAccountingException() {
+    void searchClampsMaxResultsLowAndHighCapsRedirectAttemptsAndSurvivesAccountingException() {
+        AtomicInteger redirectHits = new AtomicInteger();
+        server.createContext("/grounding-api-redirect/fail", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            redirectHits.incrementAndGet();
+            exchange.sendResponseHeaders(500, -1);
+            exchange.close();
+        });
+
         List<String> chunkItems = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
+            chunkItems.add("""
+                { "web": { "uri": "%s/grounding-api-redirect/fail?n=%d", "title": "Fail %d" } }
+                """.formatted(baseUrl, i, i));
+        }
+        for (int i = 1; i <= 25; i++) {
             chunkItems.add("""
                 { "web": { "uri": "https://support.oneidentity.com/kb/%d", "title": "KB %d" } }
                 """.formatted(i, i));
@@ -384,13 +401,22 @@ class WebSearchServiceTest {
         ApplicationEventPublisher failingPublisher = mock(ApplicationEventPublisher.class);
         doThrow(new RuntimeException("DB down")).when(failingPublisher).publishEvent(any());
 
-        // maxResults = 0 clamps to 1
+        // maxResults = 0 clamps to 1, and redirect attempts cap at 2 * maxResults (= 2)
         WebSearchService clampedLow = new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 0, 15,
             baseUrl, API_KEY, objectMapper, failingPublisher);
 
-        List<WebSearchResult> results = clampedLow.search("OIM");
-        assertThat(results).hasSize(1);
-        assertThat(results.getFirst().url()).isEqualTo("https://support.oneidentity.com/kb/1");
+        List<WebSearchResult> lowResults = clampedLow.search("OIM");
+        assertThat(lowResults).hasSize(1);
+        assertThat(lowResults.getFirst().url()).isEqualTo("https://support.oneidentity.com/kb/1");
+        assertThat(redirectHits.get())
+            .as("redirect resolution attempts must be capped at 2x maxResults").isEqualTo(2);
+
+        // maxResults = 50 clamps to 20
+        WebSearchService clampedHigh = new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 50, 15,
+            baseUrl, API_KEY, objectMapper, failingPublisher);
+        List<WebSearchResult> highResults = clampedHigh.search("OIM");
+        assertThat(highResults).hasSize(20);
+        assertThat(highResults.getLast().url()).isEqualTo("https://support.oneidentity.com/kb/20");
     }
 
     @Test
@@ -503,10 +529,8 @@ class WebSearchServiceTest {
         WebSearchService service = new WebSearchService(true, ALLOWED_DOMAINS, MODEL, 50, 15,
             baseUrl, API_KEY, objectMapper, publisher, mockHttp);
 
-        // Clear interrupt from mainResponse answer when redirect runs, by verifying accounting
-        // behavior:
-        // Wait: if Thread.currentThread().interrupt() was set before publishUsageIfPresent,
-        // publishUsageIfPresent clears it during publishEvent and restores it in finally!
+        // publishUsageIfPresent clears the interrupt flag while publishing and restores it in
+        // finally so JDBC accounting writes do not abort on an already-interrupted thread.
         List<WebSearchResult> results = service.search("OIM");
 
         assertThat(interruptedDuringPublish.get()).isFalse();

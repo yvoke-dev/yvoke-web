@@ -91,6 +91,11 @@
       "description": "Citation display limits."
     },
     {
+      "name": "app.web-search",
+      "type": "java.lang.Object",
+      "description": "Domain-scoped web search settings backed by Gemini Google Search grounding."
+    },
+    {
       "name": "rest-client",
       "type": "java.lang.Object",
       "description": "Global RestClient timeout settings."
@@ -473,6 +478,36 @@
       "type": "java.util.List<java.lang.String>",
       "description": "Comma-separated whitelist backing the model picker and the per-request model check. Order is behaviour: the first entry is the default for a new conversation and the model the playbook preflight runs against.",
       "defaultValue": "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "name": "app.web-search.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Deployment-level ceiling controlling whether the WebSearch tool may be offered to playbooks.",
+      "defaultValue": false
+    },
+    {
+      "name": "app.web-search.allowed-domains",
+      "type": "java.lang.String",
+      "description": "Comma-separated list of allowed public hostnames and optional path prefixes (e.g. support.oneidentity.com,www.oneidentity.com/community/) for WebSearch.",
+      "defaultValue": ""
+    },
+    {
+      "name": "app.web-search.model",
+      "type": "java.lang.String",
+      "description": "Gemini model identifier used to execute Google Search grounding requests.",
+      "defaultValue": "gemini-3.5-flash-lite"
+    },
+    {
+      "name": "app.web-search.max-results",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of deduplicated, domain-verified web search results returned per call (clamped to [1, 20]).",
+      "defaultValue": 8
+    },
+    {
+      "name": "app.web-search.timeout-seconds",
+      "type": "java.lang.Integer",
+      "description": "HTTP timeout in seconds for Gemini grounding search and redirect resolution requests.",
+      "defaultValue": 15
     },
     {
       "name": "rest-client.connect-timeout-ms",

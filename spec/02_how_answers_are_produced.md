@@ -149,7 +149,7 @@ in-depth profiles, and can inspect any search or trace.
   single request, and an oversized request is rejected, which would quietly drop the re-ranking step
   altogether. When the cap is reached the assistant is told results were truncated, but not what it
   missed.
-- **One web search returns 8 results by default, 20 at most, with a 15-second request timeout.** Allow-list
+- **One web search returns 8 results by default, 20 at most, with a 500-character query limit and a 15-second request timeout.** Redirect resolution attempts are capped at twice the result limit per search. Allow-list
   entries require a valid multi-part hostname (with an optional path prefix); bare single-word hosts, raw IP
   addresses, and invalid entries are ignored when the allow-list is parsed.
 - **If the active base instruction set is deleted or its name mistyped**, the assistant runs with no base

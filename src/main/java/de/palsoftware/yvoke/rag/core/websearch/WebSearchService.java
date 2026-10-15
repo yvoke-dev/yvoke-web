@@ -81,7 +81,7 @@ public class WebSearchService {
         ApplicationEventPublisher eventPublisher, HttpClient httpClient) {
         this.enabled = enabled;
         this.allowedEntries = WebSearchPolicy.parseAllowEntries(allowedDomainsRaw);
-        this.model = model != null && !model.isBlank() ? model.trim() : "gemini-3.5-flash-lite";
+        this.model = model != null ? model.trim() : "";
         this.maxResults = Math.clamp(maxResults, MIN_MAX_RESULTS, MAX_MAX_RESULTS);
         this.timeoutSeconds = Math.max(1, timeoutSeconds);
         this.geminiBaseUrl = normalizeBaseUrl(geminiBaseUrl);
@@ -93,11 +93,12 @@ public class WebSearchService {
 
     /**
      * Level 1 deployment gate: returns {@code true} only when web search is enabled, at least one
-     * valid domain/path entry is configured, and a real (non-placeholder) Gemini API key is set.
+     * valid domain/path entry is configured, and model, Gemini base URL, and a real
+     * (non-placeholder) Gemini API key are set.
      */
     public boolean isAvailable() {
-        return enabled && !allowedEntries.isEmpty() && !geminiApiKey.isEmpty()
-            && !geminiApiKey.startsWith("placeholder-");
+        return enabled && !allowedEntries.isEmpty() && !model.isEmpty() && !geminiBaseUrl.isEmpty()
+            && !geminiApiKey.isEmpty() && !geminiApiKey.startsWith("placeholder-");
     }
 
     /**
@@ -175,6 +176,8 @@ public class WebSearchService {
 
         List<WebSearchResult> results = new ArrayList<>();
         Set<String> seenUrls = new LinkedHashSet<>();
+        int maxRedirectResolutions = maxResults * 2;
+        int redirectResolutions = 0;
 
         for (int i = 0; i < groundingChunks.size() && results.size() < maxResults; i++) {
             JsonNode web = groundingChunks.get(i).path("web");
@@ -182,8 +185,16 @@ public class WebSearchService {
             if (rawUri.isEmpty()) {
                 continue;
             }
-            String resolvedUrl =
-                isGroundingRedirectUrl(rawUri) ? resolveGroundingRedirect(rawUri) : rawUri;
+            String resolvedUrl;
+            if (isGroundingRedirectUrl(rawUri)) {
+                if (redirectResolutions >= maxRedirectResolutions) {
+                    continue;
+                }
+                redirectResolutions++;
+                resolvedUrl = resolveGroundingRedirect(rawUri);
+            } else {
+                resolvedUrl = rawUri;
+            }
             if (resolvedUrl == null
                 || !WebSearchPolicy.isUrlDomainAllowed(resolvedUrl, allowedEntries)
                 || !seenUrls.add(resolvedUrl)) {
@@ -361,7 +372,7 @@ public class WebSearchService {
 
     private static String normalizeBaseUrl(String raw) {
         if (raw == null || raw.isBlank()) {
-            return "https://generativelanguage.googleapis.com";
+            return "";
         }
         String trimmed = raw.trim();
         while (trimmed.endsWith("/")) {

@@ -17,6 +17,8 @@ import java.util.Set;
  */
 public final class WebSearchPolicy {
 
+    public static final int MAX_QUERY_LENGTH = 500;
+
     private WebSearchPolicy() {}
 
     /**
@@ -206,6 +208,11 @@ public final class WebSearchPolicy {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("WebSearch query must not be blank");
         }
+        String trimmedQuery = query.trim();
+        if (trimmedQuery.length() > MAX_QUERY_LENGTH) {
+            throw new IllegalArgumentException(
+                "WebSearch query exceeds maximum length of " + MAX_QUERY_LENGTH + " characters");
+        }
         if (allowedEntries == null || allowedEntries.isEmpty()) {
             throw new IllegalStateException("WebSearch allowedEntries must not be empty");
         }
@@ -225,7 +232,7 @@ public final class WebSearchPolicy {
             throw new IllegalStateException(
                 "WebSearch allowedEntries must contain at least one valid entry");
         }
-        return query.trim() + " (" + String.join(" OR ", clauses) + ")";
+        return trimmedQuery + " (" + String.join(" OR ", clauses) + ")";
     }
 
     private static boolean isPathInScope(String urlPath, String allowedPath) {
