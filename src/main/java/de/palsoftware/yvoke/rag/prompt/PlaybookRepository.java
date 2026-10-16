@@ -20,7 +20,7 @@ public class PlaybookRepository {
 
     public List<Playbook> findAll() {
         return jdbcClient.sql(
-            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt FROM playbooks ORDER BY name ASC")
+            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks ORDER BY name ASC")
             .query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");
@@ -29,18 +29,19 @@ public class PlaybookRepository {
                 if (targetAgent == null || targetAgent.isBlank()) {
                     targetAgent = "specialist";
                 }
+                int version = rs.getInt("version");
                 return new Playbook(rs.getString("name"), rs.getString("title"),
                     rs.getString("description"), rs.getString("template_text"), tools,
                     rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
                     cat != null ? cat.toInstant() : Instant.now(),
                     uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
-                    rs.getString("system_prompt"));
+                    rs.getString("system_prompt"), version >= 1 ? version : 1);
             }).list();
     }
 
     public Optional<Playbook> findByName(String name) {
         return jdbcClient.sql(
-            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt FROM playbooks WHERE name = :name")
+            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks WHERE name = :name")
             .param("name", name).query((rs, rowNum) -> {
                 Timestamp cat = rs.getTimestamp("created_at");
                 Timestamp uat = rs.getTimestamp("updated_at");
@@ -49,27 +50,34 @@ public class PlaybookRepository {
                 if (targetAgent == null || targetAgent.isBlank()) {
                     targetAgent = "specialist";
                 }
+                int version = rs.getInt("version");
                 return new Playbook(rs.getString("name"), rs.getString("title"),
                     rs.getString("description"), rs.getString("template_text"), tools,
                     rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
                     cat != null ? cat.toInstant() : Instant.now(),
                     uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
-                    rs.getString("system_prompt"));
+                    rs.getString("system_prompt"), version >= 1 ? version : 1);
             }).optional();
     }
-
 
     public void upsert(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
         String area, String systemPrompt) {
+        upsert(name, title, description, templateText, tools, codeExecution, targetAgent, prototype,
+            area, systemPrompt, 1);
+    }
+
+    public void upsert(String name, String title, String description, String templateText,
+        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
+        String area, String systemPrompt, int version) {
         String agent = targetAgent != null && !targetAgent.isBlank() ? targetAgent : "specialist";
         String prompt =
             systemPrompt != null && !systemPrompt.isBlank() ? systemPrompt.trim() : null;
         jdbcClient
             .sql(
                 """
-                    INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, target_agent, prototype, area, system_prompt)
-                    VALUES (:name, :title, :description, :templateText, :tools, :codeExecution, :targetAgent, :prototype, :area, :systemPrompt)
+                    INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, target_agent, prototype, area, system_prompt, version)
+                    VALUES (:name, :title, :description, :templateText, :tools, :codeExecution, :targetAgent, :prototype, :area, :systemPrompt, :version)
                     ON CONFLICT (name) DO UPDATE SET
                         title = EXCLUDED.title,
                         description = EXCLUDED.description,
@@ -80,6 +88,7 @@ public class PlaybookRepository {
                         prototype = EXCLUDED.prototype,
                         area = EXCLUDED.area,
                         system_prompt = EXCLUDED.system_prompt,
+                        version = EXCLUDED.version,
                         updated_at = CURRENT_TIMESTAMP
                     """)
             .param("name", name).param("title", title).param("description", description)
@@ -87,6 +96,7 @@ public class PlaybookRepository {
             .param("tools", tools != null ? tools.toArray(new String[0]) : new String[0])
             .param("codeExecution", codeExecution).param("targetAgent", agent)
             .param("prototype", prototype).param("area", area).param("systemPrompt", prompt)
+            .param("version", version)
             .update();
     }
 

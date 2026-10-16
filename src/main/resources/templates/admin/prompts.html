@@ -199,7 +199,7 @@
             <div class="card animate-fade-in" style="margin-bottom: 1.5rem; padding: 1.5rem;">
                 <form th:action="@{/admin/prompts/active}" method="post" style="display: flex; flex-direction: column; gap: 0.75rem;">
                     <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Active Default Chat System Prompt</h2>
-                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Select the default system prompt to use for all general chat threads.</p>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Select the default system prompt to use for all general chat threads. Note: System prompts are not versioned separately — whenever you change a <code>CHAT</code> system prompt (including <code>default-chat</code> or a playbook's designated prompt), increment the <code>version</code> of the affected playbooks so answer analytics can distinguish before/after turns.</p>
                     <div style="display: flex; gap: 1rem; align-items: center; max-width: 500px; margin-top: 0.25rem;">
                         <select id="activeChatPrompt" name="activeChatPrompt" class="form-select" style="flex: 1; padding: 0.5rem;" required>
                             <option th:each="p : ${chatPrompts}"

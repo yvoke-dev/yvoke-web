@@ -84,6 +84,15 @@ public class PlaybookService {
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
         String area, String systemPrompt) {
+        savePlaybook(name, title, description, templateText, tools, codeExecution, targetAgent,
+            prototype, area, systemPrompt, 1);
+    }
+
+    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
+        condition = "#name != null && !#name.isBlank()")
+    public void savePlaybook(String name, String title, String description, String templateText,
+        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
+        String area, String systemPrompt, int version) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
         }
@@ -92,6 +101,9 @@ public class PlaybookService {
         }
         if (templateText == null || templateText.isBlank()) {
             throw new IllegalArgumentException("Playbook template text cannot be empty.");
+        }
+        if (version < 1) {
+            throw new IllegalArgumentException("Playbook version must be >= 1.");
         }
 
         String agent =
@@ -117,7 +129,7 @@ public class PlaybookService {
 
         playbookRepository.upsert(name.trim(), title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,
-            codeExecution, agent, prototype, storedArea, prompt);
+            codeExecution, agent, prototype, storedArea, prompt, version);
 
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
@@ -138,7 +150,7 @@ public class PlaybookService {
             parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
         savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),
             parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype(), area,
-            parsed.systemPrompt());
+            parsed.systemPrompt(), parsed.version());
         return getPlaybook(parsed.name()).orElse(parsed);
     }
 
@@ -205,6 +217,7 @@ public class PlaybookService {
         if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
             meta.put("systemPrompt", playbook.systemPrompt().trim());
         }
+        meta.put("version", playbook.version());
         return meta;
     }
 

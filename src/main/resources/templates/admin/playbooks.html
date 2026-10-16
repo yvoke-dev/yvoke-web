@@ -224,6 +224,7 @@
                             <div style="flex: 1; margin-right: 1.5rem;">
                                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                                     <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${playbook.name}">oim-ask</span>
+                                    <span title="Playbook Version" style="font-family: monospace; font-size: 0.75rem; background-color: var(--bg-surface-elevated); padding: 0.15rem 0.45rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--color-accent); font-weight: 600;" th:text="${'v' + playbook.version}">v2</span>
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
                                     <span th:if="${playbook.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${playbook.area}">OIM</span>
@@ -274,7 +275,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary" 
-                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}, data-system-prompt=${playbook.systemPrompt}"
+                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-version=${playbook.version}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}, data-system-prompt=${playbook.systemPrompt}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
                                     Edit
@@ -327,6 +328,11 @@
                             <div class="form-group">
                                 <label for="description" class="form-label">Description</label>
                                 <input type="text" id="description" name="description" class="form-input" placeholder="Brief explanation of what this playbook does..." />
+                            </div>
+                            <div class="form-group">
+                                <label for="version" class="form-label">Version</label>
+                                <input type="number" id="version" name="version" class="form-input" min="1" step="1" value="1" required />
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Positive integer stamped onto answers and agent steps for performance comparisons. Increment whenever you change this playbook's instructions, tools, or its active CHAT system prompt.</span>
                             </div>
                             <div class="form-group">
                                 <label for="area" class="form-label">Area</label>
@@ -528,6 +534,7 @@
                 let name = nameWithoutExt;
                 let title = nameWithoutExt;
                 let description = '';
+                let version = 1;
                 let targetAgent = 'specialist';
                 let tools = [];
                 let codeExecution = false;
@@ -555,6 +562,11 @@
                                 inTools = false;
                             } else if (trimmed.startsWith('description:')) {
                                 description = trimmed.substring(12).trim().replace(/^['"]|['"]$/g, '');
+                                inTools = false;
+                            } else if (trimmed.startsWith('version:')) {
+                                const valStr = trimmed.substring(8).trim().replace(/^['"]|['"]$/g, '');
+                                const parsedVer = parseInt(valStr, 10);
+                                version = (!isNaN(parsedVer) && parsedVer >= 1) ? parsedVer : 1;
                                 inTools = false;
                             } else if (trimmed.startsWith('target_agent:') || trimmed.startsWith('targetAgent:') || trimmed.startsWith('role:')) {
                                 const colonIdx = trimmed.indexOf(':');
@@ -602,6 +614,8 @@
                 document.getElementById('title').readOnly = false;
                 document.getElementById('description').value = description;
                 document.getElementById('description').readOnly = false;
+                document.getElementById('version').value = version;
+                document.getElementById('version').readOnly = false;
                 
                 const targetAgentSelect = document.getElementById('targetAgent');
                 targetAgentSelect.value = targetAgent || 'specialist';
@@ -669,6 +683,9 @@
             
             document.getElementById('description').value = description;
             document.getElementById('description').readOnly = isReadOnly;
+
+            document.getElementById('version').value = button.getAttribute('data-version') || '1';
+            document.getElementById('version').readOnly = isReadOnly;
             
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = targetAgent;
@@ -734,6 +751,9 @@
             
             document.getElementById('description').value = '';
             document.getElementById('description').readOnly = false;
+
+            document.getElementById('version').value = '1';
+            document.getElementById('version').readOnly = false;
             
             const sysPromptSelect = document.getElementById('systemPrompt');
             if (sysPromptSelect) {

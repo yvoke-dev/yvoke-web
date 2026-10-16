@@ -242,11 +242,12 @@ public class RagAdminController {
         @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
         @RequestParam String area, @RequestParam(required = false) String systemPrompt,
+        @RequestParam(required = false, defaultValue = "1") int version,
         RedirectAttributes redirectAttributes) {
         String sysPrompt =
             (systemPrompt != null && !systemPrompt.isBlank()) ? systemPrompt.trim() : null;
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent, prototype, area, sysPrompt);
+            targetAgent, prototype, area, sysPrompt, version);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";
