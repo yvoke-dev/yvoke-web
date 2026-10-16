@@ -299,7 +299,8 @@ class PlaybookServiceTest {
         assertEquals("coding-prompt", result.meta().get("systemPrompt"));
         assertEquals(2, result.meta().get("version"));
 
-        // Dynamic update: verify updated playbook reflects new systemPrompt and version on subsequent execution
+        // Dynamic update: verify updated playbook reflects new systemPrompt and version on
+        // subsequent execution
         Playbook updatedPb = new Playbook("pb-mcp", "PB MCP", "Desc", "Template", List.of("t1"),
             true, "specialist", false, null, null, false, "OIM", "updated-prompt", 4);
         when(playbookRepository.findByName("pb-mcp")).thenReturn(Optional.of(updatedPb));

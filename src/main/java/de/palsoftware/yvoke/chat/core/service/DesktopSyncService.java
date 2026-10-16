@@ -103,7 +103,8 @@ public class DesktopSyncService {
             }
             String normalizedPlaybook =
                 (m.playbook() != null && !m.playbook().isBlank()) ? m.playbook().trim() : null;
-            Integer effectivePlaybookVersion = normalizedPlaybook != null ? m.playbookVersion() : null;
+            Integer effectivePlaybookVersion =
+                normalizedPlaybook != null ? m.playbookVersion() : null;
             UUID id = UUID.randomUUID();
             messageRepository.save(new Message(id, conversationId, m.role(), m.content(),
                 normalizedPlaybook, effectivePlaybookVersion, null, null, null, m.promptTokens(),

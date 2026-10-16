@@ -313,11 +313,13 @@ public class DesktopSyncServiceTest {
         when(conversationRepository.findById(conversationId))
             .thenReturn(Optional.of(ownConversation(conversationId, "Custom title")));
 
-        service.appendMessages(conversationId, currentUser, List.of(
-            new NewMessage("user", "Question", null, null, null, null, null, " oim-specialist ", 2),
-            new NewMessage("assistant", "Answer", 10, 20, 30, null, null, "oim-specialist", 2),
-            new NewMessage("user", "Orchestrated Q", null, null, null, null, null, null, 2),
-            new NewMessage("assistant", "Orchestrated A", 10, 20, 30, null, null, "   ", 2)));
+        service.appendMessages(conversationId, currentUser,
+            List.of(
+                new NewMessage("user", "Question", null, null, null, null, null, " oim-specialist ",
+                    2),
+                new NewMessage("assistant", "Answer", 10, 20, 30, null, null, "oim-specialist", 2),
+                new NewMessage("user", "Orchestrated Q", null, null, null, null, null, null, 2),
+                new NewMessage("assistant", "Orchestrated A", 10, 20, 30, null, null, "   ", 2)));
 
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
         verify(messageRepository, times(4)).save(captor.capture());

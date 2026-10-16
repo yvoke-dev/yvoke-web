@@ -101,13 +101,14 @@ public class AgentStepRepository {
         rs.getString("error"));
 
     public List<AgentStep> findByRunId(UUID agentRunId) {
-        String sql = """
-            SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
-                   output, messages::text AS messages, verdict::text AS verdict, prompt_tokens,
-                   completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
-                   status, error
-            FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
-            """;
+        String sql =
+            """
+                SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
+                       output, messages::text AS messages, verdict::text AS verdict, prompt_tokens,
+                       completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
+                       status, error
+                FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
+                """;
         return jdbcClient.sql(sql).param("agentRunId", agentRunId).query(STEP_ROW_MAPPER).list();
     }
 
@@ -117,13 +118,14 @@ public class AgentStepRepository {
      * counts, status, error) are fully populated.
      */
     public List<AgentStep> findByRunIdWithoutMessages(UUID agentRunId) {
-        String sql = """
-            SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
-                   output, NULL AS messages, verdict::text AS verdict, prompt_tokens,
-                   completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
-                   status, error
-            FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
-            """;
+        String sql =
+            """
+                SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
+                       output, NULL AS messages, verdict::text AS verdict, prompt_tokens,
+                       completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
+                       status, error
+                FROM agent_steps WHERE agent_run_id = :agentRunId ORDER BY seq ASC
+                """;
         return jdbcClient.sql(sql).param("agentRunId", agentRunId).query(STEP_ROW_MAPPER).list();
     }
 

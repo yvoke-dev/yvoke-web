@@ -5,23 +5,8 @@ import de.palsoftware.yvoke.chat.core.model.Message;
 import java.time.Instant;
 import java.util.UUID;
 
-public record MessageDto(UUID id, String role, String content, Integer promptTokens,
-    Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
-    Instant createdAt, Integer feedbackRating, String feedbackComment, String model,
-    String playbook, Integer playbookVersion) {
+public record MessageDto(UUID id,String role,String content,Integer promptTokens,Integer completionTokens,Integer totalTokens,Integer cachedTokens,Integer thoughtTokens,Instant createdAt,Integer feedbackRating,String feedbackComment,String model,String playbook,Integer playbookVersion){
 
-    public MessageDto(UUID id, String role, String content, Integer promptTokens,
-        Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
-        Instant createdAt, Integer feedbackRating, String feedbackComment, String model) {
-        this(id, role, content, promptTokens, completionTokens, totalTokens, cachedTokens,
-            thoughtTokens, createdAt, feedbackRating, feedbackComment, model, null, null);
-    }
+public MessageDto(UUID id,String role,String content,Integer promptTokens,Integer completionTokens,Integer totalTokens,Integer cachedTokens,Integer thoughtTokens,Instant createdAt,Integer feedbackRating,String feedbackComment,String model){this(id,role,content,promptTokens,completionTokens,totalTokens,cachedTokens,thoughtTokens,createdAt,feedbackRating,feedbackComment,model,null,null);}
 
-    public static MessageDto from(Message m, Feedback feedback) {
-        return new MessageDto(m.id(), m.role(), m.content(), m.promptTokens(),
-            m.completionTokens(), m.totalTokens(), m.cachedTokens(), m.thoughtTokens(),
-            m.createdAt(), feedback != null ? feedback.rating() : null,
-            feedback != null ? feedback.comment() : null, m.model(), m.playbook(),
-            m.playbookVersion());
-    }
-}
+public static MessageDto from(Message m,Feedback feedback){return new MessageDto(m.id(),m.role(),m.content(),m.promptTokens(),m.completionTokens(),m.totalTokens(),m.cachedTokens(),m.thoughtTokens(),m.createdAt(),feedback!=null?feedback.rating():null,feedback!=null?feedback.comment():null,m.model(),m.playbook(),m.playbookVersion());}}

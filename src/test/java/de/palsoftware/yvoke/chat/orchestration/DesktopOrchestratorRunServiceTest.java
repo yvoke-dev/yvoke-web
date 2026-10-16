@@ -242,20 +242,20 @@ class DesktopOrchestratorRunServiceTest {
             "out0", null, null, 1, 2, 3, 0, 0);
         Step s1 = new Step(1, "specialist", 0, null, 2, "m", "high", "in1", "out1", null, null, 1,
             2, 3, 0, 0);
-        Step s2 = new Step(2, "reviewer", 0, "   ", 3, "m", "high", "in2", "out2", null, null, 1,
-            2, 3, 0, 0);
+        Step s2 = new Step(2, "reviewer", 0, "   ", 3, "m", "high", "in2", "out2", null, null, 1, 2,
+            3, 0, 0);
 
         UUID runId = service.record(currentUser, requestFor(conversationId, List.of(s0, s1, s2)));
 
         verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(0), eq("orchestrator"),
-            eq(0), eq("oim-orchestrator"), eq(2), eq("m"), eq("high"), eq("in0"), eq("out0"),
-            any(), any(), eq(1), eq(2), eq(3), eq(0), eq(0));
+            eq(0), eq("oim-orchestrator"), eq(2), eq("m"), eq("high"), eq("in0"), eq("out0"), any(),
+            any(), eq(1), eq(2), eq(3), eq(0), eq(0));
         verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
             eq(0), isNull(), isNull(), eq("m"), eq("high"), eq("in1"), eq("out1"), any(), any(),
             eq(1), eq(2), eq(3), eq(0), eq(0));
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(2), eq("reviewer"),
-            eq(0), isNull(), isNull(), eq("m"), eq("high"), eq("in2"), eq("out2"), any(), any(),
-            eq(1), eq(2), eq(3), eq(0), eq(0));
+        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(2), eq("reviewer"), eq(0),
+            isNull(), isNull(), eq("m"), eq("high"), eq("in2"), eq("out2"), any(), any(), eq(1),
+            eq(2), eq(3), eq(0), eq(0));
     }
 
     @Test

@@ -131,7 +131,8 @@ public class PlaybookMarkdownParser {
 
     private static int parseVersionValue(Object rawVersion) {
         if (rawVersion == null || rawVersion instanceof Boolean) {
-            throw new IllegalArgumentException("Playbook version must be a positive integer (>= 1).");
+            throw new IllegalArgumentException(
+                "Playbook version must be a positive integer (>= 1).");
         }
         if (rawVersion instanceof Integer i) {
             if (i < 1) {

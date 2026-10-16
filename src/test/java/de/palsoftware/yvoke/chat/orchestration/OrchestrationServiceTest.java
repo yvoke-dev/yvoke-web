@@ -2114,15 +2114,15 @@ public class OrchestrationServiceTest {
 
     @Test
     void runOrchestration_stampsPlaybookVersionOnSuccessAndFailedAgentSteps() {
-        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template",
-            List.of(), false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM",
-            null, 2);
-        Playbook revPb = new Playbook("oim-orchestrator-reviewer", "Rev", "desc",
-            "Reviewer template", List.of(), false, "reviewer", false, Instant.now(), Instant.now(),
-            false, "OIM", null, 3);
-        Playbook specAPb = new Playbook("spec-a", "Spec A", "desc", "Spec A template",
-            List.of("search_corpus"), false, "specialist", false, Instant.now(), Instant.now(),
-            false, "OIM", null, 4);
+        Playbook orchPb =
+            new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template", List.of(),
+                false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM", null, 2);
+        Playbook revPb =
+            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
+                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        Playbook specAPb =
+            new Playbook("spec-a", "Spec A", "desc", "Spec A template", List.of("search_corpus"),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 4);
 
         when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
         when(playbookService.getPlaybook("oim-orchestrator-reviewer"))

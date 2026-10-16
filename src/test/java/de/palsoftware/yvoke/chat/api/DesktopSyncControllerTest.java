@@ -497,8 +497,7 @@ class DesktopSyncControllerTest {
         controller.appendMessages(testUser, conversationId,
             new AppendMessagesRequest(List.of(
                 new NewMessageDto("user", "q", null, null, null, null, null, "oim-specialist", 2),
-                new NewMessageDto("assistant", "a", 10, 20, 30, null, null, "oim-specialist",
-                    2))));
+                new NewMessageDto("assistant", "a", 10, 20, 30, null, null, "oim-specialist", 2))));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<NewMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -509,9 +508,9 @@ class DesktopSyncControllerTest {
         assertThat(captor.getValue().get(1).playbookVersion()).isEqualTo(2);
 
         UUID m1 = UUID.randomUUID();
-        when(syncService.getMessages(conversationId, testUser, 500, 0)).thenReturn(List.of(
-            new Message(m1, conversationId, "assistant", "a", "oim-specialist", 2, List.of(),
-                List.of(), Instant.now(), 10, 20, 30, null, null, "done", "sonnet")));
+        when(syncService.getMessages(conversationId, testUser, 500, 0))
+            .thenReturn(List.of(new Message(m1, conversationId, "assistant", "a", "oim-specialist",
+                2, List.of(), List.of(), Instant.now(), 10, 20, 30, null, null, "done", "sonnet")));
         when(syncService.getFeedbackByMessageId(conversationId, testUser)).thenReturn(Map.of());
 
         List<MessageDto> dtos = controller.getMessages(testUser, conversationId, 500, 0);

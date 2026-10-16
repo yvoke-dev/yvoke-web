@@ -161,10 +161,10 @@ public class DesktopSyncController {
         if (request == null || request.messages() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "messages are required");
         }
-        List<NewMessage> newMessages = request
-            .messages().stream().map(m -> new NewMessage(m.role(), m.content(), m.promptTokens(),
-                m.completionTokens(), m.totalTokens(), m.cachedTokens(), m.thoughtTokens(),
-                m.playbook(), m.playbookVersion()))
+        List<NewMessage> newMessages = request.messages().stream()
+            .map(m -> new NewMessage(m.role(), m.content(), m.promptTokens(), m.completionTokens(),
+                m.totalTokens(), m.cachedTokens(), m.thoughtTokens(), m.playbook(),
+                m.playbookVersion()))
             .toList();
         return Map.of("ids", syncService.appendMessages(id, user, newMessages));
     }

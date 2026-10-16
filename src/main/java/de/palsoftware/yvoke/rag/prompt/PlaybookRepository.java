@@ -96,8 +96,7 @@ public class PlaybookRepository {
             .param("tools", tools != null ? tools.toArray(new String[0]) : new String[0])
             .param("codeExecution", codeExecution).param("targetAgent", agent)
             .param("prototype", prototype).param("area", area).param("systemPrompt", prompt)
-            .param("version", version)
-            .update();
+            .param("version", version).update();
     }
 
     public void delete(String name) {
