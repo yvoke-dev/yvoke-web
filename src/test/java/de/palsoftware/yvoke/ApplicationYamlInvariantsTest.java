@@ -636,7 +636,9 @@ public class ApplicationYamlInvariantsTest {
     void theDeployedWebSearchConfigParsesApprovedVendorAllowList() throws Exception {
         Map<String, String> data = deployedConfigMap();
         assertThat(data.get("APP_WEB_SEARCH_ENABLED"))
-            .as("deployed ConfigMap must explicitly set APP_WEB_SEARCH_ENABLED").isEqualTo("true");
+            .as("application.yml ships web search disabled by default, so the deployed ConfigMap is"
+                + " the sole switch that activates Level-1 WebSearch for playbooks that opt in")
+            .isEqualTo("true");
         assertThat(WebSearchPolicy.parseAllowEntries(data.get("APP_WEB_SEARCH_ALLOWED_DOMAINS")))
             .as("deployed APP_WEB_SEARCH_ALLOWED_DOMAINS must parse cleanly into the approved"
                 + " One Identity support and community scopes")
