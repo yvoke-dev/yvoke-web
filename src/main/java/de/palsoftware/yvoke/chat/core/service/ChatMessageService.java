@@ -217,14 +217,15 @@ public class ChatMessageService {
                 throw new IllegalArgumentException(
                     "Playbook cannot be changed once a conversation has started.");
             }
-            saveUserMessage(conversationId, userMessageId, userContent, effectivePlaybookName);
+            saveUserMessage(conversationId, userMessageId, userContent, effectivePlaybookName,
+                playbook.version());
         });
 
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
         return new PreparedChat(conversationId, userMessageId, userContent, modelToUse,
             systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution,
-            effectivePlaybookName);
+            effectivePlaybookName, playbook.version());
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
@@ -257,10 +258,11 @@ public class ChatMessageService {
         UUID assistantMessageId = UUID.randomUUID();
 
         String pbName = prepared.playbookName();
+        Integer pbVersion = prepared.playbookVersion();
         transactionTemplate.executeWithoutResult(status -> {
             Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
-                "", pbName, Collections.emptyList(), Collections.emptyList(), Instant.now(), null,
-                null, null, null, null, "generating", prepared.modelToUse());
+                "", pbName, pbVersion, Collections.emptyList(), Collections.emptyList(),
+                Instant.now(), null, null, null, null, null, "generating", prepared.modelToUse());
             messageRepository.save(assistantMessage);
         });
 
@@ -353,7 +355,7 @@ public class ChatMessageService {
                 throw new IllegalArgumentException(
                     "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
             }
-            saveUserMessage(conversationId, userMessageId, content, null);
+            saveUserMessage(conversationId, userMessageId, content, null, null);
         });
         List<LlmMessage> history = getPriorHistory(conversationId, userMessageId);
 
@@ -575,13 +577,26 @@ public class ChatMessageService {
     /** Immutable setup produced on the request thread and consumed by the streaming task. */
     public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
         String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
-        String thinkingLevel, boolean codeExecution, String playbookName) {}
+        String thinkingLevel, boolean codeExecution, String playbookName,
+        Integer playbookVersion) {
+
+        public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
+            String modelToUse, String systemPrompt, List<LlmMessage> history,
+            List<String> allowedTools, String thinkingLevel, boolean codeExecution,
+            String playbookName) {
+            this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history,
+                allowedTools, thinkingLevel, codeExecution, playbookName, null);
+        }
+    }
 
     private void saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
-        String playbookName) {
+        String playbookName, Integer playbookVersion) {
+        String normalizedPlaybook =
+            (playbookName != null && !playbookName.isBlank()) ? playbookName.trim() : null;
+        Integer effectivePlaybookVersion = normalizedPlaybook != null ? playbookVersion : null;
         Message userMessage = new Message(userMessageId, conversationId, "user", userContent,
-            (playbookName != null && !playbookName.isBlank()) ? playbookName.trim() : null,
-            Collections.emptyList(), Collections.emptyList(), Instant.now());
+            normalizedPlaybook, effectivePlaybookVersion, Collections.emptyList(),
+            Collections.emptyList(), Instant.now());
         messageRepository.save(userMessage);
 
         long messageCount = messageRepository.countByConversationId(conversationId);

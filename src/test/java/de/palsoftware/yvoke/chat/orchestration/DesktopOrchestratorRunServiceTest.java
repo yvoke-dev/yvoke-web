@@ -186,11 +186,11 @@ class DesktopOrchestratorRunServiceTest {
         UUID runId = service.record(currentUser, requestFor(conversationId, List.of(s0, s1)));
 
         verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(0), eq("specialist"),
-            eq(0), eq("pb0"), any(), any(), eq("in0"), eq("out0"), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+            eq(0), eq("pb0"), any(), any(), any(), eq("in0"), eq("out0"), any(), any(), anyInt(),
+            anyInt(), anyInt(), anyInt(), anyInt());
         verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
-            eq(0), eq("pb1"), any(), any(), eq("in1"), eq("out1"), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+            eq(0), eq("pb1"), any(), any(), any(), eq("in1"), eq("out1"), any(), any(), anyInt(),
+            anyInt(), anyInt(), anyInt(), anyInt());
     }
 
     @Test
@@ -231,5 +231,50 @@ class DesktopOrchestratorRunServiceTest {
         assertThat(DesktopOrchestratorRunService.class
             .getMethod("record", User.class, OrchestratorRunRequest.class)
             .isAnnotationPresent(Transactional.class)).isTrue();
+    }
+
+    @Test
+    void recordPersistsStepPlaybookVersionAndEnforcesInvariants() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+
+        Step s0 = new Step(0, "orchestrator", 0, " oim-orchestrator ", 2, "m", "high", "in0",
+            "out0", null, null, 1, 2, 3, 0, 0);
+        Step s1 = new Step(1, "specialist", 0, null, 2, "m", "high", "in1", "out1", null, null, 1,
+            2, 3, 0, 0);
+        Step s2 = new Step(2, "reviewer", 0, "   ", 3, "m", "high", "in2", "out2", null, null, 1,
+            2, 3, 0, 0);
+
+        UUID runId = service.record(currentUser, requestFor(conversationId, List.of(s0, s1, s2)));
+
+        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(0), eq("orchestrator"),
+            eq(0), eq("oim-orchestrator"), eq(2), eq("m"), eq("high"), eq("in0"), eq("out0"),
+            any(), any(), eq(1), eq(2), eq(3), eq(0), eq(0));
+        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
+            eq(0), isNull(), isNull(), eq("m"), eq("high"), eq("in1"), eq("out1"), any(), any(),
+            eq(1), eq(2), eq(3), eq(0), eq(0));
+        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(2), eq("reviewer"),
+            eq(0), isNull(), isNull(), eq("m"), eq("high"), eq("in2"), eq("out2"), any(), any(),
+            eq(1), eq(2), eq(3), eq(0), eq(0));
+    }
+
+    @Test
+    void recordRejectsInvalidStepPlaybookVersion() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+
+        Step badZero = new Step(0, "specialist", 0, "pb", 0, "m", "high", "in", "out", null, null,
+            1, 2, 3, 0, 0);
+        assertThatThrownBy(
+            () -> service.record(currentUser, requestFor(conversationId, List.of(badZero))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        Step badNegative = new Step(0, "specialist", 0, "pb", -2, "m", "high", "in", "out", null,
+            null, 1, 2, 3, 0, 0);
+        assertThatThrownBy(
+            () -> service.record(currentUser, requestFor(conversationId, List.of(badNegative))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 }

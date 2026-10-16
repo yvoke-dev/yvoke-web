@@ -38,8 +38,16 @@ public class DesktopSyncService {
     private final FeedbackRepository feedbackRepository;
 
     public record NewMessage(String role, String content, Integer promptTokens,
-        Integer completionTokens, Integer totalTokens, Integer cachedTokens,
-        Integer thoughtTokens) {}
+        Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
+        String playbook, Integer playbookVersion) {
+
+        public NewMessage(String role, String content, Integer promptTokens,
+            Integer completionTokens, Integer totalTokens, Integer cachedTokens,
+            Integer thoughtTokens) {
+            this(role, content, promptTokens, completionTokens, totalTokens, cachedTokens,
+                thoughtTokens, null, null);
+        }
+    }
 
     public DesktopSyncService(ConversationRepository conversationRepository,
         MessageRepository messageRepository, FeedbackRepository feedbackRepository) {
@@ -89,10 +97,17 @@ public class DesktopSyncService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "content must not be blank");
             }
+            if (m.playbookVersion() != null && m.playbookVersion() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "playbookVersion must be >= 1");
+            }
+            String normalizedPlaybook =
+                (m.playbook() != null && !m.playbook().isBlank()) ? m.playbook().trim() : null;
+            Integer effectivePlaybookVersion = normalizedPlaybook != null ? m.playbookVersion() : null;
             UUID id = UUID.randomUUID();
-            messageRepository.save(new Message(id, conversationId, m.role(), m.content(), null,
-                null, null, m.promptTokens(), m.completionTokens(), m.totalTokens(),
-                m.cachedTokens(), m.thoughtTokens()));
+            messageRepository.save(new Message(id, conversationId, m.role(), m.content(),
+                normalizedPlaybook, effectivePlaybookVersion, null, null, null, m.promptTokens(),
+                m.completionTokens(), m.totalTokens(), m.cachedTokens(), m.thoughtTokens()));
             ids.add(id);
         }
 

@@ -306,4 +306,47 @@ public class DesktopSyncServiceTest {
         assertThat(mapped).doesNotContainKey("thinkingLevel");
         assertThat(mapped).doesNotContainKey("chatPrompt");
     }
+
+    @Test
+    public void appendMessagesPersistsPlaybookAndPlaybookVersionAndEnforcesInvariants() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(ownConversation(conversationId, "Custom title")));
+
+        service.appendMessages(conversationId, currentUser, List.of(
+            new NewMessage("user", "Question", null, null, null, null, null, " oim-specialist ", 2),
+            new NewMessage("assistant", "Answer", 10, 20, 30, null, null, "oim-specialist", 2),
+            new NewMessage("user", "Orchestrated Q", null, null, null, null, null, null, 2),
+            new NewMessage("assistant", "Orchestrated A", 10, 20, 30, null, null, "   ", 2)));
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(4)).save(captor.capture());
+        List<Message> saved = captor.getAllValues();
+
+        assertThat(saved.get(0).playbook()).isEqualTo("oim-specialist");
+        assertThat(saved.get(0).playbookVersion()).isEqualTo(2);
+        assertThat(saved.get(1).playbook()).isEqualTo("oim-specialist");
+        assertThat(saved.get(1).playbookVersion()).isEqualTo(2);
+        assertThat(saved.get(2).playbook()).isNull();
+        assertThat(saved.get(2).playbookVersion()).isNull();
+        assertThat(saved.get(3).playbook()).isNull();
+        assertThat(saved.get(3).playbookVersion()).isNull();
+    }
+
+    @Test
+    public void appendMessagesRejectsInvalidPlaybookVersion() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(ownConversation(conversationId, "Custom title")));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Question", null, null, null, null, null, "pb", 0))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Question", null, null, null, null, null, "pb", -1))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        verify(messageRepository, never()).save(any());
+    }
 }

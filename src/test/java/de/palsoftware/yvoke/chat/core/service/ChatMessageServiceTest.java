@@ -2577,4 +2577,55 @@ public class ChatMessageServiceTest {
 
         verify(conversationRepository, never()).lockForUpdate(convId);
     }
+
+    @Test
+    void prepareAndSubmitAsync_stampsPlaybookVersionOnUserAndAssistantMessages() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("PB1", "Title", "Desc", "PB1 Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        UUID assistantMessageId =
+            chatMessageService.prepareAndSubmitAsync(convId, "Versioned query", "PB1");
+        assertThat(assistantMessageId).isNotNull();
+
+        ArgumentCaptor<Message> saved = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+
+        Message userMsg = saved.getAllValues().get(0);
+        assertThat(userMsg.role()).isEqualTo("user");
+        assertThat(userMsg.playbook()).isEqualTo("PB1");
+        assertThat(userMsg.playbookVersion()).isEqualTo(3);
+
+        Message asstMsg = saved.getAllValues().get(1);
+        assertThat(asstMsg.role()).isEqualTo("assistant");
+        assertThat(asstMsg.playbook()).isEqualTo("PB1");
+        assertThat(asstMsg.playbookVersion()).isEqualTo(3);
+    }
+
+    @Test
+    void submitOrchestratedAsync_stampsNullPlaybookAndNullPlaybookVersionOnMessages() {
+        UUID convId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim");
+        Conversation conv = new Conversation(convId, UUID.randomUUID(), "Chat", settings,
+            Instant.now(), Instant.now(), List.of());
+        when(chatConversationService.verifyOwnership(convId, false)).thenReturn(conv);
+
+        chatMessageService.prepareAndSubmitAsync(convId, "Orchestrated query", null);
+
+        ArgumentCaptor<Message> saved = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues()).allSatisfy(msg -> {
+            assertThat(msg.playbook()).isNull();
+            assertThat(msg.playbookVersion()).isNull();
+        });
+    }
 }

@@ -487,4 +487,36 @@ class DesktopSyncControllerTest {
 
         verify(orchestratorRunService, never()).record(any(), any());
     }
+
+    @Test
+    void appendMessagesForwardsPlaybookAndPlaybookVersionAndGetMessagesExposesThem() {
+        UUID conversationId = UUID.randomUUID();
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
+        when(syncService.appendMessages(eq(conversationId), eq(testUser), any())).thenReturn(ids);
+
+        controller.appendMessages(testUser, conversationId,
+            new AppendMessagesRequest(List.of(
+                new NewMessageDto("user", "q", null, null, null, null, null, "oim-specialist", 2),
+                new NewMessageDto("assistant", "a", 10, 20, 30, null, null, "oim-specialist",
+                    2))));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<NewMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(syncService).appendMessages(eq(conversationId), eq(testUser), captor.capture());
+        assertThat(captor.getValue().get(0).playbook()).isEqualTo("oim-specialist");
+        assertThat(captor.getValue().get(0).playbookVersion()).isEqualTo(2);
+        assertThat(captor.getValue().get(1).playbook()).isEqualTo("oim-specialist");
+        assertThat(captor.getValue().get(1).playbookVersion()).isEqualTo(2);
+
+        UUID m1 = UUID.randomUUID();
+        when(syncService.getMessages(conversationId, testUser, 500, 0)).thenReturn(List.of(
+            new Message(m1, conversationId, "assistant", "a", "oim-specialist", 2, List.of(),
+                List.of(), Instant.now(), 10, 20, 30, null, null, "done", "sonnet")));
+        when(syncService.getFeedbackByMessageId(conversationId, testUser)).thenReturn(Map.of());
+
+        List<MessageDto> dtos = controller.getMessages(testUser, conversationId, 500, 0);
+        assertThat(dtos).hasSize(1);
+        assertThat(dtos.get(0).playbook()).isEqualTo("oim-specialist");
+        assertThat(dtos.get(0).playbookVersion()).isEqualTo(2);
+    }
 }

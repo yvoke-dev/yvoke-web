@@ -29,9 +29,18 @@ public class AgentStepRepository {
         String playbookName, String model, String thinkingLevel, String input, String output,
         Object messages, Object verdict, int promptTokens, int completionTokens, int totalTokens,
         int cachedTokens, int thoughtTokens) {
-        insertStep(id, agentRunId, seq, role, round, playbookName, model, thinkingLevel, input,
+        insert(id, agentRunId, seq, role, round, playbookName, null, model, thinkingLevel, input,
             output, messages, verdict, promptTokens, completionTokens, totalTokens, cachedTokens,
-            thoughtTokens, STATUS_OK, null);
+            thoughtTokens);
+    }
+
+    public void insert(UUID id, UUID agentRunId, int seq, String role, int round,
+        String playbookName, Integer playbookVersion, String model, String thinkingLevel,
+        String input, String output, Object messages, Object verdict, int promptTokens,
+        int completionTokens, int totalTokens, int cachedTokens, int thoughtTokens) {
+        insertStep(id, agentRunId, seq, role, round, playbookName, playbookVersion, model,
+            thinkingLevel, input, output, messages, verdict, promptTokens, completionTokens,
+            totalTokens, cachedTokens, thoughtTokens, STATUS_OK, null);
     }
 
     /**
@@ -44,46 +53,56 @@ public class AgentStepRepository {
     public void insertFailed(UUID id, UUID agentRunId, int seq, String role, int round,
         String playbookName, String model, String thinkingLevel, String input, String partialOutput,
         String error) {
-        insertStep(id, agentRunId, seq, role, round, playbookName, model, thinkingLevel, input,
-            partialOutput, null, null, 0, 0, 0, 0, 0, STATUS_FAILED, error);
+        insertFailed(id, agentRunId, seq, role, round, playbookName, null, model, thinkingLevel,
+            input, partialOutput, error);
+    }
+
+    public void insertFailed(UUID id, UUID agentRunId, int seq, String role, int round,
+        String playbookName, Integer playbookVersion, String model, String thinkingLevel,
+        String input, String partialOutput, String error) {
+        insertStep(id, agentRunId, seq, role, round, playbookName, playbookVersion, model,
+            thinkingLevel, input, partialOutput, null, null, 0, 0, 0, 0, 0, STATUS_FAILED, error);
     }
 
     private void insertStep(UUID id, UUID agentRunId, int seq, String role, int round,
-        String playbookName, String model, String thinkingLevel, String input, String output,
-        Object messages, Object verdict, int promptTokens, int completionTokens, int totalTokens,
-        int cachedTokens, int thoughtTokens, String status, String error) {
+        String playbookName, Integer playbookVersion, String model, String thinkingLevel,
+        String input, String output, Object messages, Object verdict, int promptTokens,
+        int completionTokens, int totalTokens, int cachedTokens, int thoughtTokens, String status,
+        String error) {
         String sql =
             """
-                INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, model,
+                INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version, model,
                     thinking_level, input, output, messages, verdict, prompt_tokens, completion_tokens,
                     total_tokens, cached_tokens, thought_tokens, status, error, created_at)
-                VALUES (:id, :agentRunId, :seq, :role, :round, :playbookName, :model, :thinkingLevel,
+                VALUES (:id, :agentRunId, :seq, :role, :round, :playbookName, :playbookVersion, :model, :thinkingLevel,
                     :input, :output, :messages::jsonb, :verdict::jsonb, :promptTokens, :completionTokens,
                     :totalTokens, :cachedTokens, :thoughtTokens, :status, :error, CURRENT_TIMESTAMP)
                 """;
         jdbcClient.sql(sql).param("id", id).param("agentRunId", agentRunId).param("seq", seq)
             .param("role", role).param("round", round).param("playbookName", playbookName)
-            .param("model", model).param("thinkingLevel", thinkingLevel).param("input", input)
-            .param("output", output).param("messages", toJson(messages))
-            .param("verdict", toJson(verdict)).param("promptTokens", promptTokens)
-            .param("completionTokens", completionTokens).param("totalTokens", totalTokens)
-            .param("cachedTokens", cachedTokens).param("thoughtTokens", thoughtTokens)
-            .param("status", status).param("error", error).update();
+            .param("playbookVersion", playbookVersion).param("model", model)
+            .param("thinkingLevel", thinkingLevel).param("input", input).param("output", output)
+            .param("messages", toJson(messages)).param("verdict", toJson(verdict))
+            .param("promptTokens", promptTokens).param("completionTokens", completionTokens)
+            .param("totalTokens", totalTokens).param("cachedTokens", cachedTokens)
+            .param("thoughtTokens", thoughtTokens).param("status", status).param("error", error)
+            .update();
     }
 
     private static final RowMapper<AgentStep> STEP_ROW_MAPPER = (rs, n) -> new AgentStep(
         rs.getObject("id", UUID.class), rs.getObject("agent_run_id", UUID.class), rs.getInt("seq"),
         rs.getString("role"), rs.getInt("round"), rs.getString("playbook_name"),
-        rs.getString("model"), rs.getString("thinking_level"), rs.getString("input"),
-        rs.getString("output"), rs.getString("messages"), rs.getString("verdict"),
-        (Integer) rs.getObject("prompt_tokens"), (Integer) rs.getObject("completion_tokens"),
-        (Integer) rs.getObject("total_tokens"), (Integer) rs.getObject("cached_tokens"),
-        (Integer) rs.getObject("thought_tokens"), JdbcMappers.toInstant(rs.getObject("created_at")),
-        rs.getString("status"), rs.getString("error"));
+        (Integer) rs.getObject("playbook_version"), rs.getString("model"),
+        rs.getString("thinking_level"), rs.getString("input"), rs.getString("output"),
+        rs.getString("messages"), rs.getString("verdict"), (Integer) rs.getObject("prompt_tokens"),
+        (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
+        (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
+        JdbcMappers.toInstant(rs.getObject("created_at")), rs.getString("status"),
+        rs.getString("error"));
 
     public List<AgentStep> findByRunId(UUID agentRunId) {
         String sql = """
-            SELECT id, agent_run_id, seq, role, round, playbook_name, model, thinking_level, input,
+            SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
                    output, messages::text AS messages, verdict::text AS verdict, prompt_tokens,
                    completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
                    status, error
@@ -99,7 +118,7 @@ public class AgentStepRepository {
      */
     public List<AgentStep> findByRunIdWithoutMessages(UUID agentRunId) {
         String sql = """
-            SELECT id, agent_run_id, seq, role, round, playbook_name, model, thinking_level, input,
+            SELECT id, agent_run_id, seq, role, round, playbook_name, playbook_version, model, thinking_level, input,
                    output, NULL AS messages, verdict::text AS verdict, prompt_tokens,
                    completion_tokens, total_tokens, cached_tokens, thought_tokens, created_at,
                    status, error

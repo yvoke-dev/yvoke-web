@@ -163,7 +163,8 @@ public class DesktopSyncController {
         }
         List<NewMessage> newMessages = request
             .messages().stream().map(m -> new NewMessage(m.role(), m.content(), m.promptTokens(),
-                m.completionTokens(), m.totalTokens(), m.cachedTokens(), m.thoughtTokens()))
+                m.completionTokens(), m.totalTokens(), m.cachedTokens(), m.thoughtTokens(),
+                m.playbook(), m.playbookVersion()))
             .toList();
         return Map.of("ids", syncService.appendMessages(id, user, newMessages));
     }
