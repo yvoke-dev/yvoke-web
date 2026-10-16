@@ -281,6 +281,12 @@ app:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
       # cannot materialize the entire llm_call_logs table into heap.
       max-rows: ${APP_CHAT_COST_EXPLORER_MAX_ROWS:5000}
+  web-search:
+    enabled: ${APP_WEB_SEARCH_ENABLED:false}
+    allowed-domains: ${APP_WEB_SEARCH_ALLOWED_DOMAINS:}
+    model: ${APP_WEB_SEARCH_MODEL:gemini-3.5-flash-lite}
+    max-results: ${APP_WEB_SEARCH_MAX_RESULTS:8}
+    timeout-seconds: ${APP_WEB_SEARCH_TIMEOUT_SECONDS:15}
 
 rest-client:
   connect-timeout-ms: 10000

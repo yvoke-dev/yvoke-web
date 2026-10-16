@@ -46,14 +46,20 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import java.util.ArrayList;
 import java.util.function.Consumer;
 import java.util.Optional;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchResult;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchService;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import java.util.concurrent.CancellationException;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 public class RagServiceAgenticTest {
 
     private HybridSearch hybridSearch;
@@ -1678,5 +1684,209 @@ public class RagServiceAgenticTest {
 
         assertThat(toolMsg.isError()).isTrue();
         assertThat(toolMsg.content()).isEqualTo("Error parsing arguments: Missing required field");
+    }
+
+    @Test
+    void webSearchIsOfferedAndDispatchedWhenBothDeploymentAndPlaybookAllowIt() {
+        WebSearchService webSearchService = mock(WebSearchService.class);
+        when(webSearchService.isAvailable()).thenReturn(true);
+        when(webSearchService.search("OIM 9.3.1 hotfix 4380945"))
+            .thenReturn(List.of(new WebSearchResult("KB 4380945",
+                "https://support.oneidentity.com/kb/4380945", "Official hotfix advisory.")));
+
+        RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
+            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), webSearchService);
+
+        List<LlmRequest> seenRequests = new ArrayList<>();
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                seenRequests.add(inv.getArgument(0));
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null,
+                        List.of(new LlmToolCallDelta(0, "call_ws_1", "WebSearch",
+                            "{\"query\":\"OIM 9.3.1 hotfix 4380945\"}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(new LlmResponseChunk(
+                        "According to [KB 4380945](https://support.oneidentity.com/kb/4380945).",
+                        null, null, new LlmUsage(20, 30, 50, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        List<String> tokens = new ArrayList<>();
+        RagResult result = service.generateAgenticAnswer(
+            AgenticRequest.builder().query("What is hotfix 4380945?")
+                .modelOverride("gemini-3.8-flash").allowedTools(List.of("WebSearch")).build(),
+            tokens::add);
+
+        assertThat(seenRequests).hasSize(2);
+        assertThat(seenRequests.get(0).tools()).extracting(LlmTool::name)
+            .containsExactly("WebSearch");
+        verify(webSearchService, times(1)).search("OIM 9.3.1 hotfix 4380945");
+
+        String streamed = String.join("", tokens);
+        assertThat(streamed)
+            .contains("🔧 *Calling tool:* WebSearch({\"query\":\"OIM 9.3.1 hotfix 4380945\"})\n\n");
+        assertThat(streamed)
+            .contains("According to [KB 4380945](https://support.oneidentity.com/kb/4380945).");
+
+        LlmMessage toolMsg = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .findFirst().orElseThrow();
+        assertThat(toolMsg.isError()).isFalse();
+        assertThat(toolMsg.content()).contains("\"query\":\"OIM 9.3.1 hotfix 4380945\"")
+            .contains("https://support.oneidentity.com/kb/4380945");
+    }
+
+    @Test
+    void webSearchIsWithheldAndRefusedWhenLevel1DeploymentGateIsUnavailable(CapturedOutput output) {
+        WebSearchService unavailableWebSearch = mock(WebSearchService.class);
+        when(unavailableWebSearch.isAvailable()).thenReturn(false);
+
+        RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
+            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), unavailableWebSearch);
+
+        assertThat(service.getToolRegistry()).containsKey("WebSearch");
+
+        List<LlmRequest> seenRequests = new ArrayList<>();
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                seenRequests.add(inv.getArgument(0));
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(
+                        new LlmResponseChunk(
+                            null, null, List.of(new LlmToolCallDelta(0, "call_ws_denied_1",
+                                "WebSearch", "{\"query\":\"OIM\"}")),
+                            new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(new LlmResponseChunk("Fallback answer.", null, null,
+                        new LlmUsage(10, 10, 20, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = service.generateAgenticAnswer(
+            AgenticRequest.builder().query("What is OIM?").modelOverride("gemini-3.8-flash")
+                .allowedTools(List.of("WebSearch")).build(),
+            tok -> {
+            });
+
+        assertThat(seenRequests.get(0).tools()).extracting(LlmTool::name)
+            .doesNotContain("WebSearch");
+        verify(unavailableWebSearch, never()).search(anyString());
+
+        LlmMessage toolMsg = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .findFirst().orElseThrow();
+        assertThat(toolMsg.isError()).isTrue();
+        assertThat(toolMsg.content()).isEqualTo("Error: Tool WebSearch not found.");
+        assertThat(output.getOut()).contains("Tool WebSearch was withheld by the deployment gate")
+            .doesNotContain("denied by this run's allow-list");
+    }
+
+    @Test
+    void webSearchIsWithheldAndRefusedWhenLevel2PlaybookGateOmitsIt(CapturedOutput output) {
+        WebSearchService availableWebSearch = mock(WebSearchService.class);
+        when(availableWebSearch.isAvailable()).thenReturn(true);
+
+        RagService service =
+            new RagService(hybridSearch, llmClient, citationVerifier, new ObjectMapper(), 6, 4096,
+                0, null, true, null, List.of(namedTool("search_corpus")), availableWebSearch);
+
+        assertThat(service.getToolRegistry()).containsKey("WebSearch");
+
+        List<LlmRequest> seenRequests = new ArrayList<>();
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                seenRequests.add(inv.getArgument(0));
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(
+                        new LlmResponseChunk(
+                            null, null, List.of(new LlmToolCallDelta(0, "call_ws_denied_2",
+                                "WebSearch", "{\"query\":\"OIM\"}")),
+                            new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(new LlmResponseChunk("Corpus-only answer.", null, null,
+                        new LlmUsage(10, 10, 20, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = service.generateAgenticAnswer(
+            AgenticRequest.builder().query("What is OIM?").modelOverride("gemini-3.8-flash")
+                .allowedTools(List.of("search_corpus")).build(),
+            tok -> {
+            });
+
+        assertThat(seenRequests.get(0).tools()).extracting(LlmTool::name)
+            .containsExactly("search_corpus");
+        verify(availableWebSearch, never()).search(anyString());
+
+        LlmMessage toolMsg = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .findFirst().orElseThrow();
+        assertThat(toolMsg.isError()).isTrue();
+        assertThat(toolMsg.content()).isEqualTo("Error: Tool WebSearch not found.");
+        assertThat(output.getOut()).contains("Tool WebSearch was denied by this run's allow-list")
+            .doesNotContain("withheld by the deployment gate");
+    }
+
+    @Test
+    void webSearchRuntimeExceptionIsSanitizedAtSec17Boundary() {
+        WebSearchService failingWebSearch = mock(WebSearchService.class);
+        when(failingWebSearch.isAvailable()).thenReturn(true);
+        when(failingWebSearch.search("OIM"))
+            .thenThrow(new RuntimeException("HTTP 502 from upstream secret-url"));
+
+        RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
+            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), failingWebSearch);
+
+        doAnswer(new Answer<Void>() {
+            private int callCount = 0;
+
+            @Override
+            public Void answer(InvocationOnMock inv) {
+                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                if (callCount == 0) {
+                    cb.accept(new LlmResponseChunk(null, null, List.of(
+                        new LlmToolCallDelta(0, "call_ws_err", "WebSearch", "{\"query\":\"OIM\"}")),
+                        new LlmUsage(10, 20, 30, 0, 0)));
+                } else {
+                    cb.accept(new LlmResponseChunk("Answered with gap.", null, null,
+                        new LlmUsage(10, 10, 20, 0, 0)));
+                }
+                callCount++;
+                return null;
+            }
+        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+
+        RagResult result = service.generateAgenticAnswer(
+            AgenticRequest.builder().query("What is OIM?").modelOverride("gemini-3.8-flash")
+                .allowedTools(List.of("WebSearch")).build(),
+            tok -> {
+            });
+
+        LlmMessage toolMsg = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .findFirst().orElseThrow();
+        assertThat(toolMsg.isError()).isTrue();
+        assertThat(toolMsg.content()).isEqualTo(
+            "Error: the WebSearch tool could not be completed. Continue with the evidence you already have and state the gap in your answer.");
+        assertThat(toolMsg.content()).doesNotContain("502").doesNotContain("secret-url");
     }
 }

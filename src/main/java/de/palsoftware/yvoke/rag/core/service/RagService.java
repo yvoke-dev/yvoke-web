@@ -17,6 +17,8 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchService;
+import de.palsoftware.yvoke.rag.core.websearch.WebSearchToolCallback;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
@@ -48,6 +50,7 @@ public class RagService {
     private final CitationVerifier citationVerifier;
     private final ObjectMapper objectMapper;
     private final SystemPromptService systemPromptService;
+    private final WebSearchService webSearchService;
     private final int maxIterations;
     private final int maxTokens;
     private final double temperature;
@@ -65,7 +68,15 @@ public class RagService {
         CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
         int maxTokens, double temperature) {
         this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
-            temperature, null, true, null, List.of());
+            temperature, null, true, null, List.of(), null);
+    }
+
+    public RagService(HybridSearch hybridSearch, LlmClient llmClient,
+        CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
+        int maxTokens, double temperature, String thinkingLevel, boolean chatEnabled,
+        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks) {
+        this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
+            temperature, thinkingLevel, chatEnabled, systemPromptService, toolCallbacks, null);
     }
 
     @Autowired
@@ -76,11 +87,13 @@ public class RagService {
         @Value("${app.ai.rag.temperature}") double temperature,
         @Value("${app.ai.rag.thinking-level}") String thinkingLevel,
         @Value("${app.chat.enabled}") boolean chatEnabled,
-        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks) {
+        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks,
+        @Nullable WebSearchService webSearchService) {
         this.llmClient = llmClient;
         this.citationVerifier = citationVerifier;
         this.objectMapper = objectMapper;
         this.systemPromptService = systemPromptService;
+        this.webSearchService = webSearchService;
         this.maxIterations = maxIterations;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
@@ -92,6 +105,10 @@ public class RagService {
                 log.info("Registered agentic tool: {}", callback.getToolDefinition().name());
             }
         }
+        WebSearchToolCallback webSearchCallback =
+            new WebSearchToolCallback(webSearchService, objectMapper);
+        toolRegistry.put(webSearchCallback.getToolDefinition().name(), webSearchCallback);
+        log.info("Registered agentic tool: {}", webSearchCallback.getToolDefinition().name());
     }
 
     /** Per-turn streaming state, accumulated on the (single) calling thread. */
@@ -449,13 +466,15 @@ public class RagService {
      * @param denied names present in the registry that this run's allow-list refused. Carried for
      *        diagnosis only — a String cannot be invoked — so a stale playbook advertising a tool a
      *        role no longer has is distinguishable in the log from a model inventing a name.
+     * @param unavailable names permitted by the run's allow-list that were withheld by a
+     *        deployment-level gate (e.g. {@code WebSearch} when {@code app.web-search.*} is off).
      */
     private record TurnTools(List<LlmTool> declarations, Map<String, ToolCallback> dispatch,
-        Set<String> denied) {
+        Set<String> denied, Set<String> unavailable) {
 
         /** The forced post-cap turn: offered nothing, so it may execute nothing. */
         static TurnTools none() {
-            return new TurnTools(List.of(), Map.of(), Set.of());
+            return new TurnTools(List.of(), Map.of(), Set.of(), Set.of());
         }
     }
 
@@ -465,6 +484,7 @@ public class RagService {
         List<LlmTool> declarations = new ArrayList<>();
         Map<String, ToolCallback> dispatch = new HashMap<>();
         Set<String> denied = new HashSet<>();
+        Set<String> unavailable = new HashSet<>();
         for (ToolCallback callback : runRegistry.values()) {
             String toolName = callback.getToolDefinition().name();
             // Deny by default: null is treated exactly like an empty list. Skipping the filter when
@@ -476,6 +496,11 @@ public class RagService {
             if (!alwaysInclude.contains(toolName)
                 && (allowedTools == null || !allowedTools.contains(toolName))) {
                 denied.add(toolName);
+                continue;
+            }
+            if (WebSearchToolCallback.TOOL_NAME.equals(toolName)
+                && (webSearchService == null || !webSearchService.isAvailable())) {
+                unavailable.add(toolName);
                 continue;
             }
             try {
@@ -492,7 +517,7 @@ public class RagService {
                 log.error("Failed to parse schema for tool {}", toolName, e);
             }
         }
-        return new TurnTools(declarations, dispatch, denied);
+        return new TurnTools(declarations, dispatch, denied, unavailable);
     }
 
     private void executeToolCalls(List<LlmToolCall> toolCalls, List<LlmMessage> messages,
@@ -568,6 +593,14 @@ public class RagService {
                         + " have and state the gap in your answer.";
                     isError = true;
                 }
+            } else if (tools.unavailable().contains(tc.name())) {
+                log.warn(
+                    "Tool {} was withheld by the deployment gate; it is permitted by the playbook "
+                        + "but disabled or unconfigured in this deployment (check app.web-search.* "
+                        + "and app.ai.gemini.api-key)",
+                    tc.name());
+                responseData = "Error: Tool " + tc.name() + " not found.";
+                isError = true;
             } else if (tools.denied().contains(tc.name())) {
                 // Registered, but not permitted this run — a stale playbook advertising a tool the
                 // role no longer has, which costs a turn every time it happens. Worth telling apart

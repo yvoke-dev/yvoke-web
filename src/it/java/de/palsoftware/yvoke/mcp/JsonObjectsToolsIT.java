@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -104,9 +105,16 @@ public class JsonObjectsToolsIT {
         List<String> mcpNames =
             callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
 
+        assertThat(mcpNames)
+            .as("WebSearch is an in-app chat-only tool and must not be published on /mcp")
+            .doesNotContain("WebSearch");
+
+        List<String> expectedChatNames = new ArrayList<>(mcpNames);
+        expectedChatNames.add("WebSearch");
+
         assertThat(ragService.getToolRegistry().keySet())
-            .as("the agentic catalogue and the MCP catalogue are the same list")
-            .containsExactlyInAnyOrderElementsOf(mcpNames);
+            .as("the agentic catalogue holds the MCP catalogue plus the chat-only WebSearch tool")
+            .containsExactlyInAnyOrderElementsOf(expectedChatNames);
 
         for (Object c : callbacks) {
             ToolCallback callback = (ToolCallback) c;

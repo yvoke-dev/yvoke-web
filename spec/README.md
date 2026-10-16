@@ -82,8 +82,10 @@ system and watch what it costs.
 - **Content is separated by product version.** A knowledge area can hold 9.3.1 and 10.0 side by side.
   Every search names one tag, and an answer about 9.3.1 can never be built from 10.0 material. This
   is the single most important design rule in the product.
-- **Answers are only as good as what was imported.** Yvoke does not browse the internet, and it does not
-  fall back on the model's general knowledge when the corpus is thin. Curation is the product.
+- **Answers are only as good as what was imported.** Yvoke does not browse the open internet, and it does not
+  fall back on the model's general knowledge when the corpus is thin. When enabled by the administrator and the
+  active playbook, it searches only the administrator's allow-list of approved vendor domains and path prefixes.
+  Curation is the product.
 
 ---
 
