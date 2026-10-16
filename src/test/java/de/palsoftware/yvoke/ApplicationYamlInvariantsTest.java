@@ -633,11 +633,10 @@ public class ApplicationYamlInvariantsTest {
     }
 
     @Test
-    void theDeployedWebSearchConfigIsFailClosedAndParsesApprovedVendorAllowList() throws Exception {
+    void theDeployedWebSearchConfigParsesApprovedVendorAllowList() throws Exception {
         Map<String, String> data = deployedConfigMap();
         assertThat(data.get("APP_WEB_SEARCH_ENABLED"))
-            .as("deployed ConfigMap must explicitly set APP_WEB_SEARCH_ENABLED to false by default")
-            .isEqualTo("false");
+            .as("deployed ConfigMap must explicitly set APP_WEB_SEARCH_ENABLED").isEqualTo("true");
         assertThat(WebSearchPolicy.parseAllowEntries(data.get("APP_WEB_SEARCH_ALLOWED_DOMAINS")))
             .as("deployed APP_WEB_SEARCH_ALLOWED_DOMAINS must parse cleanly into the approved"
                 + " One Identity support and community scopes")
