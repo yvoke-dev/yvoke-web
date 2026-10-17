@@ -744,7 +744,7 @@ public class ChatThreadRenderingIT {
         }
 
         // Verify that even if 100 messages without playbook precede the playbook message,
-        // threadView still resolves the lock using findInitialPlaybook
+        // threadView still resolves the lock and version using findInitialPlaybook / findInitialPlaybookVersion
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID longConvId = chatConversationService.createConversation().id();
         for (int i = 0; i < 100; i++) {
@@ -752,7 +752,8 @@ public class ChatThreadRenderingIT {
                 null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
         }
         messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Web question 101",
-            "oim-full", List.of(), List.of(), Instant.now()));
+            "oim-full", 4, List.of(), List.of(), Instant.now(), null, null, null, null, null,
+            "done", null));
 
         MvcResult longConvResult = mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
             .andExpect(status().isOk()).andReturn();
@@ -760,11 +761,12 @@ public class ChatThreadRenderingIT {
         assertThat(longMav).isNotNull();
         assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
         assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+        assertThat(longMav.getModel().get("lockedPlaybookVersion")).isEqualTo(4);
         String longHtml = longConvResult.getResponse().getContentAsString();
         assertThat(longHtml).contains("isPlaybookLocked: true");
         assertThat(longHtml).contains("lockedPlaybookName: \"oim-full\"");
         assertThat(longHtml)
-            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full v4</span>");
 
         // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");

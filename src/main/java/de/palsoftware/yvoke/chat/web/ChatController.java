@@ -126,10 +126,16 @@ public class ChatController {
         Integer lockedPlaybookVersion = null;
         if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
             Optional<Playbook> lockedPlaybook = playbookService.getPlaybook(lockedPlaybookName);
-            lockedPlaybookVersion = lockedPlaybook.map(Playbook::version).orElseGet(() -> messages
-                .stream()
-                .filter(m -> lockedPlaybookName.equals(m.playbook()) && m.playbookVersion() != null)
-                .map(Message::playbookVersion).findFirst().orElse(null));
+            lockedPlaybookVersion = lockedPlaybook.map(Playbook::version).orElseGet(() -> {
+                Integer fromLockState = lockState.lockedPlaybookVersion();
+                if (fromLockState != null) {
+                    return fromLockState;
+                }
+                return messages.stream()
+                    .filter(m -> "user".equalsIgnoreCase(m.role())
+                        && lockedPlaybookName.equals(m.playbook()) && m.playbookVersion() != null)
+                    .map(Message::playbookVersion).findFirst().orElse(null);
+            });
         }
         boolean isModeLocked = lockState.initialPlaybook().isPresent() || !messages.isEmpty();
 

@@ -169,27 +169,6 @@ export function assistantPlaceholderMarkup(assistantMsgId, variantClass) {
 }
 
 /**
- * Human label for a tool/prompt name: a curated label if one exists, else the prompt's own title,
- * else the name de-slugified. `labels` and `prompts` are injected rather than read from module
- * state so this is callable without the page.
- */
-export function promptLabel(name, prompts, labels) {
-    if (!name) return '';
-    if (labels && labels[name]) {
-        return labels[name];
-    }
-    if (Array.isArray(prompts)) {
-        const found = prompts.find(p => p && p.name === name);
-        if (found && found.title) {
-            return found.title;
-        }
-    }
-    return name
-        .replace(/[-_]+/g, ' ')
-        .replace(/\b[a-z]/g, ch => ch.toUpperCase());
-}
-
-/**
  * Formats the display text for a playbook tag (without the leading emoji) using the canonical
  * playbook `name`, appending ` v<N>` when a positive integer version is known from an explicit
  * argument or from the `prompts` list.
@@ -218,8 +197,20 @@ export function formatPlaybookTagLabel(name, version, prompts) {
     return baseLabel;
 }
 
+/**
+ * Filters available playbooks for `/` or `+` autocomplete strictly by canonical `name`
+ * (case-insensitive substring match), never matching the unrendered `title`.
+ */
+export function filterPromptsForAutocomplete(prompts, query) {
+    if (!Array.isArray(prompts)) return [];
+    const q = typeof query === 'string' ? query.toLowerCase() : '';
+    return prompts.filter(function (p) {
+        return Boolean(p && typeof p.name === 'string' && p.name.length > 0 && p.name.toLowerCase().includes(q));
+    });
+}
+
 /** Placeholder for the chat input: playbook-specific when one is active, else the generic hint. */
-export function chatInputDefaultPlaceholder(activePlaybookName, prompts, isLocked = false, isOrchestrator = false) {
+export function chatInputDefaultPlaceholder(activePlaybookName, isLocked = false, isOrchestrator = false) {
     if (activePlaybookName && !isOrchestrator) {
         return `Add your question for "${activePlaybookName}"...`;
     }

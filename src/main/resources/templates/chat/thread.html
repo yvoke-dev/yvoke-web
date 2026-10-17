@@ -78,7 +78,7 @@
                             th:style="${prompt.prototype && !(settings != null && (settings['show-prototypes'] == true || settings['show-prototypes'] == 'true')) ? 'display: none;' : ''}"
                             th:attr="data-prompt-name=${prompt.name}, data-prompt-version=${prompt.version}, data-prototype=${prompt.prototype}"
                             th:title="${prompt.description}"
-                            th:text="${(prompt.prototype ? '🧪 ' + prompt.name : prompt.name) + (prompt.version != null ? ' v' + prompt.version : '')}"
+                            th:text="${(prompt.prototype ? '🧪 ' + prompt.name : prompt.name) + ' v' + prompt.version}"
                             data-action="select-playbook">
                         Prompt Name
                     </button>

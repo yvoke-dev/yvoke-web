@@ -137,6 +137,9 @@ public class ChatMessageService {
      */
     public ConversationLockState resolveLockState(UUID conversationId, String orchestratorProfile) {
         Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
+        Optional<Integer> initialPlaybookVersion = initialPlaybook.isPresent()
+            ? messageRepository.findInitialPlaybookVersion(conversationId)
+            : Optional.empty();
         boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank()
             && orchestrationService.hasProfile(orchestratorProfile.trim());
 
@@ -145,7 +148,8 @@ public class ChatMessageService {
         boolean hasInDepthTurns = (initialPlaybook.isPresent() || hasActiveProfile)
             && messageRepository.hasInDepthTurns(conversationId);
 
-        return ConversationLockState.from(initialPlaybook, hasInDepthTurns, hasActiveProfile);
+        return ConversationLockState.from(initialPlaybook, initialPlaybookVersion, hasInDepthTurns,
+            hasActiveProfile);
     }
 
     /**

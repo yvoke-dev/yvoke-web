@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResul
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -172,6 +173,22 @@ public class MessageRepository {
             """;
         return jdbcClient.sql(sql).param("conversationId", conversationId).query(String.class)
             .optional().map(String::trim);
+    }
+
+    public Optional<Integer> findInitialPlaybookVersion(UUID conversationId) {
+        String sql = """
+            SELECT playbook_version
+            FROM messages
+            WHERE conversation_id = :conversationId
+              AND LOWER(role) = 'user'
+              AND playbook IS NOT NULL
+              AND btrim(playbook) <> ''
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+            """;
+        return jdbcClient.sql(sql).param("conversationId", conversationId)
+            .query((rs, rowNum) -> (Integer) rs.getObject("playbook_version")).list().stream()
+            .filter(Objects::nonNull).findFirst();
     }
 
     public boolean hasInDepthTurns(UUID conversationId) {

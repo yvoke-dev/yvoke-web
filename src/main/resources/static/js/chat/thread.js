@@ -20,6 +20,7 @@ import {
     chatInputDefaultPlaceholder,
     describeSendFailure,
     escapeHtml,
+    filterPromptsForAutocomplete,
     formatPlaybookTagLabel,
     pollTerminalDecision,
     profileOptionVisibility,
@@ -361,7 +362,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 activePlaybookEl.style.display = 'none';
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
             }
             
             const chipsEl = document.getElementById('prompt-chips');
@@ -489,7 +490,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 }
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
             }
         }
         applyOrchestratorModeUI();
@@ -1045,7 +1046,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!unanswered) {
                 if (chatInput) {
                     chatInput.disabled = false;
-                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
                 }
                 const micBtn = document.getElementById('voice-input-btn');
                 if (micBtn) {
@@ -1154,8 +1155,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 const match = val.match(/^[\/\+](\S*)$/);
                 const available = getAvailablePrompts();
                 if (match && available.length > 0) {
-                    const query = match[1].toLowerCase();
-                    const filtered = available.filter(p => p.name.toLowerCase().includes(query) || p.title.toLowerCase().includes(query));
+                    const filtered = filterPromptsForAutocomplete(available, match[1]);
                     if (filtered.length > 0) {
                         showAutocomplete(filtered);
                     } else {
@@ -1272,7 +1272,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         voiceBtn.classList.remove('recording');
                         const tooltipEl = voiceBtn.querySelector('.custom-tooltip');
                         if (tooltipEl) tooltipEl.textContent = "Start voice typing";
-                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
                         adjustChatInputHeight();
                     };
 

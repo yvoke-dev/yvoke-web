@@ -43,6 +43,7 @@ class ChatSmokeE2EIT extends AbstractE2E {
 
     // A playbook must be selected before the client will send (the UI blocks otherwise).
     page.click("#prompt-chips button[data-prompt-name='e2e-playbook']");
+    assertThat(page.locator("#active-playbook-tag")).containsText("e2e-playbook v1");
 
     page.fill("#chat-input", "What is OIM?");
     page.click("#send-stop-button");
@@ -51,5 +52,6 @@ class ChatSmokeE2EIT extends AbstractE2E {
     assertThat(page.locator("#chat-messages"))
         .containsText("Mocked answer from the fake LlmClient.");
     assertThat(page.locator("#chat-messages")).containsText("What is OIM?");
+    assertThat(page.locator("#chat-messages .playbook-tag")).containsText("e2e-playbook v1");
   }
 }
