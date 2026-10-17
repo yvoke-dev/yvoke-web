@@ -124,9 +124,9 @@ public class ConversationAgentRunContextIT {
 
         ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
 
-        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", null);
-        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", null);
-        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM", null, 1);
 
         orchestratorProfileRepository.upsert(new OrchestratorProfile(
             "oim", 2, 5, "oim-orch", "oim-rev", List.of("oim-spec"),
@@ -327,7 +327,7 @@ public class ConversationAgentRunContextIT {
             Map.of("model", "gemini-2.5-flash", "chat-prompt", "oim-access-governance"));
 
         playbookService.savePlaybook("oim-access-governance", "OIM Access Governance", "",
-            "Access governance prompt", List.of(), false, "specialist", false, "OIM", null);
+            "Access governance prompt", List.of(), false, "specialist", false, "OIM", null, 1);
 
         UUID assistantMessageId = UUID.randomUUID();
         ChatMessageService.PreparedChat prepared = chatMessageService.prepare(convId,

@@ -59,7 +59,7 @@ public class PromptCacheEvictionIT {
     @Test
     void savePlaybookEvictsCache() {
         playbookService.savePlaybook(PB_SAVE, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, null);
+            false, "specialist", false, AREA, null, 1);
         // Populate cache
         Optional<Playbook> cached = playbookService.getPlaybook(PB_SAVE);
         assertThat(cached).isPresent();
@@ -67,7 +67,7 @@ public class PromptCacheEvictionIT {
 
         // Mutate via savePlaybook
         playbookService.savePlaybook(PB_SAVE, "Updated Title", "Desc", "Template V2", List.of(),
-            true, "specialist", false, AREA, null);
+            true, "specialist", false, AREA, null, 1);
 
         // Verification: cache entry is evicted
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_SAVE)).isNull();
@@ -78,7 +78,7 @@ public class PromptCacheEvictionIT {
     @Test
     void deletePlaybookEvictsCache() {
         playbookService.savePlaybook(PB_DELETE, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, null);
+            false, "specialist", false, AREA, null, 1);
         // Populate cache
         assertThat(playbookService.getPlaybook(PB_DELETE)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_DELETE)).isNotNull();
@@ -94,7 +94,7 @@ public class PromptCacheEvictionIT {
     @Test
     void importPlaybookFromMarkdownEvictsCache() {
         playbookService.savePlaybook(PB_IMPORT, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, null);
+            false, "specialist", false, AREA, null, 1);
         // Populate cache
         assertThat(playbookService.getPlaybook(PB_IMPORT)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_IMPORT)).isNotNull();
@@ -177,7 +177,7 @@ public class PromptCacheEvictionIT {
     @Test
     void deletePromptEvictsPlaybooksCache() {
         playbookService.savePlaybook("pb-cascade", "PB Cascade", "Desc", "Template", List.of(),
-            false, "specialist", false, AREA, null);
+            false, "specialist", false, AREA, null, 1);
         assertThat(playbookService.getPlaybook("pb-cascade")).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get("pb-cascade")).isNotNull();
 

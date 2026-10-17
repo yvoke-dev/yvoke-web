@@ -49,13 +49,14 @@ public class MessageRepository {
         // scrambled.
         String sql =
             """
-                INSERT INTO messages (id, conversation_id, role, content, playbook, retrieved_chunk_ids, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at, updated_at)
-                VALUES (:id, :conversationId, :role, :content, :playbook, :retrievedChunkIds::uuid[], :citations::jsonb, :promptTokens, :completionTokens, :totalTokens, :cachedTokens, :thoughtTokens, :status, :model, clock_timestamp(), clock_timestamp())
+                INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at, updated_at)
+                VALUES (:id, :conversationId, :role, :content, :playbook, :playbookVersion, :retrievedChunkIds::uuid[], :citations::jsonb, :promptTokens, :completionTokens, :totalTokens, :cachedTokens, :thoughtTokens, :status, :model, clock_timestamp(), clock_timestamp())
                 """;
 
         jdbcClient.sql(sql).param("id", message.id())
             .param("conversationId", message.conversationId()).param("role", message.role())
             .param("content", message.content()).param("playbook", message.playbook())
+            .param("playbookVersion", message.playbookVersion())
             .param("retrievedChunkIds", chunkIdsArray).param("citations", citationsJson)
             .param("promptTokens", message.promptTokens())
             .param("completionTokens", message.completionTokens())
@@ -68,7 +69,7 @@ public class MessageRepository {
     public List<Message> findByConversationId(UUID conversationId, int limit, int offset) {
         String sql =
             """
-                SELECT id, conversation_id, role, content, playbook, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
                 FROM messages
                 WHERE conversation_id = :conversationId
                 ORDER BY created_at ASC, id ASC
@@ -82,7 +83,7 @@ public class MessageRepository {
     public Optional<Message> findById(UUID id) {
         String sql =
             """
-                SELECT id, conversation_id, role, content, playbook, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
                 FROM messages
                 WHERE id = :id
                 """;

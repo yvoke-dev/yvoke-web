@@ -217,7 +217,7 @@ class RagAdminControllerTest {
             .param("templateText", "text").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
         verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("PingID"), isNull());
+            anyBoolean(), any(), anyBoolean(), eq("PingID"), isNull(), eq(1));
 
         mvc.perform(post("/admin/prompts").param("name", "p").param("type", "CHAT")
             .param("systemPrompt", "text").param("area", "PingID"))
@@ -232,9 +232,10 @@ class RagAdminControllerTest {
 
         mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
             .param("templateText", "text").param("area", "OIM")
-            .param("systemPrompt", "custom-sys-prompt")).andExpect(status().is3xxRedirection());
+            .param("systemPrompt", "custom-sys-prompt").param("version", "3"))
+            .andExpect(status().is3xxRedirection());
         verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("OIM"), eq("custom-sys-prompt"));
+            anyBoolean(), any(), anyBoolean(), eq("OIM"), eq("custom-sys-prompt"), eq(3));
     }
 
     @Test

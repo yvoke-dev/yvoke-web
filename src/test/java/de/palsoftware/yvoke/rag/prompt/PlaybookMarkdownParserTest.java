@@ -38,6 +38,7 @@ class PlaybookMarkdownParserTest {
         assertTrue(pb.prototype());
         assertEquals(List.of("call_specialist", "ask_clarifying_question"), pb.tools());
         assertTrue(pb.codeExecution());
+        assertEquals(1, pb.version());
         assertTrue(pb.templateText().contains("# You are the OIM Orchestrator"));
     }
 
@@ -144,6 +145,7 @@ class PlaybookMarkdownParserTest {
         assertEquals(original.prototype(), parsed.prototype());
         assertEquals(original.tools(), parsed.tools());
         assertEquals(original.codeExecution(), parsed.codeExecution());
+        assertEquals(original.version(), parsed.version());
         assertEquals(original.templateText(), parsed.templateText());
     }
 
@@ -253,5 +255,42 @@ class PlaybookMarkdownParserTest {
         assertNull(rev.systemPrompt());
         assertFalse(PlaybookMarkdownParser.toMarkdown(rev).contains("system_prompt:"));
     }
+
+    @Test
+    void versionDefaultsToOneWhenOmittedAndRoundTripsWhenSet() {
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
+            ---
+            name: oim-ask
+            title: OIM Ask
+            description: Ask OIM
+            version: 2
+            ---
+            Body
+            """, "oim-ask");
+        assertEquals(2, parsed.version());
+
+        String md = PlaybookMarkdownParser.toMarkdown(parsed);
+        assertTrue(md.contains("description: Ask OIM\nversion: 2\ntarget_agent: specialist"), md);
+        assertEquals(2, PlaybookMarkdownParser.parseMarkdown(md, "oim-ask").version());
+    }
+
+    @Test
+    void parseMarkdownRejectsInvalidVersionValuesEvenThoughFrontmatterLoadUsesTryCatch() {
+        for (String bad : List.of("0", "-1", "abc", "1.5", "true", "false", "null", "", "\"\"",
+            "\"   \"")) {
+            String md = """
+                ---
+                name: pb
+                title: PB
+                version: %s
+                ---
+                Body
+                """.formatted(bad);
+            assertThrows(IllegalArgumentException.class,
+                () -> PlaybookMarkdownParser.parseMarkdown(md, "pb"),
+                "Expected IllegalArgumentException for version: " + bad);
+        }
+    }
 }
+
 

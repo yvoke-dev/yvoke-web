@@ -54,6 +54,14 @@ public class DesktopOrchestratorRunService {
             verifyMessageBelongsToConversation(req.messageId(), req.conversationId());
         }
 
+        List<OrchestratorRunRequest.Step> steps = req.steps() != null ? req.steps() : List.of();
+        for (OrchestratorRunRequest.Step s : steps) {
+            if (s.playbookVersion() != null && s.playbookVersion() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "playbookVersion must be >= 1");
+            }
+        }
+
         UUID runId = UUID.randomUUID();
         agentRunRepository.create(runId, req.conversationId(), req.profileName(), req.config());
         agentRunRepository.finish(runId, req.messageId(),
@@ -65,13 +73,16 @@ public class DesktopOrchestratorRunService {
             agentRunRepository.updateAssistantMessageId(runId, req.messageId());
         }
 
-        List<OrchestratorRunRequest.Step> steps = req.steps() != null ? req.steps() : List.of();
         int autoSeq = 0;
         for (OrchestratorRunRequest.Step s : steps) {
+            String playbookName =
+                (s.playbookName() != null && !s.playbookName().isBlank()) ? s.playbookName().trim()
+                    : null;
+            Integer playbookVersion = playbookName != null ? s.playbookVersion() : null;
             agentStepRepository.insert(UUID.randomUUID(), runId,
                 s.seq() != null ? s.seq() : autoSeq, s.role() != null ? s.role() : "specialist",
-                zero(s.round()), s.playbookName(), s.model(), s.thinkingLevel(), s.input(),
-                s.output(), s.messages(), s.verdict(), zero(s.promptTokens()),
+                zero(s.round()), playbookName, playbookVersion, s.model(), s.thinkingLevel(),
+                s.input(), s.output(), s.messages(), s.verdict(), zero(s.promptTokens()),
                 zero(s.completionTokens()), zero(s.totalTokens()), zero(s.cachedTokens()),
                 zero(s.thoughtTokens()));
             autoSeq++;

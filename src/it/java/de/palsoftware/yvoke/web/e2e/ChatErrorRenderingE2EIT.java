@@ -38,7 +38,7 @@ class ChatErrorRenderingE2EIT extends AbstractE2E {
   }
 
   private void openConversation() {
-    playbookService.savePlaybook(PLAYBOOK, "E2E Error Render", "d", "Answer.", List.of(), false, "specialist", false, "OIM", null);
+    playbookService.savePlaybook(PLAYBOOK, "E2E Error Render", "d", "Answer.", List.of(), false, "specialist", false, "OIM", null, 1);
     loginAs("user");
     newConversation();
     selectPlaybookChip(PLAYBOOK);

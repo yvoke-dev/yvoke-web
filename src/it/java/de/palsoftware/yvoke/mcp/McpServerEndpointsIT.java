@@ -412,7 +412,7 @@ public class McpServerEndpointsIT {
         String name = "test-endpoints-it-live-edit";
         playbookService.savePlaybook(name, "Live Edit IT Playbook", "Description before the edit",
                 "ORIGINAL instructions: answer {query} from the corpus.", List.of("search_corpus"),
-                false, "specialist", false, "OIM", null);
+                false, "specialist", false, "OIM", null, 1);
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -448,7 +448,7 @@ public class McpServerEndpointsIT {
             // prompt here, so only the handler's own re-read at call time can surface it.
             playbookRepository.upsert(name, "Live Edit IT Playbook", "Description after the edit",
                     "REVISED instructions: cite every claim with a chunk id.",
-                    List.of("search_corpus"), false, "specialist", false, "OIM", null);
+                    List.of("search_corpus"), false, "specialist", false, "OIM", null, 1);
 
             HttpRequest secondGet = HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:" + port + "/mcp"))
@@ -514,7 +514,7 @@ public class McpServerEndpointsIT {
     public void promptsGetCarriesTheToolAndTargetAgentMetadata() throws Exception {
         playbookService.savePlaybook("test-endpoints-it-prompt-meta", "Prompt Meta IT Playbook",
             "Carries tool metadata", "Answer {query} from the corpus.", List.of("search_corpus"),
-            false, "specialist", false, "OIM", null);
+            false, "specialist", false, "OIM", null, 1);
 
         try (McpSession session = establishSession()) {
             HttpRequest getRequest = HttpRequest.newBuilder()
@@ -562,7 +562,7 @@ public class McpServerEndpointsIT {
     @Test
     public void testDynamicPromptsListAndGetRpc() throws Exception {
         // Seed a dynamic prompt
-        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false, "specialist", false, "OIM", null, 1);
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -662,7 +662,7 @@ public class McpServerEndpointsIT {
     public void playbookToolsServeTheLiveLibraryOverMcp() throws Exception {
         String name = "test-endpoints-it-playbook-tools";
         playbookService.savePlaybook(name, "Playbook Tools IT", "Served by the playbook tools",
-                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false, "specialist", false, "OIM", null);
+                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false, "specialist", false, "OIM", null, 1);
 
         try (McpSession session = establishSession()) {
             String listed = callTool(session, "8", "list_playbooks", "{}").body();
@@ -718,7 +718,7 @@ public class McpServerEndpointsIT {
                 null));
         try {
             playbookService.savePlaybook(playbook, "Area IT", "", "AREA instructions.",
-                    List.of(), false, "specialist", false, area, null);
+                    List.of(), false, "specialist", false, area, null, 1);
             systemPromptService.savePrompt(prompt, SystemPromptType.CHAT,
                     "AREA base instructions.", "P1-12 IT", area);
             areaRepository.upsert(new Area(area, "Wire area", null, false, prompt, playbook, null,

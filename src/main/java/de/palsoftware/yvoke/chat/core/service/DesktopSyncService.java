@@ -38,8 +38,16 @@ public class DesktopSyncService {
     private final FeedbackRepository feedbackRepository;
 
     public record NewMessage(String role, String content, Integer promptTokens,
-        Integer completionTokens, Integer totalTokens, Integer cachedTokens,
-        Integer thoughtTokens) {}
+        Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
+        String playbook, Integer playbookVersion) {
+
+        public NewMessage(String role, String content, Integer promptTokens,
+            Integer completionTokens, Integer totalTokens, Integer cachedTokens,
+            Integer thoughtTokens) {
+            this(role, content, promptTokens, completionTokens, totalTokens, cachedTokens,
+                thoughtTokens, null, null);
+        }
+    }
 
     public DesktopSyncService(ConversationRepository conversationRepository,
         MessageRepository messageRepository, FeedbackRepository feedbackRepository) {
@@ -90,9 +98,15 @@ public class DesktopSyncService {
                     "content must not be blank");
             }
             UUID id = UUID.randomUUID();
-            messageRepository.save(new Message(id, conversationId, m.role(), m.content(), null,
-                null, null, m.promptTokens(), m.completionTokens(), m.totalTokens(),
-                m.cachedTokens(), m.thoughtTokens()));
+            final Message msgToSave;
+            try {
+                msgToSave = new Message(id, conversationId, m.role(), m.content(), m.playbook(),
+                    m.playbookVersion(), null, null, null, m.promptTokens(), m.completionTokens(),
+                    m.totalTokens(), m.cachedTokens(), m.thoughtTokens());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+            }
+            messageRepository.save(msgToSave);
             ids.add(id);
         }
 

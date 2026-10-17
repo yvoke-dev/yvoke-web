@@ -314,7 +314,7 @@ public class ChatAsyncControllerTraceIT {
         // Delivered assistant message is linked via updateAssistantMessageId
         agentRunRepository.updateAssistantMessageId(runId, assistantMessageId);
 
-        agentStepRepository.insert(UUID.randomUUID(), runId, 0, "orchestrator", 1, "lead",
+        agentStepRepository.insert(UUID.randomUUID(), runId, 0, "orchestrator", 1, "lead", 2,
             "gemini-3.1-flash-lite", "high", "plan question", "plan output",
             List.of(new LlmMessage("system", "confidential instructions")), "ok", 50, 100, 150, 20, 25);
 
@@ -331,6 +331,8 @@ public class ChatAsyncControllerTraceIT {
             .andExpect(jsonPath("$.agentRun.config").doesNotExist())
             .andExpect(jsonPath("$.steps.length()").value(1))
             .andExpect(jsonPath("$.steps[0].role").value("orchestrator"))
+            .andExpect(jsonPath("$.steps[0].playbookName").value("lead"))
+            .andExpect(jsonPath("$.steps[0].playbookVersion").value(2))
             .andExpect(jsonPath("$.steps[0].messages").doesNotExist());
     }
 
@@ -347,7 +349,7 @@ public class ChatAsyncControllerTraceIT {
         conversationsToDelete.add(convOther.id());
 
         playbookService.savePlaybook("trace-playbook", "Trace Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         doAnswer(new Answer<Void>() {
             private int callCount = 0;

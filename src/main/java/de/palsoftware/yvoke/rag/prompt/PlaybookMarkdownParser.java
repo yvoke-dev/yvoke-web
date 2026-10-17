@@ -3,14 +3,20 @@ package de.palsoftware.yvoke.rag.prompt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ToIntFunction;
 import org.yaml.snakeyaml.Yaml;
 
 public class PlaybookMarkdownParser {
 
     private PlaybookMarkdownParser() {}
 
-    @SuppressWarnings("unchecked")
     public static Playbook parseMarkdown(String mdContent, String fallbackName) {
+        return parseMarkdown(mdContent, fallbackName, ignored -> 1);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Playbook parseMarkdown(String mdContent, String fallbackName,
+        ToIntFunction<String> defaultVersionForName) {
         if (mdContent == null) {
             mdContent = "";
         }
@@ -35,6 +41,8 @@ public class PlaybookMarkdownParser {
         boolean prototype = false;
         String area = null;
         String systemPrompt = null;
+        boolean hasVersion = false;
+        Object rawVersion = null;
 
         if (!yamlFrontmatter.isBlank()) {
             try {
@@ -48,6 +56,10 @@ public class PlaybookMarkdownParser {
                     }
                     if (map.get("description") != null) {
                         description = String.valueOf(map.get("description")).trim();
+                    }
+                    if (map.containsKey("version")) {
+                        hasVersion = true;
+                        rawVersion = map.get("version");
                     }
 
                     Object agentObj = map.get("target_agent");
@@ -117,8 +129,50 @@ public class PlaybookMarkdownParser {
                 "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
         }
 
+        int version = !hasVersion
+            ? (defaultVersionForName != null ? defaultVersionForName.applyAsInt(name) : 1)
+            : parseVersionValue(rawVersion);
+
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
-            prototype, null, null, false, area, systemPrompt);
+            prototype, null, null, false, area, systemPrompt, version);
+    }
+
+    private static int parseVersionValue(Object rawVersion) {
+        if (rawVersion == null || rawVersion instanceof Boolean) {
+            throw new IllegalArgumentException(
+                "Playbook version must be a positive integer (>= 1).");
+        }
+        if (rawVersion instanceof Integer i) {
+            if (i < 1) {
+                throw new IllegalArgumentException("Playbook version must be >= 1.");
+            }
+            return i;
+        }
+        if (rawVersion instanceof Long l) {
+            if (l < 1 || l > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("Playbook version must be >= 1.");
+            }
+            return l.intValue();
+        }
+        if (rawVersion instanceof String s) {
+            String trimmed = s.trim();
+            if ("null".equalsIgnoreCase(trimmed) || "true".equalsIgnoreCase(trimmed)
+                || "false".equalsIgnoreCase(trimmed)) {
+                throw new IllegalArgumentException(
+                    "Playbook version must be a positive integer (>= 1).");
+            }
+            try {
+                int parsed = Integer.parseInt(trimmed);
+                if (parsed < 1) {
+                    throw new IllegalArgumentException("Playbook version must be >= 1.");
+                }
+                return parsed;
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                    "Playbook version must be a positive integer (>= 1).", e);
+            }
+        }
+        throw new IllegalArgumentException("Playbook version must be a positive integer (>= 1).");
     }
 
     public static String toMarkdown(Playbook playbook) {
@@ -129,6 +183,7 @@ public class PlaybookMarkdownParser {
         if (playbook.description() != null && !playbook.description().isBlank()) {
             sb.append("description: ").append(playbook.description()).append("\n");
         }
+        sb.append("version: ").append(playbook.version()).append("\n");
         String agent = playbook.targetAgent() != null ? playbook.targetAgent() : "specialist";
         sb.append("target_agent: ").append(agent).append("\n");
         sb.append("prototype: ").append(playbook.prototype()).append("\n");

@@ -149,7 +149,7 @@ class ChatSseControllerTest {
 
     private static ChatMessageService.PreparedChat dummyPreparedChat() {
         return new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "content",
-            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook");
+            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook", 1);
     }
 
     @Test

@@ -229,8 +229,8 @@ public class OrchestrationServiceTest {
             .anyMatch(s -> s != null && s.contains("budget exhausted"));
         // Per-run: only the first delegation actually ran a specialist, across all three rounds.
         verify(stepRepository, times(1)).insert(any(), eq(RUN), anyInt(), eq("specialist"),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
+            anyInt(), anyInt(), anyInt());
     }
 
     /**
@@ -294,8 +294,8 @@ public class OrchestrationServiceTest {
 
         ArgumentCaptor<String> traceInput = ArgumentCaptor.forClass(String.class);
         verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), anyInt(), any(),
-            any(), any(), traceInput.capture(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+            any(), any(), any(), traceInput.capture(), any(), any(), any(), anyInt(), anyInt(),
+            anyInt(), anyInt(), anyInt());
 
         assertThat(traceInput.getValue())
             .as("the timeline records what was delegated, not the boilerplate around it")
@@ -457,13 +457,13 @@ public class OrchestrationServiceTest {
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(0), any(), anyInt(), anyInt(),
             anyInt(), anyInt(), anyInt(), any());
         verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("orchestrator"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
+            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
             anyInt());
         verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
+            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
             anyInt());
         verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
+            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
             anyInt());
     }
 
@@ -705,8 +705,8 @@ public class OrchestrationServiceTest {
         ArgumentCaptor<Integer> seqs = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> roles = ArgumentCaptor.forClass(String.class);
         verify(stepRepository, atLeastOnce()).insert(any(), any(), seqs.capture(), roles.capture(),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
+            anyInt(), anyInt(), anyInt());
 
         // Sorted by seq, which is exactly how AgentStepRepository.findByRunId reads them back and
         // therefore how the admin trace renders. Insertion order is deliberately NOT what is
@@ -1527,8 +1527,8 @@ public class OrchestrationServiceTest {
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("delivered_flagged"), eq(2), any(),
             anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
         verify(stepRepository, times(3)).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
+            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
+            anyInt(), anyInt());
     }
 
     /**
@@ -1592,8 +1592,8 @@ public class OrchestrationServiceTest {
         ArgumentCaptor<Integer> seq = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> role = ArgumentCaptor.forClass(String.class);
         verify(stepRepository, times(3)).insert(any(), eq(RUN), seq.capture(), role.capture(),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
+            anyInt(), anyInt(), anyInt());
 
         assertThat(role.getAllValues())
             .as("the nested specialist completes first, then the orchestrator, then the reviewer")
@@ -1640,8 +1640,8 @@ public class OrchestrationServiceTest {
 
         // Three reviewer turns really did happen — the prose is not merely larger by one.
         verify(stepRepository, times(3)).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
+            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
+            anyInt(), anyInt());
         // ...while the PERSISTED counter stays the 0-based index it has always been: the two
         // numbers are different on purpose, which is what makes "unify them" tempting.
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("delivered_flagged"), eq(2), any(),
@@ -1661,8 +1661,8 @@ public class OrchestrationServiceTest {
             anyInt(), anyInt(), anyInt(), anyInt(), any());
         // No reviewer step when a clarification is surfaced.
         verify(stepRepository, never()).insert(any(), any(), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
+            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
+            anyInt(), anyInt());
     }
 
     /**
@@ -1777,7 +1777,7 @@ public class OrchestrationServiceTest {
 
         ArgumentCaptor<String> stepError = ArgumentCaptor.forClass(String.class);
         verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), anyInt(),
-            eq("oim-orchestrator"), any(), any(), any(), any(), stepError.capture());
+            eq("oim-orchestrator"), any(), any(), any(), any(), any(), stepError.capture());
         assertThat(stepError.getValue()).contains("429");
     }
 
@@ -1792,7 +1792,7 @@ public class OrchestrationServiceTest {
             .isInstanceOf(CancellationException.class);
 
         verify(stepRepository, never()).insertFailed(any(), any(), anyInt(), any(), anyInt(), any(),
-            any(), any(), any(), any(), any());
+            any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -2110,5 +2110,43 @@ public class OrchestrationServiceTest {
         // Since findChatPrompt was empty, systemPromptOverride is null (it does not pick up
         // non-CHAT prompts)
         assertThat(specReq.systemPromptOverride()).isNull();
+    }
+
+    @Test
+    void runOrchestration_stampsPlaybookVersionOnSuccessAndFailedAgentSteps() {
+        Playbook orchPb =
+            new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template", List.of(),
+                false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM", null, 2);
+        Playbook revPb =
+            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
+                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        Playbook specAPb =
+            new Playbook("spec-a", "Spec A", "desc", "Spec A template", List.of("search_corpus"),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 4);
+
+        when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
+        when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
+            .thenReturn(Optional.of(revPb));
+        when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
+
+        service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
+
+        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
+            eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any(), any(), anyInt(),
+            anyInt(), anyInt(), anyInt(), anyInt());
+        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), eq(0),
+            eq("spec-a"), eq(4), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
+            anyInt(), anyInt(), anyInt());
+        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("reviewer"), eq(0),
+            eq("oim-orchestrator-reviewer"), eq(3), any(), any(), any(), any(), any(), any(),
+            anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
+
+        doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
+            any());
+        assertThatThrownBy(
+            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
+            .isInstanceOf(ClientException.class);
+        verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
+            eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any());
     }
 }

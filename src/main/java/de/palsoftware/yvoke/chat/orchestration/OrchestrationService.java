@@ -165,9 +165,10 @@ public class OrchestrationService {
                 // supports the claim it sits on: that loads no chunk text, and stays the reviewer's
                 // job.
                 AgentOutcome orch = runAgent(st, ROLE_ORCHESTRATOR, orchestratorPlaybook.name(),
-                    orchestratorSystemPrompt, orchestratorQuery, orchestratorQuery,
-                    profile.orchestrator(), List.of("ask_clarifying_question", "verify_citations"),
-                    false, List.<ToolCallback>of(callSpecialist), revising ? null : history,
+                    orchestratorPlaybook.version(), orchestratorSystemPrompt, orchestratorQuery,
+                    orchestratorQuery, profile.orchestrator(),
+                    List.of("ask_clarifying_question", "verify_citations"), false,
+                    List.<ToolCallback>of(callSpecialist), revising ? null : history,
                     st.orchestratorMessages, null);
                 // Everything this turn said and was told, carried into the next round. The prior
                 // conversation is already inside it, so the chat history is passed only on the
@@ -216,9 +217,9 @@ public class OrchestrationService {
                     // cannot have index 0 rewritten under the answers already given to it.
                     String reviewerSystemPrompt = reviewerPlaybook.templateText();
                     AgentOutcome rev = runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
-                        reviewerSystemPrompt, reviewTask, reviewTask, profile.reviewer(),
-                        List.of("verify_citations"), false, List.<ToolCallback>of(submitReview),
-                        null, st.reviewerMessages, holder);
+                        reviewerPlaybook.version(), reviewerSystemPrompt, reviewTask, reviewTask,
+                        profile.reviewer(), List.of("verify_citations"), false,
+                        List.<ToolCallback>of(submitReview), null, st.reviewerMessages, holder);
                     if (rev.result().messages() != null && !rev.result().messages().isEmpty()) {
                         st.reviewerMessages = rev.result().messages();
                     }
@@ -384,9 +385,9 @@ public class OrchestrationService {
         }
 
         String specialistSystemPrompt = resolvePlaybookSystemPrompt(pb);
-        AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), specialistSystemPrompt,
-            query, subQuestion, profileSpecialistCfg(st), allowed, pb.codeExecution(),
-            List.<ToolCallback>of(), null, priorSpecialistMessages, null);
+        AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), pb.version(),
+            specialistSystemPrompt, query, subQuestion, profileSpecialistCfg(st), allowed,
+            pb.codeExecution(), List.<ToolCallback>of(), null, priorSpecialistMessages, null);
 
         if (outcome.result().messages() != null && !outcome.result().messages().isEmpty()) {
             st.specialistMessages.put(pb.name(), outcome.result().messages());
@@ -422,7 +423,7 @@ public class OrchestrationService {
      * after the run to store the verdict on the step.
      */
     private AgentOutcome runAgent(RunState st, String role, String playbookName,
-        String systemPromptOverride, String query, String traceInput,
+        Integer playbookVersion, String systemPromptOverride, String query, String traceInput,
         OrchestratorProperties.RoleConfig cfg, List<String> allowedTools, boolean codeExecution,
         List<ToolCallback> extraTools, List<LlmMessage> history, List<LlmMessage> priorMessages,
         Verdict[] verdictHolder) {
@@ -459,7 +460,7 @@ public class OrchestrationService {
 
             st.accumulate(result);
             stepRepository.insert(UUID.randomUUID(), st.runId, seq, role, st.round, playbookName,
-                cfg.model(), cfg.thinkingLevel(), traceInput, emitted.toString(),
+                playbookVersion, cfg.model(), cfg.thinkingLevel(), traceInput, emitted.toString(),
                 messagesAddedBy(result, priorMessages), verdict, result.promptTokens(),
                 result.completionTokens(), result.totalTokens(), result.cachedTokens(),
                 result.thoughtTokens());
@@ -473,8 +474,8 @@ public class OrchestrationService {
             // its role, playbook, model, prompt and partially-streamed output died with the frame.
             st.lastFailure = new FailureContext(e, role, playbookName, cfg.model(), st.round, seq);
             if (!(e instanceof CancellationException)) {
-                recordFailedStep(st, seq, role, playbookName, cfg, traceInput, emitted.toString(),
-                    e);
+                recordFailedStep(st, seq, role, playbookName, playbookVersion, cfg, traceInput,
+                    emitted.toString(), e);
             }
             throw e;
         } finally {
@@ -493,12 +494,12 @@ public class OrchestrationService {
      * failure to record must never replace the exception the caller is about to see.
      */
     private void recordFailedStep(RunState st, int seq, String role, String playbookName,
-        OrchestratorProperties.RoleConfig cfg, String traceInput, String partialOutput,
-        Throwable cause) {
+        Integer playbookVersion, OrchestratorProperties.RoleConfig cfg, String traceInput,
+        String partialOutput, Throwable cause) {
         try {
             stepRepository.insertFailed(UUID.randomUUID(), st.runId, seq, role, st.round,
-                playbookName, cfg.model(), cfg.thinkingLevel(), traceInput, partialOutput,
-                LlmFailureSummary.detail(cause));
+                playbookName, playbookVersion, cfg.model(), cfg.thinkingLevel(), traceInput,
+                partialOutput, LlmFailureSummary.detail(cause));
         } catch (Exception recordingFailure) {
             log.warn("Could not record failed {} step for run {}: {}", role, st.runId,
                 recordingFailure.toString());

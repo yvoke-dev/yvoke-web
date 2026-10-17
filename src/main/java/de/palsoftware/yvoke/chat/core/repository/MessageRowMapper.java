@@ -41,6 +41,8 @@ public class MessageRowMapper implements RowMapper<Message> {
         List<UUID> retrievedChunkIds = JdbcMappers.arrayToUuidList(rs, "retrieved_chunk_ids");
 
         Timestamp createdTs = rs.getTimestamp("created_at");
+        Integer playbookVersion =
+            rs.getObject("playbook_version") != null ? rs.getInt("playbook_version") : null;
         Integer promptTokens =
             rs.getObject("prompt_tokens") != null ? rs.getInt("prompt_tokens") : null;
         Integer completionTokens =
@@ -55,9 +57,9 @@ public class MessageRowMapper implements RowMapper<Message> {
 
         return new Message(rs.getObject("id", UUID.class),
             rs.getObject("conversation_id", UUID.class), rs.getString("role"),
-            rs.getString("content"), rs.getString("playbook"), retrievedChunkIds, citations,
-            createdTs != null ? createdTs.toInstant() : null, promptTokens, completionTokens,
-            totalTokens, cachedTokens, thoughtTokens, rs.getString("status"),
+            rs.getString("content"), rs.getString("playbook"), playbookVersion, retrievedChunkIds,
+            citations, createdTs != null ? createdTs.toInstant() : null, promptTokens,
+            completionTokens, totalTokens, cachedTokens, thoughtTokens, rs.getString("status"),
             rs.getString("model"));
     }
 }
