@@ -81,10 +81,10 @@ public class DesktopOrchestratorRunService {
             Integer playbookVersion = playbookName != null ? s.playbookVersion() : null;
             agentStepRepository.insert(UUID.randomUUID(), runId,
                 s.seq() != null ? s.seq() : autoSeq, s.role() != null ? s.role() : "specialist",
-                zero(s.round()), playbookName, playbookVersion, s.model(),
-                s.thinkingLevel(), s.input(), s.output(), s.messages(), s.verdict(),
-                zero(s.promptTokens()), zero(s.completionTokens()), zero(s.totalTokens()),
-                zero(s.cachedTokens()), zero(s.thoughtTokens()));
+                zero(s.round()), playbookName, playbookVersion, s.model(), s.thinkingLevel(),
+                s.input(), s.output(), s.messages(), s.verdict(), zero(s.promptTokens()),
+                zero(s.completionTokens()), zero(s.totalTokens()), zero(s.cachedTokens()),
+                zero(s.thoughtTokens()));
             autoSeq++;
         }
         log.info("Recorded desktop orchestrator run {} (conversation={}, profile={}, steps={})",

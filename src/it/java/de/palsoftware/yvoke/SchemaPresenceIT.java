@@ -379,26 +379,26 @@ public class SchemaPresenceIT {
             // 3. agent_steps.playbook_version: ('x', 2) and (NULL, NULL) accepted;
             // ('x', 0), (NULL, 2), and ('   ', 2) rejected
             jdbcTemplate.update(
-                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 0, 'specialist', 0, 'x', 2)",
+                "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 0, 'specialist', 0, 'x', 2)",
                 stepWithPb, runId);
             jdbcTemplate.update(
-                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 1, 'specialist', 0, NULL, NULL)",
+                "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 1, 'specialist', 0, NULL, NULL)",
                 stepNulls, runId);
 
             assertThatThrownBy(() -> jdbcTemplate.update(
-                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 2, 'specialist', 0, 'x', 0)",
+                "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 2, 'specialist', 0, 'x', 0)",
                 UUID.randomUUID(), runId))
                 .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
-                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 3, 'specialist', 0, NULL, 2)",
+                "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 3, 'specialist', 0, NULL, 2)",
                 UUID.randomUUID(), runId))
                 .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
-                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 4, 'specialist', 0, '   ', 2)",
+                "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 4, 'specialist', 0, '   ', 2)",
                 UUID.randomUUID(), runId))
                 .isInstanceOf(DataIntegrityViolationException.class);
         } finally {
-            jdbcTemplate.update("DELETE FROM agent_steps WHERE run_id = ?", runId);
+            jdbcTemplate.update("DELETE FROM agent_steps WHERE agent_run_id = ?", runId);
             jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", runId);
             jdbcTemplate.update("DELETE FROM messages WHERE conversation_id = ?", convId);
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
