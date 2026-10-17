@@ -342,7 +342,7 @@ class ChatControllerTest {
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
-        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
         assertEquals(2, model.getAttribute("lockedPlaybookVersion"));
     }
 
@@ -367,7 +367,7 @@ class ChatControllerTest {
         controller.threadView(conversationId, model);
 
         assertEquals("deleted-playbook", model.getAttribute("lockedPlaybookName"));
-        assertEquals("deleted-playbook", model.getAttribute("lockedPlaybookTitle"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
         assertEquals(3, model.getAttribute("lockedPlaybookVersion"));
     }
 
@@ -469,7 +469,7 @@ class ChatControllerTest {
 
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
-        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
     }
 
     @Test
@@ -493,7 +493,7 @@ class ChatControllerTest {
 
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertEquals("past100-pb", model.getAttribute("lockedPlaybookName"));
-        assertEquals("Past 100 Title", model.getAttribute("lockedPlaybookTitle"));
+        assertNull(model.getAttribute("lockedPlaybookTitle"));
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

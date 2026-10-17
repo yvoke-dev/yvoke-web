@@ -185,49 +185,44 @@ describe('formatPlaybookTagLabel', () => {
         { name: 'oim-full', title: 'OIM Full', version: 2 },
         { name: 'oim-legacy', title: 'OIM Legacy' },
     ];
-    const labels = { search_corpus: 'Search Corpus' };
 
-    test('appends vN when explicit positive integer or digit string version is supplied', () => {
-        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', 3, prompts, labels), 'OIM Full v3');
-        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', '4', prompts, labels), 'OIM Full v4');
+    test('appends vN to canonical playbook name when explicit positive integer or digit string version is supplied', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', 3, prompts), 'oim-full v3');
+        assert.equal(formatPlaybookTagLabel('oim-full', '4', prompts), 'oim-full v4');
     });
 
-    test('resolves version from prompts catalogue when version argument is null, undefined, or empty string', () => {
-        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', null, prompts, labels), 'OIM Full v2');
-        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', undefined, prompts, labels), 'OIM Full v2');
-        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', '', prompts, labels), 'OIM Full v2');
-        assert.equal(formatPlaybookTagLabel('oim-full', null, null, prompts, labels), 'OIM Full v2');
-    });
-
-    test('preserves raw playbook name when passed as title (optimistic user message bubble)', () => {
-        assert.equal(formatPlaybookTagLabel('oim-full', 'oim-full', null, prompts, labels), 'oim-full v2');
+    test('resolves version from prompts catalogue when version argument is null, undefined, or empty string and never substitutes title', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', null, prompts), 'oim-full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', undefined, prompts), 'oim-full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', '', prompts), 'oim-full v2');
     });
 
     test('omits version suffix when version is absent, 0, negative, non-numeric, partial numeric, or boolean', () => {
         for (const bad of [null, undefined, '', 0, -1, '0', '-2', 'abc', '2abc', '1.5', false, true]) {
             assert.equal(
-                formatPlaybookTagLabel('oim-legacy', 'OIM Legacy', bad, prompts, labels),
-                'OIM Legacy',
+                formatPlaybookTagLabel('oim-legacy', bad, prompts),
+                'oim-legacy',
                 `should omit suffix for version=${JSON.stringify(bad)}`,
             );
         }
     });
 
-    test('returns empty string when both name and title are missing', () => {
-        assert.equal(formatPlaybookTagLabel('', '', 2, prompts, labels), '');
-        assert.equal(formatPlaybookTagLabel(null, null, 2, prompts, labels), '');
+    test('returns empty string when name is missing', () => {
+        assert.equal(formatPlaybookTagLabel('', 2, prompts), '');
+        assert.equal(formatPlaybookTagLabel(null, 2, prompts), '');
+        assert.equal(formatPlaybookTagLabel(undefined, 2, prompts), '');
     });
 });
 
 describe('chatInputDefaultPlaceholder', () => {
     const prompts = [{ name: 'oim-full', title: 'OIM Full' }];
 
-    test('names the active playbook by title', () => {
+    test('names the active playbook by canonical name even when prompt carries a title', () => {
         assert.equal(chatInputDefaultPlaceholder('oim-full', prompts),
-            'Add your question for "OIM Full"...');
+            'Add your question for "oim-full"...');
     });
 
-    test('falls back to the raw name when the playbook is unknown', () => {
+    test('uses the raw name when the playbook is unknown', () => {
         assert.equal(chatInputDefaultPlaceholder('mystery', prompts),
             'Add your question for "mystery"...');
     });
@@ -253,9 +248,9 @@ describe('chatInputDefaultPlaceholder', () => {
             'Ask a question… (Shift + Enter for new line, Enter to send)');
     });
 
-    test('names active playbook even when locked', () => {
+    test('names active playbook by canonical name even when locked', () => {
         assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true),
-            'Add your question for "OIM Full"...');
+            'Add your question for "oim-full"...');
     });
 
     test('suppresses active playbook and picker instructions in orchestrator mode', () => {

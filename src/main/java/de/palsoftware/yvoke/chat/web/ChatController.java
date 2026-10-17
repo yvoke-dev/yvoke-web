@@ -123,11 +123,9 @@ public class ChatController {
 
         boolean isPlaybookLocked = lockState.isPlaybookLocked();
         String lockedPlaybookName = lockState.lockedPlaybookName();
-        String lockedPlaybookTitle = null;
         Integer lockedPlaybookVersion = null;
         if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
             Optional<Playbook> lockedPlaybook = playbookService.getPlaybook(lockedPlaybookName);
-            lockedPlaybookTitle = lockedPlaybook.map(Playbook::title).orElse(lockedPlaybookName);
             lockedPlaybookVersion = lockedPlaybook.map(Playbook::version).orElseGet(() -> messages
                 .stream()
                 .filter(m -> lockedPlaybookName.equals(m.playbook()) && m.playbookVersion() != null)
@@ -157,7 +155,6 @@ public class ChatController {
         model.addAttribute("orchestratorProfiles", orchestratorProfiles);
         model.addAttribute("isPlaybookLocked", isPlaybookLocked);
         model.addAttribute("lockedPlaybookName", lockedPlaybookName);
-        model.addAttribute("lockedPlaybookTitle", lockedPlaybookTitle);
         model.addAttribute("lockedPlaybookVersion", lockedPlaybookVersion);
         model.addAttribute("isModeLocked", isModeLocked);
 
