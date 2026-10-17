@@ -346,6 +346,14 @@ public class DesktopSyncServiceTest {
             .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
         assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Question", null, null, null, null, null, null, 0))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Question", null, null, null, null, null, "   ", 0))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
             List.of(new NewMessage("user", "Question", null, null, null, null, null, "pb", -1))))
             .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 

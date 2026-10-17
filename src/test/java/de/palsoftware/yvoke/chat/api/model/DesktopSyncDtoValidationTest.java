@@ -137,6 +137,14 @@ class DesktopSyncDtoValidationTest {
             List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", 0)));
         assertThat(validator.validate(zeroVer)).isNotEmpty();
 
+        AppendMessagesRequest zeroVerNullPlaybook = new AppendMessagesRequest(
+            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, null, 0)));
+        assertThat(validator.validate(zeroVerNullPlaybook)).isNotEmpty();
+
+        AppendMessagesRequest zeroVerBlankPlaybook = new AppendMessagesRequest(
+            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "   ", 0)));
+        assertThat(validator.validate(zeroVerBlankPlaybook)).isNotEmpty();
+
         AppendMessagesRequest negVer = new AppendMessagesRequest(
             List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", -1)));
         assertThat(validator.validate(negVer)).isNotEmpty();
@@ -148,12 +156,24 @@ class DesktopSyncDtoValidationTest {
     }
 
     @Test
-    void rejectsOrchestratorRunStepWithNonPositivePlaybookVersionAndNormalizesWhenPlaybookNull() {
+    void rejectsOrchestratorRunStepWithNonPositivePlaybookVersionEvenWhenPlaybookNullOrBlank() {
         OrchestratorRunRequest zeroVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
             "profile", null, null, null, null, null, null, null, null, null, null,
             List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", 0, "m", "high", null, null,
                 null, null, null, null, null, null, null)));
         assertThat(validator.validate(zeroVer)).isNotEmpty();
+
+        OrchestratorRunRequest zeroVerNullPlaybook = new OrchestratorRunRequest(UUID.randomUUID(),
+            null, "profile", null, null, null, null, null, null, null, null, null, null,
+            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, null, 0, "m", "high", null, null,
+                null, null, null, null, null, null, null)));
+        assertThat(validator.validate(zeroVerNullPlaybook)).isNotEmpty();
+
+        OrchestratorRunRequest zeroVerBlankPlaybook = new OrchestratorRunRequest(UUID.randomUUID(),
+            null, "profile", null, null, null, null, null, null, null, null, null, null,
+            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "   ", 0, "m", "high", null, null,
+                null, null, null, null, null, null, null)));
+        assertThat(validator.validate(zeroVerBlankPlaybook)).isNotEmpty();
 
         OrchestratorRunRequest negVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
             "profile", null, null, null, null, null, null, null, null, null, null,
@@ -161,10 +181,11 @@ class DesktopSyncDtoValidationTest {
                 null, null, null, null, null, null, null)));
         assertThat(validator.validate(negVer)).isNotEmpty();
 
-        OrchestratorRunRequest.Step nullPlaybookStep = new OrchestratorRunRequest.Step(0, "spec", 0,
-            "   ", 3, "m", "high", null, null, null, null, null, null, null, null, null);
-        assertThat(nullPlaybookStep.playbookName()).isNull();
-        assertThat(nullPlaybookStep.playbookVersion()).isNull();
+        OrchestratorRunRequest validVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
+            "profile", null, null, null, null, null, null, null, null, null, null,
+            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", 2, "m", "high", null, null,
+                null, null, null, null, null, null, null)));
+        assertThat(validator.validate(validVer)).isEmpty();
     }
 }
 

@@ -269,6 +269,18 @@ class DesktopOrchestratorRunServiceTest {
             () -> service.record(currentUser, requestFor(conversationId, List.of(badZero))))
             .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
+        Step badZeroNullPlaybook = new Step(0, "specialist", 0, null, 0, "m", "high", "in", "out",
+            null, null, 1, 2, 3, 0, 0);
+        assertThatThrownBy(() -> service.record(currentUser,
+            requestFor(conversationId, List.of(badZeroNullPlaybook))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
+        Step badZeroBlankPlaybook = new Step(0, "specialist", 0, "   ", 0, "m", "high", "in", "out",
+            null, null, 1, 2, 3, 0, 0);
+        assertThatThrownBy(() -> service.record(currentUser,
+            requestFor(conversationId, List.of(badZeroBlankPlaybook))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+
         Step badNegative = new Step(0, "specialist", 0, "pb", -2, "m", "high", "in", "out", null,
             null, 1, 2, 3, 0, 0);
         assertThatThrownBy(

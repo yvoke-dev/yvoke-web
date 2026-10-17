@@ -75,9 +75,13 @@ public class DesktopOrchestratorRunService {
 
         int autoSeq = 0;
         for (OrchestratorRunRequest.Step s : steps) {
+            String playbookName =
+                (s.playbookName() != null && !s.playbookName().isBlank()) ? s.playbookName().trim()
+                    : null;
+            Integer playbookVersion = playbookName != null ? s.playbookVersion() : null;
             agentStepRepository.insert(UUID.randomUUID(), runId,
                 s.seq() != null ? s.seq() : autoSeq, s.role() != null ? s.role() : "specialist",
-                zero(s.round()), s.playbookName(), s.playbookVersion(), s.model(),
+                zero(s.round()), playbookName, playbookVersion, s.model(),
                 s.thinkingLevel(), s.input(), s.output(), s.messages(), s.verdict(),
                 zero(s.promptTokens()), zero(s.completionTokens()), zero(s.totalTokens()),
                 zero(s.cachedTokens()), zero(s.thoughtTokens()));

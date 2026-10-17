@@ -18,7 +18,5 @@ public record OrchestratorRunRequest(@NotNull UUID conversationId,UUID messageId
 
 public record Step(Integer seq,@Size(max=200)String role,Integer round,@Size(max=255)String playbookName,@Min(1)Integer playbookVersion,@Size(max=200)String model,@Size(max=200)String thinkingLevel,@Size(max=1_000_000)String input,@Size(max=1_000_000)String output,Object messages,Object verdict,Integer promptTokens,Integer completionTokens,Integer totalTokens,Integer cachedTokens,Integer thoughtTokens){
 
-public Step{playbookName=(playbookName!=null&&!playbookName.isBlank())?playbookName.trim():null;if(playbookName==null){playbookVersion=null;}}
-
 public Step(Integer seq,String role,Integer round,String playbookName,String model,String thinkingLevel,String input,String output,Object messages,Object verdict,Integer promptTokens,Integer completionTokens,Integer totalTokens,Integer cachedTokens,Integer thoughtTokens){this(seq,role,round,playbookName,null,model,thinkingLevel,input,output,messages,verdict,promptTokens,completionTokens,totalTokens,cachedTokens,thoughtTokens);}}}
 
