@@ -12,6 +12,7 @@ import {
     chatInputDefaultPlaceholder,
     describeSendFailure,
     escapeHtml,
+    formatPlaybookTagLabel,
     isMermaidText,
     normalizeThinkTags,
     pollTerminalDecision,
@@ -176,6 +177,45 @@ describe('promptLabel', () => {
 
     test('survives absent collaborators', () => {
         assert.equal(promptLabel('oim-full', undefined, undefined), 'Oim Full');
+    });
+});
+
+describe('formatPlaybookTagLabel', () => {
+    const prompts = [
+        { name: 'oim-full', title: 'OIM Full', version: 2 },
+        { name: 'oim-legacy', title: 'OIM Legacy' },
+    ];
+    const labels = { search_corpus: 'Search Corpus' };
+
+    test('appends vN when explicit positive integer or digit string version is supplied', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', 3, prompts, labels), 'OIM Full v3');
+        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', '4', prompts, labels), 'OIM Full v4');
+    });
+
+    test('resolves version from prompts catalogue when version argument is null, undefined, or empty string', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', null, prompts, labels), 'OIM Full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', undefined, prompts, labels), 'OIM Full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', 'OIM Full', '', prompts, labels), 'OIM Full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', null, null, prompts, labels), 'OIM Full v2');
+    });
+
+    test('preserves raw playbook name when passed as title (optimistic user message bubble)', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', 'oim-full', null, prompts, labels), 'oim-full v2');
+    });
+
+    test('omits version suffix when version is absent, 0, negative, non-numeric, partial numeric, or boolean', () => {
+        for (const bad of [null, undefined, '', 0, -1, '0', '-2', 'abc', '2abc', '1.5', false, true]) {
+            assert.equal(
+                formatPlaybookTagLabel('oim-legacy', 'OIM Legacy', bad, prompts, labels),
+                'OIM Legacy',
+                `should omit suffix for version=${JSON.stringify(bad)}`,
+            );
+        }
+    });
+
+    test('returns empty string when both name and title are missing', () => {
+        assert.equal(formatPlaybookTagLabel('', '', 2, prompts, labels), '');
+        assert.equal(formatPlaybookTagLabel(null, null, 2, prompts, labels), '');
     });
 });
 

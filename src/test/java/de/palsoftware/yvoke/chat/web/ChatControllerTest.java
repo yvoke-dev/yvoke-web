@@ -332,9 +332,9 @@ class ChatControllerTest {
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
         when(messageService.resolveLockState(eq(conversationId), any()))
             .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
-        when(playbookService.getPlaybook("my-playbook"))
-            .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
-                List.of(), false, Instant.now(), Instant.now(), false)));
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(
+            Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, null, null, 2)));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -343,6 +343,32 @@ class ChatControllerTest {
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
         assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+        assertEquals(2, model.getAttribute("lockedPlaybookVersion"));
+    }
+
+    @Test
+    void threadView_whenLockedPlaybookMissingFromCatalogue_fallsBackToMessagePlaybookVersion() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message userMsg =
+            new Message(UUID.randomUUID(), conversationId, "user", "Question", "deleted-playbook",
+                3, List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null);
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("deleted-playbook"), false, false));
+        when(playbookService.getPlaybook("deleted-playbook")).thenReturn(Optional.empty());
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertEquals("deleted-playbook", model.getAttribute("lockedPlaybookName"));
+        assertEquals("deleted-playbook", model.getAttribute("lockedPlaybookTitle"));
+        assertEquals(3, model.getAttribute("lockedPlaybookVersion"));
     }
 
     @Test

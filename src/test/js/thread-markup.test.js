@@ -81,6 +81,22 @@ describe('autocompleteOptionsMarkup', () => {
         assert.ok(html.includes('🧪 Prototype'));
         assert.ok(html.includes('badge-warning'));
     });
+
+    test('renders vN in title and data-prompt-version when version is a positive integer while keeping data-prompt-title clean', () => {
+        const withVersion = [
+            { name: 'oim-full', title: 'OIM Full', description: 'Full', version: 2, prototype: false },
+            { name: 'oim-legacy', title: 'OIM Legacy', description: 'Legacy' },
+            { name: 'oim-zero', title: 'OIM Zero', description: 'Zero', version: 0 },
+        ];
+        const html = autocompleteOptionsMarkup(withVersion, 0);
+        assert.ok(html.includes('data-prompt-title="OIM Full"'), 'data-prompt-title must remain unpolluted by version');
+        assert.ok(html.includes('data-prompt-version="2"'));
+        assert.ok(html.includes('<span class="prompt-option-title">OIM Full v2</span>'));
+        assert.ok(html.includes('<span class="prompt-option-title">OIM Legacy</span>'));
+        assert.ok(html.includes('<span class="prompt-option-title">OIM Zero</span>'));
+        assert.ok(!html.includes('vundefined'));
+        assert.ok(!html.includes('v0'));
+    });
 });
 
 describe('citationQueryParam', () => {

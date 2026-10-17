@@ -76,9 +76,9 @@
                             class="chip" 
                             th:classappend="${prompt.prototype ? ' chip-prototype' : ''}"
                             th:style="${prompt.prototype && !(settings != null && (settings['show-prototypes'] == true || settings['show-prototypes'] == 'true')) ? 'display: none;' : ''}"
-                            th:attr="data-prompt-name=${prompt.name}, data-prompt-title=${prompt.title}, data-prototype=${prompt.prototype}"
+                            th:attr="data-prompt-name=${prompt.name}, data-prompt-title=${prompt.title}, data-prompt-version=${prompt.version}, data-prototype=${prompt.prototype}"
                             th:title="${prompt.description}"
-                            th:text="${prompt.prototype ? '🧪 ' + prompt.title : prompt.title}"
+                            th:text="${(prompt.prototype ? '🧪 ' + prompt.title : prompt.title) + (prompt.version != null ? ' v' + prompt.version : '')}"
                             data-action="select-playbook">
                         Prompt Title
                     </button>
@@ -102,7 +102,7 @@
 
                 <!-- Active playbook indicator -->
                 <div id="active-playbook" class="active-playbook" th:style="${isPlaybookLocked && lockedPlaybookName != null && (settings['orchestrator-profile'] == null || settings['orchestrator-profile'] == '')} ? '' : 'display: none;'">
-                    <span class="playbook-tag" id="active-playbook-tag" th:text="${lockedPlaybookTitle != null ? '📋 ' + lockedPlaybookTitle : (lockedPlaybookName != null ? '📋 ' + lockedPlaybookName : '📋 Playbook Title')}">📋 Playbook Title</span>
+                    <span class="playbook-tag" id="active-playbook-tag" th:text="${(lockedPlaybookTitle != null ? '📋 ' + lockedPlaybookTitle : (lockedPlaybookName != null ? '📋 ' + lockedPlaybookName : '📋 Playbook Title')) + (lockedPlaybookVersion != null ? ' v' + lockedPlaybookVersion : '')}">📋 Playbook Title</span>
                     <span class="active-playbook-hint" th:style="${isPlaybookLocked} ? 'display: none;' : ''">applied to your next message</span>
                     <button th:style="${isPlaybookLocked} ? 'display: none;' : ''" type="button" class="active-playbook-remove" title="Remove playbook" data-action="clear-playbook">
                         &times;
@@ -248,6 +248,7 @@
             isPlaybookLocked: /*[[${isPlaybookLocked}]]*/ false,
             lockedPlaybookName: /*[[${lockedPlaybookName}]]*/ null,
             lockedPlaybookTitle: /*[[${lockedPlaybookTitle}]]*/ null,
+            lockedPlaybookVersion: /*[[${lockedPlaybookVersion}]]*/ null,
             isModeLocked: /*[[${isModeLocked}]]*/ false
         };
     </script>

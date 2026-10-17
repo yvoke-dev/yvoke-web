@@ -189,6 +189,35 @@ export function promptLabel(name, prompts, labels) {
         .replace(/\b[a-z]/g, ch => ch.toUpperCase());
 }
 
+/**
+ * Formats the display text for a playbook tag (without the leading emoji), appending ` v<N>`
+ * when a positive integer version is known from an explicit argument or from the `prompts` list.
+ */
+export function formatPlaybookTagLabel(name, title, version, prompts, labels) {
+    const baseLabel = title || promptLabel(name, prompts, labels);
+    if (!baseLabel) return '';
+
+    let resolved = version;
+    const isPositiveInt = v => Number.isInteger(v) && v >= 1;
+    const parseCandidate = v => {
+        if (isPositiveInt(v)) return v;
+        if (typeof v === 'string' && /^[1-9]\d*$/.test(v)) return parseInt(v, 10);
+        return null;
+    };
+
+    let parsed = parseCandidate(resolved);
+    if (parsed === null && name && Array.isArray(prompts)) {
+        const found = prompts.find(p => p && p.name === name);
+        if (found) {
+            parsed = parseCandidate(found.version);
+        }
+    }
+    if (isPositiveInt(parsed)) {
+        return `${baseLabel} v${parsed}`;
+    }
+    return baseLabel;
+}
+
 /** Placeholder for the chat input: playbook-specific when one is active, else the generic hint. */
 export function chatInputDefaultPlaceholder(activePlaybookName, prompts, isLocked = false, isOrchestrator = false) {
     if (activePlaybookName && !isOrchestrator) {

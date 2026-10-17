@@ -189,7 +189,8 @@ public class ChatThreadRenderingIT {
                 + "the page silently rather than failing the render")
             .containsKeys("conversation", "messages", "allowedModels", "settings", "feedbacks",
                 "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles",
-                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookTitle");
+                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookTitle",
+                "lockedPlaybookVersion");
 
         assertThat(((Conversation) viewModel.get("conversation")).id()).isEqualTo(convId);
         assertThat((List<?>) viewModel.get("messages")).hasSize(1);
@@ -695,6 +696,23 @@ public class ChatThreadRenderingIT {
             .contains("<span class=\"active-playbook-hint\" style=\"display: none;\">");
         assertThat(lockedHtml)
             .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+        assertThat(lockedHtml).doesNotContain("vnull");
+
+        // Verify that when the initial message carries playbookVersion = 2, both the message bubble
+        // and #active-playbook-tag render 'v2'
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        UUID versionedConvId = chatConversationService.createConversation().id();
+        messageRepository.save(new Message(UUID.randomUUID(), versionedConvId, "user",
+            "Versioned question", "oim-full", 2, List.of(), List.of(), Instant.now(), null, null,
+            null, null, null, "done", null));
+        String versionedHtml = mockMvc.perform(get("/chat/" + versionedConvId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(versionedHtml)
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full v2</span>");
+        assertThat(versionedHtml)
+            .contains("<span class=\"playbook-tag\">📋 oim-full v2</span>");
+        setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+        chatConversationService.deleteConversation(versionedConvId);
 
         // Verify that even if 100 messages without playbook precede the playbook message,
         // threadView still resolves the lock using findInitialPlaybook

@@ -20,6 +20,7 @@ import {
     chatInputDefaultPlaceholder,
     describeSendFailure,
     escapeHtml,
+    formatPlaybookTagLabel,
     pollTerminalDecision,
     profileOptionVisibility,
     promptLabel as promptLabelOf,
@@ -99,7 +100,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             switch (el.dataset.action) {
                 case 'select-playbook':
                     if (isPlaybookLocked || currentAbortController) return;
-                    selectPlaybook(el.dataset.promptName, el.dataset.promptTitle);
+                    selectPlaybook(el.dataset.promptName, el.dataset.promptTitle, el.dataset.promptVersion);
                     break;
                 case 'clear-playbook':
                     if (isPlaybookLocked || currentAbortController) return;
@@ -336,7 +337,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
         let filteredAutocompletePrompts = [];
         const autocompletePopup = document.getElementById('autocomplete-popup');
 
-        function selectPlaybook(name, title) {
+        function selectPlaybook(name, title, version) {
             if (isPlaybookLocked || (typeof orchestratorMode !== 'undefined' && orchestratorMode)) return;
             activePlaybookName = name;
             document.getElementById('chat-prompt-name').value = name;
@@ -348,7 +349,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             
             const tagEl = document.getElementById('active-playbook-tag');
             if (tagEl) {
-                tagEl.textContent = '📋 ' + title;
+                tagEl.textContent = '📋 ' + formatPlaybookTagLabel(name, title, version, mcpPrompts, PROMPT_LABELS);
             }
             const activePlaybookEl = document.getElementById('active-playbook');
             if (activePlaybookEl) {
@@ -462,8 +463,13 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 }
                 const tagEl = document.getElementById('active-playbook-tag');
                 if (tagEl) {
-                    const title = CHAT_CONFIG.lockedPlaybookTitle || promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS);
-                    tagEl.textContent = '📋 ' + title;
+                    tagEl.textContent = '📋 ' + formatPlaybookTagLabel(
+                        activePlaybookName,
+                        CHAT_CONFIG.lockedPlaybookTitle,
+                        CHAT_CONFIG.lockedPlaybookVersion,
+                        mcpPrompts,
+                        PROMPT_LABELS,
+                    );
                 }
             }
             hideAutocomplete();
@@ -1199,7 +1205,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         e.preventDefault();
                         if (filteredAutocompletePrompts[autocompleteHighlightIndex]) {
                             const p = filteredAutocompletePrompts[autocompleteHighlightIndex];
-                            selectPlaybook(p.name, p.title);
+                            selectPlaybook(p.name, p.title, p.version);
                         }
                         return;
                     }
@@ -1593,7 +1599,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
             // 1. Append User Message Bubble
             const userMsgId = 'temp-user-' + Date.now();
-            const playbookTagHtml = (activePlaybookName && !orchestratorMode) ? `<span class="playbook-tag">📋 ${promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS)}</span>` : '';
+            const playbookTagHtml = (activePlaybookName && !orchestratorMode)
+                ? `<span class="playbook-tag">📋 ${escapeHtml(formatPlaybookTagLabel(activePlaybookName, activePlaybookName, CHAT_CONFIG.lockedPlaybookVersion, mcpPrompts, PROMPT_LABELS))}</span>`
+                : '';
             const userMsgHtml = userMessageMarkup(userMsgId, content, playbookTagHtml);
             messagesContainer.insertAdjacentHTML('beforeend', userMsgHtml);
             scrollToBottom();
