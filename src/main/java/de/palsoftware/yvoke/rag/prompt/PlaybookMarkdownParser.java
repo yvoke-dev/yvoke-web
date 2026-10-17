@@ -129,9 +129,7 @@ public class PlaybookMarkdownParser {
                 "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
         }
 
-        boolean versionOmittedOrBlank =
-            !hasVersion || (rawVersion instanceof String s && s.trim().isEmpty());
-        int version = versionOmittedOrBlank
+        int version = !hasVersion
             ? (defaultVersionForName != null ? defaultVersionForName.applyAsInt(name) : 1)
             : parseVersionValue(rawVersion);
 
@@ -158,9 +156,6 @@ public class PlaybookMarkdownParser {
         }
         if (rawVersion instanceof String s) {
             String trimmed = s.trim();
-            if (trimmed.isEmpty()) {
-                return 1;
-            }
             if ("null".equalsIgnoreCase(trimmed) || "true".equalsIgnoreCase(trimmed)
                 || "false".equalsIgnoreCase(trimmed)) {
                 throw new IllegalArgumentException(

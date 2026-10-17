@@ -566,15 +566,13 @@
                                 inTools = false;
                             } else if (trimmed.startsWith('version:')) {
                                 const valStr = trimmed.substring(8).trim().replace(/^['"]|['"]$/g, '');
-                                if (valStr.length > 0) {
-                                    if (!/^[1-9]\d*$/.test(valStr)) {
-                                        alert('Invalid playbook version "' + valStr + '": version must be a positive integer (>= 1).');
-                                        fileInput.value = '';
-                                        return;
-                                    }
-                                    version = parseInt(valStr, 10);
-                                    hasExplicitVersion = true;
+                                if (!/^[1-9]\d*$/.test(valStr)) {
+                                    alert('Invalid playbook version "' + valStr + '": version must be a positive integer (>= 1).');
+                                    fileInput.value = '';
+                                    return;
                                 }
+                                version = parseInt(valStr, 10);
+                                hasExplicitVersion = true;
                                 inTools = false;
                             } else if (trimmed.startsWith('target_agent:') || trimmed.startsWith('targetAgent:') || trimmed.startsWith('role:')) {
                                 const colonIdx = trimmed.indexOf(':');

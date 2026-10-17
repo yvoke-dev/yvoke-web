@@ -540,7 +540,28 @@ class PlaybookServiceTest {
                 Updated Body
                 """, "uploaded", "OIM"));
 
+        assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown("""
+                ---
+                name: existing-v3-playbook
+                title: Updated Title
+                version: ""
+                ---
+                Updated Body
+                """, "uploaded", "OIM"));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown("""
+                ---
+                name: existing-v3-playbook
+                title: Updated Title
+                version:
+                ---
+                Updated Body
+                """, "uploaded", "OIM"));
+
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
     }
 }
+

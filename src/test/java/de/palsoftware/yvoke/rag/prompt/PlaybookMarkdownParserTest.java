@@ -276,7 +276,8 @@ class PlaybookMarkdownParserTest {
 
     @Test
     void parseMarkdownRejectsInvalidVersionValuesEvenThoughFrontmatterLoadUsesTryCatch() {
-        for (String bad : List.of("0", "-1", "abc", "1.5", "true", "false", "null")) {
+        for (String bad : List.of("0", "-1", "abc", "1.5", "true", "false", "null", "", "\"\"",
+            "\"   \"")) {
             String md = """
                 ---
                 name: pb
@@ -291,4 +292,5 @@ class PlaybookMarkdownParserTest {
         }
     }
 }
+
 

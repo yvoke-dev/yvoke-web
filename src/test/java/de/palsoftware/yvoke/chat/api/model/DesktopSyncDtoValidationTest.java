@@ -130,4 +130,41 @@ class DesktopSyncDtoValidationTest {
             null, null, null, null, null, null, null, null, null, null, steps);
         assertThat(validator.validate(req)).isNotEmpty();
     }
+
+    @Test
+    void rejectsNewMessageWithNonPositivePlaybookVersionAndAcceptsPositiveOrNull() {
+        AppendMessagesRequest zeroVer = new AppendMessagesRequest(
+            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", 0)));
+        assertThat(validator.validate(zeroVer)).isNotEmpty();
+
+        AppendMessagesRequest negVer = new AppendMessagesRequest(
+            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", -1)));
+        assertThat(validator.validate(negVer)).isNotEmpty();
+
+        AppendMessagesRequest validVer = new AppendMessagesRequest(
+            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", 2),
+                new NewMessageDto("assistant", "ok", null, null, null, null, null, null, null)));
+        assertThat(validator.validate(validVer)).isEmpty();
+    }
+
+    @Test
+    void rejectsOrchestratorRunStepWithNonPositivePlaybookVersionAndNormalizesWhenPlaybookNull() {
+        OrchestratorRunRequest zeroVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
+            "profile", null, null, null, null, null, null, null, null, null, null,
+            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", 0, "m", "high", null, null,
+                null, null, null, null, null, null, null)));
+        assertThat(validator.validate(zeroVer)).isNotEmpty();
+
+        OrchestratorRunRequest negVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
+            "profile", null, null, null, null, null, null, null, null, null, null,
+            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", -2, "m", "high", null, null,
+                null, null, null, null, null, null, null)));
+        assertThat(validator.validate(negVer)).isNotEmpty();
+
+        OrchestratorRunRequest.Step nullPlaybookStep = new OrchestratorRunRequest.Step(0, "spec", 0,
+            "   ", 3, "m", "high", null, null, null, null, null, null, null, null, null);
+        assertThat(nullPlaybookStep.playbookName()).isNull();
+        assertThat(nullPlaybookStep.playbookVersion()).isNull();
+    }
 }
+

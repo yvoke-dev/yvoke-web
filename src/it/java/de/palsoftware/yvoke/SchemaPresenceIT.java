@@ -1,18 +1,19 @@
 package de.palsoftware.yvoke;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.ConnectionCallback;
-import org.springframework.jdbc.core.JdbcTemplate;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest(properties = {
     "spring.flyway.enabled=true",
@@ -311,6 +312,98 @@ public class SchemaPresenceIT {
         } finally {
             jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", playbookName);
             jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?)", promptName1, promptName2);
+        }
+    }
+
+    @Test
+    public void testMigrationV15PlaybookVersionColumnsAndCheckConstraints() {
+        assertThat(columnExists("playbooks", "version"))
+            .withFailMessage("Column playbooks.version should exist (V15)").isTrue();
+        assertThat(columnExists("messages", "playbook_version"))
+            .withFailMessage("Column messages.playbook_version should exist (V15)").isTrue();
+        assertThat(columnExists("agent_steps", "playbook_version"))
+            .withFailMessage("Column agent_steps.playbook_version should exist (V15)").isTrue();
+
+        String playbookOk = "v15-it-pb-ok-" + UUID.randomUUID();
+        String playbookBad = "v15-it-pb-bad-" + UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID msgWithPb = UUID.randomUUID();
+        UUID msgNulls = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID stepWithPb = UUID.randomUUID();
+        UUID stepNulls = UUID.randomUUID();
+
+        jdbcTemplate.update(
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+            userId, "oid-" + userId, "v15-" + userId + "@example.com", "User 15");
+        jdbcTemplate.update(
+            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+            convId, userId, "v15-conv");
+        jdbcTemplate.update(
+            "INSERT INTO agent_runs (id, conversation_id, profile_name, status) VALUES (?, ?, ?, ?)",
+            runId, convId, "OIM", "done");
+
+        try {
+            // 1. playbooks.version: >= 1 accepted, 0 rejected
+            jdbcTemplate.update(
+                "INSERT INTO playbooks (name, title, description, template_text, version) VALUES (?, 'title', 'desc', 'template', 2)",
+                playbookOk);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO playbooks (name, title, description, template_text, version) VALUES (?, 'title', 'desc', 'template', 0)",
+                playbookBad))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+            // 2. messages.playbook_version: ('x', 2) and (NULL, NULL) accepted;
+            // ('x', 0), (NULL, 2), and ('   ', 2) rejected
+            jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'q1', 'x', 2)",
+                msgWithPb, convId);
+            jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'q2', NULL, NULL)",
+                msgNulls, convId);
+
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-v0', 'x', 0)",
+                UUID.randomUUID(), convId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-null-pb', NULL, 2)",
+                UUID.randomUUID(), convId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-blank-pb', '   ', 2)",
+                UUID.randomUUID(), convId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+            // 3. agent_steps.playbook_version: ('x', 2) and (NULL, NULL) accepted;
+            // ('x', 0), (NULL, 2), and ('   ', 2) rejected
+            jdbcTemplate.update(
+                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 0, 'specialist', 0, 'x', 2)",
+                stepWithPb, runId);
+            jdbcTemplate.update(
+                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 1, 'specialist', 0, NULL, NULL)",
+                stepNulls, runId);
+
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 2, 'specialist', 0, 'x', 0)",
+                UUID.randomUUID(), runId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 3, 'specialist', 0, NULL, 2)",
+                UUID.randomUUID(), runId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO agent_steps (id, run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 4, 'specialist', 0, '   ', 2)",
+                UUID.randomUUID(), runId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        } finally {
+            jdbcTemplate.update("DELETE FROM agent_steps WHERE run_id = ?", runId);
+            jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", runId);
+            jdbcTemplate.update("DELETE FROM messages WHERE conversation_id = ?", convId);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+            jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?)", playbookOk, playbookBad);
         }
     }
 
