@@ -2487,8 +2487,25 @@ public class ChatMessageServiceTest {
         assertThat(lockState.isPlaybookLocked()).isFalse();
         assertThat(lockState.isSinglePlaybookLocked()).isFalse();
         assertThat(lockState.isInDepthMode()).isFalse();
+        assertThat(lockState.lockedPlaybookVersion()).isNull();
+        verify(messageRepository, never()).findInitialPlaybookVersion(convId);
         verify(messageRepository, never()).hasInDepthTurns(convId);
     }
+
+    @Test
+    void resolveLockState_whenInitialPlaybookPresent_propagatesInitialPlaybookVersion() {
+        UUID convId = UUID.randomUUID();
+        when(messageRepository.findInitialPlaybook(convId)).thenReturn(Optional.of("pb1"));
+        when(messageRepository.findInitialPlaybookVersion(convId)).thenReturn(Optional.of(4));
+        when(messageRepository.hasInDepthTurns(convId)).thenReturn(false);
+
+        ConversationLockState lockState = chatMessageService.resolveLockState(convId, null);
+
+        assertThat(lockState.isPlaybookLocked()).isTrue();
+        assertThat(lockState.lockedPlaybookName()).isEqualTo("pb1");
+        assertThat(lockState.lockedPlaybookVersion()).isEqualTo(4);
+    }
+
 
     @Test
     void prepare_acquiresRowLockOnConversation() {

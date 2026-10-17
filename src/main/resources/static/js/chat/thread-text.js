@@ -169,34 +169,50 @@ export function assistantPlaceholderMarkup(assistantMsgId, variantClass) {
 }
 
 /**
- * Human label for a tool/prompt name: a curated label if one exists, else the prompt's own title,
- * else the name de-slugified. `labels` and `prompts` are injected rather than read from module
- * state so this is callable without the page.
+ * Formats the display text for a playbook tag (without the leading emoji) using the canonical
+ * playbook `name`, appending ` v<N>` when a positive integer version is known from an explicit
+ * argument or from the `prompts` list.
  */
-export function promptLabel(name, prompts, labels) {
+export function formatPlaybookTagLabel(name, version, prompts) {
     if (!name) return '';
-    if (labels && labels[name]) {
-        return labels[name];
-    }
-    if (Array.isArray(prompts)) {
+    const baseLabel = String(name);
+
+    const isPositiveInt = v => Number.isInteger(v) && v >= 1;
+    const parseCandidate = v => {
+        if (isPositiveInt(v)) return v;
+        if (typeof v === 'string' && /^[1-9]\d*$/.test(v)) return parseInt(v, 10);
+        return null;
+    };
+
+    let parsed = parseCandidate(version);
+    if (parsed === null && Array.isArray(prompts)) {
         const found = prompts.find(p => p && p.name === name);
-        if (found && found.title) {
-            return found.title;
+        if (found) {
+            parsed = parseCandidate(found.version);
         }
     }
-    return name
-        .replace(/[-_]+/g, ' ')
-        .replace(/\b[a-z]/g, ch => ch.toUpperCase());
+    if (isPositiveInt(parsed)) {
+        return `${baseLabel} v${parsed}`;
+    }
+    return baseLabel;
+}
+
+/**
+ * Filters available playbooks for `/` or `+` autocomplete strictly by canonical `name`
+ * (case-insensitive substring match), never matching the unrendered `title`.
+ */
+export function filterPromptsForAutocomplete(prompts, query) {
+    if (!Array.isArray(prompts)) return [];
+    const q = typeof query === 'string' ? query.toLowerCase() : '';
+    return prompts.filter(function (p) {
+        return Boolean(p && typeof p.name === 'string' && p.name.length > 0 && p.name.toLowerCase().includes(q));
+    });
 }
 
 /** Placeholder for the chat input: playbook-specific when one is active, else the generic hint. */
-export function chatInputDefaultPlaceholder(activePlaybookName, prompts, isLocked = false, isOrchestrator = false) {
+export function chatInputDefaultPlaceholder(activePlaybookName, isLocked = false, isOrchestrator = false) {
     if (activePlaybookName && !isOrchestrator) {
-        const playbookObj = Array.isArray(prompts)
-            ? prompts.find(p => p && p.name === activePlaybookName)
-            : null;
-        const title = playbookObj ? playbookObj.title : activePlaybookName;
-        return `Add your question for "${title}"...`;
+        return `Add your question for "${activePlaybookName}"...`;
     }
     if (isLocked || isOrchestrator) {
         return 'Ask a question… (Shift + Enter for new line, Enter to send)';

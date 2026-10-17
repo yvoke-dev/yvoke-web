@@ -20,9 +20,10 @@ import {
     chatInputDefaultPlaceholder,
     describeSendFailure,
     escapeHtml,
+    filterPromptsForAutocomplete,
+    formatPlaybookTagLabel,
     pollTerminalDecision,
     profileOptionVisibility,
-    promptLabel as promptLabelOf,
     syncLoaderMarkup,
 } from './thread-text.js';
 
@@ -99,7 +100,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             switch (el.dataset.action) {
                 case 'select-playbook':
                     if (isPlaybookLocked || currentAbortController) return;
-                    selectPlaybook(el.dataset.promptName, el.dataset.promptTitle);
+                    selectPlaybook(el.dataset.promptName, el.dataset.promptVersion);
                     break;
                 case 'clear-playbook':
                     if (isPlaybookLocked || currentAbortController) return;
@@ -113,7 +114,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                     submitClarificationAnswer(el);
                     break;
                 case 'switch-and-send':
-                    switchAndSend(el.dataset.switchName, el.dataset.switchTitle);
+                    switchAndSend(el.dataset.switchName);
                     break;
                 case 'send-anyway':
                     sendAnyway();
@@ -317,26 +318,11 @@ import { createSseAccumulator } from './sse-accumulator.js';
         function getAvailablePrompts() {
             return mcpPrompts.filter(p => showPrototypesEnabled || !p.prototype);
         }
-        const PROMPT_LABELS = {
-            // MCP Tools (src/main/java/de/palsoftware/yvoke/mcp/tools)
-            'search_corpus': 'Search Corpus',
-            'get_graph_neighbors': 'Get Graph Neighbors',
-            'get_json_schema': 'Get JSON Schema',
-            'get_section': 'Get Section',
-            'get_toc': 'Get Table of Contents',
-            'list_documents': 'List Documents',
-            'query_json_objects': 'Query JSON Objects',
-            'search_graph_entities': 'Search Graph Entities',
-            'verify_citations': 'Verify Citations',
-            'ask_clarifying_question': 'Ask Clarifying Question'
-        };
-
-
         let autocompleteHighlightIndex = 0;
         let filteredAutocompletePrompts = [];
         const autocompletePopup = document.getElementById('autocomplete-popup');
 
-        function selectPlaybook(name, title) {
+        function selectPlaybook(name, version) {
             if (isPlaybookLocked || (typeof orchestratorMode !== 'undefined' && orchestratorMode)) return;
             activePlaybookName = name;
             document.getElementById('chat-prompt-name').value = name;
@@ -348,14 +334,14 @@ import { createSseAccumulator } from './sse-accumulator.js';
             
             const tagEl = document.getElementById('active-playbook-tag');
             if (tagEl) {
-                tagEl.textContent = '📋 ' + title;
+                tagEl.textContent = '📋 ' + formatPlaybookTagLabel(name, version, mcpPrompts);
             }
             const activePlaybookEl = document.getElementById('active-playbook');
             if (activePlaybookEl) {
                 activePlaybookEl.style.display = 'flex';
             }
             
-            chatInput.placeholder = `Add your question for "${title}"...`;
+            chatInput.placeholder = `Add your question for "${name}"...`;
             chatInput.focus();
             
             hideAutocomplete();
@@ -376,7 +362,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 activePlaybookEl.style.display = 'none';
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
             }
             
             const chipsEl = document.getElementById('prompt-chips');
@@ -462,8 +448,11 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 }
                 const tagEl = document.getElementById('active-playbook-tag');
                 if (tagEl) {
-                    const title = CHAT_CONFIG.lockedPlaybookTitle || promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS);
-                    tagEl.textContent = '📋 ' + title;
+                    tagEl.textContent = '📋 ' + formatPlaybookTagLabel(
+                        activePlaybookName,
+                        CHAT_CONFIG.lockedPlaybookVersion,
+                        mcpPrompts,
+                    );
                 }
             }
             hideAutocomplete();
@@ -501,7 +490,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 }
             }
             if (typeof chatInput !== 'undefined' && chatInput) {
-                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
             }
         }
         applyOrchestratorModeUI();
@@ -1057,7 +1046,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             if (!unanswered) {
                 if (chatInput) {
                     chatInput.disabled = false;
-                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                    chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
                 }
                 const micBtn = document.getElementById('voice-input-btn');
                 if (micBtn) {
@@ -1166,8 +1155,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 const match = val.match(/^[\/\+](\S*)$/);
                 const available = getAvailablePrompts();
                 if (match && available.length > 0) {
-                    const query = match[1].toLowerCase();
-                    const filtered = available.filter(p => p.name.toLowerCase().includes(query) || p.title.toLowerCase().includes(query));
+                    const filtered = filterPromptsForAutocomplete(available, match[1]);
                     if (filtered.length > 0) {
                         showAutocomplete(filtered);
                     } else {
@@ -1199,7 +1187,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         e.preventDefault();
                         if (filteredAutocompletePrompts[autocompleteHighlightIndex]) {
                             const p = filteredAutocompletePrompts[autocompleteHighlightIndex];
-                            selectPlaybook(p.name, p.title);
+                            selectPlaybook(p.name, p.version);
                         }
                         return;
                     }
@@ -1284,7 +1272,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                         voiceBtn.classList.remove('recording');
                         const tooltipEl = voiceBtn.querySelector('.custom-tooltip');
                         if (tooltipEl) tooltipEl.textContent = "Start voice typing";
-                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, mcpPrompts, isPlaybookLocked, orchestratorMode);
+                        chatInput.placeholder = chatInputDefaultPlaceholder(activePlaybookName, isPlaybookLocked, orchestratorMode);
                         adjustChatInputHeight();
                     };
 
@@ -1504,13 +1492,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
                 existingCard.remove();
             }
 
-            // Resolve the suggested playbook's display title, falling back to its name.
-            let switchTitle = null;
-            if (suggestedPlaybookName) {
-                const playbookObj = mcpPrompts.find(p => p.name === suggestedPlaybookName);
-                switchTitle = playbookObj ? playbookObj.title : suggestedPlaybookName;
-            }
-            const cardHtml = preflightCardMarkup(reason, suggestedPlaybookName, switchTitle);
+            const cardHtml = preflightCardMarkup(reason, suggestedPlaybookName);
 
             messagesContainer.insertAdjacentHTML('beforeend', cardHtml);
             scrollToBottom();
@@ -1525,12 +1507,12 @@ import { createSseAccumulator } from './sse-accumulator.js';
             chatForm.requestSubmit();
         }
 
-        function switchAndSend(name, title) {
+        function switchAndSend(name) {
             const card = document.getElementById('preflight-warning-card-el');
             if (card) {
                 card.remove();
             }
-            selectPlaybook(name, title);
+            selectPlaybook(name);
             bypassPreflight = true;
             chatForm.requestSubmit();
         }
@@ -1593,7 +1575,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
             // 1. Append User Message Bubble
             const userMsgId = 'temp-user-' + Date.now();
-            const playbookTagHtml = (activePlaybookName && !orchestratorMode) ? `<span class="playbook-tag">📋 ${promptLabelOf(activePlaybookName, mcpPrompts, PROMPT_LABELS)}</span>` : '';
+            const playbookTagHtml = (activePlaybookName && !orchestratorMode)
+                ? `<span class="playbook-tag">📋 ${escapeHtml(formatPlaybookTagLabel(activePlaybookName, CHAT_CONFIG.lockedPlaybookVersion, mcpPrompts))}</span>`
+                : '';
             const userMsgHtml = userMessageMarkup(userMsgId, content, playbookTagHtml);
             messagesContainer.insertAdjacentHTML('beforeend', userMsgHtml);
             scrollToBottom();

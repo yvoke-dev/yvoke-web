@@ -332,9 +332,9 @@ class ChatControllerTest {
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
         when(messageService.resolveLockState(eq(conversationId), any()))
             .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
-        when(playbookService.getPlaybook("my-playbook"))
-            .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
-                List.of(), false, Instant.now(), Instant.now(), false)));
+        when(playbookService.getPlaybook("my-playbook")).thenReturn(
+            Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, null, null, 2)));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -342,7 +342,34 @@ class ChatControllerTest {
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
-        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
+        assertEquals(2, model.getAttribute("lockedPlaybookVersion"));
+    }
+
+    @Test
+    void threadView_whenLockedPlaybookMissingFromCatalogue_fallsBackToMessagePlaybookVersion() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+
+        Message nonUserMsg = new Message(UUID.randomUUID(), conversationId, "assistant", "Prior",
+            "deleted-playbook", 99, List.of(), List.of(), Instant.now().minusSeconds(10), null,
+            null, null, null, null, "done", null);
+        Message userMsg =
+            new Message(UUID.randomUUID(), conversationId, "user", "Question", "deleted-playbook",
+                3, List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null);
+        when(messageService.getMessages(conversationId)).thenReturn(List.of(nonUserMsg, userMsg));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+            .thenReturn(ConversationLockState.from(Optional.of("deleted-playbook"), false, false));
+        when(playbookService.getPlaybook("deleted-playbook")).thenReturn(Optional.empty());
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        assertEquals("deleted-playbook", model.getAttribute("lockedPlaybookName"));
+        assertEquals(3, model.getAttribute("lockedPlaybookVersion"));
     }
 
     @Test
@@ -369,7 +396,6 @@ class ChatControllerTest {
         assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
-        assertNull(model.getAttribute("lockedPlaybookTitle"));
         @SuppressWarnings("unchecked")
         Map<String, Object> settings = (Map<String, Object>) model.getAttribute("settings");
         assertEquals("oim", settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()));
@@ -391,7 +417,6 @@ class ChatControllerTest {
         assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
         assertFalse((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
-        assertNull(model.getAttribute("lockedPlaybookTitle"));
         verify(messageService).resolveLockState(conversationId, null);
     }
 
@@ -414,7 +439,6 @@ class ChatControllerTest {
         assertFalse((Boolean) model.getAttribute("isPlaybookLocked"));
         assertTrue((Boolean) model.getAttribute("isModeLocked"));
         assertNull(model.getAttribute("lockedPlaybookName"));
-        assertNull(model.getAttribute("lockedPlaybookTitle"));
     }
 
     @Test
@@ -443,7 +467,6 @@ class ChatControllerTest {
 
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertEquals("my-playbook", model.getAttribute("lockedPlaybookName"));
-        assertEquals("My Playbook Title", model.getAttribute("lockedPlaybookTitle"));
     }
 
     @Test
@@ -456,18 +479,16 @@ class ChatControllerTest {
             Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
 
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
-        when(messageService.resolveLockState(eq(conversationId), any()))
-            .thenReturn(ConversationLockState.from(Optional.of("past100-pb"), false, false));
-        when(playbookService.getPlaybook("past100-pb"))
-            .thenReturn(Optional.of(new Playbook("past100-pb", "Past 100 Title", "Desc", "Tmpl",
-                List.of(), false, Instant.now(), Instant.now(), false)));
+        when(messageService.resolveLockState(eq(conversationId), any())).thenReturn(
+            ConversationLockState.from(Optional.of("past100-pb"), Optional.of(4), false, false));
+        when(playbookService.getPlaybook("past100-pb")).thenReturn(Optional.empty());
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
 
         assertTrue((Boolean) model.getAttribute("isPlaybookLocked"));
         assertEquals("past100-pb", model.getAttribute("lockedPlaybookName"));
-        assertEquals("Past 100 Title", model.getAttribute("lockedPlaybookTitle"));
+        assertEquals(4, model.getAttribute("lockedPlaybookVersion"));
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {

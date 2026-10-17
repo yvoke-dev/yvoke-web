@@ -12,11 +12,12 @@ import {
     chatInputDefaultPlaceholder,
     describeSendFailure,
     escapeHtml,
+    filterPromptsForAutocomplete,
+    formatPlaybookTagLabel,
     isMermaidText,
     normalizeThinkTags,
     pollTerminalDecision,
     profileOptionVisibility,
-    promptLabel,
     syncLoaderMarkup,
 } from '../../main/resources/static/js/chat/thread-text.js';
 
@@ -152,43 +153,80 @@ describe('markup builders', () => {
     });
 });
 
-describe('promptLabel', () => {
-    const prompts = [{ name: 'oim-full', title: 'OIM Full' }];
-    const labels = { search_corpus: 'Search Corpus' };
+describe('filterPromptsForAutocomplete', () => {
+    const prompts = [
+        { name: 'oim-schema', title: 'Schema Explorer', description: 'Inspect tables' },
+        { name: 'oim-getting-started', title: 'Onboarding Guide', description: 'First steps' },
+    ];
 
-    test('prefers the curated label', () => {
-        assert.equal(promptLabel('search_corpus', prompts, labels), 'Search Corpus');
+    test('matches canonical name case-insensitively', () => {
+        assert.deepEqual(
+            filterPromptsForAutocomplete(prompts, 'SCHEMA').map(p => p.name),
+            ['oim-schema'],
+        );
     });
 
-    test('falls back to the prompt title', () => {
-        assert.equal(promptLabel('oim-full', prompts, labels), 'OIM Full');
+    test('ignores invisible title so a query matching only title returns empty', () => {
+        assert.deepEqual(filterPromptsForAutocomplete(prompts, 'explorer'), []);
+        assert.deepEqual(filterPromptsForAutocomplete(prompts, 'Onboarding Guide'), []);
     });
 
-    test('de-slugifies an unknown name', () => {
-        assert.equal(promptLabel('oim-db-history', [], {}), 'Oim Db History');
-        assert.equal(promptLabel('some_tool_name', [], {}), 'Some Tool Name');
+    test('returns all valid prompts when query is empty, null, or undefined', () => {
+        assert.equal(filterPromptsForAutocomplete(prompts, '').length, 2);
+        assert.equal(filterPromptsForAutocomplete(prompts, null).length, 2);
+        assert.equal(filterPromptsForAutocomplete(prompts, undefined).length, 2);
     });
 
-    test('returns empty for a missing name', () => {
-        assert.equal(promptLabel('', prompts, labels), '');
-        assert.equal(promptLabel(null, prompts, labels), '');
+    test('handles non-array prompts and malformed entries safely', () => {
+        assert.deepEqual(filterPromptsForAutocomplete(null, 'oim'), []);
+        assert.deepEqual(filterPromptsForAutocomplete(undefined, 'oim'), []);
+        const mixed = [null, undefined, {}, { name: '' }, { name: 123 }, { name: 'oim-full' }];
+        assert.deepEqual(filterPromptsForAutocomplete(mixed, 'oim'), [{ name: 'oim-full' }]);
+    });
+});
+
+describe('formatPlaybookTagLabel', () => {
+    const prompts = [
+        { name: 'oim-full', title: 'OIM Full', version: 2 },
+        { name: 'oim-legacy', title: 'OIM Legacy' },
+    ];
+
+    test('appends vN to canonical playbook name when explicit positive integer or digit string version is supplied', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', 3, prompts), 'oim-full v3');
+        assert.equal(formatPlaybookTagLabel('oim-full', '4', prompts), 'oim-full v4');
     });
 
-    test('survives absent collaborators', () => {
-        assert.equal(promptLabel('oim-full', undefined, undefined), 'Oim Full');
+    test('resolves version from prompts catalogue when version argument is null, undefined, or empty string and never substitutes title', () => {
+        assert.equal(formatPlaybookTagLabel('oim-full', null, prompts), 'oim-full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', undefined, prompts), 'oim-full v2');
+        assert.equal(formatPlaybookTagLabel('oim-full', '', prompts), 'oim-full v2');
+    });
+
+    test('omits version suffix when version is absent, 0, negative, non-numeric, partial numeric, or boolean', () => {
+        for (const bad of [null, undefined, '', 0, -1, '0', '-2', 'abc', '2abc', '1.5', false, true]) {
+            assert.equal(
+                formatPlaybookTagLabel('oim-legacy', bad, prompts),
+                'oim-legacy',
+                `should omit suffix for version=${JSON.stringify(bad)}`,
+            );
+        }
+    });
+
+    test('returns empty string when name is missing', () => {
+        assert.equal(formatPlaybookTagLabel('', 2, prompts), '');
+        assert.equal(formatPlaybookTagLabel(null, 2, prompts), '');
+        assert.equal(formatPlaybookTagLabel(undefined, 2, prompts), '');
     });
 });
 
 describe('chatInputDefaultPlaceholder', () => {
-    const prompts = [{ name: 'oim-full', title: 'OIM Full' }];
-
-    test('names the active playbook by title', () => {
-        assert.equal(chatInputDefaultPlaceholder('oim-full', prompts),
-            'Add your question for "OIM Full"...');
+    test('names the active playbook by canonical name', () => {
+        assert.equal(chatInputDefaultPlaceholder('oim-full'),
+            'Add your question for "oim-full"...');
     });
 
-    test('falls back to the raw name when the playbook is unknown', () => {
-        assert.equal(chatInputDefaultPlaceholder('mystery', prompts),
+    test('uses the raw name when the playbook is unknown', () => {
+        assert.equal(chatInputDefaultPlaceholder('mystery'),
             'Add your question for "mystery"...');
     });
 
@@ -198,30 +236,25 @@ describe('chatInputDefaultPlaceholder', () => {
     // /^Ask a question/ passed whatever the rest of the sentence said, including the old "select a
     // skill", which was the product's only remaining use of that word.
     test('uses the generic hint when no playbook is active, naming the playbook picker', () => {
-        assert.equal(chatInputDefaultPlaceholder(null, prompts),
+        assert.equal(chatInputDefaultPlaceholder(null),
             'Ask a question… (type "/" or click "+" to select a playbook, '
             + 'Shift + Enter for new line, Enter to send)');
     });
 
-    test('survives an absent prompt list', () => {
-        assert.equal(chatInputDefaultPlaceholder('oim-full', undefined),
+    test('omits playbook picker instructions when locked without active playbook', () => {
+        assert.equal(chatInputDefaultPlaceholder(null, true),
+            'Ask a question… (Shift + Enter for new line, Enter to send)');
+    });
+
+    test('names active playbook by canonical name even when locked', () => {
+        assert.equal(chatInputDefaultPlaceholder('oim-full', true),
             'Add your question for "oim-full"...');
     });
 
-    test('omits playbook picker instructions when locked without active playbook', () => {
-        assert.equal(chatInputDefaultPlaceholder(null, prompts, true),
-            'Ask a question… (Shift + Enter for new line, Enter to send)');
-    });
-
-    test('names active playbook even when locked', () => {
-        assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true),
-            'Add your question for "OIM Full"...');
-    });
-
     test('suppresses active playbook and picker instructions in orchestrator mode', () => {
-        assert.equal(chatInputDefaultPlaceholder('oim-full', prompts, true, true),
+        assert.equal(chatInputDefaultPlaceholder('oim-full', true, true),
             'Ask a question… (Shift + Enter for new line, Enter to send)');
-        assert.equal(chatInputDefaultPlaceholder(null, prompts, false, true),
+        assert.equal(chatInputDefaultPlaceholder(null, false, true),
             'Ask a question… (Shift + Enter for new line, Enter to send)');
     });
 });

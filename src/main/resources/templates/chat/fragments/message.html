@@ -4,7 +4,7 @@
         <img th:if="${msg.role == 'assistant'}" th:src="@{/images/logo-32.png}" alt="Yvoke Logo" style="width: 22px; height: 22px;" />
     </div>
     <div class="message-bubble">
-        <span th:if="${msg.playbook != null}" class="playbook-tag" th:text="'📋 ' + ${msg.playbook}">Playbook Tag</span>
+        <span th:if="${msg.playbook != null}" class="playbook-tag" th:text="'📋 ' + ${msg.playbook} + (${msg.playbookVersion != null} ? ' v' + ${msg.playbookVersion} : '')">Playbook Tag</span>
         
         <!-- If generating (non-streaming placeholder) -->
         <div th:if="${msg.role == 'assistant' and msg.status == 'generating'}" class="message-content" data-raw-content="">

@@ -50,14 +50,14 @@ describe('autocompleteOptionsMarkup', () => {
         assert.ok(html.indexOf('data-index="1"') > 0);
     });
 
-    test('carries name and title in escaped data attributes', () => {
+    test('carries name in escaped data attribute and omits data-prompt-title', () => {
         const html = autocompleteOptionsMarkup(prompts, 0);
         assert.ok(html.includes('data-prompt-name="oim-full"'));
-        assert.ok(html.includes('data-prompt-title="OIM Full"'));
+        assert.ok(!html.includes('data-prompt-title'));
     });
 
     test('escapes admin-authored playbook fields', () => {
-        // Playbook name/title/description are admin-authored and reach innerHTML.
+        // Playbook name/description are admin-authored and reach innerHTML.
         assertNeutralised(
             autocompleteOptionsMarkup([{ name: XSS, title: XSS, description: XSS }], 0),
             'autocomplete');
@@ -80,6 +80,23 @@ describe('autocompleteOptionsMarkup', () => {
         const html = autocompleteOptionsMarkup(withProto, 0);
         assert.ok(html.includes('🧪 Prototype'));
         assert.ok(html.includes('badge-warning'));
+    });
+
+    test('renders canonical playbook name and vN in .prompt-option-title and data-prompt-version when version is a positive integer', () => {
+        const withVersion = [
+            { name: 'oim-full', title: 'OIM Full', description: 'Full', version: 2, prototype: false },
+            { name: 'oim-legacy', title: 'OIM Legacy', description: 'Legacy' },
+            { name: 'oim-zero', title: 'OIM Zero', description: 'Zero', version: 0 },
+        ];
+        const html = autocompleteOptionsMarkup(withVersion, 0);
+        assert.ok(!html.includes('data-prompt-title'));
+        assert.ok(!html.includes('OIM Full'), 'must render canonical name, never title');
+        assert.ok(html.includes('data-prompt-version="2"'));
+        assert.ok(html.includes('<span class="prompt-option-title">oim-full v2</span>'));
+        assert.ok(html.includes('<span class="prompt-option-title">oim-legacy</span>'));
+        assert.ok(html.includes('<span class="prompt-option-title">oim-zero</span>'));
+        assert.ok(!html.includes('vundefined'));
+        assert.ok(!html.includes('v0'));
     });
 });
 
@@ -139,21 +156,22 @@ describe('clarifying question cards', () => {
 });
 
 describe('preflightCardMarkup', () => {
-    test('offers the switch button when a playbook is suggested', () => {
-        const html = preflightCardMarkup('Better suited', 'oim-db', 'OIM DB');
+    test('offers the switch button with canonical playbook name when a playbook is suggested', () => {
+        const html = preflightCardMarkup('Better suited', 'oim-db');
         assert.ok(html.includes('data-switch-name="oim-db"'));
-        assert.ok(html.includes('Switch to OIM DB'));
+        assert.ok(!html.includes('data-switch-title'));
+        assert.ok(html.includes('Switch to oim-db'));
         assert.ok(html.includes('Send Anyway'));
     });
 
     test('offers only Send Anyway when nothing is suggested', () => {
-        const html = preflightCardMarkup('No better match', null, null);
+        const html = preflightCardMarkup('No better match', null);
         assert.ok(!html.includes('btn-preflight-switch'), html);
         assert.ok(html.includes('Send Anyway'));
     });
 
-    test('escapes the reason and the suggested title', () => {
-        assertNeutralised(preflightCardMarkup(XSS, 'n', XSS), 'preflight');
+    test('escapes the reason and the suggested name', () => {
+        assertNeutralised(preflightCardMarkup(XSS, XSS), 'preflight');
     });
 });
 

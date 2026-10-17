@@ -189,7 +189,8 @@ public class ChatThreadRenderingIT {
                 + "the page silently rather than failing the render")
             .containsKeys("conversation", "messages", "allowedModels", "settings", "feedbacks",
                 "prompts", "isReadOnly", "playbookValidationEnabled", "orchestratorProfiles",
-                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookTitle");
+                "isPlaybookLocked", "lockedPlaybookName", "lockedPlaybookVersion")
+            .doesNotContainKey("lockedPlaybookTitle");
 
         assertThat(((Conversation) viewModel.get("conversation")).id()).isEqualTo(convId);
         assertThat((List<?>) viewModel.get("messages")).hasSize(1);
@@ -695,9 +696,55 @@ public class ChatThreadRenderingIT {
             .contains("<span class=\"active-playbook-hint\" style=\"display: none;\">");
         assertThat(lockedHtml)
             .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+        assertThat(lockedHtml).doesNotContain("vnull");
+
+        // Verify that when a playbook has a distinct title ("OIM Full Search IT Title"),
+        // starter #prompt-chips, #active-playbook-tag, #chat-input placeholder, and .playbook-tag
+        // all render the canonical playbook name ("oim-full-it-test v2") and never the title
+        jdbcClient.sql("""
+            INSERT INTO playbooks (name, title, description, template_text, tools, code_execution,
+                                   target_agent, prototype, area, version)
+            VALUES ('oim-full-it-test', 'OIM Full Search IT Title', 'Desc', 'Tmpl', '{}',
+                    false, 'specialist', false, 'OIM', 2)
+            ON CONFLICT (name) DO UPDATE SET title = EXCLUDED.title, version = EXCLUDED.version
+            """).update();
+        try {
+            setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+            UUID emptyWithChipsId = chatConversationService.createConversation().id();
+            String chipsHtml = mockMvc.perform(get("/chat/" + emptyWithChipsId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String chipsDomMarkup = chipsHtml.substring(0, chipsHtml.indexOf("window.CHAT_CONFIG"));
+            assertThat(chipsDomMarkup)
+                .contains("data-prompt-name=\"oim-full-it-test\"")
+                .contains(">oim-full-it-test v2</button>")
+                .doesNotContain("OIM Full Search IT Title");
+            assertThat(chipsHtml).doesNotContain("data-prompt-title");
+            setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+            chatConversationService.deleteConversation(emptyWithChipsId);
+
+            setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+            UUID versionedConvId = chatConversationService.createConversation().id();
+            messageRepository.save(new Message(UUID.randomUUID(), versionedConvId, "user",
+                "Versioned question", "oim-full-it-test", 2, List.of(), List.of(), Instant.now(),
+                null, null, null, null, null, "done", null));
+            String versionedHtml = mockMvc.perform(get("/chat/" + versionedConvId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String versionedDomMarkup =
+                versionedHtml.substring(0, versionedHtml.indexOf("window.CHAT_CONFIG"));
+            assertThat(versionedDomMarkup)
+                .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full-it-test v2</span>")
+                .contains("<span class=\"playbook-tag\">📋 oim-full-it-test v2</span>")
+                .contains("Add your question for &quot;oim-full-it-test&quot;...")
+                .doesNotContain("OIM Full Search IT Title");
+            assertThat(versionedHtml).doesNotContain("lockedPlaybookTitle");
+            setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
+            chatConversationService.deleteConversation(versionedConvId);
+        } finally {
+            jdbcClient.sql("DELETE FROM playbooks WHERE name = 'oim-full-it-test'").update();
+        }
 
         // Verify that even if 100 messages without playbook precede the playbook message,
-        // threadView still resolves the lock using findInitialPlaybook
+        // threadView still resolves the lock and version using findInitialPlaybook / findInitialPlaybookVersion
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID longConvId = chatConversationService.createConversation().id();
         for (int i = 0; i < 100; i++) {
@@ -705,7 +752,8 @@ public class ChatThreadRenderingIT {
                 null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
         }
         messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Web question 101",
-            "oim-full", List.of(), List.of(), Instant.now()));
+            "oim-full", 4, List.of(), List.of(), Instant.now(), null, null, null, null, null,
+            "done", null));
 
         MvcResult longConvResult = mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
             .andExpect(status().isOk()).andReturn();
@@ -713,11 +761,12 @@ public class ChatThreadRenderingIT {
         assertThat(longMav).isNotNull();
         assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
         assertThat(longMav.getModel().get("lockedPlaybookName")).isEqualTo("oim-full");
+        assertThat(longMav.getModel().get("lockedPlaybookVersion")).isEqualTo(4);
         String longHtml = longConvResult.getResponse().getContentAsString();
         assertThat(longHtml).contains("isPlaybookLocked: true");
         assertThat(longHtml).contains("lockedPlaybookName: \"oim-full\"");
         assertThat(longHtml)
-            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full</span>");
+            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full v4</span>");
 
         // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");

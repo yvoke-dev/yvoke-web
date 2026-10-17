@@ -107,4 +107,24 @@ public class MessageRepositoryTest {
         verify(jdbcClient).sql(contains("SELECT playbook"));
         verify(statementSpec).param("conversationId", conversationId);
     }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    public void testFindInitialPlaybookVersion() {
+        UUID conversationId = UUID.randomUUID();
+        JdbcClient.MappedQuerySpec<Integer> intQuerySpec = mock(JdbcClient.MappedQuerySpec.class);
+        when(statementSpec.query(any(RowMapper.class)))
+            .thenReturn((JdbcClient.MappedQuerySpec) intQuerySpec);
+        when(intQuerySpec.list()).thenReturn(List.of(3));
+
+        Optional<Integer> result = messageRepository.findInitialPlaybookVersion(conversationId);
+
+        assertThat(result).contains(3);
+        verify(jdbcClient).sql(contains("SELECT playbook_version"));
+        verify(statementSpec).param("conversationId", conversationId);
+
+        when(intQuerySpec.list()).thenReturn(Collections.singletonList(null));
+        assertThat(messageRepository.findInitialPlaybookVersion(conversationId)).isEmpty();
+    }
 }
+

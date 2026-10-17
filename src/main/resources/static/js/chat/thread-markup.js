@@ -17,10 +17,13 @@ export function autocompleteOptionsMarkup(prompts, highlightIndex) {
     if (!Array.isArray(prompts)) return '';
     return prompts.map(function (p, idx) {
         const activeClass = idx === highlightIndex ? 'active' : '';
+        const hasVersion = Number.isInteger(p.version) && p.version >= 1;
+        const versionAttr = hasVersion ? ` data-prompt-version="${escapeHtml(p.version)}"` : '';
+        const versionText = hasVersion ? ` v${escapeHtml(p.version)}` : '';
         const protoBadge = p.prototype ? ' <span class="badge badge-warning" style="font-size: 0.65rem; padding: 0.1rem 0.35rem; margin-left: 0.35rem; border-radius: 4px; vertical-align: middle;">🧪 Prototype</span>' : '';
         return `
-                    <div class="prompt-option ${activeClass}" data-action="select-playbook" data-index="${idx}" data-prompt-name="${escapeHtml(p.name)}" data-prompt-title="${escapeHtml(p.title)}">
-                        <span class="prompt-option-title">${escapeHtml(p.title)}${protoBadge}</span>
+                    <div class="prompt-option ${activeClass}" data-action="select-playbook" data-index="${idx}" data-prompt-name="${escapeHtml(p.name)}"${versionAttr}>
+                        <span class="prompt-option-title">${escapeHtml(p.name)}${versionText}${protoBadge}</span>
                         <span class="prompt-option-desc">${escapeHtml(p.description)}</span>
                     </div>
                 `;
@@ -78,12 +81,12 @@ export function clarifyCardActiveMarkup(questionText, options) {
 }
 
 /**
- * The "this playbook may suit your question better" card. `switchTitle` is null when no alternative
+ * The "this playbook may suit your question better" card. `switchName` is null when no alternative
  * playbook was suggested, in which case only the "Send Anyway" action is offered.
  */
-export function preflightCardMarkup(reason, switchName, switchTitle) {
+export function preflightCardMarkup(reason, switchName) {
     const switchButtonHtml = switchName
-        ? `<button type="button" class="btn-preflight-switch" data-action="switch-and-send" data-switch-name="${escapeHtml(switchName)}" data-switch-title="${escapeHtml(switchTitle)}">Switch to ${escapeHtml(switchTitle)}</button>`
+        ? `<button type="button" class="btn-preflight-switch" data-action="switch-and-send" data-switch-name="${escapeHtml(switchName)}">Switch to ${escapeHtml(switchName)}</button>`
         : '';
 
     return `
