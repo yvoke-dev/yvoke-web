@@ -47,5 +47,5 @@ data:
   KG_MODEL: "gemini-3.5-flash-lite"
   SUMMARIZE_MODEL: "gemini-3.5-flash-lite"
   APP_AI_RAG_MAX_ITERATIONS: "20"
-  APP_WEB_SEARCH_ENABLED: "false"
+  APP_WEB_SEARCH_ENABLED: "true"
   APP_WEB_SEARCH_ALLOWED_DOMAINS: "support.oneidentity.com,www.oneidentity.com/community/"
