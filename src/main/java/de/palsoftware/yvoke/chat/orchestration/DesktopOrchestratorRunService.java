@@ -75,16 +75,12 @@ public class DesktopOrchestratorRunService {
 
         int autoSeq = 0;
         for (OrchestratorRunRequest.Step s : steps) {
-            String stepPlaybook =
-                (s.playbookName() != null && !s.playbookName().isBlank()) ? s.playbookName().trim()
-                    : null;
-            Integer effectiveStepVersion = stepPlaybook != null ? s.playbookVersion() : null;
             agentStepRepository.insert(UUID.randomUUID(), runId,
                 s.seq() != null ? s.seq() : autoSeq, s.role() != null ? s.role() : "specialist",
-                zero(s.round()), stepPlaybook, effectiveStepVersion, s.model(), s.thinkingLevel(),
-                s.input(), s.output(), s.messages(), s.verdict(), zero(s.promptTokens()),
-                zero(s.completionTokens()), zero(s.totalTokens()), zero(s.cachedTokens()),
-                zero(s.thoughtTokens()));
+                zero(s.round()), s.playbookName(), s.playbookVersion(), s.model(),
+                s.thinkingLevel(), s.input(), s.output(), s.messages(), s.verdict(),
+                zero(s.promptTokens()), zero(s.completionTokens()), zero(s.totalTokens()),
+                zero(s.cachedTokens()), zero(s.thoughtTokens()));
             autoSeq++;
         }
         log.info("Recorded desktop orchestrator run {} (conversation={}, profile={}, steps={})",

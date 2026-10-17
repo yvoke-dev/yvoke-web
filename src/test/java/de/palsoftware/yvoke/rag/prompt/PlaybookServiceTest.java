@@ -97,7 +97,7 @@ class PlaybookServiceTest {
     @Test
     void testSavePlaybookSuccess() {
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "orchestrator", true, "OIM", null);
+            false, "orchestrator", true, "OIM", null, 1);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "orchestrator", true, "OIM", null, 1);
     }
@@ -107,7 +107,7 @@ class PlaybookServiceTest {
         when(systemPromptService.requirePrompt("custom-prompt", SystemPromptType.CHAT)).thenReturn(
             new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Content", "Desc"));
         playbookService.savePlaybook("new-playbook", "New Playbook", "Desc", "Body", List.of(),
-            false, "specialist", true, "OIM", "custom-prompt");
+            false, "specialist", true, "OIM", "custom-prompt", 1);
         verify(systemPromptService).requirePrompt("custom-prompt", SystemPromptType.CHAT);
         verify(playbookRepository).upsert("new-playbook", "New Playbook", "Desc", "Body", List.of(),
             false, "specialist", true, "OIM", "custom-prompt", 1);
@@ -140,7 +140,7 @@ class PlaybookServiceTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
-                false, "specialist", false, "OIM", "unknown-prompt"));
+                false, "specialist", false, "OIM", "unknown-prompt", 1));
         assertTrue(ex.getMessage().contains("does not exist"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
@@ -154,7 +154,7 @@ class PlaybookServiceTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
-                false, "specialist", false, "OIM", "summarize-prompt"));
+                false, "specialist", false, "OIM", "summarize-prompt", 1));
         assertTrue(ex.getMessage().contains("is of type SUMMARIZE"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
@@ -168,7 +168,7 @@ class PlaybookServiceTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> playbookService.savePlaybook("pb-bad", "Title", "Desc", "Template", List.of(),
-                false, "specialist", false, "OIM", "cross-area-prompt"));
+                false, "specialist", false, "OIM", "cross-area-prompt", 1));
         assertTrue(ex.getMessage().contains("belongs to area 'Finance'"));
         assertTrue(ex.getMessage().contains("playbook belongs to area 'OIM'"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
@@ -181,7 +181,7 @@ class PlaybookServiceTest {
             new SystemPrompt("global-prompt", SystemPromptType.CHAT, "Content", "Desc"));
 
         playbookService.savePlaybook("pb-ok", "Title", "Desc", "Template", List.of(), false,
-            "specialist", false, "OIM", "global-prompt");
+            "specialist", false, "OIM", "global-prompt", 1);
         verify(playbookRepository).upsert("pb-ok", "Title", "Desc", "Template", List.of(), false,
             "specialist", false, "OIM", "global-prompt", 1);
     }
@@ -190,7 +190,7 @@ class PlaybookServiceTest {
     void testSavePlaybookRejectsSystemPromptForOrchestrator() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> playbookService.savePlaybook("pb-orch", "Title", "Desc", "Template", List.of(),
-                false, "orchestrator", false, "OIM", "some-prompt"));
+                false, "orchestrator", false, "OIM", "some-prompt", 1));
         assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
@@ -200,7 +200,7 @@ class PlaybookServiceTest {
     void testSavePlaybookRejectsSystemPromptForReviewer() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> playbookService.savePlaybook("pb-rev", "Title", "Desc", "Template", List.of(),
-                false, "reviewer", false, "OIM", "some-prompt"));
+                false, "reviewer", false, "OIM", "some-prompt", 1));
         assertTrue(ex.getMessage().contains("cannot have a designated system prompt"));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
@@ -387,7 +387,7 @@ class PlaybookServiceTest {
     @Test
     void savePlaybookStoresTheAreasStoredName() {
         playbookService.savePlaybook("pb", "PB", "", "Body", List.of(), false, null, false, " oim ",
-            null);
+            null, 1);
         verify(playbookRepository).upsert("pb", "PB", "", "Body", List.of(), false, "specialist",
             false, "OIM", null, 1);
     }
@@ -396,10 +396,10 @@ class PlaybookServiceTest {
     void savePlaybookRefusesAnUnknownOrMissingArea() {
         IllegalArgumentException unknown =
             assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb",
-                "PB", "", "Body", List.of(), false, null, false, "SAP", null));
+                "PB", "", "Body", List.of(), false, null, false, "SAP", null, 1));
         assertEquals("Area 'SAP' does not exist.", unknown.getMessage());
         assertThrows(IllegalArgumentException.class, () -> playbookService.savePlaybook("pb", "PB",
-            "", "Body", List.of(), false, null, false, null, null));
+            "", "Body", List.of(), false, null, false, null, null, 1));
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
     }
@@ -453,5 +453,94 @@ class PlaybookServiceTest {
             false, "OIM", null, 3);
         verify(playbookRepository).upsert("pb", "PB", "Desc", "Body", List.of(), false,
             "specialist", false, "OIM", null, 3);
+    }
+
+    @Test
+    void importPlaybookFromMarkdown_withoutVersion_preservesExistingPlaybookVersion() {
+        Playbook existingV3 =
+            new Playbook("existing-v3-playbook", "Old Title", "Old Desc", "Old Body", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        when(playbookRepository.findByName("existing-v3-playbook"))
+            .thenReturn(Optional.of(existingV3));
+
+        playbookService.importPlaybookFromMarkdown("""
+            ---
+            name: existing-v3-playbook
+            title: Updated Title
+            ---
+            Updated Body
+            """, "uploaded", "OIM");
+
+        verify(playbookRepository).upsert(eq("existing-v3-playbook"), eq("Updated Title"), any(),
+            eq("Updated Body"), any(), anyBoolean(), any(), anyBoolean(), eq("OIM"), any(), eq(3));
+    }
+
+    @Test
+    void importPlaybookFromMarkdown_withoutVersionForNewPlaybook_defaultsToVersion1() {
+        when(playbookRepository.findByName("brand-new-playbook")).thenReturn(Optional.empty());
+
+        playbookService.importPlaybookFromMarkdown("""
+            ---
+            name: brand-new-playbook
+            title: Brand New
+            ---
+            New Body
+            """, "uploaded", "OIM");
+
+        verify(playbookRepository).upsert(eq("brand-new-playbook"), eq("Brand New"), any(),
+            eq("New Body"), any(), anyBoolean(), any(), anyBoolean(), eq("OIM"), any(), eq(1));
+    }
+
+    @Test
+    void importPlaybookFromMarkdown_withExplicitVersion_overridesExistingPlaybookVersion() {
+        Playbook existingV3 =
+            new Playbook("existing-v3-playbook", "Old Title", "Old Desc", "Old Body", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        when(playbookRepository.findByName("existing-v3-playbook"))
+            .thenReturn(Optional.of(existingV3));
+
+        playbookService.importPlaybookFromMarkdown("""
+            ---
+            name: existing-v3-playbook
+            title: Updated Title
+            version: 4
+            ---
+            Updated Body
+            """, "uploaded", "OIM");
+
+        verify(playbookRepository).upsert(eq("existing-v3-playbook"), eq("Updated Title"), any(),
+            eq("Updated Body"), any(), anyBoolean(), any(), anyBoolean(), eq("OIM"), any(), eq(4));
+    }
+
+    @Test
+    void importPlaybookFromMarkdown_withInvalidVersion_throwsAndNeverUpserts() {
+        Playbook existingV3 =
+            new Playbook("existing-v3-playbook", "Old Title", "Old Desc", "Old Body", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 3);
+        when(playbookRepository.findByName("existing-v3-playbook"))
+            .thenReturn(Optional.of(existingV3));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown("""
+                ---
+                name: existing-v3-playbook
+                title: Updated Title
+                version: 0
+                ---
+                Updated Body
+                """, "uploaded", "OIM"));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> playbookService.importPlaybookFromMarkdown("""
+                ---
+                name: existing-v3-playbook
+                title: Updated Title
+                version: abc
+                ---
+                Updated Body
+                """, "uploaded", "OIM"));
+
+        verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
+            any(), anyBoolean(), any(), any(), anyInt());
     }
 }

@@ -423,7 +423,7 @@ class ChatAsyncControllerTest {
         UUID messageId = UUID.randomUUID();
 
         MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
-            "content", "model", 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
+            "content", "model", "pb-single", 3, 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
         when(chatMessageService.getMessageTrace(conversationId, messageId))
             .thenReturn(Optional.of(trace));
 
@@ -440,6 +440,8 @@ class ChatAsyncControllerTest {
         assertEquals(messageId, dto.messageId());
         assertEquals(conversationId, dto.conversationId());
         assertEquals("done", dto.status());
+        assertEquals("pb-single", dto.playbook());
+        assertEquals(3, dto.playbookVersion());
         assertThat(dto.toolCalls()).isNotNull().isEmpty();
         assertThat(dto.agentRun()).isNull();
         assertThat(dto.steps()).isNull();
@@ -455,7 +457,7 @@ class ChatAsyncControllerTest {
         UUID messageId = UUID.randomUUID();
 
         MessageTrace trace = new MessageTrace("single", messageId, conversationId, "generating", "",
-            "model", null, null, null, null, null, List.of(), List.of(), null, null);
+            "model", null, null, null, null, null, null, null, List.of(), List.of(), null, null);
         when(chatMessageService.getMessageTrace(conversationId, messageId))
             .thenReturn(Optional.of(trace));
 
@@ -520,12 +522,13 @@ class ChatAsyncControllerTest {
 
         AgentRun run = new AgentRun(runId, conversationId, messageId, null, "oim", "done", "{}", 1,
             "approved", 100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
-        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
+        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan", 2,
             "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
             "ok", null);
 
-        MessageTrace trace = new MessageTrace("mas", messageId, conversationId, "done",
-            "mas content", "oim", 100, 200, 300, 40, 50, null, null, run, List.of(step1));
+        MessageTrace trace =
+            new MessageTrace("mas", messageId, conversationId, "done", "mas content", "oim", null,
+                null, 100, 200, 300, 40, 50, null, null, run, List.of(step1));
         when(chatMessageService.getMessageTrace(conversationId, messageId))
             .thenReturn(Optional.of(trace));
 
@@ -550,6 +553,8 @@ class ChatAsyncControllerTest {
         assertEquals(step1.id(), dto.steps().get(0).id());
         assertEquals("orchestrator", dto.steps().get(0).role());
         assertEquals("gpt-4o", dto.steps().get(0).model());
+        assertEquals("plan", dto.steps().get(0).playbookName());
+        assertEquals(2, dto.steps().get(0).playbookVersion());
         assertThat(dto.toolCalls()).isNull();
         verify(chatConversationService).verifyOwnership(conversationId, true);
     }

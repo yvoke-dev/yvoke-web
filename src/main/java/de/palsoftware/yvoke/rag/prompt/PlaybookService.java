@@ -83,15 +83,6 @@ public class PlaybookService {
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area, String systemPrompt) {
-        savePlaybook(name, title, description, templateText, tools, codeExecution, targetAgent,
-            prototype, area, systemPrompt, 1);
-    }
-
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
-    public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
         String area, String systemPrompt, int version) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
@@ -145,7 +136,8 @@ public class PlaybookService {
         condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
     public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName);
+        Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName,
+            resolvedName -> getPlaybook(resolvedName).map(Playbook::version).orElse(1));
         String area =
             parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
         savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),

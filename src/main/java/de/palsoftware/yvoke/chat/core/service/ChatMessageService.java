@@ -483,9 +483,9 @@ public class ChatMessageService {
             RagResult ragResult =
                 ragService.generateAgenticAnswer(buildAgenticRequest(prepared), wrappedSink);
 
-            transactionTemplate.executeWithoutResult(
-                status -> saveAssistantMessage(ragResult, prepared.conversationId(),
-                    assistantMessageId, assistantContent.toString(), prepared.modelToUse()));
+            transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
+                prepared.conversationId(), assistantMessageId, assistantContent.toString(),
+                prepared.playbookName(), prepared.playbookVersion(), prepared.modelToUse()));
 
             // Persist tool-call trace before emitting [DONE] so clients reading the trace
             // immediately upon stream completion observe the persisted tool calls.
@@ -503,9 +503,10 @@ public class ChatMessageService {
 
             transactionTemplate.executeWithoutResult(status -> {
                 Message assistantMessage = new Message(assistantMessageId,
-                    prepared.conversationId(), "assistant", assistantContent.toString(), null,
-                    Collections.emptyList(), Collections.emptyList(), Instant.now(), 0, 0, 0, 0, 0,
-                    "error", prepared.modelToUse());
+                    prepared.conversationId(), "assistant", assistantContent.toString(),
+                    prepared.playbookName(), prepared.playbookVersion(), Collections.emptyList(),
+                    Collections.emptyList(), Instant.now(), 0, 0, 0, 0, 0, "error",
+                    prepared.modelToUse());
                 messageRepository.save(assistantMessage);
             });
 
@@ -541,13 +542,15 @@ public class ChatMessageService {
 
             String content = assistantContent.toString();
             transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
-                prepared.conversationId(), assistantMessageId, content, prepared.modelToUse()));
+                prepared.conversationId(), assistantMessageId, content, prepared.playbookName(),
+                prepared.playbookVersion(), prepared.modelToUse()));
             saveToolCallTrace(ragResult, assistantMessageId);
 
             return new Message(assistantMessageId, prepared.conversationId(), "assistant", content,
-                null, ragResult.retrievedChunkIds(), Collections.emptyList(), Instant.now(),
-                ragResult.promptTokens(), ragResult.completionTokens(), ragResult.totalTokens(),
-                ragResult.cachedTokens(), ragResult.thoughtTokens(), "done", prepared.modelToUse());
+                prepared.playbookName(), prepared.playbookVersion(), ragResult.retrievedChunkIds(),
+                Collections.emptyList(), Instant.now(), ragResult.promptTokens(),
+                ragResult.completionTokens(), ragResult.totalTokens(), ragResult.cachedTokens(),
+                ragResult.thoughtTokens(), "done", prepared.modelToUse());
         } catch (CancellationException e) {
             log.info("Sync generation cancelled by user for conversation: {}",
                 prepared.conversationId());
@@ -558,16 +561,17 @@ public class ChatMessageService {
             String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
 
             transactionTemplate.executeWithoutResult(status -> {
-                Message assistantMessage =
-                    new Message(assistantMessageId, prepared.conversationId(), "assistant",
-                        errorMsg, null, Collections.emptyList(), Collections.emptyList(),
-                        Instant.now(), 0, 0, 0, 0, 0, "error", prepared.modelToUse());
+                Message assistantMessage = new Message(assistantMessageId,
+                    prepared.conversationId(), "assistant", errorMsg, prepared.playbookName(),
+                    prepared.playbookVersion(), Collections.emptyList(), Collections.emptyList(),
+                    Instant.now(), 0, 0, 0, 0, 0, "error", prepared.modelToUse());
                 messageRepository.save(assistantMessage);
             });
 
             return new Message(assistantMessageId, prepared.conversationId(), "assistant", errorMsg,
-                null, Collections.emptyList(), Collections.emptyList(), Instant.now(), 0, 0, 0, 0,
-                0, "error", prepared.modelToUse());
+                prepared.playbookName(), prepared.playbookVersion(), Collections.emptyList(),
+                Collections.emptyList(), Instant.now(), 0, 0, 0, 0, 0, "error",
+                prepared.modelToUse());
         } finally {
             LlmCallContextHolder.clear();
         }
@@ -578,25 +582,13 @@ public class ChatMessageService {
     public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
         String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
         String thinkingLevel, boolean codeExecution, String playbookName,
-        Integer playbookVersion) {
-
-        public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
-            String modelToUse, String systemPrompt, List<LlmMessage> history,
-            List<String> allowedTools, String thinkingLevel, boolean codeExecution,
-            String playbookName) {
-            this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history,
-                allowedTools, thinkingLevel, codeExecution, playbookName, null);
-        }
-    }
+        Integer playbookVersion) {}
 
     private void saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
         String playbookName, Integer playbookVersion) {
-        String normalizedPlaybook =
-            (playbookName != null && !playbookName.isBlank()) ? playbookName.trim() : null;
-        Integer effectivePlaybookVersion = normalizedPlaybook != null ? playbookVersion : null;
-        Message userMessage = new Message(userMessageId, conversationId, "user", userContent,
-            normalizedPlaybook, effectivePlaybookVersion, Collections.emptyList(),
-            Collections.emptyList(), Instant.now());
+        Message userMessage =
+            new Message(userMessageId, conversationId, "user", userContent, playbookName,
+                playbookVersion, Collections.emptyList(), Collections.emptyList(), Instant.now());
         messageRepository.save(userMessage);
 
         long messageCount = messageRepository.countByConversationId(conversationId);
@@ -722,13 +714,15 @@ public class ChatMessageService {
     }
 
     private void saveAssistantMessage(RagResult ragResult, UUID conversationId,
-        UUID assistantMessageId, String content, String modelToUse) {
+        UUID assistantMessageId, String content, String playbookName, Integer playbookVersion,
+        String modelToUse) {
         log.info("ChatService sendMessage stream completed for conversation: {}", conversationId);
 
         Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
-            content, null, ragResult.retrievedChunkIds(), Collections.emptyList(), Instant.now(),
-            ragResult.promptTokens(), ragResult.completionTokens(), ragResult.totalTokens(),
-            ragResult.cachedTokens(), ragResult.thoughtTokens(), "done", modelToUse);
+            content, playbookName, playbookVersion, ragResult.retrievedChunkIds(),
+            Collections.emptyList(), Instant.now(), ragResult.promptTokens(),
+            ragResult.completionTokens(), ragResult.totalTokens(), ragResult.cachedTokens(),
+            ragResult.thoughtTokens(), "done", modelToUse);
         messageRepository.save(assistantMessage);
 
         // LLM usage is accounted for by AccountingLlmClient, one row per actual call.

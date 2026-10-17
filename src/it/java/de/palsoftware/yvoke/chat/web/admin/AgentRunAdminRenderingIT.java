@@ -79,7 +79,7 @@ public class AgentRunAdminRenderingIT {
         agentRunRepository.create(runId, conversationId, "default-profile", Map.of());
         agentRunRepository.finish(runId, null, "done", 1, Map.of("verdict", "approved"), 10, 20, 30,
             0, 0, null);
-        agentStepRepository.insert(UUID.randomUUID(), runId, 0, "orchestrator", 0, "playbook-x",
+        agentStepRepository.insert(UUID.randomUUID(), runId, 0, "orchestrator", 0, "playbook-x", 2,
             "gemini", "high", "step input text", "step output text", Map.of(),
             Map.of("verdict", "approved"), 5, 10, 15, 0, 0);
     }
@@ -101,6 +101,8 @@ public class AgentRunAdminRenderingIT {
     public void agentRunDetailRendersRunAndStepDtos() throws Exception {
         mockMvc.perform(get("/admin/agent-runs/" + runId).with(admin())).andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("orchestrator")))
+            .andExpect(content().string(Matchers.containsString("playbook-x")))
+            .andExpect(content().string(Matchers.containsString("v2")))
             .andExpect(content().string(Matchers.containsString("step output text")));
     }
 
@@ -120,7 +122,7 @@ public class AgentRunAdminRenderingIT {
                 + "provider: status=\"\" message=\"\" raw=\"429 . \"\n"
                 + "retries: Gemini.generateStream failed on attempt 3/3");
         agentStepRepository.insertFailed(UUID.randomUUID(), failedRunId, 1, "specialist", 0,
-            "oim-install-kit", "gemini-3.6-flash", "high", "the sub-question",
+            "oim-install-kit", 2, "gemini-3.6-flash", "high", "the sub-question",
             "partial streamed output", "ClientException: HTTP 429 (rate limit / quota exhausted)");
 
         mockMvc.perform(get("/admin/agent-runs/" + failedRunId).with(admin()))
@@ -155,10 +157,10 @@ public class AgentRunAdminRenderingIT {
      */
     @Test
     public void agentStepsComeBackInSeqOrderWhenRowsWereInsertedOutOfOrder() {
-        agentStepRepository.insert(UUID.randomUUID(), runId, 2, "reviewer", 1, "playbook-review",
+        agentStepRepository.insert(UUID.randomUUID(), runId, 2, "reviewer", 1, "playbook-review", 2,
             "gemini", "high", "reviewer input", "reviewer output", Map.of(),
             Map.of("verdict", "approved"), 1, 2, 3, 0, 0);
-        agentStepRepository.insert(UUID.randomUUID(), runId, 1, "specialist", 0, "playbook-spec",
+        agentStepRepository.insert(UUID.randomUUID(), runId, 1, "specialist", 0, "playbook-spec", 2,
             "gemini", "medium", "specialist input", "specialist output", Map.of(), null, 4, 5, 6, 0,
             0);
 

@@ -1,16 +1,33 @@
 package de.palsoftware.yvoke.rag.prompt;
 
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class PlaybookRepository {
+
+    private static final RowMapper<Playbook> PLAYBOOK_ROW_MAPPER = (rs, rowNum) -> {
+        Timestamp cat = rs.getTimestamp("created_at");
+        Timestamp uat = rs.getTimestamp("updated_at");
+        List<String> tools = JdbcMappers.arrayToStringList(rs, "tools");
+        String targetAgent = rs.getString("target_agent");
+        if (targetAgent == null || targetAgent.isBlank()) {
+            targetAgent = "specialist";
+        }
+        int version = rs.getInt("version");
+        return new Playbook(rs.getString("name"), rs.getString("title"),
+            rs.getString("description"), rs.getString("template_text"), tools,
+            rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
+            cat != null ? cat.toInstant() : Instant.now(),
+            uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
+            rs.getString("system_prompt"), version >= 1 ? version : 1);
+    };
 
     private final JdbcClient jdbcClient;
 
@@ -21,50 +38,13 @@ public class PlaybookRepository {
     public List<Playbook> findAll() {
         return jdbcClient.sql(
             "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks ORDER BY name ASC")
-            .query((rs, rowNum) -> {
-                Timestamp cat = rs.getTimestamp("created_at");
-                Timestamp uat = rs.getTimestamp("updated_at");
-                List<String> tools = JdbcMappers.arrayToStringList(rs, "tools");
-                String targetAgent = rs.getString("target_agent");
-                if (targetAgent == null || targetAgent.isBlank()) {
-                    targetAgent = "specialist";
-                }
-                int version = rs.getInt("version");
-                return new Playbook(rs.getString("name"), rs.getString("title"),
-                    rs.getString("description"), rs.getString("template_text"), tools,
-                    rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
-                    cat != null ? cat.toInstant() : Instant.now(),
-                    uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
-                    rs.getString("system_prompt"), version >= 1 ? version : 1);
-            }).list();
+            .query(PLAYBOOK_ROW_MAPPER).list();
     }
 
     public Optional<Playbook> findByName(String name) {
         return jdbcClient.sql(
             "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks WHERE name = :name")
-            .param("name", name).query((rs, rowNum) -> {
-                Timestamp cat = rs.getTimestamp("created_at");
-                Timestamp uat = rs.getTimestamp("updated_at");
-                List<String> tools = JdbcMappers.arrayToStringList(rs, "tools");
-                String targetAgent = rs.getString("target_agent");
-                if (targetAgent == null || targetAgent.isBlank()) {
-                    targetAgent = "specialist";
-                }
-                int version = rs.getInt("version");
-                return new Playbook(rs.getString("name"), rs.getString("title"),
-                    rs.getString("description"), rs.getString("template_text"), tools,
-                    rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
-                    cat != null ? cat.toInstant() : Instant.now(),
-                    uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
-                    rs.getString("system_prompt"), version >= 1 ? version : 1);
-            }).optional();
-    }
-
-    public void upsert(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area, String systemPrompt) {
-        upsert(name, title, description, templateText, tools, codeExecution, targetAgent, prototype,
-            area, systemPrompt, 1);
+            .param("name", name).query(PLAYBOOK_ROW_MAPPER).optional();
     }
 
     public void upsert(String name, String title, String description, String templateText,

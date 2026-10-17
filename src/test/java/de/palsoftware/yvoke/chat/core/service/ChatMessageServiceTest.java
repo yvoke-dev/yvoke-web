@@ -2254,7 +2254,7 @@ public class ChatMessageServiceTest {
         UUID convId = UUID.randomUUID();
         UUID msgId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
-        Message msg = new Message(msgId, convId, "assistant", "Single answer", null,
+        Message msg = new Message(msgId, convId, "assistant", "Single answer", "pb-single", 3,
             List.of(chunkId), List.of(), Instant.now(), 10, 20, 30, 4, 5, "done", "gpt-4o");
         when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
         when(agentRunRepository.findByMessageId(msgId)).thenReturn(Optional.empty());
@@ -2273,6 +2273,8 @@ public class ChatMessageServiceTest {
         assertThat(trace.status()).isEqualTo("done");
         assertThat(trace.content()).isEqualTo("Single answer");
         assertThat(trace.model()).isEqualTo("gpt-4o");
+        assertThat(trace.playbook()).isEqualTo("pb-single");
+        assertThat(trace.playbookVersion()).isEqualTo(3);
         assertThat(trace.promptTokens()).isEqualTo(10);
         assertThat(trace.completionTokens()).isEqualTo(20);
         assertThat(trace.totalTokens()).isEqualTo(30);
@@ -2293,7 +2295,7 @@ public class ChatMessageServiceTest {
             List.of(), Instant.now(), null, null, null, null, null, "done", "oim");
         AgentRun run = new AgentRun(runId, convId, msgId, null, "oim", "done", "{}", 1, "approved",
             100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
-        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan",
+        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan", 2,
             "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
             "ok", null);
         when(messageRepository.findById(msgId)).thenReturn(Optional.of(msg));
@@ -2627,5 +2629,80 @@ public class ChatMessageServiceTest {
             assertThat(msg.playbook()).isNull();
             assertThat(msg.playbookVersion()).isNull();
         });
+    }
+
+    @Test
+    void stream_and_generateSync_stampPlaybookAndVersionOnAssistantMessage_inSuccessAndErrorPaths() {
+        UUID convId = UUID.randomUUID();
+        UUID userMsgId = UUID.randomUUID();
+        ChatMessageService.PreparedChat prepared =
+            new ChatMessageService.PreparedChat(convId, userMsgId, "Query", "gpt-4o", "sys",
+                List.of(), List.of(), "medium", false, "pb-stream", 4);
+
+        RagResult ragResult =
+            new RagResult(List.of(), List.of(), null, List.of(), 10, 20, 30, 0, 0);
+        when(ragService.generateAgenticAnswer(any(AgenticRequest.class), any()))
+            .thenReturn(ragResult);
+
+        UUID streamAsstId = UUID.randomUUID();
+        chatMessageService.stream(prepared, streamAsstId, token -> {
+        });
+
+        UUID syncAsstId = UUID.randomUUID();
+        Message syncReturned = chatMessageService.generateSync(prepared, syncAsstId);
+        assertThat(syncReturned.playbook()).isEqualTo("pb-stream");
+        assertThat(syncReturned.playbookVersion()).isEqualTo(4);
+
+        when(ragService.generateAgenticAnswer(any(AgenticRequest.class), any()))
+            .thenThrow(new RuntimeException("boom"));
+
+        UUID streamErrId = UUID.randomUUID();
+        chatMessageService.stream(prepared, streamErrId, token -> {
+        });
+
+        UUID syncErrId = UUID.randomUUID();
+        Message syncErrReturned = chatMessageService.generateSync(prepared, syncErrId);
+        assertThat(syncErrReturned.playbook()).isEqualTo("pb-stream");
+        assertThat(syncErrReturned.playbookVersion()).isEqualTo(4);
+
+        ArgumentCaptor<Message> saved = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository, times(4)).save(saved.capture());
+        assertThat(saved.getAllValues()).allSatisfy(m -> {
+            assertThat(m.playbook()).isEqualTo("pb-stream");
+            assertThat(m.playbookVersion()).isEqualTo(4);
+        });
+    }
+
+    @Test
+    void messageAndAgentStepCompactConstructors_enforcePlaybookAndVersionInvariants() {
+        UUID id = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        Instant now = Instant.now();
+
+        Message trimmedMsg =
+            new Message(id, convId, "user", "hi", "  pb  ", 2, List.of(), List.of(), now);
+        assertThat(trimmedMsg.playbook()).isEqualTo("pb");
+        assertThat(trimmedMsg.playbookVersion()).isEqualTo(2);
+
+        Message blankMsg =
+            new Message(id, convId, "user", "hi", "   ", 2, List.of(), List.of(), now);
+        assertThat(blankMsg.playbook()).isNull();
+        assertThat(blankMsg.playbookVersion()).isNull();
+
+        AgentStep blankStep = new AgentStep(id, convId, 0, "specialist", 0, "   ", 2, "gpt-4o",
+            "medium", "in", "out", "[]", null, 1, 1, 2, 0, 0, now, "ok", null);
+        assertThat(blankStep.playbookName()).isNull();
+        assertThat(blankStep.playbookVersion()).isNull();
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new Message(id, convId, "user", "hi", "pb", 0, List.of(), List.of(), now));
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new Message(id, convId, "user", "hi", null, 0, List.of(), List.of(), now));
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new AgentStep(id, convId, 0, "specialist", 0, "pb", 0, "gpt-4o", "medium", "in",
+                "out", "[]", null, 1, 1, 2, 0, 0, now, "ok", null));
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new AgentStep(id, convId, 0, "specialist", 0, "   ", -1, "gpt-4o", "medium", "in",
+                "out", "[]", null, 1, 1, 2, 0, 0, now, "ok", null));
     }
 }

@@ -32,9 +32,9 @@ public final class AgentRunAdminViews {
         Instant startedAt, Instant finishedAt) {}
 
     /** One step within a run (admin/agent-run-detail). */
-    public record StepView(String role, int seq, int round, String playbookName, String model,
-        String thinkingLevel, String verdict, String input, String output, String messages,
-        Integer totalTokens, String status, String error) {}
+    public record StepView(String role, int seq, int round, String playbookName,
+        Integer playbookVersion, String model, String thinkingLevel, String verdict, String input,
+        String output, String messages, Integer totalTokens, String status, String error) {}
 
     /** Everything the run-detail page renders. */
     public record RunDetailPage(RunDetail run, List<StepView> steps) {}

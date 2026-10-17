@@ -26,15 +26,6 @@ public class AgentStepRepository {
     }
 
     public void insert(UUID id, UUID agentRunId, int seq, String role, int round,
-        String playbookName, String model, String thinkingLevel, String input, String output,
-        Object messages, Object verdict, int promptTokens, int completionTokens, int totalTokens,
-        int cachedTokens, int thoughtTokens) {
-        insert(id, agentRunId, seq, role, round, playbookName, null, model, thinkingLevel, input,
-            output, messages, verdict, promptTokens, completionTokens, totalTokens, cachedTokens,
-            thoughtTokens);
-    }
-
-    public void insert(UUID id, UUID agentRunId, int seq, String role, int round,
         String playbookName, Integer playbookVersion, String model, String thinkingLevel,
         String input, String output, Object messages, Object verdict, int promptTokens,
         int completionTokens, int totalTokens, int cachedTokens, int thoughtTokens) {
@@ -51,13 +42,6 @@ public class AgentStepRepository {
      * path has several callers and none of them should have to name a status.
      */
     public void insertFailed(UUID id, UUID agentRunId, int seq, String role, int round,
-        String playbookName, String model, String thinkingLevel, String input, String partialOutput,
-        String error) {
-        insertFailed(id, agentRunId, seq, role, round, playbookName, null, model, thinkingLevel,
-            input, partialOutput, error);
-    }
-
-    public void insertFailed(UUID id, UUID agentRunId, int seq, String role, int round,
         String playbookName, Integer playbookVersion, String model, String thinkingLevel,
         String input, String partialOutput, String error) {
         insertStep(id, agentRunId, seq, role, round, playbookName, playbookVersion, model,
@@ -69,6 +53,12 @@ public class AgentStepRepository {
         String input, String output, Object messages, Object verdict, int promptTokens,
         int completionTokens, int totalTokens, int cachedTokens, int thoughtTokens, String status,
         String error) {
+        if (playbookVersion != null && playbookVersion < 1) {
+            throw new IllegalArgumentException("playbookVersion must be >= 1");
+        }
+        String normalizedPlaybook =
+            (playbookName != null && !playbookName.isBlank()) ? playbookName.trim() : null;
+        Integer effectiveVersion = normalizedPlaybook != null ? playbookVersion : null;
         String sql =
             """
                 INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version, model,
@@ -79,8 +69,8 @@ public class AgentStepRepository {
                     :totalTokens, :cachedTokens, :thoughtTokens, :status, :error, CURRENT_TIMESTAMP)
                 """;
         jdbcClient.sql(sql).param("id", id).param("agentRunId", agentRunId).param("seq", seq)
-            .param("role", role).param("round", round).param("playbookName", playbookName)
-            .param("playbookVersion", playbookVersion).param("model", model)
+            .param("role", role).param("round", round).param("playbookName", normalizedPlaybook)
+            .param("playbookVersion", effectiveVersion).param("model", model)
             .param("thinkingLevel", thinkingLevel).param("input", input).param("output", output)
             .param("messages", toJson(messages)).param("verdict", toJson(verdict))
             .param("promptTokens", promptTokens).param("completionTokens", completionTokens)

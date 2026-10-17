@@ -9,7 +9,9 @@ UPDATE playbooks
    SET version = 2;
 
 ALTER TABLE messages
-    ADD COLUMN playbook_version INTEGER;
+    ADD COLUMN playbook_version INTEGER
+    CONSTRAINT ck_messages_playbook_version_positive
+        CHECK (playbook_version IS NULL OR (playbook IS NOT NULL AND btrim(playbook) <> '' AND playbook_version >= 1));
 
 UPDATE messages
    SET playbook_version = 1
@@ -17,7 +19,9 @@ UPDATE messages
    AND btrim(playbook) <> '';
 
 ALTER TABLE agent_steps
-    ADD COLUMN playbook_version INTEGER;
+    ADD COLUMN playbook_version INTEGER
+    CONSTRAINT ck_agent_steps_playbook_version_positive
+        CHECK (playbook_version IS NULL OR (playbook_name IS NOT NULL AND btrim(playbook_name) <> '' AND playbook_version >= 1));
 
 UPDATE agent_steps
    SET playbook_version = 1

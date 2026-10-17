@@ -53,9 +53,9 @@ public class AgentRunAdminViewService {
     }
 
     private static StepView toStepView(AgentStep s) {
-        return new StepView(s.role(), s.seq(), s.round(), s.playbookName(), s.model(),
-            s.thinkingLevel(), s.verdict(), s.input(), s.output(), s.messages(), s.totalTokens(),
-            s.status(), s.error());
+        return new StepView(s.role(), s.seq(), s.round(), s.playbookName(), s.playbookVersion(),
+            s.model(), s.thinkingLevel(), s.verdict(), s.input(), s.output(), s.messages(),
+            s.totalTokens(), s.status(), s.error());
     }
 
     /** Derived here rather than in Thymeleaf, which has no clean way to take a first line. */

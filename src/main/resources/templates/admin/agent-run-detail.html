@@ -61,6 +61,7 @@
                           th:classappend="${step.role == 'orchestrator' ? 'badge-info' : (step.role == 'reviewer' ? 'badge-success' : 'badge-muted')}"
                           th:text="${step.seq + '. ' + step.role}"></span>
                     <span th:if="${step.playbookName != null}" class="mono-text" th:text="${step.playbookName}" style="margin-left: .5rem;"></span>
+                    <span th:if="${step.playbookName != null and step.playbookVersion != null}" class="badge badge-muted mono-text" th:text="${'v' + step.playbookVersion}" style="margin-left: .25rem;"></span>
                     <span th:if="${step.status == 'failed'}" class="badge badge-danger" style="margin-left: .5rem;">failed</span>
                 </h2>
                 <p class="page-subtitle">

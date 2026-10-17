@@ -274,7 +274,7 @@
                                 </a>
 
                                 <!-- Edit Button -->
-                                <button type="button" class="btn btn-secondary" 
+                                <button type="button" class="btn btn-secondary edit-playbook-btn" 
                                         th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-version=${playbook.version}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}, data-system-prompt=${playbook.systemPrompt}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
@@ -534,7 +534,8 @@
                 let name = nameWithoutExt;
                 let title = nameWithoutExt;
                 let description = '';
-                let version = 1;
+                let version = null;
+                let hasExplicitVersion = false;
                 let targetAgent = 'specialist';
                 let tools = [];
                 let codeExecution = false;
@@ -565,8 +566,15 @@
                                 inTools = false;
                             } else if (trimmed.startsWith('version:')) {
                                 const valStr = trimmed.substring(8).trim().replace(/^['"]|['"]$/g, '');
-                                const parsedVer = parseInt(valStr, 10);
-                                version = (!isNaN(parsedVer) && parsedVer >= 1) ? parsedVer : 1;
+                                if (valStr.length > 0) {
+                                    if (!/^[1-9]\d*$/.test(valStr)) {
+                                        alert('Invalid playbook version "' + valStr + '": version must be a positive integer (>= 1).');
+                                        fileInput.value = '';
+                                        return;
+                                    }
+                                    version = parseInt(valStr, 10);
+                                    hasExplicitVersion = true;
+                                }
                                 inTools = false;
                             } else if (trimmed.startsWith('target_agent:') || trimmed.startsWith('targetAgent:') || trimmed.startsWith('role:')) {
                                 const colonIdx = trimmed.indexOf(':');
@@ -614,6 +622,11 @@
                 document.getElementById('title').readOnly = false;
                 document.getElementById('description').value = description;
                 document.getElementById('description').readOnly = false;
+                if (!hasExplicitVersion) {
+                    const existingBtn = Array.from(document.querySelectorAll('.edit-playbook-btn[data-version]'))
+                        .find(btn => btn.getAttribute('data-name') === name);
+                    version = existingBtn ? (parseInt(existingBtn.getAttribute('data-version'), 10) || 1) : 1;
+                }
                 document.getElementById('version').value = version;
                 document.getElementById('version').readOnly = false;
                 

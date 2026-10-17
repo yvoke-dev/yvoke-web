@@ -163,7 +163,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch releaseCall = new CountDownLatch(1);
@@ -387,7 +387,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
 
         String userBOid = "user-b-async-test-oid";
         userRepository.upsert(userBOid, "user-b-async@local", "User B");
@@ -433,7 +433,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
         playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
@@ -548,7 +548,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch cancellationHandled = new CountDownLatch(1);
@@ -629,7 +629,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("failure-playbook", "Failure Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         doAnswer(inv -> {
             throw new IllegalStateException("simulated provider fault");
@@ -786,7 +786,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
 
         // 1. Insert a user message
         UUID userMsgId = UUID.randomUUID();
@@ -873,7 +873,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
@@ -923,9 +923,9 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-1", "Playbook 1", "Desc", "Template 1", List.of(),
-            false, "specialist", false, "OIM", null);
+            false, "specialist", false, "OIM", null, 1);
         playbookService.savePlaybook("pb-lock-2", "Playbook 2", "Desc", "Template 2", List.of(),
-            false, "specialist", false, "OIM", null);
+            false, "specialist", false, "OIM", null, 1);
 
         try {
             doAnswer(inv -> {
@@ -988,9 +988,9 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-past100", "Lock Past 100", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
         playbookService.savePlaybook("pb-lock-other", "Lock Other", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         try {
             // Populate 100 messages without playbook (e.g. desktop synced)
@@ -1047,7 +1047,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-to-delete", "To Delete", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         try {
             doAnswer(inv -> {
@@ -1102,7 +1102,7 @@ public class ChatAsyncControllerIT {
 
         try {
             playbookService.savePlaybook("pb-assemble", "Assemble Playbook", "Desc",
-                "Special Playbook Instructions", List.of(), false, "specialist", false, "OIM", null);
+                "Special Playbook Instructions", List.of(), false, "specialist", false, "OIM", null, 1);
 
             ArgumentCaptor<LlmRequest> reqCaptor = ArgumentCaptor.forClass(LlmRequest.class);
             doAnswer(inv -> {
@@ -1172,7 +1172,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-orch", "Lock Orch PB", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null);
+            List.of(), false, "specialist", false, "OIM", null, 1);
 
         try {
             doAnswer(inv -> {

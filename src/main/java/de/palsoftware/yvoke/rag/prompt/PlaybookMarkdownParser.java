@@ -3,14 +3,20 @@ package de.palsoftware.yvoke.rag.prompt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ToIntFunction;
 import org.yaml.snakeyaml.Yaml;
 
 public class PlaybookMarkdownParser {
 
     private PlaybookMarkdownParser() {}
 
-    @SuppressWarnings("unchecked")
     public static Playbook parseMarkdown(String mdContent, String fallbackName) {
+        return parseMarkdown(mdContent, fallbackName, ignored -> 1);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Playbook parseMarkdown(String mdContent, String fallbackName,
+        ToIntFunction<String> defaultVersionForName) {
         if (mdContent == null) {
             mdContent = "";
         }
@@ -123,7 +129,11 @@ public class PlaybookMarkdownParser {
                 "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
         }
 
-        int version = hasVersion ? parseVersionValue(rawVersion) : 1;
+        boolean versionOmittedOrBlank =
+            !hasVersion || (rawVersion instanceof String s && s.trim().isEmpty());
+        int version = versionOmittedOrBlank
+            ? (defaultVersionForName != null ? defaultVersionForName.applyAsInt(name) : 1)
+            : parseVersionValue(rawVersion);
 
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
             prototype, null, null, false, area, systemPrompt, version);
