@@ -155,6 +155,7 @@ public class ChatController {
         model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
         model.addAttribute("prompts", playbookService.listSpecializedPlaybooks());
+        model.addAttribute("defaultPlaybooks", playbookService.listDefaultPlaybookNames());
         model.addAttribute("isReadOnly", isReadOnly);
         model.addAttribute("playbookValidationEnabled",
             chatConversationService.isPlaybookValidationEnabled());

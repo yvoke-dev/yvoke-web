@@ -13,6 +13,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,6 +58,12 @@ public class PlaybookValidationController {
         Conversation conversation = chatConversationService.verifyOwnership(id, false);
 
         try {
+            Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
+            if (promptName != null && !promptName.isBlank() && defaultPlaybooks.stream()
+                .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
+                return new ValidationResponse(true, "", null);
+            }
+
             LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
                 "playbook_validator", "validator");
             boolean showPrototypes = false;
@@ -71,7 +78,10 @@ public class PlaybookValidationController {
             }
             boolean finalShowPrototypes = showPrototypes;
             List<Playbook> playbooks = playbookService.listSpecializedPlaybooks().stream()
-                .filter(p -> finalShowPrototypes || !p.prototype()).toList();
+                .filter(p -> finalShowPrototypes || !p.prototype())
+                .filter(
+                    p -> defaultPlaybooks.stream().noneMatch(dp -> dp.equalsIgnoreCase(p.name())))
+                .toList();
 
             String stored = null;
             if (conversation.settings() != null) {
@@ -141,6 +151,9 @@ public class PlaybookValidationController {
 
             String suggested = validationResponse.suggestedPlaybookName();
             if (suggested != null && !suggested.isBlank()) {
+                if (promptName != null && suggested.trim().equalsIgnoreCase(promptName.trim())) {
+                    return new ValidationResponse(true, "", null);
+                }
                 boolean exists = playbooks.stream().anyMatch(p -> p.name().equals(suggested));
                 if (!exists) {
                     validationResponse = new ValidationResponse(validationResponse.plausible(),

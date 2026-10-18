@@ -25,7 +25,18 @@ public final class TestAreas {
         return new AreaService(repository);
     }
 
+    public static AreaService withAreaObjects(Area... areas) {
+        AreaRepository repository = mock(AreaRepository.class);
+        when(repository.findAll()).thenReturn(Arrays.asList(areas));
+        when(repository.findAllNames()).thenReturn(Arrays.stream(areas).map(Area::name).toList());
+        return new AreaService(repository);
+    }
+
     public static Area area(String name) {
         return new Area(name, name, null, false, null, null, null, null, null);
+    }
+
+    public static Area areaWithDefaultPlaybook(String name, String defaultPlaybook) {
+        return new Area(name, name, null, false, null, defaultPlaybook, null, null, null);
     }
 }

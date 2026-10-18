@@ -35,6 +35,10 @@ in-depth profiles, and can inspect any search or trace.
   tested without cluttering standard workflows. The flag governs discovery only: a prototype profile that
   is already selected resolves and runs exactly like any other, and both chat clients read the flag from
   the same one setting the user controls.
+- **Configured default playbooks are exempt from preflight validation.** When a user selects a knowledge area's
+  configured default playbook (such as `oim-full`), preflight validation is skipped and the question is sent
+  directly. Default playbooks are also excluded from the candidate list passed to the validator, and if the
+  validator suggests the playbook that is already selected, the selection is treated as valid without warning.
 - **If a knowledge area holds several versions, a search must name one.** An unversioned search, or one
   naming a version the area does not offer, is refused rather than answered from the wrong version.
 - **A playbook's tool list is exact, and selecting nothing means nothing.** A playbook saved with no tools

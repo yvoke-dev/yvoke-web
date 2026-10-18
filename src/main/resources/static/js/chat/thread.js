@@ -53,6 +53,9 @@ import { createSseAccumulator } from './sse-accumulator.js';
         let isPlaybookLocked = !!CHAT_CONFIG.isPlaybookLocked;
         let isModeLocked = !!CHAT_CONFIG.isModeLocked || isPlaybookLocked;
         let activePlaybookName = CHAT_CONFIG.lockedPlaybookName || null;
+        const defaultPlaybooks = Array.isArray(CHAT_CONFIG.defaultPlaybooks)
+            ? CHAT_CONFIG.defaultPlaybooks.map(p => String(p).toLowerCase().trim())
+            : [];
 
         // --- Assistant "thinking" loader (MNT-16: one source for the placeholder markup + rotation,
         //     previously copy-pasted across the sync / streaming / resume paths) ---
@@ -1548,7 +1551,8 @@ import { createSseAccumulator } from './sse-accumulator.js';
 
                 const isFirstMessage = messagesContainer.querySelectorAll('.message-row:not(#prompt-chips)').length === 0;
                 const validationEnabled = CHAT_CONFIG.playbookValidationEnabled;
-                if (isFirstMessage && validationEnabled && !bypassPreflight) {
+                const isDefault = activePlaybookName && defaultPlaybooks.includes(activePlaybookName.toLowerCase().trim());
+                if (isFirstMessage && validationEnabled && !bypassPreflight && !isDefault) {
                     runPreflightValidation(content, activePlaybookName);
                     return;
                 }

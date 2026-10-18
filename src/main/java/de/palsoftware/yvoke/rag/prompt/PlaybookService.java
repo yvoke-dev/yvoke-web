@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -66,6 +69,11 @@ public class PlaybookService {
 
     public List<Playbook> listSpecializedPlaybooks() {
         return listAllPlaybooks().stream().filter(Playbook::isSpecialist).toList();
+    }
+
+    public Set<String> listDefaultPlaybookNames() {
+        return areaService.listAreas().stream().map(Area::defaultPlaybook).filter(Objects::nonNull)
+            .filter(name -> !name.isBlank()).map(String::trim).collect(Collectors.toSet());
     }
 
     @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
