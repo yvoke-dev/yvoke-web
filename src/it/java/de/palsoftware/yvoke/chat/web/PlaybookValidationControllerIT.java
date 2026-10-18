@@ -172,6 +172,58 @@ public class PlaybookValidationControllerIT {
             .andExpect(jsonPath("$.suggestedPlaybookName").value("suggested-playbook"));
     }
 
+    @Test
+    public void testValidatePlaybookDefaultPlaybookIsExempt() throws Exception {
+        String userAOid = "user-a-validate-test-oid";
+        userRepository.upsert(userAOid, "user-a-test@local", "User A");
+        setSecurityContext(userAOid, "user-a-test@local", "User A");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        var login = testUserLogin(userAOid, "user-a-test@local", "User A");
+
+        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
+                .with(login)
+                .with(csrf())
+                .param("content", "How do I query database?")
+                .param("promptName", "oim-full"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(jsonPath("$.reason").value(""))
+            .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
+
+        verify(llmClient, never()).generate(any(LlmRequest.class));
+    }
+
+    @Test
+    public void testValidatePlaybookSuggestedMatchesSelectedPasses() throws Exception {
+        String userAOid = "user-a-validate-test-oid";
+        userRepository.upsert(userAOid, "user-a-test@local", "User A");
+        setSecurityContext(userAOid, "user-a-test@local", "User A");
+
+        Conversation conv = chatConversationService.createConversation();
+        conversationsToDelete.add(conv.id());
+
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+
+        when(llmClient.generate(any(LlmRequest.class)))
+            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Synchronization issues are handled here.\", \"suggestedPlaybookName\": \"correct-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
+
+        var login = testUserLogin(userAOid, "user-a-test@local", "User A");
+
+        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
+                .with(login)
+                .with(csrf())
+                .param("content", "How do I query database?")
+                .param("promptName", "correct-playbook"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(jsonPath("$.reason").value(""))
+            .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
+    }
+
+
     /**
      * The blank-content rejection sits BEFORE the try, and that position is the entire rule. The
      * body of this handler is deliberately fail-open: every exception is logged and answered with

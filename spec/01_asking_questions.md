@@ -44,6 +44,10 @@ a register of everyone's conversations.
   in depth. A deployment whose only profiles are hidden prototypes shows no profile selector at all.
 - **A playbook is mandatory.** Without one the input shakes, a warning appears, and nothing is sent. The
   server refuses it too. In-depth mode is the only exception; it hides the playbook picker entirely.
+- **Default playbooks are exempt from preflight validation checks.** When the conversation starts with an
+  area's default playbook (such as `oim-full`), the preflight check is skipped and the question sends immediately.
+  Furthermore, if the validator recommends the very playbook that the user already selected, the preflight
+  check succeeds immediately as valid rather than displaying a redundant recommendation card.
 - **The mode and playbook/profile are chosen on the first question and locked for the conversation.** Once a
   message has been sent, neither the mode (single-playbook vs in-depth multi-agent) nor the playbook/profile
   can be changed. The mode selector is disabled. In single-playbook mode, the playbook selection button (**+**),

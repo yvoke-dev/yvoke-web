@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -562,6 +563,23 @@ class PlaybookServiceTest {
 
         verify(playbookRepository, never()).upsert(any(), any(), any(), any(), any(), anyBoolean(),
             any(), anyBoolean(), any(), any(), anyInt());
+    }
+
+    @Test
+    void defaultPlaybookQueriesReflectAreaDefaults() {
+        PlaybookService service = new PlaybookService(playbookRepository, mcpSyncServer,
+            TestAreas.withAreaObjects(TestAreas.areaWithDefaultPlaybook("OIM", "oim-full"),
+                TestAreas.areaWithDefaultPlaybook("Ping", "ping-full"),
+                TestAreas.area("NoDefault")),
+            systemPromptService);
+
+        assertEquals(Set.of("oim-full", "ping-full"), service.listDefaultPlaybookNames());
+        assertTrue(service.isDefaultPlaybook("oim-full"));
+        assertTrue(service.isDefaultPlaybook("OIM-FULL"));
+        assertTrue(service.isDefaultPlaybook(" ping-full "));
+        assertFalse(service.isDefaultPlaybook("oim-field-qa"));
+        assertFalse(service.isDefaultPlaybook(""));
+        assertFalse(service.isDefaultPlaybook(null));
     }
 }
 
