@@ -33,7 +33,7 @@ const CODE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>|<code\\b[\\s\\S]*?<\\/code>';
 const PRE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>';
 
 /** A fenced code block in RAW markdown, before marked has run. */
-const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
+export const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
 
 /**
  * A whole line that is a GFM table row (or its `|---|---|` delimiter): pipe-delimited, opening and
@@ -60,7 +60,7 @@ export const NUMBERED_REF =
  * Applies `fn` to every part of `text` that lies OUTSIDE the regions matched by `regionSource`,
  * leaving those regions byte-identical. Returns the reassembled string.
  */
-function mapOutsideRegions(text, regionSource, fn) {
+export function mapOutsideRegions(text, regionSource, fn) {
     const re = new RegExp(regionSource, 'g');
     let out = '';
     let last = 0;

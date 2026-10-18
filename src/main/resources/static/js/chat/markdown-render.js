@@ -13,8 +13,10 @@
  */
 
 import {
+    MD_FENCE,
     mapOutsideFences,
     mapOutsidePre,
+    mapOutsideRegions,
     normalizeSpacing,
     protectTokens,
     restoreTokens,
@@ -54,6 +56,14 @@ export function installCodeRenderer(marked) {
             // mid-sentence) must NOT be wrapped, which is what token.block separates.
             html(token) {
                 const text = typeof token === 'string' ? token : (token.text || token.raw || '');
+                const trimmed = text.trim();
+
+                // HTML comments are dropped — otherwise block-level comments like
+                // <!-- topic: ... --> in ingested manuals get wrapped in <pre><code> code blocks.
+                if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) {
+                    return '';
+                }
+
                 return token && token.block
                     ? `<pre><code>${escapeHtml(text)}</code></pre>`
                     : escapeHtml(text);
@@ -85,6 +95,25 @@ export function installCodeRenderer(marked) {
 export function forceToolCallNewlines(text) {
     return mapOutsideFences(text, function (segment) {
         return segment.replace(/([^\n])\s*(🔧\s*\*?Calling\s+tool)/gi, '$1\n\n$2');
+    });
+}
+
+/** An inline code span in raw markdown. */
+const MD_CODE_SPAN = '`+[^`]+`+';
+
+/** Fenced code blocks and inline code spans in raw markdown. */
+const MD_CODE_REGIONS = `${MD_FENCE}|${MD_CODE_SPAN}`;
+
+/** Matches empty anchor tags with an id or name (e.g. <a id="topic-..."></a>). */
+const EMPTY_ANCHOR = /<a\b[^>]*\s(?:id|name)\s*=[^>]*(?:>\s*<\/a>|\s*\/>)/gi;
+
+/**
+ * Drops empty anchor bookmark tags outside code fences and inline code spans so they do not
+ * escape into visible text.
+ */
+export function stripEmptyAnchorBookmarks(text) {
+    return mapOutsideRegions(text, MD_CODE_REGIONS, function (segment) {
+        return segment.replace(EMPTY_ANCHOR, '');
     });
 }
 
@@ -222,6 +251,7 @@ export function renderMarkdown(text, isStreaming, deps) {
 
     let source = normalizeThinkTags(text, isStreaming);
     source = forceToolCallNewlines(source);
+    source = stripEmptyAnchorBookmarks(source);
     source = normalizeSpacing(source);
 
     // No unwrapBacktickedCitations() call here: it is protectTokens' own first step, because the
