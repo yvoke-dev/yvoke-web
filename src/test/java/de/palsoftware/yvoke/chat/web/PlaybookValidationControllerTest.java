@@ -20,11 +20,13 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.security.access.AccessDeniedException;
 
 class PlaybookValidationControllerTest {
 
@@ -55,10 +57,10 @@ class PlaybookValidationControllerTest {
 
     @Test
     void defaultPlaybookIsExemptFromValidationAndDoesNotCallLlm() {
-        when(playbookService.isDefaultPlaybook("oim-full")).thenReturn(true);
+        when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
 
         ValidationResponse response = controller.validatePlaybook(convId,
-            "ADS sync marks all ADSAccount objects as outstanding — why?", "oim-full");
+            "ADS sync marks all ADSAccount objects as outstanding — why?", " OIM-FULL ");
 
         assertThat(response.plausible()).isTrue();
         assertThat(response.reason()).isEmpty();
@@ -67,8 +69,18 @@ class PlaybookValidationControllerTest {
     }
 
     @Test
+    void defaultPlaybookExemptionStillEnforcesConversationOwnership() {
+        when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
+        when(chatConversationService.verifyOwnership(convId, false))
+            .thenThrow(new AccessDeniedException("Forbidden"));
+
+        assertThatThrownBy(() -> controller.validatePlaybook(convId, "Question", "oim-full"))
+            .isInstanceOf(AccessDeniedException.class);
+        verify(llmClient, never()).generate(any(LlmRequest.class));
+    }
+
+    @Test
     void candidatePlaybooksExcludeDefaultPlaybooksFromPrompt() {
-        when(playbookService.isDefaultPlaybook("oim-field-qa")).thenReturn(false);
         when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
 
         Playbook full = new Playbook("oim-full", "OIM Full", "Everything", "tmpl", List.of(), false,
@@ -100,7 +112,6 @@ class PlaybookValidationControllerTest {
 
     @Test
     void suggestedPlaybookMatchingSelectedPlaybookPassesValidation() {
-        when(playbookService.isDefaultPlaybook("oim-field-qa")).thenReturn(false);
         when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
 
         Playbook fieldQa = new Playbook("oim-field-qa", "Field QA", "Field experience", "tmpl",
@@ -122,7 +133,6 @@ class PlaybookValidationControllerTest {
 
     @Test
     void suggestedPlaybookDifferentFromSelectedReturnsObjection() {
-        when(playbookService.isDefaultPlaybook("wrong-playbook")).thenReturn(false);
         when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
 
         Playbook wrong = new Playbook("wrong-playbook", "Wrong", "Wrong desc", "tmpl", List.of(),
@@ -145,7 +155,6 @@ class PlaybookValidationControllerTest {
 
     @Test
     void suggestedPlaybookNonExistentDropsSuggestion() {
-        when(playbookService.isDefaultPlaybook("wrong-playbook")).thenReturn(false);
         when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("oim-full"));
 
         Playbook wrong = new Playbook("wrong-playbook", "Wrong", "Wrong desc", "tmpl", List.of(),

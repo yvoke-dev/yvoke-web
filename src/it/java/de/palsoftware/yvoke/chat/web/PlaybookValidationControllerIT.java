@@ -15,6 +15,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 
+import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
@@ -59,6 +61,9 @@ public class PlaybookValidationControllerIT {
     @Autowired
     private PlaybookService playbookService;
 
+    @Autowired
+    private AreaService areaService;
+
     @MockitoBean(name = "llmProviderClient")
     private LlmClient llmClient;
 
@@ -82,6 +87,14 @@ public class PlaybookValidationControllerIT {
                 // Ignore
             }
         }
+        try {
+            areaService.findArea("OIM").ifPresent(oim -> areaService.saveArea("OIM", "OIM",
+                oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), null,
+                oim.defaultProfile()));
+        } catch (Exception e) {}
+        try {
+            playbookService.deletePlaybook("oim-full");
+        } catch (Exception e) {}
         try {
             playbookService.deletePlaybook("correct-playbook");
         } catch (Exception e) {}
@@ -181,6 +194,13 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        Area oim = areaService.findArea("OIM").orElseThrow();
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), "oim-full", oim.defaultProfile());
+
+        when(llmClient.generate(any(LlmRequest.class)))
+            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Should not be called\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
+
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
         mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
@@ -269,6 +289,10 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        Area oim = areaService.findArea("OIM").orElseThrow();
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), "oim-full", oim.defaultProfile());
+
         String userBOid = "user-b-validate-test-oid";
         userRepository.upsert(userBOid, "user-b-test@local", "User B");
         var loginB = testUserLogin(userBOid, "user-b-test@local", "User B");
@@ -278,6 +302,13 @@ public class PlaybookValidationControllerIT {
                 .with(csrf())
                 .param("content", "Hello")
                 .param("promptName", "some-playbook"))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
+                .with(loginB)
+                .with(csrf())
+                .param("content", "Hello")
+                .param("promptName", "oim-full"))
             .andExpect(status().isForbidden());
     }
 

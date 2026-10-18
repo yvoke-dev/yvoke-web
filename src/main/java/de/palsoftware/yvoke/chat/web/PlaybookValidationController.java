@@ -55,13 +55,15 @@ public class PlaybookValidationController {
             throw new IllegalArgumentException("Content cannot be blank");
         }
 
-        if (playbookService.isDefaultPlaybook(promptName)) {
-            return new ValidationResponse(true, "", null);
-        }
-
         Conversation conversation = chatConversationService.verifyOwnership(id, false);
 
         try {
+            Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
+            if (promptName != null && !promptName.isBlank() && defaultPlaybooks.stream()
+                .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
+                return new ValidationResponse(true, "", null);
+            }
+
             LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
                 "playbook_validator", "validator");
             boolean showPrototypes = false;
@@ -75,7 +77,6 @@ public class PlaybookValidationController {
                 }
             }
             boolean finalShowPrototypes = showPrototypes;
-            Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
             List<Playbook> playbooks = playbookService.listSpecializedPlaybooks().stream()
                 .filter(p -> finalShowPrototypes || !p.prototype())
                 .filter(

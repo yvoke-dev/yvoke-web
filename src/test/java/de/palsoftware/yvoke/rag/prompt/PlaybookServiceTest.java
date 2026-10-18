@@ -569,17 +569,12 @@ class PlaybookServiceTest {
     void defaultPlaybookQueriesReflectAreaDefaults() {
         PlaybookService service = new PlaybookService(playbookRepository, mcpSyncServer,
             TestAreas.withAreaObjects(TestAreas.areaWithDefaultPlaybook("OIM", "oim-full"),
-                TestAreas.areaWithDefaultPlaybook("Ping", "ping-full"),
+                TestAreas.areaWithDefaultPlaybook("Ping", " ping-full "),
+                TestAreas.areaWithDefaultPlaybook("BlankDefault", "   "),
                 TestAreas.area("NoDefault")),
             systemPromptService);
 
         assertEquals(Set.of("oim-full", "ping-full"), service.listDefaultPlaybookNames());
-        assertTrue(service.isDefaultPlaybook("oim-full"));
-        assertTrue(service.isDefaultPlaybook("OIM-FULL"));
-        assertTrue(service.isDefaultPlaybook(" ping-full "));
-        assertFalse(service.isDefaultPlaybook("oim-field-qa"));
-        assertFalse(service.isDefaultPlaybook(""));
-        assertFalse(service.isDefaultPlaybook(null));
     }
 }
 

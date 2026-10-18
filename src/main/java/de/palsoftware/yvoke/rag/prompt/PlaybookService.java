@@ -76,14 +76,6 @@ public class PlaybookService {
             .filter(name -> !name.isBlank()).map(String::trim).collect(Collectors.toSet());
     }
 
-    public boolean isDefaultPlaybook(String playbookName) {
-        if (playbookName == null || playbookName.isBlank()) {
-            return false;
-        }
-        String trimmed = playbookName.trim();
-        return listDefaultPlaybookNames().stream().anyMatch(dp -> dp.equalsIgnoreCase(trimmed));
-    }
-
     @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
         condition = "#name != null && !#name.isBlank()")
     public Optional<Playbook> getPlaybook(String name) {
