@@ -16,6 +16,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+import { formatCitations } from '../../main/resources/static/js/chat/citation-render.js';
+import { escapeHtml } from '../../main/resources/static/js/chat/thread-text.js';
 import {
     forceToolCallNewlines,
     installCodeRenderer,
@@ -422,6 +424,97 @@ describe('raw XML and HTML tags in text', () => {
         const { html } = render('Line one<br>Line two', false);
         assert.ok(html.includes('Line one&lt;br&gt;Line two'), html);
         assert.ok(!html.includes('<pre>'), 'inline html must stay inline: ' + html);
+    });
+});
+
+describe('HTML comments and empty anchor bookmark tags', () => {
+    test('an HTML comment is dropped completely and not rendered as a code block', () => {
+        const { html } = render('<!-- topic: sources-roles-rmb-orgassignmentxorigin-htm-204e72d9 -->', false);
+        assert.equal(html.trim(), '');
+    });
+
+    test('an empty anchor bookmark tag with id is dropped completely and not escaped into visible text', () => {
+        const { html } = render('<a id="topic-sources-roles-rmb-orgassignmentxorigin-htm-204e72d9"></a>', false);
+        assert.equal(html.trim(), '');
+    });
+
+    test('an empty anchor bookmark tag with name is dropped completely', () => {
+        const { html } = render('<a name="my-bookmark"></a>', false);
+        assert.equal(html.trim(), '');
+    });
+
+    test('a section heading followed by a topic anchor and comment renders only heading and body prose', () => {
+        const md = '#### Calculation of assignments\n\n'
+            + '<a id="topic-sources-roles-rmb-orgassignmentxorigin-htm-204e72d9"></a>\n'
+            + '<!-- topic: sources-roles-rmb-orgassignmentxorigin-htm-204e72d9 -->\n\n'
+            + 'When inheritance is calculated, an entry is made.\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('topic-sources-roles'), 'scraper artifact leaked: ' + html);
+        assert.ok(!html.includes('<pre>'), 'comment became a code block: ' + html);
+        assert.ok(html.includes('<h4'));
+        assert.ok(html.includes('Calculation of assignments'));
+        assert.ok(html.includes('When inheritance is calculated, an entry is made.'));
+    });
+
+    test('an anchor with text content is preserved and not dropped', () => {
+        const { html } = render('<a href="https://example.com">Visit site</a>', false);
+        assert.ok(html.includes('Visit site'), html);
+    });
+
+    test('an anchor with id and text content is preserved', () => {
+        const { html } = render('<a id="sec-1" href="#sec-1">Section 1</a>', false);
+        assert.ok(html.includes('Section 1'), html);
+    });
+
+    test('a self-closing empty anchor bookmark tag is dropped', () => {
+        const { html } = render('<a id="topic-bookmark"/>', false);
+        assert.equal(html.trim(), '');
+    });
+
+    test('empty anchor bookmarks inside code fences and inline backticks are preserved', () => {
+        const mdFence = '```html\n<a id="foo"></a>\n```';
+        const { html: htmlFence } = render(mdFence, false);
+        assert.ok(htmlFence.includes('&lt;a id=&quot;foo&quot;&gt;&lt;/a&gt;'), htmlFence);
+
+        const mdInline = 'Use `<a id="foo"></a>` for bookmarks.';
+        const { html: htmlInline } = render(mdInline, false);
+        assert.ok(htmlInline.includes('<code>&lt;a id=&quot;foo&quot;&gt;&lt;/a&gt;</code>'), htmlInline);
+    });
+
+    test('an empty anchor with only data-id is not dropped as a bookmark', () => {
+        const { html } = render('<a data-id="123"></a>', false);
+        assert.ok(html.includes('&lt;a data-id=&quot;123&quot;&gt;&lt;/a&gt;'), html);
+    });
+
+    test('a custom element whose tag name starts with a- is not dropped as an anchor bookmark', () => {
+        const { html } = render('<a-widget id="x"></a>', false);
+        assert.ok(html.includes('&lt;a-widget id=&quot;x&quot;&gt;&lt;/a&gt;'), html);
+    });
+
+    test('a comment starting with a bracketed citation or reference number is dropped without leaking or badging', () => {
+        // normalizeSpacing's reference-list rule used to match `- [` inside `<!-- [1] -->`,
+        // splitting the comment opener into `<!-\n- [1] -->` and minting a fake citation badge.
+        const out1 = formatCitations(render('<!-- [1] -->', false).html, escapeHtml);
+        assert.equal(out1.trim(), '');
+
+        const out2 = formatCitations(render('<!-- [chunk_id=abc12345] -->', false).html, escapeHtml);
+        assert.equal(out2.trim(), '');
+    });
+
+    test('an inline HTML comment mid-sentence is dropped while surrounding prose survives', () => {
+        const { html } = render('Text before <!-- inline comment --> text after.', false);
+        assert.ok(!html.includes('inline comment'), html);
+        assert.ok(html.includes('Text before') && html.includes('text after.'), html);
+    });
+
+    test('HTML comments inside code fences and inline backticks are preserved', () => {
+        const mdFence = '```html\n<!-- topic: kept -->\n```';
+        const { html: htmlFence } = render(mdFence, false);
+        assert.ok(htmlFence.includes('&lt;!-- topic: kept --&gt;'), htmlFence);
+
+        const mdInline = 'Use `<!-- topic: kept -->` in HTML.';
+        const { html: htmlInline } = render(mdInline, false);
+        assert.ok(htmlInline.includes('<code>&lt;!-- topic: kept --&gt;</code>'), htmlInline);
     });
 });
 

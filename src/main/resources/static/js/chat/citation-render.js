@@ -33,7 +33,7 @@ const CODE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>|<code\\b[\\s\\S]*?<\\/code>';
 const PRE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>';
 
 /** A fenced code block in RAW markdown, before marked has run. */
-const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
+export const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
 
 /**
  * A whole line that is a GFM table row (or its `|---|---|` delimiter): pipe-delimited, opening and
@@ -60,7 +60,7 @@ export const NUMBERED_REF =
  * Applies `fn` to every part of `text` that lies OUTSIDE the regions matched by `regionSource`,
  * leaving those regions byte-identical. Returns the reassembled string.
  */
-function mapOutsideRegions(text, regionSource, fn) {
+export function mapOutsideRegions(text, regionSource, fn) {
     const re = new RegExp(regionSource, 'g');
     let out = '';
     let last = 0;
@@ -110,8 +110,9 @@ export function mapOutsideFences(markdown, fn) {
  *   1. `[^\s#|]` — the group can no longer be whitespace, so it really is the last non-whitespace
  *      character, and excluding `|` finally protects a pipe-adjacent marker (including a table
  *      written without leading/trailing pipes, which rule 2 below does not see). Excluding `#`
- *      keeps a heading's own hashes from being eaten — `## X` once became `#\n\n# X`. It also stops
- *      an indented heading being split from its indentation.
+ *      keeps a heading's own hashes from being eaten — `## X` once became `#\n\n# X`, and the
+ *      reference-list rule likewise excludes `-` so `<!-- [1] -->` or `-- [x]` does not split
+ *      across its own dashes. It also stops an indented heading being split from its indentation.
  *   2. MD_TABLE_ROW — the whole row is excised first, so a marker anywhere in ANY cell is safe,
  *      not just one sitting next to a pipe. `| Fix | use # to comment |` needs this one.
  *
@@ -129,7 +130,7 @@ export function normalizeSpacing(text) {
                     return before + '\n\n' + hashes;
                 });
             out = out.replace(/([^\s|])\s*(\d+\.\s+\*\*)/g, '$1\n\n$2');
-            out = out.replace(new RegExp('([^\\s|])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
+            out = out.replace(new RegExp('([^\\s|-])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
             return out;
         });
     });
