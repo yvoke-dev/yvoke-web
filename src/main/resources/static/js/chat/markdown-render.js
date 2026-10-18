@@ -153,10 +153,14 @@ export function stripEmptyAnchorBookmarks(text) {
 /**
  * Matches a standalone MadCap Flare `<a class="codeSnippetCopyButton">Copy</a>` line at the end of
  * a prose segment immediately preceding an opening code fence (with an optional single-line
- * snippet caption such as "Example" between them).
+ * snippet caption such as "Example" or "Example of a multi-line statement" between them).
+ *
+ * Uses `(?![\s\S])` rather than `$` to anchor to the true end of the segment: under `/m`, `$`
+ * matches at the end of any line, which would allow backtracking to strip a distant `Copy` line
+ * separated from the fence by arbitrary prose paragraphs.
  */
 const CODE_SNIPPET_COPY_BEFORE_FENCE =
-    /^[ \t]*Copy[ \t]*\r?\n(?:[ \t]*\r?\n)*(?=(?:[ \t]*[A-Za-z][^\r\n`|#*>-]*[ \t]*\r?\n(?:[ \t]*\r?\n)*)?[ \t]*$)/m;
+    /^[ \t]*Copy[ \t]*\r?\n(?:[ \t]*\r?\n)*(?=(?:[ \t]*[A-Za-z][^\r\n`|#*>]*[ \t]*\r?\n(?:[ \t]*\r?\n)*)?[ \t]*(?![\s\S]))/m;
 
 /**
  * Drops MadCap Flare "Copy" toolbar lines immediately preceding fenced code blocks.

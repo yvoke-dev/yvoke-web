@@ -583,6 +583,14 @@ describe('MadCap codeSnippet artifacts', () => {
         assert.ok(html.includes('&lt;SAP&gt;'), html);
     });
 
+    test('a standalone Copy line before a hyphenated snippet caption and fenced code block drops Copy and keeps the caption', () => {
+        const md = 'Copy\n\nExample of a multi-line statement\n\n```\nSELECT *\nFROM Person\n```\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('<p>Copy</p>'), 'Copy toolbar leaked: ' + html);
+        assert.ok(html.includes('<p>Example of a multi-line statement</p>'), 'caption lost: ' + html);
+        assert.ok(html.includes('SELECT *'), html);
+    });
+
     test('a 1..N line-number gutter fused onto the top of a fenced code block is stripped and common nbsp indent is dedented', () => {
         const md = '```\n'
             + '1\n'
@@ -617,7 +625,7 @@ describe('MadCap codeSnippet artifacts', () => {
             + '   ```\n';
         const { html } = render(md, false);
         assert.ok(!html.includes('>Copy<'), 'Copy toolbar leaked: ' + html);
-        assert.ok(html.includes('Example'), 'Example caption lost: ' + html);
+        assert.ok(html.includes('<p>Example</p>'), 'Example caption lost: ' + html);
         const codeMatch = html.match(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/);
         assert.ok(codeMatch, 'expected code block: ' + html);
         const code = codeMatch[1];
@@ -631,6 +639,14 @@ describe('MadCap codeSnippet artifacts', () => {
         const md = 'Copy\n\nThis paragraph is ordinary text, not a code fence.\n';
         const { html } = render(md, false);
         assert.ok(html.includes('<p>Copy</p>'), html);
+    });
+
+    test('a standalone Copy line separated from a later code fence by multiple paragraphs of prose is preserved', () => {
+        const md = 'Copy\n\nFirst paragraph of prose.\n\nSecond paragraph.\n\n```\ncode()\n```\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<p>Copy</p>'), 'distant Copy line was falsely stripped: ' + html);
+        assert.ok(html.includes('<p>First paragraph of prose.</p>'), html);
+        assert.ok(html.includes('<p>Second paragraph.</p>'), html);
     });
 
     test('Copy inside a fenced code block or inline code is preserved', () => {
