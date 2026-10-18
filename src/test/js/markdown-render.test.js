@@ -565,3 +565,109 @@ describe('external links', () => {
         assert.equal(openExternalLinksInNewTab(once), once);
     });
 });
+
+describe('MadCap codeSnippet artifacts', () => {
+    test('a standalone Copy button line right before a fenced code block is dropped', () => {
+        const md = 'Insert the following code:\n\nCopy\n\n```\n{\n  "IsStandAlone": "False"\n}\n```\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('<p>Copy</p>'), 'Copy toolbar leaked: ' + html);
+        assert.ok(html.includes('Insert the following code:'), html);
+        assert.ok(html.includes('&quot;IsStandAlone&quot;'), html);
+    });
+
+    test('a standalone Copy line before a snippet caption and fenced code block drops Copy and keeps the caption', () => {
+        const md = 'See the configuration:\n\nCopy\n\nSchema extension file structure\n\n```\n<SAP>\n</SAP>\n```\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('<p>Copy</p>'), 'Copy toolbar leaked: ' + html);
+        assert.ok(html.includes('<p>Schema extension file structure</p>'), 'caption lost: ' + html);
+        assert.ok(html.includes('&lt;SAP&gt;'), html);
+    });
+
+    test('a standalone Copy line before a hyphenated snippet caption and fenced code block drops Copy and keeps the caption', () => {
+        const md = 'Copy\n\nExample of a multi-line statement\n\n```\nSELECT *\nFROM Person\n```\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('<p>Copy</p>'), 'Copy toolbar leaked: ' + html);
+        assert.ok(html.includes('<p>Example of a multi-line statement</p>'), 'caption lost: ' + html);
+        assert.ok(html.includes('SELECT *'), html);
+    });
+
+    test('a 1..N line-number gutter fused onto the top of a fenced code block is stripped and common nbsp indent is dedented', () => {
+        const md = '```\n'
+            + '1\n'
+            + '2\n'
+            + '3\n'
+            + '\u00a0\u00a0\u00a0\u00a0public class Foo\n'
+            + '\u00a0\u00a0\u00a0\u00a0{\n'
+            + '\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0void Bar() { }\n'
+            + '\u00a0\u00a0\u00a0\u00a0}\n'
+            + '```\n';
+        const { html } = render(md, false);
+        assert.equal(
+            html.trim(),
+            '<pre><code class="language-">public class Foo\n{\n    void Bar() { }\n}</code></pre>'
+        );
+    });
+
+    test('an indented Copy + Example + 1..10 line-number gutter in a list item renders clean code without Copy or line numbers', () => {
+        const md = '3. Implement the **Build** method of the **IApiProviderFor** interface.\n\n'
+            + '   Copy\n\n'
+            + '   Example\n\n'
+            + '   ```\n'
+            + '   1\n'
+            + '   2\n'
+            + '   3\n'
+            + '   4\n'
+            + '   \u00a0\u00a0\u00a0\u00a0public class ExampleApi : IApiProviderFor<PortalApiProject>  \n'
+            + '     \n'
+            + '   \u00a0\u00a0\u00a0\u00a0{  \n'
+            + '   \u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0public void Build(IApiBuilder builder) { }  \n'
+            + '   \u00a0\u00a0\u00a0\u00a0}\n'
+            + '   ```\n';
+        const { html } = render(md, false);
+        assert.ok(!html.includes('>Copy<'), 'Copy toolbar leaked: ' + html);
+        assert.ok(html.includes('<p>Example</p>'), 'Example caption lost: ' + html);
+        const codeMatch = html.match(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/);
+        assert.ok(codeMatch, 'expected code block: ' + html);
+        const code = codeMatch[1];
+        assert.ok(!/^1\n2\n/m.test(code), 'line-number gutter leaked into code block: ' + code);
+        assert.ok(!code.includes('\u00a0'), 'non-breaking spaces remained in code block: ' + code);
+        assert.ok(code.startsWith('public class ExampleApi'), 'common leading indent not dedented: ' + JSON.stringify(code));
+        assert.ok(code.includes('\n    public void Build(IApiBuilder builder) { }'), 'relative indent lost: ' + JSON.stringify(code));
+    });
+
+    test('a standalone Copy line not followed by a code fence is preserved', () => {
+        const md = 'Copy\n\nThis paragraph is ordinary text, not a code fence.\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<p>Copy</p>'), html);
+    });
+
+    test('a standalone Copy line separated from a later code fence by multiple paragraphs of prose is preserved', () => {
+        const md = 'Copy\n\nFirst paragraph of prose.\n\nSecond paragraph.\n\n```\ncode()\n```\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<p>Copy</p>'), 'distant Copy line was falsely stripped: ' + html);
+        assert.ok(html.includes('<p>First paragraph of prose.</p>'), html);
+        assert.ok(html.includes('<p>Second paragraph.</p>'), html);
+    });
+
+    test('Copy inside a fenced code block or inline code is preserved', () => {
+        const md = 'Use `Copy` or:\n\n```\nCopy\n```\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<code>Copy</code>'), html);
+        assert.match(html, /<pre><code[^>]*>Copy<\/code><\/pre>/);
+    });
+
+    test('a code fence containing only sequential numbers with no code after is preserved', () => {
+        const md = '```\n1\n2\n3\n```\n';
+        const { html } = render(md, false);
+        assert.match(html, /<pre><code[^>]*>1\n2\n3<\/code><\/pre>/);
+    });
+
+    test('a code fence starting with non-sequential numbers or a single 1 is preserved', () => {
+        const { html: nonSeq } = render('```\n1\n3\nfoo()\n```\n', false);
+        assert.match(nonSeq, /<pre><code[^>]*>1\n3\nfoo\(\)<\/code><\/pre>/);
+
+        const { html: singleOne } = render('```\n1\nfoo()\n```\n', false);
+        assert.match(singleOne, /<pre><code[^>]*>1\nfoo\(\)<\/code><\/pre>/);
+    });
+});
+
