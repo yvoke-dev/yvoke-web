@@ -60,6 +60,9 @@ export function installCodeRenderer(marked) {
 
                 // HTML comments are dropped — otherwise block-level comments like
                 // <!-- topic: ... --> in ingested manuals get wrapped in <pre><code> code blocks.
+                // Requiring `endsWith('-->')` means a half-arrived comment mid-stream briefly
+                // shows as escaped source until its closer arrives; that is deliberate so an
+                // unclosed `<!--` in quoted text never swallows the rest of the message.
                 if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) {
                     return '';
                 }
@@ -104,8 +107,8 @@ const MD_CODE_SPAN = '`+[^`]+`+';
 /** Fenced code blocks and inline code spans in raw markdown. */
 const MD_CODE_REGIONS = `${MD_FENCE}|${MD_CODE_SPAN}`;
 
-/** Matches empty anchor tags with an id or name (e.g. <a id="topic-..."></a>). */
-const EMPTY_ANCHOR = /<a\b[^>]*\s(?:id|name)\s*=[^>]*(?:>\s*<\/a>|\s*\/>)/gi;
+/** Matches empty `<a>` anchor tags with an id or name (e.g. `<a id="topic-..."></a>`). */
+const EMPTY_ANCHOR = /<a(?=\s)[^>]*\s(?:id|name)\s*=[^>]*(?:>\s*<\/a>|\s*\/>)/gi;
 
 /**
  * Drops empty anchor bookmark tags outside code fences and inline code spans so they do not

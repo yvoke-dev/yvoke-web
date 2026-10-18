@@ -272,6 +272,15 @@ describe('markdown spacing normalizer', () => {
         assert.equal(normalizeSpacing('Refs: - [1] x'), 'Refs:\n- [1] x');
     });
 
+    test('an HTML comment or double-dash before a bracket does not split its own dashes', () => {
+        // Without excluding `-` from the preceding character class, `<!-- [1] -->` splits between
+        // its two dashes into `<!-\n- [1] -->`, destroying the comment delimiter and leaving a
+        // broken `<!-` paragraph plus a list item with a fake citation badge.
+        assert.equal(normalizeSpacing('<!-- [1] -->'), '<!-- [1] -->');
+        assert.equal(normalizeSpacing('<!-- [chunk_id=abc123] -->'), '<!-- [chunk_id=abc123] -->');
+        assert.equal(normalizeSpacing('-- [1]'), '-- [1]');
+    });
+
     test('a table pipe before a hash is not turned into a heading', () => {
         // `#1` has no whitespace after the hash, so `#{1,6}\s+` could never match it — this case
         // passed with the `|` guard deleted entirely and proved nothing. The real shapes are below.
