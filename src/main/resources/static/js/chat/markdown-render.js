@@ -72,23 +72,53 @@ export function installCodeRenderer(marked) {
                     : escapeHtml(text);
             },
             code(token) {
-                const text = token.text || '';
+                const rawText = token.text || '';
                 const lang = token.lang || '';
-                const isMermaid = lang === 'mermaid' || (!lang && isMermaidText(text));
+                const isMermaid = lang === 'mermaid' || (!lang && isMermaidText(rawText));
 
                 if (isMermaid) {
                     if (streaming) {
                         // Plain code block while streaming: a half-arrived diagram cannot render.
-                        return `<pre><code class="language-mermaid">${escapeHtml(text)}</code></pre>`;
+                        return `<pre><code class="language-mermaid">${escapeHtml(rawText)}</code></pre>`;
                     }
-                    return `<div class="mermaid-diagram-container"><pre class="mermaid">${escapeHtml(text)}</pre></div>`;
+                    return `<div class="mermaid-diagram-container"><pre class="mermaid">${escapeHtml(rawText)}</pre></div>`;
                 }
 
+                const text = stripCodeLineNumberGutter(rawText);
                 const escapedLang = (lang || '').match(/^\S*/)?.[0] || '';
                 return `<pre><code class="language-${escapedLang}">${escapeHtml(text)}</code></pre>`;
             }
         }
     });
+}
+
+/**
+ * Strips a MadCap Flare `<span class="codeSnippetLineNumbers">` line-number gutter (`1\n2\n…\nN`)
+ * that was fused onto the top of a `<pre><code>` block during HTML-to-Markdown conversion,
+ * normalizes non-breaking spaces (`\u00a0`) to ASCII spaces, and removes any common leading
+ * indentation left on the remaining code lines.
+ */
+export function stripCodeLineNumberGutter(text) {
+    const lines = text.split('\n');
+    let gutterCount = 0;
+    while (gutterCount < lines.length && /^[ \t]*\d+[ \t]*\r?$/.test(lines[gutterCount])) {
+        if (Number(lines[gutterCount].trim()) !== gutterCount + 1) {
+            break;
+        }
+        gutterCount++;
+    }
+
+    const codeLines = lines.slice(gutterCount);
+    if (gutterCount < 2 || !codeLines.some((l) => l.trim().length > 0)) {
+        return text.replace(/\u00a0/g, ' ');
+    }
+
+    const normalized = codeLines.map((l) => l.replace(/\u00a0/g, ' '));
+    const nonEmpty = normalized.filter((l) => l.trim().length > 0);
+    const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^[ \t]*/)[0].length));
+    return normalized
+        .map((l) => (l.trim().length > 0 ? l.slice(minIndent) : ''))
+        .join('\n');
 }
 
 /**
@@ -118,6 +148,33 @@ export function stripEmptyAnchorBookmarks(text) {
     return mapOutsideRegions(text, MD_CODE_REGIONS, function (segment) {
         return segment.replace(EMPTY_ANCHOR, '');
     });
+}
+
+/**
+ * Matches a standalone MadCap Flare `<a class="codeSnippetCopyButton">Copy</a>` line at the end of
+ * a prose segment immediately preceding an opening code fence (with an optional single-line
+ * snippet caption such as "Example" between them).
+ */
+const CODE_SNIPPET_COPY_BEFORE_FENCE =
+    /^[ \t]*Copy[ \t]*\r?\n(?:[ \t]*\r?\n)*(?=(?:[ \t]*[A-Za-z][^\r\n`|#*>-]*[ \t]*\r?\n(?:[ \t]*\r?\n)*)?[ \t]*$)/m;
+
+/**
+ * Drops MadCap Flare "Copy" toolbar lines immediately preceding fenced code blocks.
+ *
+ * Walking `MD_FENCE` matches whole fenced blocks (`m[0]`), so `text.slice(last, m.index)` is both
+ * outside every fence and guaranteed to end right at the next opening fence — a `Copy` line inside
+ * a fence before its closing delimiter sits inside `m[0]` and is never seen.
+ */
+export function stripCodeSnippetCopyButtons(text) {
+    const re = new RegExp(MD_FENCE, 'g');
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        out += text.slice(last, m.index).replace(CODE_SNIPPET_COPY_BEFORE_FENCE, '') + m[0];
+        last = m.index + m[0].length;
+    }
+    return out + text.slice(last);
 }
 
 /**
@@ -255,6 +312,7 @@ export function renderMarkdown(text, isStreaming, deps) {
     let source = normalizeThinkTags(text, isStreaming);
     source = forceToolCallNewlines(source);
     source = stripEmptyAnchorBookmarks(source);
+    source = stripCodeSnippetCopyButtons(source);
     source = normalizeSpacing(source);
 
     // No unwrapBacktickedCitations() call here: it is protectTokens' own first step, because the
