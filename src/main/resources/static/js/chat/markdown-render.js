@@ -13,10 +13,8 @@
  */
 
 import {
-    MD_FENCE,
     mapOutsideFences,
     mapOutsidePre,
-    mapOutsideRegions,
     normalizeSpacing,
     protectTokens,
     restoreTokens,
@@ -67,6 +65,14 @@ export function installCodeRenderer(marked) {
                     return '';
                 }
 
+                // Balanced HTML tables (both complete <table>...</table> blocks from imported
+                // manuals and split table/cell fragments repaired by balanceHtmlTables) are
+                // allowed through as HTML tables, with any non-table XML/placeholder tags inside
+                // cells escaped so DOMPurify never silently drops content.
+                if (token && token.block && isBalancedHtmlTableBlock(trimmed)) {
+                    return escapeNonTableHtmlTags(trimmed);
+                }
+
                 return token && token.block
                     ? `<pre><code>${escapeHtml(text)}</code></pre>`
                     : escapeHtml(text);
@@ -113,9 +119,13 @@ export function stripCodeLineNumberGutter(text) {
         return text.replace(/\u00a0/g, ' ');
     }
 
+    const hasNbsp = codeLines.some((l) => l.includes('\u00a0'));
     const normalized = codeLines.map((l) => l.replace(/\u00a0/g, ' '));
     const nonEmpty = normalized.filter((l) => l.trim().length > 0);
     const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^[ \t]*/)[0].length));
+    if (!hasNbsp && !(minIndent >= 4 && nonEmpty.length === gutterCount)) {
+        return text.replace(/\u00a0/g, ' ');
+    }
     return normalized
         .map((l) => (l.trim().length > 0 ? l.slice(minIndent) : ''))
         .join('\n');
@@ -131,11 +141,59 @@ export function forceToolCallNewlines(text) {
     });
 }
 
-/** An inline code span in raw markdown. */
-const MD_CODE_SPAN = '`+[^`]+`+';
+/**
+ * Matches CommonMark fenced code blocks (` ``` ` or `~~~` of length >= 3, closed by a fence of
+ * the same character and at least the same length, or running to end-of-input if unclosed).
+ */
+const MD_FENCE_RE =
+    /^[ \t]*(?:(?<btfence>`{3,})[^\r\n]*\r?\n[\s\S]*?(?:\r?\n[ \t]*\k<btfence>`*[ \t]*(?=\r?\n|$)|(?![\s\S]))|(?<tfence>~{3,})[^\r\n]*\r?\n[\s\S]*?(?:\r?\n[ \t]*\k<tfence>~*[ \t]*(?=\r?\n|$)|(?![\s\S])))/gm;
 
-/** Fenced code blocks and inline code spans in raw markdown. */
-const MD_CODE_REGIONS = `${MD_FENCE}|${MD_CODE_SPAN}`;
+/** Matches CommonMark inline code spans (single-backtick or multi-backtick). */
+const MD_CODE_SPAN_RE = /(?<span>`{2,})(?!`)[\s\S]*?(?<!`)\k<span>(?!`)|`[^`\r\n]+`/g;
+
+/**
+ * Applies `fn` only to substrings outside CommonMark fenced code blocks and inline code spans,
+ * scanning the two regexes independently so backreference numbering never collides.
+ */
+function mapOutsideCodeRegions(text, fn) {
+    const protectedRanges = [];
+    const fenceRe = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
+    let m;
+    while ((m = fenceRe.exec(text)) !== null) {
+        protectedRanges.push([m.index, m.index + m[0].length]);
+    }
+
+    const collectCodeSpans = (sliceStart, sliceEnd) => {
+        const sub = text.slice(sliceStart, sliceEnd);
+        const spanRe = new RegExp(MD_CODE_SPAN_RE.source, MD_CODE_SPAN_RE.flags);
+        let sm;
+        while ((sm = spanRe.exec(sub)) !== null) {
+            protectedRanges.push([sliceStart + sm.index, sliceStart + sm.index + sm[0].length]);
+        }
+    };
+
+    let cursor = 0;
+    const fenceSnapshot = [...protectedRanges];
+    for (const [fStart, fEnd] of fenceSnapshot) {
+        if (cursor < fStart) {
+            collectCodeSpans(cursor, fStart);
+        }
+        cursor = fEnd;
+    }
+    if (cursor < text.length) {
+        collectCodeSpans(cursor, text.length);
+    }
+
+    protectedRanges.sort((a, b) => a[0] - b[0]);
+
+    let out = '';
+    let last = 0;
+    for (const [start, end] of protectedRanges) {
+        out += fn(text.slice(last, start)) + text.slice(start, end);
+        last = end;
+    }
+    return out + fn(text.slice(last));
+}
 
 /** Matches empty `<a>` anchor tags with an id or name (e.g. `<a id="topic-..."></a>`). */
 const EMPTY_ANCHOR = /<a(?=\s)[^>]*\s(?:id|name)\s*=[^>]*(?:>\s*<\/a>|\s*\/>)/gi;
@@ -145,7 +203,7 @@ const EMPTY_ANCHOR = /<a(?=\s)[^>]*\s(?:id|name)\s*=[^>]*(?:>\s*<\/a>|\s*\/>)/gi
  * escape into visible text.
  */
 export function stripEmptyAnchorBookmarks(text) {
-    return mapOutsideRegions(text, MD_CODE_REGIONS, function (segment) {
+    return mapOutsideCodeRegions(text, function (segment) {
         return segment.replace(EMPTY_ANCHOR, '');
     });
 }
@@ -165,12 +223,12 @@ const CODE_SNIPPET_COPY_BEFORE_FENCE =
 /**
  * Drops MadCap Flare "Copy" toolbar lines immediately preceding fenced code blocks.
  *
- * Walking `MD_FENCE` matches whole fenced blocks (`m[0]`), so `text.slice(last, m.index)` is both
- * outside every fence and guaranteed to end right at the next opening fence — a `Copy` line inside
- * a fence before its closing delimiter sits inside `m[0]` and is never seen.
+ * Walking `MD_FENCE_RE` matches whole fenced blocks (`m[0]`), so `text.slice(last, m.index)` is
+ * both outside every fence and guaranteed to end right at the next opening fence — a `Copy` line
+ * inside a fence before its closing delimiter sits inside `m[0]` and is never seen.
  */
 export function stripCodeSnippetCopyButtons(text) {
-    const re = new RegExp(MD_FENCE, 'g');
+    const re = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
     let out = '';
     let last = 0;
     let m;
@@ -179,6 +237,378 @@ export function stripCodeSnippetCopyButtons(text) {
         last = m.index + m[0].length;
     }
     return out + text.slice(last);
+}
+
+/** Allowed lowercase HTML tags inside an imported manual table block. */
+const TABLE_HTML_TAGS = new Set([
+    'table', 'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+    'p', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'div', 'span',
+    'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'code', 'pre', 'br', 'hr', 'a', 'img',
+]);
+
+/** Self-closing / void HTML elements inside a table block. */
+const VOID_HTML_TAGS = new Set(['br', 'hr', 'img', 'col']);
+
+/** Validates standard HTML `key="value"` / `key='value'` / `key=value` / boolean attribute lists. */
+const HTML_ATTR_LIST_RE =
+    /^(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*$/;
+
+/** Matches any `<...>` tag candidate in a fragment. */
+const ANY_ANGLE_TAG_RE = /<(\/?)([a-zA-Z][\w:.-]*)((?:\s+[^>]*?)?)(\/?)>/g;
+
+/**
+ * Matches a real HTML `<table...>` opening tag followed by a table child tag (`<caption`,
+ * `<colgroup`, `<col`, `<thead`, `<tbody`, `<tfoot`, `<tr`, `<td`, `<th`), distinguishing genuine
+ * HTML tables from prose placeholders like `**<table>**` or `<table name>`.
+ */
+const REAL_TABLE_OPEN_RE =
+    /<table(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*>(?=\s*<(?:caption|colgroup|col|thead|tbody|tfoot|tr|td|th)\b)/;
+
+/**
+ * Detects a raw HTML table or split table/cell fragment. Every real HTML block in the imported
+ * manuals comes from a complex `<table>...</table>` preserved by the converter; matching lowercase
+ * closing table/block tags or opening table structural tags has zero false positives on uppercase
+ * XML examples (`<Key><T>DialogTable</T></Key>`) and prose angle-bracket placeholders.
+ */
+const TABLE_FRAGMENT_DETECTOR_RE =
+    /<\/(?:table|thead|tbody|tfoot|tr|td|th|colgroup|caption|p|ul|ol|li|div)\s*>|<(?:tr|td|th|thead|tbody|tfoot|colgroup|caption)\b/;
+
+/** Leading orphan closing tags at the very start of a split chunk before any cell content. */
+const LEADING_EMPTY_CLOSERS_RE =
+    /^(?:\s*<\/(?:p|ul|ol|li|div|span|b|i|strong|em|u|s|sub|sup|code|pre|a|td|th|tr|tbody|thead|tfoot|colgroup|caption|table)\s*>)+/;
+
+/** MadCap Flare conditional text wrapper tags (`<madcap:conditionaltext ...>...</madcap:conditionaltext>`). */
+const MADCAP_CONDITIONAL_TAG_RE = /<\/?madcap:conditionaltext\b[^>]*>/gi;
+
+/**
+ * Returns true when a regex match (`slash`, `rawName`, `attrs`) is a genuine lowercase
+ * HTML table/cell tag with well-formed attributes (not an uppercase XML element like
+ * `<Class Name="Group">` or a prose placeholder like `<table name>` / `<column name>`).
+ */
+function isValidTableHtmlTag(slash, rawName, attrs) {
+    if (rawName !== rawName.toLowerCase() || !TABLE_HTML_TAGS.has(rawName)) {
+        return false;
+    }
+    return slash ? attrs.trim() === '' : HTML_ATTR_LIST_RE.test(attrs);
+}
+
+/**
+ * Escapes any `<...>` inside a balanced HTML table that is not a valid lowercase HTML table/cell
+ * tag (for example `<condition>`, `<column name>`, `<form name>`, or `<Class Name="Group">`) so
+ * DOMPurify does not strip unknown elements and silently drop their text.
+ */
+export function escapeNonTableHtmlTags(html) {
+    return html.replace(ANY_ANGLE_TAG_RE, function (full, slash, rawName, attrs) {
+        return isValidTableHtmlTag(slash, rawName, attrs) ? full : escapeHtml(full);
+    });
+}
+
+/**
+ * Checks whether a trimmed block HTML token is a single `<table...>...</table>` element.
+ */
+function isBalancedHtmlTableBlock(trimmed) {
+    return REAL_TABLE_OPEN_RE.test(trimmed) && /<\/table\s*>$/.test(trimmed);
+}
+
+/**
+ * Counts how many top-level `<td>`/`<th>` cells appear in the first `<tr>` vs the widest `<tr>`
+ * of a balanced table, and when a split chunk started mid-row (`'tr'` was an unmatched closer)
+ * adds `colspan` to the synthesized leading `<td>` so the partial first row spans all columns.
+ */
+function applyLeadingPartialRowColspan(tableHtml) {
+    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/g;
+    let firstRowCols = 0;
+    let maxCols = 0;
+    let rowMatch;
+    while ((rowMatch = rowRe.exec(tableHtml)) !== null) {
+        const cols = (rowMatch[1].match(/<(?:td|th)\b/g) || []).length;
+        if (firstRowCols === 0) {
+            firstRowCols = cols;
+        }
+        if (cols > maxCols) {
+            maxCols = cols;
+        }
+    }
+    if (firstRowCols > 0 && maxCols > firstRowCols) {
+        const span = maxCols - firstRowCols + 1;
+        return tableHtml.replace(
+            /^(<table\b[^>]*>(?:<tbody>|<thead\b[^>]*>|<tfoot>)?<tr>)<(td|th)>/,
+            `$1<$2 colspan="${span}">`
+        );
+    }
+    return tableHtml;
+}
+
+/**
+ * Converts a markdown inline code span (e.g. `` `cmd` `` or ```` ``a`<td>`b`` ````) into an HTML
+ * `<code>...</code>` element with HTML-special characters escaped.
+ */
+function codeSpanToHtml(span) {
+    const openMatch = span.match(/^`+/);
+    /* c8 ignore next */
+    if (!openMatch) return escapeHtml(span);
+    const ticks = openMatch[0].length;
+    let inner = span.slice(ticks, span.length - ticks);
+    if (inner.length >= 2 && inner.startsWith(' ') && inner.endsWith(' ') && /[^ ]/.test(inner)) {
+        inner = inner.slice(1, -1);
+    }
+    return `<code>${escapeHtml(inner)}</code>`;
+}
+
+/**
+ * Balances missing opening and closing HTML tags for a raw HTML table or a split table/cell
+ * fragment (produced when `MarkdownTree.splitRecursive` slices a large `<table>` across multiple
+ * chunks on `\n\n` / `\n`), wrapping orphan cell/row content in `<table><tbody><tr><td>...` as
+ * needed and collapsing internal blank lines so CommonMark parses the table as one block token.
+ */
+function balanceTableFragment(fragment, codeSpans = []) {
+    const cleaned = fragment.replace(LEADING_EMPTY_CLOSERS_RE, '');
+    const openStack = [];
+    const unmatchedClosers = [];
+
+    ANY_ANGLE_TAG_RE.lastIndex = 0;
+    let match;
+    while ((match = ANY_ANGLE_TAG_RE.exec(cleaned)) !== null) {
+        const [, slash, rawName, attrs, selfSlash] = match;
+        if (!isValidTableHtmlTag(slash, rawName, attrs)) {
+            continue;
+        }
+        if (VOID_HTML_TAGS.has(rawName) || selfSlash === '/') {
+            continue;
+        }
+        if (!slash) {
+            openStack.push(rawName);
+        } else {
+            const idx = openStack.lastIndexOf(rawName);
+            if (idx !== -1) {
+                openStack.splice(idx);
+            } else {
+                unmatchedClosers.push(rawName);
+            }
+        }
+    }
+
+    const firstTagMatch = cleaned.match(/^\s*<([a-z0-9]+)\b/);
+    const firstTag = firstTagMatch ? firstTagMatch[1] : null;
+    const allTags = new Set([...unmatchedClosers, ...openStack]);
+    if (firstTag) {
+        allTags.add(firstTag);
+    }
+
+    const outerAncestors = [];
+    if (!allTags.has('table')) {
+        outerAncestors.push('table');
+    }
+    if (!allTags.has('table') && !allTags.has('tbody') && !allTags.has('thead') && !allTags.has('tfoot')) {
+        if (
+            allTags.has('tr')
+            || allTags.has('td')
+            || allTags.has('th')
+            || (!allTags.has('colgroup') && !allTags.has('caption'))
+        ) {
+            outerAncestors.push('tbody');
+        }
+    }
+    if (!allTags.has('table') && !allTags.has('tbody') && !allTags.has('thead') && !allTags.has('tfoot') && !allTags.has('tr')) {
+        if (
+            allTags.has('td')
+            || allTags.has('th')
+            || (!allTags.has('colgroup') && !allTags.has('caption'))
+        ) {
+            outerAncestors.push('tr');
+        }
+    }
+    if (
+        !allTags.has('td') && !allTags.has('th') && !allTags.has('tr')
+        && !allTags.has('tbody') && !allTags.has('thead') && !allTags.has('tfoot')
+        && !allTags.has('colgroup') && !allTags.has('caption') && !allTags.has('table')
+    ) {
+        outerAncestors.push('td');
+    }
+
+    const prefixTags = [...outerAncestors, ...[...unmatchedClosers].reverse()];
+    const suffixTags = [...[...openStack].reverse(), ...[...outerAncestors].reverse()];
+    const prefix = prefixTags.map((t) => `<${t}>`).join('');
+    const suffix = suffixTags.map((t) => `</${t}>`).join('');
+
+    let balanced = escapeNonTableHtmlTags(prefix + cleaned.trim() + suffix);
+    if (codeSpans.length > 0) {
+        balanced = balanced.replace(/\uE000CS(\d+)\uE001/g, (_, idx) =>
+            codeSpanToHtml(codeSpans[Number(idx)])
+        );
+    }
+    if (unmatchedClosers.includes('tr')) {
+        balanced = applyLeadingPartialRowColspan(balanced);
+    }
+    return balanced.replace(/\r?\n(?:[ \t]*\r?\n)+/g, '\n');
+}
+
+/**
+ * Finds the end index (after `</table>`) of the outermost `<table...>` starting at `startIdx`,
+ * or `-1` if the table was cut off before its closing `</table>` tag.
+ */
+function findMatchingTableEnd(segment, startIdx) {
+    const tableTagRe =
+        /<(\/?)table(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*>/g;
+    tableTagRe.lastIndex = startIdx;
+    let depth = 0;
+    let m;
+    while ((m = tableTagRe.exec(segment)) !== null) {
+        depth += m[1] === '/' ? -1 : 1;
+        if (depth === 0) {
+            return m.index + m[0].length;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Appends a balanced `<table>...</table>` block to `out` with blank-line separation from any
+ * preceding content so CommonMark parses the table as its own HTML block.
+ */
+function appendBalancedBlock(out, headingPrefix, balancedTable) {
+    const combined = headingPrefix
+        ? `${headingPrefix.replace(/(?:\r?\n)*$/, '\n\n')}${balancedTable}`
+        : balancedTable;
+    if (out.length === 0) {
+        return combined;
+    }
+    const sep = out.endsWith('\n\n') ? '' : out.endsWith('\n') ? '\n' : '\n\n';
+    return `${out}${sep}${combined}`;
+}
+
+/**
+ * Checks whether a segment ending with `</table>` (and no preceding `<table...>`) is a genuine
+ * split table tail rather than single-line prose mentioning `</table>`.
+ */
+function isSplitTableTail(frag) {
+    return (
+        /(?:<\/(?:tbody|thead|tfoot|tr|td|th|colgroup|caption)\s*>)\s*<\/table\s*>$/.test(frag)
+        && (/^\s*</.test(frag) || /\r?\n/.test(frag))
+    );
+}
+
+/**
+ * Checks whether a segment with neither `<table...>` nor `</table>` is a genuine mid-table split
+ * chunk from an imported manual rather than assistant prose mentioning `<td>`, `</td>`, `<tr>`,
+ * or `</p>` inline.
+ */
+function isMidTableFragment(frag) {
+    return (
+        /^\s*<\/?(?:tr|td|th|tbody|thead|tfoot|colgroup|caption|p|ul|ol|li|div)\b/.test(frag)
+        && (
+            /<\/?(?:tr|td|th|tbody|thead|tfoot|colgroup|caption)\b/.test(frag)
+            || /^[ \t]{4,}<(?:p|ul|ol|li|div)\b/.test(frag)
+        )
+    );
+}
+
+/**
+ * Unwraps MadCap conditional text tags and repairs split HTML table fragments outside fenced code
+ * blocks and inline code spans so complete and chunk-split manual tables render cleanly.
+ */
+export function balanceHtmlTables(text) {
+    const processGap = function (rawFenceGap) {
+        const codeSpans = [];
+        const maskedGap = rawFenceGap.replace(MD_CODE_SPAN_RE, function (span) {
+            const idx = codeSpans.length;
+            codeSpans.push(span);
+            return `\uE000CS${idx}\uE001`;
+        });
+        const restoreCodeSpans = (s) =>
+            s.replace(/\uE000CS(\d+)\uE001/g, (_, idx) => codeSpans[Number(idx)]);
+
+        const segment = maskedGap.replace(MADCAP_CONDITIONAL_TAG_RE, '');
+        if (!TABLE_FRAGMENT_DETECTOR_RE.test(segment)) {
+            return restoreCodeSpans(segment);
+        }
+
+        const hasLeadingNewline = /^\r?\n/.test(segment);
+        const hasTrailingNewline = /\r?\n[ \t]*$/.test(segment);
+        let balancedAny = false;
+        let out = '';
+        let pos = 0;
+        while (pos < segment.length) {
+            const rest = segment.slice(pos);
+            const openMatch = REAL_TABLE_OPEN_RE.exec(rest);
+            const closeTagMatch = /<\/table\s*>/.exec(rest);
+            const closeIdx = closeTagMatch ? closeTagMatch.index : -1;
+            const closeLen = closeTagMatch ? closeTagMatch[0].length : 0;
+
+            // Case 1: Leading split table tail before `</table>` (no opening `<table>` for it).
+            if (closeIdx !== -1 && (openMatch === null || closeIdx < openMatch.index)) {
+                const beforeClose = rest.slice(0, closeIdx + closeLen);
+                const headingPrefixMatch = beforeClose.match(/^(?:\s*#{1,6}\s+[^\r\n]+\r?\n+)+/);
+                const headingPrefix = headingPrefixMatch ? headingPrefixMatch[0] : '';
+                const frag = beforeClose.slice(headingPrefix.length);
+                if (isSplitTableTail(frag)) {
+                    out = appendBalancedBlock(out, headingPrefix, balanceTableFragment(frag, codeSpans));
+                    balancedAny = true;
+                } else {
+                    out += beforeClose;
+                }
+                pos += beforeClose.length;
+                continue;
+            }
+
+            // Case 2: An explicit `<table...>` starts here or later in `rest`.
+            if (openMatch !== null) {
+                const tableStart = pos + openMatch.index;
+                out += segment.slice(pos, tableStart);
+                const tableEnd = findMatchingTableEnd(segment, tableStart);
+                if (tableEnd !== -1) {
+                    const frag = segment.slice(tableStart, tableEnd);
+                    out = appendBalancedBlock(out, '', balanceTableFragment(frag, codeSpans));
+                    balancedAny = true;
+                    pos = tableEnd;
+                } else {
+                    const frag = segment.slice(tableStart);
+                    out = appendBalancedBlock(out, '', balanceTableFragment(frag, codeSpans));
+                    balancedAny = true;
+                    pos = segment.length;
+                }
+                continue;
+            }
+
+            // Case 3: Mid-table split chunk with neither `<table...>` nor `</table>` in `rest`.
+            if (pos === 0 && TABLE_FRAGMENT_DETECTOR_RE.test(rest)) {
+                const headingPrefixMatch = rest.match(/^(?:\s*#{1,6}\s+[^\r\n]+\r?\n+)+/);
+                const headingPrefix = headingPrefixMatch ? headingPrefixMatch[0] : '';
+                const frag = rest.slice(headingPrefix.length);
+                if (isMidTableFragment(frag)) {
+                    out = appendBalancedBlock(out, headingPrefix, balanceTableFragment(frag, codeSpans));
+                    balancedAny = true;
+                    break;
+                }
+            }
+
+            if (out.length > 0 && !out.endsWith('\n') && /^\s*\r?\n/.test(rest)) {
+                out += `\n\n${rest.replace(/^\s+/, '')}`;
+            } else {
+                out += rest;
+            }
+            break;
+        }
+        if (balancedAny) {
+            if (hasLeadingNewline && !out.startsWith('\n')) {
+                out = `\n\n${out}`;
+            }
+            if (hasTrailingNewline && !out.endsWith('\n')) {
+                out = `${out}\n\n`;
+            }
+        }
+        return restoreCodeSpans(out);
+    };
+
+    const re = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
+    let result = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        result += processGap(text.slice(last, m.index)) + m[0];
+        last = m.index + m[0].length;
+    }
+    return result + processGap(text.slice(last));
 }
 
 /**
@@ -317,6 +747,7 @@ export function renderMarkdown(text, isStreaming, deps) {
     source = forceToolCallNewlines(source);
     source = stripEmptyAnchorBookmarks(source);
     source = stripCodeSnippetCopyButtons(source);
+    source = balanceHtmlTables(source);
     source = normalizeSpacing(source);
 
     // No unwrapBacktickedCitations() call here: it is protectTokens' own first step, because the
@@ -343,3 +774,4 @@ export function renderMarkdown(text, isStreaming, deps) {
     // running it afterwards cannot put back anything DOMPurify took out.
     return openExternalLinksInNewTab(deps.sanitize(safe));
 }
+
