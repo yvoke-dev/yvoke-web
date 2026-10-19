@@ -109,6 +109,8 @@ test('the admin sidebar lists Areas as the first entry under Explorers', () => {
     assert.notEqual(areasLink, -1);
     assert.ok(explorersHeader < areasLink && areasLink < collectionsLink && collectionsLink < agentSystemHeader,
         'Areas must be the first menu entry under Explorers, ahead of Collections and Agent System');
+    assert.equal(layout.indexOf('th:href="@{/admin/areas}"', areasLink + 1), -1,
+        'Areas must appear only once in the sidebar');
 });
 
 test('every page that calls PlaybookPrompt loads its bridge', () => {
