@@ -50,8 +50,40 @@ export const MD_FENCE =
  */
 const MD_TABLE_ROW = '(?<=^|\\n)[^\\S\\n]*\\|[^\\n]*\\|[^\\S\\n]*(?=\\n|$)';
 
-/** GFM table rows and raw HTML `<table>...</table>` blocks that `normalizeSpacing` must not split. */
-const TABLE_REGION = `${MD_TABLE_ROW}|<table\\b[\\s\\S]*?<\\/table\\s*>`;
+/** Matches opening and closing `<table>` tags for nesting-aware table skipping in `normalizeSpacing`. */
+const HTML_TABLE_TAG_RE =
+    /<(\/?)table(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*>/g;
+
+/**
+ * Applies `fn` only outside balanced `<table...>...</table>` blocks (tracking nesting depth so
+ * an inner `</table>` inside a nested table does not expose the rest of the outer table).
+ */
+function mapOutsideHtmlTables(text, fn) {
+    HTML_TABLE_TAG_RE.lastIndex = 0;
+    let out = '';
+    let last = 0;
+    let depth = 0;
+    let tableStart = 0;
+    let m;
+    while ((m = HTML_TABLE_TAG_RE.exec(text)) !== null) {
+        if (m[1] === '/') {
+            if (depth > 0) {
+                depth--;
+                if (depth === 0) {
+                    const tableEnd = m.index + m[0].length;
+                    out += fn(text.slice(last, tableStart)) + text.slice(tableStart, tableEnd);
+                    last = tableEnd;
+                }
+            }
+        } else {
+            if (depth === 0) {
+                tableStart = m.index;
+            }
+            depth++;
+        }
+    }
+    return out + fn(text.slice(last));
+}
 
 /**
  * Matches `[1]`, `[42]`, `[1, 2]`, `[1,2,3]` — but not `config[1]` (preceded by a word character,
@@ -121,8 +153,9 @@ export function mapOutsideFences(markdown, fn) {
  *      keeps a heading's own hashes from being eaten — `## X` once became `#\n\n# X`, and the
  *      reference-list rule likewise excludes `-` so `<!-- [1] -->` or `-- [x]` does not split
  *      across its own dashes. It also stops an indented heading being split from its indentation.
- *   2. TABLE_REGION — whole GFM rows and HTML `<table>...</table>` blocks are excised first, so a
- *      marker anywhere in ANY cell is safe, not just one sitting next to a pipe.
+ *   2. `mapOutsideHtmlTables` + `MD_TABLE_ROW` — balanced HTML `<table>...</table>` blocks
+ *      (including nested tables) and GFM rows are excised first, so a marker anywhere in ANY cell
+ *      is safe, not just one sitting next to a pipe.
  *
  * The heading rule additionally requires whitespace before the hashes when the preceding character
  * is a word character: "the C# code" is not a heading named "code", and on a corpus full of C#
@@ -131,15 +164,17 @@ export function mapOutsideFences(markdown, fn) {
  */
 export function normalizeSpacing(text) {
     return mapOutsideFences(text, function (segment) {
-        return mapOutsideRegions(segment, TABLE_REGION, function (prose) {
-            let out = prose.replace(/([^\s#|])(\s*)(#{1,6}\s+)/g,
-                function (match, before, gap, hashes) {
-                    if (gap === '' && /\w/.test(before)) return match; // C#, F#, VB#
-                    return before + '\n\n' + hashes;
-                });
-            out = out.replace(/([^\s|])\s*(\d+\.\s+\*\*)/g, '$1\n\n$2');
-            out = out.replace(new RegExp('([^\\s|-])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
-            return out;
+        return mapOutsideHtmlTables(segment, function (nonHtmlTable) {
+            return mapOutsideRegions(nonHtmlTable, MD_TABLE_ROW, function (prose) {
+                let out = prose.replace(/([^\s#|])(\s*)(#{1,6}\s+)/g,
+                    function (match, before, gap, hashes) {
+                        if (gap === '' && /\w/.test(before)) return match; // C#, F#, VB#
+                        return before + '\n\n' + hashes;
+                    });
+                out = out.replace(/([^\s|])\s*(\d+\.\s+\*\*)/g, '$1\n\n$2');
+                out = out.replace(new RegExp('([^\\s|-])\\s*(-\\s+\\x5B)', 'g'), '$1\n$2');
+                return out;
+            });
         });
     });
 }

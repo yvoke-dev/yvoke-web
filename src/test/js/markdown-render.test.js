@@ -938,6 +938,12 @@ describe('HTML tables and split table fragment tag balancing', () => {
         const { html: splitHtml } = render(splitFrag, false);
         assert.equal((splitHtml.match(/<table\b/g) || []).length, 1, 'split table was broken by normalizeSpacing: ' + splitHtml);
         assert.ok(!splitHtml.includes('<h1>'), splitHtml);
+
+        const nestedMd = '<table><tbody><tr><td><table><tr><td>inner</td></tr></table> Use # to comment</td></tr></tbody></table>';
+        const { html: nestedHtml } = render(nestedMd, false);
+        assert.equal((nestedHtml.match(/<table\b/g) || []).length, 2, 'nested table was broken by normalizeSpacing: ' + nestedHtml);
+        assert.ok(nestedHtml.includes('</table> Use # to comment</td>'), nestedHtml);
+        assert.ok(!nestedHtml.includes('<h1>'), nestedHtml);
     });
 
     test('an HTML table tag with > inside a quoted attribute value is recognised as a valid tag and not escaped', () => {
