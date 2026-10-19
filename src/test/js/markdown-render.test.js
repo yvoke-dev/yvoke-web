@@ -671,12 +671,15 @@ describe('MadCap codeSnippet artifacts', () => {
         assert.match(singleOne, /<pre><code[^>]*>1\nfoo\(\)<\/code><\/pre>/);
     });
 
-    test('a code fence with plain ASCII 1..N lines followed by unindented or mismatching lines is preserved', () => {
+    test('a code fence with plain ASCII 1..N lines followed by unindented or mismatching lines is preserved, while 4-space indented code with blank lines strips the gutter', () => {
         const { html: unindented } = render('```\n1\n2\n3\n4\nactual content\n```\n', false);
         assert.match(unindented, /<pre><code[^>]*>1\n2\n3\n4\nactual content<\/code><\/pre>/);
 
         const { html: countMismatch } = render('```\n1\n2\n3\n    indented line\n```\n', false);
         assert.match(countMismatch, /<pre><code[^>]*>1\n2\n3\n    indented line<\/code><\/pre>/);
+
+        const { html: asciiWithBlank } = render('```\n1\n2\n3\n    a()\n\n    b()\n```\n', false);
+        assert.match(asciiWithBlank, /<pre><code[^>]*>a\(\)\n\nb\(\)<\/code><\/pre>/);
     });
 });
 
@@ -832,7 +835,7 @@ describe('HTML tables and split table fragment tag balancing', () => {
         assert.ok(h3.includes('&lt;Key&gt;&lt;T&gt;DialogTable&lt;/T&gt;&lt;P&gt;RMB-T-Org&lt;/P&gt;&lt;/Key&gt;'), h3);
     });
 
-    test('assistant prose mentioning HTML tags inline (<td>, </td>, <tr>, </p>) renders as prose with lists intact and never becomes a table', () => {
+    test('assistant prose mentioning HTML tags inline (<td>, </td>, <tr>, </p>) or 4-space indented flow HTML without table tags renders as prose/source and never becomes a table', () => {
         const { html: tdList } = render('The <td> element holds a cell.\n\n- one\n- two', false);
         assert.ok(tdList.includes('The &lt;td&gt; element holds a cell.'), tdList);
         assert.ok(tdList.includes('<ul>'), 'list was swallowed into a table: ' + tdList);
@@ -848,6 +851,9 @@ describe('HTML tables and split table fragment tag balancing', () => {
 
         const { html: pProse } = render('<code-execution>Output ends with </p></code-execution>', false);
         assert.ok(!pProse.includes('<table'), 'code-execution became a table: ' + pProse);
+
+        const { html: indentedFlow } = render('    <p>hello</p>', false);
+        assert.ok(!indentedFlow.includes('<table'), 'indented <p> became a table: ' + indentedFlow);
     });
 
     test('HTML table fragments inside code fences and inline code (including multi-line fences and multi-backtick spans) remain escaped code', () => {
@@ -915,7 +921,29 @@ describe('HTML tables and split table fragment tag balancing', () => {
         assert.ok(html.includes('<p>After.</p>'), html);
         assert.ok(!html.includes('&lt;tbody&gt;'), 'escaped tbody leaked: ' + html);
     });
+
+    test('hash comments, numbered bold items, and reference markers inside HTML table cells do not split the table in normalizeSpacing', () => {
+        const md = '<table><tbody><tr>'
+            + '<td>Use # to comment in config, then 1. **Do it** and see - [1] ref</td>'
+            + '<td><pre>echo hi # comment\n\necho bye</pre></td>'
+            + '</tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.equal((html.match(/<table\b/g) || []).length, 1, 'table was split by normalizeSpacing: ' + html);
+        assert.ok(html.includes('<td>Use # to comment in config, then 1. **Do it** and see - [1] ref</td>'), html);
+        assert.ok(html.includes('<pre>echo hi # comment\n\necho bye</pre>'), 'blank line inside <pre> was lost: ' + html);
+        assert.ok(!html.includes('<h1>'), 'hash inside table cell became h1: ' + html);
+
+        const splitFrag = '                        <td><p>Use # to comment in config and 1. **Do it**</p></td>\n'
+            + '                    </tr>';
+        const { html: splitHtml } = render(splitFrag, false);
+        assert.equal((splitHtml.match(/<table\b/g) || []).length, 1, 'split table was broken by normalizeSpacing: ' + splitHtml);
+        assert.ok(!splitHtml.includes('<h1>'), splitHtml);
+    });
+
+    test('an HTML table tag with > inside a quoted attribute value is recognised as a valid tag and not escaped', () => {
+        const md = '<table><tbody><tr><td title="a > b">Cell content</td></tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<td title="a > b">Cell content</td>'), html);
+        assert.ok(!html.includes('&lt;td'), 'td with > in attribute was escaped: ' + html);
+    });
 });
-
-
-

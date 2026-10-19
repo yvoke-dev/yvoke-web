@@ -13,6 +13,7 @@
  */
 
 import {
+    MD_FENCE,
     mapOutsideFences,
     mapOutsidePre,
     normalizeSpacing,
@@ -39,19 +40,21 @@ export function installCodeRenderer(marked) {
             }
         },
         renderer: {
-            // Raw HTML is ESCAPED rather than passed through. DOMPurify drops an unknown element
-            // while keeping its text, so `<Class Name="Group">` reached the user as nothing at all
-            // — silent content loss on a corpus full of XML, C# and VB.NET config. The cost is
-            // that an answer can no longer use HTML for formatting: <br>, <sub>, an <a> or an HTML
-            // table now show as source. That is the deliberate trade — over-rendering loses
-            // content invisibly, over-escaping is ugly but readable.
+            // Raw HTML is ESCAPED by default rather than passed through. DOMPurify drops an
+            // unknown element while keeping its text, so `<Class Name="Group">` reached the user
+            // as nothing at all — silent content loss on a corpus full of XML, C# and VB.NET
+            // config. Two deliberate exceptions apply before falling back to escaping: complete
+            // HTML comments (`<!-- ... -->`) are dropped, and balanced `<table>...</table>` blocks
+            // are passed through after escaping any non-table tags inside their cells. Everything
+            // else (`<br>`, `<sub>`, an inline `<a>`, or an XML schema) shows as source — over-
+            // rendering loses content invisibly, over-escaping is ugly but readable.
             //
-            // A BLOCK token additionally needs a wrapper. Emitted bare it has no element around
-            // it, so the browser collapses its newlines and indentation and a multi-line schema
-            // renders as one run-on line with no margins. <pre><code> is what the code renderer
-            // emits and what index.css already styles, so the markup reads as the source it is —
-            // and mapOutsidePre then treats it like any other code block. Inline tokens (<br>
-            // mid-sentence) must NOT be wrapped, which is what token.block separates.
+            // A non-table BLOCK token additionally needs a wrapper. Emitted bare it has no element
+            // around it, so the browser collapses its newlines and indentation and a multi-line
+            // schema renders as one run-on line with no margins. <pre><code> is what the code
+            // renderer emits and what index.css already styles, so the markup reads as the source
+            // it is — and mapOutsidePre then treats it like any other code block. Inline tokens
+            // (<br> mid-sentence) must NOT be wrapped, which is what token.block separates.
             html(token) {
                 const text = typeof token === 'string' ? token : (token.text || token.raw || '');
                 const trimmed = text.trim();
@@ -70,7 +73,7 @@ export function installCodeRenderer(marked) {
                 // allowed through as HTML tables, with any non-table XML/placeholder tags inside
                 // cells escaped so DOMPurify never silently drops content.
                 if (token && token.block && isBalancedHtmlTableBlock(trimmed)) {
-                    return escapeNonTableHtmlTags(trimmed);
+                    return escapeNonTableHtmlTags(trimmed).replace(/\uE000PRENL\uE001/g, '');
                 }
 
                 return token && token.block
@@ -121,9 +124,16 @@ export function stripCodeLineNumberGutter(text) {
 
     const hasNbsp = codeLines.some((l) => l.includes('\u00a0'));
     const normalized = codeLines.map((l) => l.replace(/\u00a0/g, ' '));
+    const trimmedCodeLines = [...normalized];
+    while (trimmedCodeLines.length > 0 && trimmedCodeLines[trimmedCodeLines.length - 1].trim() === '') {
+        trimmedCodeLines.pop();
+    }
     const nonEmpty = normalized.filter((l) => l.trim().length > 0);
     const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^[ \t]*/)[0].length));
-    if (!hasNbsp && !(minIndent >= 4 && nonEmpty.length === gutterCount)) {
+    if (
+        !hasNbsp
+        && !(minIndent >= 4 && (trimmedCodeLines.length === gutterCount || nonEmpty.length === gutterCount))
+    ) {
         return text.replace(/\u00a0/g, ' ');
     }
     return normalized
@@ -141,13 +151,6 @@ export function forceToolCallNewlines(text) {
     });
 }
 
-/**
- * Matches CommonMark fenced code blocks (` ``` ` or `~~~` of length >= 3, closed by a fence of
- * the same character and at least the same length, or running to end-of-input if unclosed).
- */
-const MD_FENCE_RE =
-    /^[ \t]*(?:(?<btfence>`{3,})[^\r\n]*\r?\n[\s\S]*?(?:\r?\n[ \t]*\k<btfence>`*[ \t]*(?=\r?\n|$)|(?![\s\S]))|(?<tfence>~{3,})[^\r\n]*\r?\n[\s\S]*?(?:\r?\n[ \t]*\k<tfence>~*[ \t]*(?=\r?\n|$)|(?![\s\S])))/gm;
-
 /** Matches CommonMark inline code spans (single-backtick or multi-backtick). */
 const MD_CODE_SPAN_RE = /(?<span>`{2,})(?!`)[\s\S]*?(?<!`)\k<span>(?!`)|`[^`\r\n]+`/g;
 
@@ -157,7 +160,7 @@ const MD_CODE_SPAN_RE = /(?<span>`{2,})(?!`)[\s\S]*?(?<!`)\k<span>(?!`)|`[^`\r\n
  */
 function mapOutsideCodeRegions(text, fn) {
     const protectedRanges = [];
-    const fenceRe = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
+    const fenceRe = new RegExp(MD_FENCE, 'g');
     let m;
     while ((m = fenceRe.exec(text)) !== null) {
         protectedRanges.push([m.index, m.index + m[0].length]);
@@ -223,12 +226,12 @@ const CODE_SNIPPET_COPY_BEFORE_FENCE =
 /**
  * Drops MadCap Flare "Copy" toolbar lines immediately preceding fenced code blocks.
  *
- * Walking `MD_FENCE_RE` matches whole fenced blocks (`m[0]`), so `text.slice(last, m.index)` is
+ * Walking `MD_FENCE` matches whole fenced blocks (`m[0]`), so `text.slice(last, m.index)` is
  * both outside every fence and guaranteed to end right at the next opening fence — a `Copy` line
  * inside a fence before its closing delimiter sits inside `m[0]` and is never seen.
  */
 export function stripCodeSnippetCopyButtons(text) {
-    const re = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
+    const re = new RegExp(MD_FENCE, 'g');
     let out = '';
     let last = 0;
     let m;
@@ -253,8 +256,8 @@ const VOID_HTML_TAGS = new Set(['br', 'hr', 'img', 'col']);
 const HTML_ATTR_LIST_RE =
     /^(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*$/;
 
-/** Matches any `<...>` tag candidate in a fragment. */
-const ANY_ANGLE_TAG_RE = /<(\/?)([a-zA-Z][\w:.-]*)((?:\s+[^>]*?)?)(\/?)>/g;
+/** Matches any `<...>` tag candidate in a fragment, allowing `>` inside quoted attribute values. */
+const ANY_ANGLE_TAG_RE = /<(\/?)([a-zA-Z][\w:.-]*)((?:\s+(?:"[^"]*"|'[^']*'|[^>"'])*?)?)(\/?)>/g;
 
 /**
  * Matches a real HTML `<table...>` opening tag followed by a table child tag (`<caption`,
@@ -297,7 +300,7 @@ function isValidTableHtmlTag(slash, rawName, attrs) {
  * tag (for example `<condition>`, `<column name>`, `<form name>`, or `<Class Name="Group">`) so
  * DOMPurify does not strip unknown elements and silently drop their text.
  */
-export function escapeNonTableHtmlTags(html) {
+function escapeNonTableHtmlTags(html) {
     return html.replace(ANY_ANGLE_TAG_RE, function (full, slash, rawName, attrs) {
         return isValidTableHtmlTag(slash, rawName, attrs) ? full : escapeHtml(full);
     });
@@ -440,6 +443,12 @@ function balanceTableFragment(fragment, codeSpans = []) {
     if (unmatchedClosers.includes('tr')) {
         balanced = applyLeadingPartialRowColspan(balanced);
     }
+    // Preserve blank lines inside <pre>...</pre> with a non-whitespace marker so CommonMark does
+    // not terminate the HTML <table> block at an internal blank line; html(token) strips the
+    // marker once marked has finished block tokenization.
+    balanced = balanced.replace(/<pre\b[\s\S]*?<\/pre>/g, (preBlock) =>
+        preBlock.replace(/\r?\n([ \t]*)(?=\r?\n)/g, '\n\uE000PRENL\uE001')
+    );
     return balanced.replace(/\r?\n(?:[ \t]*\r?\n)+/g, '\n');
 }
 
@@ -491,14 +500,15 @@ function isSplitTableTail(frag) {
 /**
  * Checks whether a segment with neither `<table...>` nor `</table>` is a genuine mid-table split
  * chunk from an imported manual rather than assistant prose mentioning `<td>`, `</td>`, `<tr>`,
- * or `</p>` inline.
+ * or `</p>` inline, or a 4-space indented `<p>`/`<ul>` block with no table context.
  */
 function isMidTableFragment(frag) {
     return (
         /^\s*<\/?(?:tr|td|th|tbody|thead|tfoot|colgroup|caption|p|ul|ol|li|div)\b/.test(frag)
         && (
             /<\/?(?:tr|td|th|tbody|thead|tfoot|colgroup|caption)\b/.test(frag)
-            || /^[ \t]{4,}<(?:p|ul|ol|li|div)\b/.test(frag)
+            || /^[ \t]{16,}<(?:p|ul|ol|li|div)\b/.test(frag)
+            || /\bclass="Table/i.test(frag)
         )
     );
 }
@@ -508,7 +518,7 @@ function isMidTableFragment(frag) {
  * blocks and inline code spans so complete and chunk-split manual tables render cleanly.
  */
 export function balanceHtmlTables(text) {
-    const processGap = function (rawFenceGap) {
+    return mapOutsideFences(text, function (rawFenceGap) {
         const codeSpans = [];
         const maskedGap = rawFenceGap.replace(MD_CODE_SPAN_RE, function (span) {
             const idx = codeSpans.length;
@@ -598,17 +608,7 @@ export function balanceHtmlTables(text) {
             }
         }
         return restoreCodeSpans(out);
-    };
-
-    const re = new RegExp(MD_FENCE_RE.source, MD_FENCE_RE.flags);
-    let result = '';
-    let last = 0;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-        result += processGap(text.slice(last, m.index)) + m[0];
-        last = m.index + m[0].length;
-    }
-    return result + processGap(text.slice(last));
+    });
 }
 
 /**
@@ -774,4 +774,3 @@ export function renderMarkdown(text, isStreaming, deps) {
     // running it afterwards cannot put back anything DOMPurify took out.
     return openExternalLinksInNewTab(deps.sanitize(safe));
 }
-

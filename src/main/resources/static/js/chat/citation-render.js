@@ -32,8 +32,12 @@ const CODE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>|<code\\b[\\s\\S]*?<\\/code>';
  */
 const PRE_REGION = '<pre\\b[\\s\\S]*?<\\/pre>';
 
-/** A fenced code block in RAW markdown, before marked has run. */
-export const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
+/**
+ * A CommonMark fenced code block in RAW markdown (` ``` ` or `~~~` of length >= 3, closed by a
+ * fence of the same character and at least the same length, or running to end-of-input if unclosed).
+ */
+export const MD_FENCE =
+    '(?<=^|\\n)[ \\t]*(?:(?<btfence>`{3,})[^\\r\\n]*\\r?\\n[\\s\\S]*?(?:\\r?\\n[ \\t]*\\k<btfence>`*[ \\t]*(?=\\r?\\n|$)|(?![\\s\\S]))|(?<tfence>~{3,})[^\\r\\n]*\\r?\\n[\\s\\S]*?(?:\\r?\\n[ \\t]*\\k<tfence>~*[ \\t]*(?=\\r?\\n|$)|(?![\\s\\S])))';
 
 /**
  * A whole line that is a GFM table row (or its `|---|---|` delimiter): pipe-delimited, opening and
@@ -45,6 +49,9 @@ export const MD_FENCE = '```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)';
  * in the header row stops marked seeing a table at all and the rest collapses into one paragraph.
  */
 const MD_TABLE_ROW = '(?<=^|\\n)[^\\S\\n]*\\|[^\\n]*\\|[^\\S\\n]*(?=\\n|$)';
+
+/** GFM table rows and raw HTML `<table>...</table>` blocks that `normalizeSpacing` must not split. */
+const TABLE_REGION = `${MD_TABLE_ROW}|<table\\b[\\s\\S]*?<\\/table\\s*>`;
 
 /**
  * Matches `[1]`, `[42]`, `[1, 2]`, `[1,2,3]` — but not `config[1]` (preceded by a word character,
@@ -96,7 +103,8 @@ export function mapOutsideFences(markdown, fn) {
 /**
  * Re-inserts the blank lines that models omit around headings, numbered bold list items and
  * reference-list entries. Skips fenced code, where a bash `# comment` or a SQL `-- [id]` line is
- * content, not markdown — and skips table rows, which are structure rather than prose.
+ * content, not markdown — and skips table rows and HTML `<table>` blocks, which are structure
+ * rather than prose.
  *
  * Every rule here is "a marker appears mid-line; put it on its own line", so every rule has to
  * answer the same question: what is the last non-whitespace character BEFORE the marker? The old
@@ -113,8 +121,8 @@ export function mapOutsideFences(markdown, fn) {
  *      keeps a heading's own hashes from being eaten — `## X` once became `#\n\n# X`, and the
  *      reference-list rule likewise excludes `-` so `<!-- [1] -->` or `-- [x]` does not split
  *      across its own dashes. It also stops an indented heading being split from its indentation.
- *   2. MD_TABLE_ROW — the whole row is excised first, so a marker anywhere in ANY cell is safe,
- *      not just one sitting next to a pipe. `| Fix | use # to comment |` needs this one.
+ *   2. TABLE_REGION — whole GFM rows and HTML `<table>...</table>` blocks are excised first, so a
+ *      marker anywhere in ANY cell is safe, not just one sitting next to a pipe.
  *
  * The heading rule additionally requires whitespace before the hashes when the preceding character
  * is a word character: "the C# code" is not a heading named "code", and on a corpus full of C#
@@ -123,7 +131,7 @@ export function mapOutsideFences(markdown, fn) {
  */
 export function normalizeSpacing(text) {
     return mapOutsideFences(text, function (segment) {
-        return mapOutsideRegions(segment, MD_TABLE_ROW, function (prose) {
+        return mapOutsideRegions(segment, TABLE_REGION, function (prose) {
             let out = prose.replace(/([^\s#|])(\s*)(#{1,6}\s+)/g,
                 function (match, before, gap, hashes) {
                     if (gap === '' && /\w/.test(before)) return match; // C#, F#, VB#
