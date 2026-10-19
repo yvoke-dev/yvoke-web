@@ -99,9 +99,18 @@ test('areas: the area form posts every field the controller binds', () => {
     }
 });
 
-test('the admin sidebar links the Areas page', () => {
+test('the admin sidebar lists Areas as the first entry under Explorers', () => {
     const layout = fs.readFileSync(`${ADMIN}/layout.html`, 'utf8');
-    assert.ok(layout.includes('th:href="@{/admin/areas}"'));
+    const explorersHeader = layout.indexOf('<li class="sidebar-section-header">Explorers</li>');
+    const areasLink = layout.indexOf('th:href="@{/admin/areas}"');
+    const collectionsLink = layout.indexOf('th:href="@{/admin/collections}"');
+    const agentSystemHeader = layout.indexOf('<li class="sidebar-section-header">Agent System</li>');
+    assert.notEqual(explorersHeader, -1);
+    assert.notEqual(areasLink, -1);
+    assert.ok(explorersHeader < areasLink && areasLink < collectionsLink && collectionsLink < agentSystemHeader,
+        'Areas must be the first menu entry under Explorers, ahead of Collections and Agent System');
+    assert.equal(layout.indexOf('th:href="@{/admin/areas}"', areasLink + 1), -1,
+        'Areas must appear only once in the sidebar');
 });
 
 test('every page that calls PlaybookPrompt loads its bridge', () => {
