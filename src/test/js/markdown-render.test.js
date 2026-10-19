@@ -19,6 +19,7 @@ import vm from 'node:vm';
 import { formatCitations } from '../../main/resources/static/js/chat/citation-render.js';
 import { escapeHtml } from '../../main/resources/static/js/chat/thread-text.js';
 import {
+    balanceHtmlTables,
     forceToolCallNewlines,
     installCodeRenderer,
     openExternalLinksInNewTab,
@@ -669,5 +670,286 @@ describe('MadCap codeSnippet artifacts', () => {
         const { html: singleOne } = render('```\n1\nfoo()\n```\n', false);
         assert.match(singleOne, /<pre><code[^>]*>1\nfoo\(\)<\/code><\/pre>/);
     });
+
+    test('a code fence with plain ASCII 1..N lines followed by unindented or mismatching lines is preserved, while 4-space indented code with blank lines strips the gutter', () => {
+        const { html: unindented } = render('```\n1\n2\n3\n4\nactual content\n```\n', false);
+        assert.match(unindented, /<pre><code[^>]*>1\n2\n3\n4\nactual content<\/code><\/pre>/);
+
+        const { html: countMismatch } = render('```\n1\n2\n3\n    indented line\n```\n', false);
+        assert.match(countMismatch, /<pre><code[^>]*>1\n2\n3\n    indented line<\/code><\/pre>/);
+
+        const { html: asciiWithBlank } = render('```\n1\n2\n3\n    a()\n\n    b()\n```\n', false);
+        assert.match(asciiWithBlank, /<pre><code[^>]*>a\(\)\n\nb\(\)<\/code><\/pre>/);
+    });
 });
 
+describe('HTML tables and split table fragment tag balancing', () => {
+    test('a complete raw HTML table renders as a table and unwraps madcap:conditionaltext tags', () => {
+        const md = 'Intro paragraph.\n\n'
+            + '<table class="TableStyle-RuledTableWithHeading_DoNotEdit" cellspacing="0">\n'
+            + '  <caption><span>Table 1: </span>Overview</caption>\n'
+            + '  <colgroup><col><col></colgroup>\n'
+            + '  <thead>\n'
+            + '    <tr><th>Tool</th><th>Short description</th></tr>\n'
+            + '  </thead>\n'
+            + '  <tbody>\n'
+            + '    <tr>\n'
+            + '      <td><p><span>Launchpad</span></p></td>\n'
+            + '      <td><p>Central tool<madcap:conditionaltext data-mc-conditions="UniversalW"> with MFA</madcap:conditionaltext>.</p></td>\n'
+            + '    </tr>\n'
+            + '  </tbody>\n'
+            + '</table>\n\n'
+            + 'Outro paragraph.\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<p>Intro paragraph.</p>'), html);
+        assert.ok(html.includes('<p>Outro paragraph.</p>'), html);
+        assert.ok(html.includes('<table class="TableStyle-RuledTableWithHeading_DoNotEdit" cellspacing="0">'), html);
+        assert.ok(html.includes('<th>Tool</th>'), html);
+        assert.ok(html.includes('<td><p>Central tool with MFA.</p></td>'), html);
+        assert.ok(!html.includes('madcap:conditionaltext'), 'madcap tag leaked: ' + html);
+        assert.ok(!html.includes('<pre><code>'), 'table was wrapped in a code block: ' + html);
+        assert.ok(!html.includes('&lt;table'), 'table tag was escaped: ' + html);
+    });
+
+    test('a mid-table split chunk (part 4/11 shape) balances missing opening and closing table tags and sets colspan on partial leading row', () => {
+        const md = '### One Identity Manager tools (part 4/11)\n\n'
+            + '                            <p>The <span class="mc-variable ProductVarSet.WebPortalOpSupport variable">Operations&nbsp;Support&nbsp;Web&nbsp;Portal</span> helps you to manage and use your web applications.</p>\n'
+            + '                            <p>The <span class="mc-variable ProductVarSet.WebPortalOpSupport variable">Operations&nbsp;Support&nbsp;Web&nbsp;Portal</span> is made available over the <span class="mc-variable ProductVarSet.APIServer variable">API&nbsp;Server</span>.</p>\n'
+            + '                        </td>\n'
+            + '                    </tr>\n'
+            + '                    <tr class="TableStyle-RuledTableWithHeading_DoNotEdit-Body-Body1">\n'
+            + '                        <td class="TableStyle-RuledTableWithHeading_DoNotEdit-BodyE-Column1-Body1">\n'
+            + '                            <p><span class="mc-variable ProductVarSet.IdentityManager variable">Manager</span>\n'
+            + '                            </p>\n'
+            + '                        </td>\n'
+            + '                        <td class="TableStyle-RuledTableWithHeading_DoNotEdit-BodyD-Column1-Body1">\n'
+            + '                            <p>The <span class="mc-variable ProductVarSet.IdentityManager variable">Manager</span> is the main administration tool.</p>\n'
+            + '                            <ul>\n'
+            + '                                <li>\n'
+            + '                                    <p data-mc-conditions="ProductSnippetConditions.UniversalW">Define custom IT policies.</p>\n'
+            + '                                </li>\n'
+            + '                            </ul>';
+        const { html } = render(md, false);
+        assert.match(html, /<h3[^>]*>One Identity Manager tools \(part 4\/11\)<\/h3>/, html);
+        assert.ok(html.includes('<table><tbody><tr><td colspan="2">'), 'missing balanced opening table/colspan tags: ' + html);
+        assert.ok(html.endsWith('</ul></td></tr></tbody></table>') || html.trim().endsWith('</ul></td></tr></tbody></table>'), 'missing balanced closing table tags: ' + html);
+        assert.ok(!html.includes('&lt;p&gt;'), 'paragraph tag was escaped: ' + html);
+        assert.ok(!html.includes('&lt;td'), 'td tag was escaped: ' + html);
+        assert.ok(!html.includes('<pre>'), 'fragment became a code block: ' + html);
+    });
+
+    test('a split chunk starting mid-list (part 3/11 shape) balances ul/td/tr at the start and closes open tags at the end', () => {
+        const md = '                                <li>\n'
+            + '                                    <p>Changing your own main data and password.</p>\n'
+            + '                                </li>\n'
+            + '                            </ul>\n'
+            + '                            <p>In the information system, you may see several evaluations.</p>\n'
+            + '                        </td>\n'
+            + '                    </tr>\n'
+            + '                    <tr class="TableStyle-RuledTableWithHeading_DoNotEdit-Body-Body1">\n'
+            + '                        <td class="TableStyle-RuledTableWithHeading_DoNotEdit-BodyE-Column1-Body1">\n'
+            + '                            <p><span>Password Reset Portal</span></p>\n'
+            + '                        </td>\n'
+            + '                        <td class="TableStyle-RuledTableWithHeading_DoNotEdit-BodyD-Column1-Body1">';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<table><tbody><tr><td colspan="2"><ul>'), 'missing balanced ul/td/tr opener: ' + html);
+        assert.ok(html.trim().endsWith('</td></tr></tbody></table>'), 'missing balanced closer: ' + html);
+        assert.ok(!html.includes('&lt;li&gt;'), html);
+    });
+
+    test('a split chunk starting with <table and cut off mid-list (part 2/11 shape) closes all open tags at the end', () => {
+        const md = 'Intro prose.\n\n'
+            + '<table class="TableStyle">\n'
+            + '  <tbody>\n'
+            + '    <tr>\n'
+            + '      <td><p>Web Portal</p></td>\n'
+            + '      <td>\n'
+            + '        <p>Workflows:</p>\n'
+            + '        <ul>';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<p>Intro prose.</p>'), html);
+        assert.ok(html.includes('<table class="TableStyle">'), html);
+        assert.ok(html.trim().endsWith('<ul></ul></td></tr></tbody></table>'), 'missing balanced closer: ' + html);
+    });
+
+    test('a split chunk ending at </table> followed by markdown headings and lists (part 11/11 shape) keeps trailing markdown', () => {
+        const md = '                            <p>Use the <span>Server Installer</span> to install the service.</p>\n'
+            + '                        </td>\n'
+            + '                    </tr>\n'
+            + '                </tbody>\n'
+            + '            </table>\n\n'
+            + '###### Related topics\n\n'
+            + '* [Application server components](#topic-appserver)\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<table><tbody><tr><td>'), 'missing balanced opener: ' + html);
+        assert.match(html, /<h6[^>]*>Related topics<\/h6>/, 'trailing heading lost: ' + html);
+        assert.ok(html.includes('<a href="#topic-appserver">Application server components</a>'), 'trailing list link lost: ' + html);
+    });
+
+    test('leading empty closing tags at the start of a split chunk are stripped without creating an empty phantom row', () => {
+        const md = '                        </td>\n'
+            + '                    </tr>\n'
+            + '                    <tr>\n'
+            + '                        <td><p>Tool A</p></td>\n'
+            + '                        <td><p>Description A</p></td>\n'
+            + '                    </tr>\n'
+            + '                </tbody>\n'
+            + '            </table>';
+        const { html } = render(md, false);
+        assert.equal((html.match(/<tr\b/g) || []).length, 1, 'phantom row created: ' + html);
+        assert.ok(html.includes('<td><p>Tool A</p></td>'), html);
+    });
+
+    test('a mid-cell split chunk with only p/ul/li tags and blank lines inside is wrapped in a balanced table cell', () => {
+        const md = '                            <p class="TableHyphen">Interval in which the task is run.\n\nOther settings may be required.</p>\n'
+            + '                            <ul>\n'
+            + '                                <li>\n'
+            + '                                    <p class="TableHyphen"><b class="Value">Weekly</b>: Run weekly.</p>';
+        const { html } = render(md, false);
+        assert.ok(html.startsWith('<table><tbody><tr><td>'), 'missing table wrapper: ' + html);
+        assert.ok(html.trim().endsWith('</p></li></ul></td></tr></tbody></table>'), 'missing closing tags: ' + html);
+        assert.ok(!html.includes('&lt;p'), 'p tag was escaped: ' + html);
+    });
+
+    test('unknown XML tags and angle-bracket placeholders inside an HTML table cell are escaped while the table renders', () => {
+        const md = '<table><tbody><tr>'
+            + '<td><p>Specify <condition>, <column name>, <form name>, and <Class Name="Group">.</p></td>'
+            + '</tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<table><tbody><tr><td><p>'), 'table was not rendered: ' + html);
+        assert.ok(html.includes('&lt;condition&gt;'), 'placeholder <condition> was not escaped: ' + html);
+        assert.ok(html.includes('&lt;column name&gt;'), 'placeholder <column name> was not escaped: ' + html);
+        assert.ok(html.includes('&lt;form name&gt;'), 'placeholder <form name> was not escaped: ' + html);
+        assert.ok(html.includes('&lt;Class Name=&quot;Group&quot;&gt;'), 'XML tag was not escaped: ' + html);
+    });
+
+    test('prose placeholders like <table>, <table name>, and uppercase <Key><T><P> outside tables remain escaped text', () => {
+        const { html: h1 } = render('1. Select the **<table>** category.', false);
+        assert.ok(h1.includes('<strong>&lt;table&gt;</strong>'), h1);
+        assert.ok(!h1.includes('<table>'), h1);
+
+        const { html: h2 } = render('Use <table name>.<column name> in the query.', false);
+        assert.ok(h2.includes('&lt;table name&gt;.&lt;column name&gt;'), h2);
+
+        const { html: h3 } = render('Example: <Key><T>DialogTable</T><P>RMB-T-Org</P></Key>', false);
+        assert.ok(h3.includes('&lt;Key&gt;&lt;T&gt;DialogTable&lt;/T&gt;&lt;P&gt;RMB-T-Org&lt;/P&gt;&lt;/Key&gt;'), h3);
+    });
+
+    test('assistant prose mentioning HTML tags inline (<td>, </td>, <tr>, </p>) or 4-space indented flow HTML without table tags renders as prose/source and never becomes a table', () => {
+        const { html: tdList } = render('The <td> element holds a cell.\n\n- one\n- two', false);
+        assert.ok(tdList.includes('The &lt;td&gt; element holds a cell.'), tdList);
+        assert.ok(tdList.includes('<ul>'), 'list was swallowed into a table: ' + tdList);
+        assert.ok(!tdList.includes('<table'), 'prose became a table: ' + tdList);
+
+        const { html: closeProse } = render('In HTML, close the cell with </td> and the row with </tr>.', false);
+        assert.ok(closeProse.includes('&lt;/td&gt;') && closeProse.includes('&lt;/tr&gt;'), closeProse);
+        assert.ok(!closeProse.includes('<table'), 'prose became a table: ' + closeProse);
+
+        const { html: trProse } = render('Wrap rows in <tr> tags.', false);
+        assert.ok(trProse.includes('Wrap rows in &lt;tr&gt; tags.'), trProse);
+        assert.ok(!trProse.includes('<table'), 'prose became a table: ' + trProse);
+
+        const { html: pProse } = render('<code-execution>Output ends with </p></code-execution>', false);
+        assert.ok(!pProse.includes('<table'), 'code-execution became a table: ' + pProse);
+
+        const { html: indentedFlow } = render('    <p>hello</p>', false);
+        assert.ok(!indentedFlow.includes('<table'), 'indented <p> became a table: ' + indentedFlow);
+    });
+
+    test('HTML table fragments inside code fences and inline code (including multi-line fences and multi-backtick spans) remain escaped code', () => {
+        const md = 'Use `</td></tr>` or `` a`<td>`b `` or:\n\n'
+            + '```html\n'
+            + '<tr>\n'
+            + '<a id="x"></a><td>x</td></tr>\n'
+            + '<!-- comment -->\n'
+            + '```\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<code>&lt;/td&gt;&lt;/tr&gt;</code>'), html);
+        assert.ok(html.includes('<code>a`&lt;td&gt;`b</code>'), html);
+        assert.ok(html.includes('&lt;a id=&quot;x&quot;&gt;&lt;/a&gt;&lt;td&gt;x&lt;/td&gt;&lt;/tr&gt;'), html);
+        assert.ok(html.includes('&lt;!-- comment --&gt;'), html);
+        assert.ok(!html.includes('<table>'), html);
+    });
+
+    test('a code fence closed by a longer fence (3 opened, 4 closed) does not swallow a following HTML table', () => {
+        const md = '```sql\nSELECT 1;\n````\n\n<table><tbody><tr><td>After fence</td></tr></tbody></table>\n';
+        const { html } = render(md, false);
+        assert.ok(html.includes('SELECT 1;'), html);
+        assert.ok(html.includes('<table><tbody><tr><td>After fence</td></tr></tbody></table>'), html);
+    });
+
+    test('a code fence adjacent to a split table fragment in either order keeps blank-line separation and renders both', () => {
+        const fenceThenFrag = '### Configure (part 4/9)\n\n'
+            + '```sql\nSELECT 1;\n```\n\n'
+            + '                            <p class="TableText">Designer</p>\n'
+            + '                        </td>\n'
+            + '                    </tr>';
+        const { html: h1 } = render(fenceThenFrag, false);
+        assert.ok(h1.includes('<pre><code class="language-sql">SELECT 1;</code></pre>'), h1);
+        assert.ok(h1.includes('<table><tbody><tr><td><p class="TableText">Designer</p>'), h1);
+
+        const fragThenFence = '                            <p class="TableText">Designer</p>\n'
+            + '                        </td>\n'
+            + '                    </tr>\n\n'
+            + '```sql\nSELECT 1;\n```';
+        const { html: h2 } = render(fragThenFence, false);
+        assert.ok(h2.includes('<table><tbody><tr><td><p class="TableText">Designer</p>'), h2);
+        assert.ok(h2.includes('<pre><code class="language-sql">SELECT 1;</code></pre>'), h2);
+    });
+
+    test('inline backtick code inside an HTML table cell renders as <code> without splitting the table and preserves entities', () => {
+        const md = '<table><tbody><tr>'
+            + '<td><p>Run `Invoke-Command` or ``a`<td>`b`` or `&lt;td&gt;`</p></td>'
+            + '<td><p>Second cell</p></td>'
+            + '</tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.equal((html.match(/<table\b/g) || []).length, 1, 'table was split: ' + html);
+        assert.ok(html.includes('<code>Invoke-Command</code>'), html);
+        assert.ok(html.includes('<code>a`&lt;td&gt;`b</code>'), html);
+        assert.ok(html.includes('<code>&amp;lt;td&amp;gt;</code>'), html);
+        assert.ok(html.includes('<td><p>Second cell</p></td>'), html);
+    });
+
+    test('a tail fragment ending with </td></tr></table> (no </tbody>) places <table> outermost and is idempotent under balanceHtmlTables', () => {
+        const input = 'Intro…\n</td></tr></table>\n\nAfter.';
+        const once = balanceHtmlTables(input);
+        const twice = balanceHtmlTables(once);
+        assert.equal(twice, once, 'balanceHtmlTables must be idempotent');
+        assert.ok(!once.includes('<tbody><table'), 'tbody placed outside table: ' + once);
+        const { html } = render(once, false);
+        assert.ok(html.includes('<table><tr><td>Intro…'), html);
+        assert.ok(html.includes('<p>After.</p>'), html);
+        assert.ok(!html.includes('&lt;tbody&gt;'), 'escaped tbody leaked: ' + html);
+    });
+
+    test('hash comments, numbered bold items, and reference markers inside HTML table cells do not split the table in normalizeSpacing', () => {
+        const md = '<table><tbody><tr>'
+            + '<td>Use # to comment in config, then 1. **Do it** and see - [1] ref</td>'
+            + '<td><pre>echo hi # comment\n\necho bye</pre></td>'
+            + '</tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.equal((html.match(/<table\b/g) || []).length, 1, 'table was split by normalizeSpacing: ' + html);
+        assert.ok(html.includes('<td>Use # to comment in config, then 1. **Do it** and see - [1] ref</td>'), html);
+        assert.ok(html.includes('<pre>echo hi # comment\n\necho bye</pre>'), 'blank line inside <pre> was lost: ' + html);
+        assert.ok(!html.includes('<h1>'), 'hash inside table cell became h1: ' + html);
+
+        const splitFrag = '                        <td><p>Use # to comment in config and 1. **Do it**</p></td>\n'
+            + '                    </tr>';
+        const { html: splitHtml } = render(splitFrag, false);
+        assert.equal((splitHtml.match(/<table\b/g) || []).length, 1, 'split table was broken by normalizeSpacing: ' + splitHtml);
+        assert.ok(!splitHtml.includes('<h1>'), splitHtml);
+
+        const nestedMd = '<table><tbody><tr><td><table><tr><td>inner</td></tr></table> Use # to comment</td></tr></tbody></table>';
+        const { html: nestedHtml } = render(nestedMd, false);
+        assert.equal((nestedHtml.match(/<table\b/g) || []).length, 2, 'nested table was broken by normalizeSpacing: ' + nestedHtml);
+        assert.ok(nestedHtml.includes('</table> Use # to comment</td>'), nestedHtml);
+        assert.ok(!nestedHtml.includes('<h1>'), nestedHtml);
+    });
+
+    test('an HTML table tag with > inside a quoted attribute value is recognised as a valid tag and not escaped', () => {
+        const md = '<table><tbody><tr><td title="a > b">Cell content</td></tr></tbody></table>';
+        const { html } = render(md, false);
+        assert.ok(html.includes('<td title="a > b">Cell content</td>'), html);
+        assert.ok(!html.includes('&lt;td'), 'td with > in attribute was escaped: ' + html);
+    });
+});
