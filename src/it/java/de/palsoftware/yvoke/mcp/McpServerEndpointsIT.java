@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.List;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
+import de.palsoftware.yvoke.rag.core.service.RagService;
 import org.springframework.boot.info.BuildProperties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +64,9 @@ public class McpServerEndpointsIT {
      */
     @Autowired
     private BuildProperties buildProperties;
+
+    @Autowired
+    private RagService ragService;
 
     private class McpSession implements AutoCloseable {
         private final String sessionId;
@@ -313,6 +317,26 @@ public class McpServerEndpointsIT {
                 assertFalse(body.contains("\"" + retired + "\""),
                         "retired compute tool '" + retired + "' must not be published in tools/list — BODY=" + body);
             }
+        }
+    }
+
+    /**
+     * The plugin-control tools (Claude plugin P1-13, D-23) are for MCP clients only. The web's own
+     * assistant draws its tools from {@code RagService}'s registry, and the admin playbook editor
+     * offers exactly that registry's names, so a tool in it can be granted to the web model by any
+     * playbook. These four must therefore be absent from the registry while
+     * {@code toolsListPublishesTheWholeToolCatalogue} above still finds them on {@code /mcp}.
+     */
+    @Test
+    public void clientOnlyToolsAreNotInTheWebAssistantsRegistry() {
+        var registry = ragService.getToolRegistry().keySet();
+        assertTrue(registry.contains("search_corpus"),
+                "the shared tools must still reach the web assistant — registry=" + registry);
+        for (String clientOnly : List.of("get_system_prompt", "list_areas", "list_playbooks",
+                "get_playbook")) {
+            assertFalse(registry.contains(clientOnly),
+                    "'" + clientOnly + "' is for MCP clients only, but the web assistant's registry "
+                            + "holds it — registry=" + registry);
         }
     }
 

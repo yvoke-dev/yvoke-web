@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.mcp.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
+import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
  * A default is reported only when it is a member the client can pick (see {@link AreaWithMembers});
  * anything else would start a session on an item the setup band does not list.
  */
+@ClientOnlyTools
 @Component
 public class AreaTools {
 

@@ -2,7 +2,8 @@
 
 **What it is for.** The knowledge base is not locked inside the web app. AI coding assistants search it
 directly using the same tools the in-app assistant uses, and a desktop app keeps its conversations in the
-user's account.
+user's account. A few tools exist only for connected clients (the Claude plugin's setup tools, below)
+and are never offered to the in-app assistant.
 
 **Who uses it.** Consultants working inside AI coding assistants; desktop app users; the platform team
 running corpus scripts and the evaluation harness.
@@ -40,6 +41,10 @@ running corpus scripts and the evaluation harness.
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
+- **The plugin's setup tools are for connected clients only.** Fetching the base instructions, listing
+  the areas, and listing or fetching playbooks as tools are offered on the client connection and never to
+  the in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
+  one gets nothing for it.
 - **Anyone who can connect reads every knowledge area.** Access control is the sign-in, not the content.
 - **When a name matches several different things, the client is handed the candidates** to choose between
   instead of a merged answer.
