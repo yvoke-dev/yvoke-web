@@ -259,8 +259,9 @@ public class McpServerEndpointsIT {
 
     /**
      * The MCP annotation scanner is switched OFF ({@code spring.ai.mcp.server.annotation-scanner
-     * .enabled=false}), so the ONLY thing that publishes a tool to external MCP clients is the
-     * hand-built {@code List<ToolCallback>} in {@code McpToolsConfig} — and every registration
+     * .enabled=false}), so the ONLY things that publish a tool to external MCP clients are the two
+     * beans hand-built in {@code McpToolsConfig}: {@code sharedToolCallbacks} and
+     * {@code clientOnlyToolCallbacks} — and every registration
      * there is wrapped in a {@code try/catch} that logs the failure and carries on, with duplicate
      * names dropped at DEBUG. A tool can therefore vanish from the protocol surface without any
      * startup error: the desktop client and every external agent just stop being offered it, and
@@ -269,9 +270,9 @@ public class McpServerEndpointsIT {
      *
      * <p>
      * {@code testListToolsRpc} above cannot catch this. It asserts {@code search_corpus}, which is
-     * one of the two callbacks appended BY HAND before the classpath-scanning loop runs — so it
-     * stays green even if the loop registers nothing at all, i.e. if eight of the ten tools are
-     * gone. This test is the end-to-end counterpart of
+     * one of the three callbacks appended BY HAND before the classpath-scanning loop runs — so it
+     * stays green even if the scan registers nothing at all, i.e. if eleven of the fourteen tools
+     * are gone. This test is the end-to-end counterpart of
      * {@code JsonObjectsToolsIT.theTwoToolCataloguesAreSplitExactly}: that one proves the two beans
      * hold the ten shared and four client-only callbacks, this one proves the MCP transport actually
      * publishes all fourteen, which is the layer the annotation-scanner setting and the spring-ai wiring live in.

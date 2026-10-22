@@ -92,7 +92,7 @@ public class JsonObjectsToolsIT {
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
      * invisible from every angle that is currently tested: {@code theTwoToolCataloguesAreSplitExactly}
-     * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists ten tools
+     * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists all fourteen tools
      * over JSON-RPC, and the app still answers — it just answers without retrieval, because the
      * agent's registry is empty or partial, which reads as a quality regression rather than a
      * wiring bug.
