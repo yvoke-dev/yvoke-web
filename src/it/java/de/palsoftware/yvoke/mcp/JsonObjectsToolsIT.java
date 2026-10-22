@@ -91,7 +91,7 @@ public class JsonObjectsToolsIT {
      * anything contributes a single {@code ToolCallback} bean — spring-ai, or a well-meaning
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
-     * invisible from every angle that is currently tested: {@code everyDocumentedToolIsPresentInTheRegisteredCallbackList}
+     * invisible from every angle that is currently tested: {@code theTwoToolCataloguesAreSplitExactly}
      * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists ten tools
      * over JSON-RPC, and the app still answers — it just answers without retrieval, because the
      * agent's registry is empty or partial, which reads as a quality regression rather than a
@@ -180,13 +180,19 @@ public class JsonObjectsToolsIT {
      * reached the agents without reaching this list.
      *
      * <p>
+     * There are two lists, and this test pins both: {@code sharedToolCallbacks}, which the MCP
+     * server and the in-app assistant share, and {@code clientOnlyToolCallbacks}, which only the
+     * MCP server publishes (Claude plugin P1-13, D-23). A tool moving from one to the other is a
+     * change to who may call it, so the split itself is part of the contract.
+     *
+     * <p>
      * The bean is fetched by NAME rather than injected as {@code List<ToolCallback>}: a collection
      * injection point is resolved against individual {@code ToolCallback} beans first and only
      * falls back to the {@code List<ToolCallback>} bean when none exist, so it would quietly start
      * meaning something else the day spring-ai contributes a single {@code ToolCallback} bean.
      */
     @Test
-    public void everyDocumentedToolIsPresentInTheRegisteredCallbackList() {
+    public void theTwoToolCataloguesAreSplitExactly() {
         List<?> callbacks = applicationContext.getBean("sharedToolCallbacks", List.class);
 
         List<String> names = callbacks.stream()

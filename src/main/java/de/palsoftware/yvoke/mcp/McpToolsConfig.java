@@ -16,6 +16,7 @@ import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -31,30 +32,33 @@ public class McpToolsConfig {
 
     /**
      * The tools both the in-app assistant ({@code RagService}, through its
-     * {@code List<ToolCallback>} constructor argument) and MCP clients get.
+     * {@code List<ToolCallback>} constructor argument) and MCP clients get. It starts from the
+     * client-only names, so no shared registration, by hand or by scan, can put one of them in
+     * front of the in-app assistant.
      */
     @Bean
     public List<ToolCallback> sharedToolCallbacks(ApplicationContext applicationContext,
-        @Value("${app.retrieval.max-limit}") int maxLimit) {
+        @Value("${app.retrieval.max-limit}") int maxLimit,
+        @Qualifier("clientOnlyToolCallbacks") ToolCallbackProvider clientOnlyToolCallbacks) {
         List<ToolCallback> callbacksList = new ArrayList<>();
-        Set<String> registeredNames = new HashSet<>(clientOnlyNames(applicationContext));
+        Set<String> registeredNames = new HashSet<>();
+        for (ToolCallback clientOnly : clientOnlyToolCallbacks.getToolCallbacks()) {
+            registeredNames.add(clientOnly.getToolDefinition().name());
+        }
 
         try {
             SearchCorpusTool searchCorpusTool = applicationContext.getBean(SearchCorpusTool.class);
             ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            callbacksList
-                .add(new SearchCorpusToolCallback(searchCorpusTool, objectMapper, maxLimit));
-            registeredNames.add("search_corpus");
-            log.info("Manually registered Context-Aware Tool callback: search_corpus");
+            registerByHand(new SearchCorpusToolCallback(searchCorpusTool, objectMapper, maxLimit),
+                registeredNames, callbacksList);
         } catch (Exception e) {
             log.error("Failed to register custom SearchCorpusToolCallback", e);
         }
 
         try {
             ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            callbacksList.add(new AskClarifyingQuestionToolCallback(objectMapper));
-            registeredNames.add("ask_clarifying_question");
-            log.info("Manually registered Context-Aware Tool callback: ask_clarifying_question");
+            registerByHand(new AskClarifyingQuestionToolCallback(objectMapper), registeredNames,
+                callbacksList);
         } catch (Exception e) {
             log.error("Failed to register custom AskClarifyingQuestionToolCallback", e);
         }
@@ -62,9 +66,8 @@ public class McpToolsConfig {
         try {
             GetSectionTool getSectionTool = applicationContext.getBean(GetSectionTool.class);
             ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            callbacksList.add(new GetSectionToolCallback(getSectionTool, objectMapper));
-            registeredNames.add("get_section");
-            log.info("Manually registered Context-Aware Tool callback: get_section");
+            registerByHand(new GetSectionToolCallback(getSectionTool, objectMapper),
+                registeredNames, callbacksList);
         } catch (Exception e) {
             log.error("Failed to register custom GetSectionToolCallback", e);
         }
@@ -104,23 +107,6 @@ public class McpToolsConfig {
         return ToolCallbackProvider.from(callbacksList);
     }
 
-    /**
-     * The names the client-only classes declare. The shared list starts from them, so a shared
-     * class declaring one of the same names can never put it in front of the in-app assistant.
-     */
-    private static Set<String> clientOnlyNames(ApplicationContext applicationContext) {
-        Set<String> names = new HashSet<>();
-        for (Class<?> clazz : scanToolClasses()) {
-            if (clazz.isAnnotationPresent(ClientOnlyTools.class)) {
-                for (ToolCallback callback : ToolCallbacks
-                    .from(applicationContext.getBean(clazz))) {
-                    names.add(callback.getToolDefinition().name());
-                }
-            }
-        }
-        return names;
-    }
-
     // Classpath scanning rather than getBeansWithAnnotation on the entire ApplicationContext,
     // which would eagerly instantiate other unrelated beans and cause circular reference errors.
     private static List<Class<?>> scanToolClasses() {
@@ -141,6 +127,18 @@ public class McpToolsConfig {
             }
         }
         return classes;
+    }
+
+    private static void registerByHand(ToolCallback callback, Set<String> registeredNames,
+        List<ToolCallback> callbacksList) {
+        String name = callback.getToolDefinition().name();
+        if (registeredNames.add(name)) {
+            callbacksList.add(callback);
+            log.info("Manually registered Context-Aware Tool callback: {}", name);
+        } else {
+            log.error("Skipped hand-registered tool callback '{}': the name is already taken",
+                name);
+        }
     }
 
     private static void register(ApplicationContext applicationContext, Class<?> clazz,
