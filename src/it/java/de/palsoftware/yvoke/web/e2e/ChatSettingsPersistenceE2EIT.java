@@ -52,16 +52,19 @@ class ChatSettingsPersistenceE2EIT extends AbstractE2E {
   @Test
   void choosingAModelPersistsItToTheConversation() {
     String conversationId = openConversation();
-    // Whatever the deployment allows; the second entry differs from the default first selection.
-    List<String> models = page.locator("#model-selector option").allInnerTexts();
-    Assertions.assertThat(models).as("no models offered").isNotEmpty();
-    String target = models.get(models.size() - 1).trim();
+    // Whatever the deployment allows; the last entry differs from the default first selection.
+    var options = page.locator("#model-selector option");
+    int count = options.count();
+    Assertions.assertThat(count).as("no models offered").isGreaterThan(0);
+    var lastOption = options.nth(count - 1);
+    String targetLabel = lastOption.innerText().trim();
+    String targetValue = lastOption.getAttribute("value");
 
     page.waitForResponse(
         r -> r.url().endsWith("/model") && r.status() == 200,
-        () -> page.selectOption("#model-selector", new SelectOption().setLabel(target)));
+        () -> page.selectOption("#model-selector", new SelectOption().setLabel(targetLabel)));
 
-    Assertions.assertThat(storedSetting(conversationId, "model")).isEqualTo(target);
+    Assertions.assertThat(storedSetting(conversationId, "model")).isEqualTo(targetValue);
   }
 
   @Test

@@ -198,7 +198,7 @@
                                 <select id="model-selector" name="model" class="model-select-borderless">
                                     <option th:each="modelOpt : ${allowedModels}"
                                             th:value="${modelOpt}"
-                                            th:text="${modelOpt}"
+                                            th:text="${@modelLabels.labelFor(modelOpt)}"
                                             th:selected="${effectiveModel == modelOpt}">deepseek/deepseek-v4-pro</option>
                                 </select>
                                 <select id="thinking-level-selector" name="thinking-level" class="model-select-borderless">

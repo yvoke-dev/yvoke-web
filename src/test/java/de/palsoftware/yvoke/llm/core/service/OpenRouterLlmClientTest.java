@@ -66,7 +66,7 @@ class OpenRouterLlmClientTest {
         }, client -> {
             LlmTool tool = new LlmTool("search_kb", "search the KB",
                 Map.of("type", "object", "properties", Map.of("query", Map.of("type", "string"))));
-            LlmRequest request = new LlmRequest("deepseek/deepseek-v4.1-flash", List
+            LlmRequest request = new LlmRequest("deepseek/deepseek-v4.1-flash-1017", List
                 .of(new LlmMessage("system", "be brief"), new LlmMessage("user", "hello there")),
                 0.4, 256, List.of(tool));
             client.generate(request);
@@ -74,7 +74,8 @@ class OpenRouterLlmClientTest {
             assertTrue(receivedPath.get().contains("/chat/completions"),
                 "must POST to the chat completions endpoint");
             String body = receivedBody.get();
-            assertTrue(body.contains("deepseek/deepseek-v4.1-flash"), "model must be serialized");
+            assertTrue(body.contains("deepseek/deepseek-v4.1-flash-1017"),
+                "model must be serialized");
             assertTrue(body.contains("temperature"), "temperature must be serialized");
             assertTrue(body.contains("max_completion_tokens"), "max tokens must be serialized");
             assertTrue(body.contains("be brief"), "system message must be present");
@@ -432,7 +433,7 @@ class OpenRouterLlmClientTest {
             receivedBody.set(readBody(exchange));
             respondJson(exchange, 200, completionJson("ok"));
         }, client -> {
-            LlmRequest request = new LlmRequest("deepseek/deepseek-v4.1-flash",
+            LlmRequest request = new LlmRequest("deepseek/deepseek-v4.1-flash-1017",
                 List.of(new LlmMessage("user", "hello")), 0.7, 256, List.of());
             client.generate(request);
 
@@ -477,7 +478,7 @@ class OpenRouterLlmClientTest {
         assertTrue(
             OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("openai/o3-mini:free").find());
         assertFalse(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN
-            .matcher("deepseek/deepseek-v4.1-flash").find());
+            .matcher("deepseek/deepseek-v4.1-flash-1017").find());
         assertFalse(OpenRouterLlmClient.OPENAI_O_SERIES_PATTERN.matcher("gemini-2.5-pro").find());
     }
 

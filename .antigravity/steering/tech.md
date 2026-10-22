@@ -172,6 +172,12 @@
     included. A conversation's stored model outlives the list: retiring a model resolves it to
     element 0 through `ChatConversationService.effectiveModel`, which the picker, the send path
     and the preflight all share so the displayed model is always the one that will answer.
+  - `model-labels` (`AI_MODEL_LABELS`) — JSON object mapping wire model IDs to friendly display
+    labels (e.g. `{"gemini-3.8-flash": "Gemini - 3.8 Flash", "deepseek/deepseek-v4.1-flash-1017": "OpenRouter - DeepSeek 4.1 Flash"}`).
+    Exposed as the `@modelLabels` Spring bean (`ModelLabels`), used in the chat model picker,
+    orchestrator profile forms/cards, cost explorer, and agent run details; unmapped models fall
+    back to their wire model ID. Declared in `application.yml`, `.env.example`, and the k8s
+    ConfigMap, and pinned across all three by `ApplicationYamlInvariantsTest`.
   - `playbook-validation-enabled` (default `true`) — configures whether the LLM preflight validation runs on the first message of a conversation.
 
 ## Web & UI Layer Guidelines

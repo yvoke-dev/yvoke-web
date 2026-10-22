@@ -541,6 +541,10 @@ class ChatControllerTest {
         int selector = template.indexOf("id=\"model-selector\"");
         assertTrue(selector > 0, "model-selector not found in chat/thread.html");
         String block = template.substring(selector, template.indexOf("</select>", selector));
+        assertTrue(block.contains("th:value=\"${modelOpt}\""),
+            "the model picker must submit the wire model ID as value: " + block);
+        assertTrue(block.contains("th:text=\"${@modelLabels.labelFor(modelOpt)}\""),
+            "the model picker must display the friendly model label: " + block);
         assertTrue(block.contains("${effectiveModel == modelOpt}"),
             "the model picker must select on effectiveModel: " + block);
         assertFalse(block.contains("settings['model']"),

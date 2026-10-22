@@ -477,7 +477,13 @@
       "name": "app.chat.allowed-models",
       "type": "java.util.List<java.lang.String>",
       "description": "Comma-separated whitelist backing the model picker and the per-request model check. Order is behaviour: the first entry is the default for a new conversation and the model the playbook preflight runs against.",
-      "defaultValue": "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash"
+      "defaultValue": "gemini-3.8-flash,gemini-3.5-flash-lite,gpt-5.4-mini,DeepSeek-V4-Flash,gpt-5.6-luna,deepseek/deepseek-v4.1-flash-1017"
+    },
+    {
+      "name": "app.chat.model-labels",
+      "type": "java.lang.String",
+      "description": "JSON object mapping wire model IDs to friendly display labels (falls back to the wire model ID when unmapped).",
+      "defaultValue": "{\"gemini-3.8-flash\":\"Gemini - 3.8 Flash\",\"gemini-3.5-flash-lite\":\"Gemini - 3.5 Flash Lite\",\"gpt-5.4-mini\":\"Azure - GPT 5.4 Mini\",\"DeepSeek-V4-Flash\":\"Azure - DeepSeek V4 Flash\",\"gpt-5.6-luna\":\"Azure - GPT 5.6 Luna\",\"deepseek/deepseek-v4.1-flash-1017\":\"OpenRouter - DeepSeek 4.1 Flash\"}"
     },
     {
       "name": "app.web-search.enabled",

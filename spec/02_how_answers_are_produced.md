@@ -181,7 +181,7 @@ in-depth profiles, and can inspect any search or trace.
 - **The admin search console can search across all versions at once**, which the assistant itself is
   forbidden to do — so it does not exactly reproduce what a user's answer saw.
 - **Which AI service answers is decided per model.** An operator maps individual models to a service
-  (e.g. `deepseek/deepseek-v4.1-flash` to OpenRouter); anything unmapped goes to the default one. Two answers
+  (e.g. `deepseek/deepseek-v4.1-flash-1017` to OpenRouter); anything unmapped goes to the default one. Two answers
   in the same conversation can therefore come from different services, and nothing on screen says which one
   answered.
 

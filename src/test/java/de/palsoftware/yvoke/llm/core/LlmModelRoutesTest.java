@@ -142,8 +142,8 @@ class LlmModelRoutesTest {
 
     @Test
     void anInvalidRouteSpellingFailsInModelRoutesParse() {
-        assertThatThrownBy(() -> parse("{\"deepseek/deepseek-v4.1-flash\": \"open-router\"}"))
+        assertThatThrownBy(() -> parse("{\"deepseek/deepseek-v4.1-flash-1017\": \"open-router\"}"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("open-router")
-            .hasMessageContaining("deepseek/deepseek-v4.1-flash");
+            .hasMessageContaining("deepseek/deepseek-v4.1-flash-1017");
     }
 }
