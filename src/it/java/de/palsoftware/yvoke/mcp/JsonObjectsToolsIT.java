@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -22,6 +23,7 @@ import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.context.ApplicationContext;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 
@@ -76,8 +78,10 @@ public class JsonObjectsToolsIT {
     }
 
     /**
-     * The {@code mcpToolCallbacks} bean is ONE catalogue serving two consumers: the MCP server and
+     * The {@code sharedToolCallbacks} bean is ONE catalogue serving two consumers: the MCP server and
      * {@link RagService}, which is the in-app chat agent, the orchestrator and every specialist.
+     * (The MCP server additionally serves {@code clientOnlyToolCallbacks}, which RagService must
+     * never hold; the exact-match assertion below pins that too.)
      * That sharing is the reason a fix in {@code mcp/tools} reaches both at once — and it is held
      * up by nothing more than a {@code List<ToolCallback>} constructor parameter.
      *
@@ -87,7 +91,7 @@ public class JsonObjectsToolsIT {
      * anything contributes a single {@code ToolCallback} bean — spring-ai, or a well-meaning
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
-     * invisible from every angle that is currently tested: {@code everyDocumentedToolIsPresentInTheRegisteredCallbackList}
+     * invisible from every angle that is currently tested: {@code theTwoToolCataloguesAreSplitExactly}
      * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists ten tools
      * over JSON-RPC, and the app still answers — it just answers without retrieval, because the
      * agent's registry is empty or partial, which reads as a quality regression rather than a
@@ -99,7 +103,7 @@ public class JsonObjectsToolsIT {
      */
     @Test
     public void theInAppChatAgentIsFedTheSameToolCallbackInstancesAsTheMcpServer() {
-        List<?> callbacks = applicationContext.getBean("mcpToolCallbacks", List.class);
+        List<?> callbacks = applicationContext.getBean("sharedToolCallbacks", List.class);
         RagService ragService = applicationContext.getBean(RagService.class);
 
         List<String> mcpNames =
@@ -176,22 +180,37 @@ public class JsonObjectsToolsIT {
      * reached the agents without reaching this list.
      *
      * <p>
+     * There are two lists, and this test pins both: {@code sharedToolCallbacks}, which the MCP
+     * server and the in-app assistant share, and {@code clientOnlyToolCallbacks}, which only the
+     * MCP server publishes (Claude plugin P1-13, D-23). A tool moving from one to the other is a
+     * change to who may call it, so the split itself is part of the contract.
+     *
+     * <p>
      * The bean is fetched by NAME rather than injected as {@code List<ToolCallback>}: a collection
      * injection point is resolved against individual {@code ToolCallback} beans first and only
      * falls back to the {@code List<ToolCallback>} bean when none exist, so it would quietly start
      * meaning something else the day spring-ai contributes a single {@code ToolCallback} bean.
      */
     @Test
-    public void everyDocumentedToolIsPresentInTheRegisteredCallbackList() {
-        List<?> callbacks = applicationContext.getBean("mcpToolCallbacks", List.class);
+    public void theTwoToolCataloguesAreSplitExactly() {
+        List<?> callbacks = applicationContext.getBean("sharedToolCallbacks", List.class);
 
         List<String> names = callbacks.stream()
             .map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
 
         assertThat(names).containsExactlyInAnyOrder("search_corpus", "ask_clarifying_question",
             "get_toc", "get_section", "list_documents", "get_graph_neighbors",
-            "search_graph_entities", "get_json_schema", "query_json_objects", "verify_citations",
-            "get_system_prompt", "list_playbooks", "get_playbook", "list_areas");
+            "search_graph_entities", "get_json_schema", "query_json_objects", "verify_citations");
+
+        // The plugin-control tools (Claude plugin P1-13, D-23) are published to MCP clients through
+        // a provider the web assistant never reads, so they must be here and only here.
+        ToolCallbackProvider clientOnly =
+            applicationContext.getBean("clientOnlyToolCallbacks", ToolCallbackProvider.class);
+        List<String> clientOnlyNames = Arrays.stream(clientOnly.getToolCallbacks())
+            .map(c -> c.getToolDefinition().name()).toList();
+
+        assertThat(clientOnlyNames).containsExactlyInAnyOrder("get_system_prompt",
+            "list_playbooks", "get_playbook", "list_areas");
     }
 
     @Test

@@ -1,8 +1,9 @@
 # 7. Using the assistant from other tools
 
 **What it is for.** The knowledge base is not locked inside the web app. AI coding assistants search it
-directly using the same tools the in-app assistant uses, and a desktop app keeps its conversations in the
-user's account.
+directly using the same knowledge-base tools the in-app assistant uses, and a desktop app keeps its
+conversations in the user's account. A few tools exist only for connected clients (the Claude plugin's
+setup tools, below) and are never offered to the in-app assistant.
 
 **Who uses it.** Consultants working inside AI coding assistants; desktop app users; the platform team
 running corpus scripts and the evaluation harness.
@@ -40,6 +41,10 @@ running corpus scripts and the evaluation harness.
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
+- **The plugin's setup tools are for connected clients only.** Fetching the base instructions, listing
+  the areas, and listing or fetching playbooks as tools are offered on the client connection and never to
+  the in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
+  one gets nothing for it.
 - **Anyone who can connect reads every knowledge area.** Access control is the sign-in, not the content.
 - **When a name matches several different things, the client is handed the candidates** to choose between
   instead of a merged answer.
@@ -62,10 +67,12 @@ running corpus scripts and the evaluation harness.
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second
   one. Clients should follow that job rather than read the response as a failure.
-- **AI clients and the in-app assistant share one knowledge-base and playbook tool set.** All 14 corpus and
-  playbook tools are shared identically between connected AI clients and the in-app assistant — adding,
-  renaming or re-describing one changes both surfaces at once — while `WebSearch` is an in-app chat-only tool
-  because connected AI clients provide their own web tools.
+- **AI clients and the in-app assistant share one knowledge-base tool set.** The 10 search, browse,
+  graph, structured-record, citation and clarifying-question tools are shared identically between
+  connected AI clients and the in-app assistant — adding, renaming or re-describing one changes both
+  surfaces at once. The 4 plugin setup tools (base instructions, areas, playbook list, one playbook) are
+  offered to connected clients only. `WebSearch` is an in-app chat-only tool because connected AI clients
+  provide their own web tools.
 - **A connecting client is told which build of the assistant it is talking to.** The version it receives
   when it connects is the version that was released, so a client or a bug report can state which build
   produced an answer. Builds that are not a release identify themselves as such rather than borrowing
