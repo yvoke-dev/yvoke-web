@@ -270,8 +270,8 @@ public class McpServerEndpointsIT {
      *
      * <p>
      * {@code testListToolsRpc} above cannot catch this. It asserts {@code search_corpus}, which is
-     * one of the two callbacks appended BY HAND before the classpath-scanning loop runs — so it
-     * stays green even if the scan registers nothing at all, i.e. if twelve of the fourteen tools
+     * one of the three callbacks appended BY HAND before the classpath-scanning loop runs — so it
+     * stays green even if the scan registers nothing at all, i.e. if eleven of the fourteen tools
      * are gone. This test is the end-to-end counterpart of
      * {@code JsonObjectsToolsIT.theTwoToolCataloguesAreSplitExactly}: that one proves the two beans
      * hold the ten shared and four client-only callbacks, this one proves the MCP transport actually
