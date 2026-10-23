@@ -22,6 +22,8 @@ public class AskClarifyingQuestionToolCallbackTest {
     @Test
     public void testGetToolDefinition() {
         assertThat(toolCallback.getToolDefinition().name()).isEqualTo("ask_clarifying_question");
+        assertThat(toolCallback.getToolDefinition().description()).contains(
+            "If this tool replies that nobody was asked (external AI clients), ask the question in your reply instead.");
         assertThat(toolCallback.getToolDefinition().inputSchema()).contains("question")
             .contains("options");
     }
@@ -58,7 +60,8 @@ public class AskClarifyingQuestionToolCallbackTest {
 
         String response = toolCallback.callWithContext(jsonArguments, context);
 
-        assertThat(response).contains("Clarifying question asked successfully");
+        assertThat(response)
+            .isEqualTo("Clarifying question asked successfully. Waiting for user's response.");
         assertThat(context.getClarifyingQuestion()).isEqualTo("Please provide a timeframe.");
         assertThat(context.getClarifyingOptions()).isNull();
     }
@@ -93,9 +96,8 @@ public class AskClarifyingQuestionToolCallbackTest {
 
         String response = toolCallback.call(jsonArguments);
 
-        assertThat(response)
-            .isEqualTo("Nobody was asked: this client did not show the question to the user. "
-                + "Ask the question in your reply and wait for the user's answer.");
+        assertThat(response).isEqualTo("Nobody was asked: the question was not shown to the user. "
+            + "Ask the question in your reply and wait for the user's answer.");
         assertThat(response).doesNotContain("asked successfully");
         assertThat(response).doesNotContain("Error parsing arguments");
     }
