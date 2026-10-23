@@ -76,11 +76,17 @@ public class AskClarifyingQuestionToolCallback implements ContextAwareToolCallba
             log.info("Executing tool ask_clarifying_question: question='{}', options={}", question,
                 options);
 
-            if (context != null) {
-                context.setClarifyingQuestion(question);
-                context.setClarifyingOptions(options);
+            if (context == null) {
+                // An MCP tools/call. Clients that ask their own user intercept the call before it
+                // gets here, so reaching this line means nobody saw the question — and claiming
+                // success made the model wait for an answer that would never come.
+                return "Nobody was asked: this client did not show the question to the user. "
+                    + "Ask the question in your reply and wait for the user's answer.";
             }
+            context.setClarifyingQuestion(question);
+            context.setClarifyingOptions(options);
 
+            // Exact text matters: yvoke-desktop compares synced web history against it.
             return "Clarifying question asked successfully. Waiting for user's response.";
         } catch (Exception e) {
             log.error("Failed to parse arguments for ask_clarifying_question: {}", jsonArguments,

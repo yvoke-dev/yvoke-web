@@ -105,8 +105,10 @@ running corpus scripts and the evaluation harness.
 
 - Writing to the knowledge base from an AI client. No upload, edit or delete.
 - Restricting an AI client to certain knowledge areas.
-- Asking the user a clarifying question from an AI client. The request always reports success and nobody
-  is ever asked.
+- Asking the user a clarifying question on an AI client's behalf. The question tool is offered to AI
+  clients, but each client is expected to put the question to its user itself (the desktop app and the
+  Claude plugin do). If the question reaches this service instead, the reply says plainly that nobody was
+  asked, so the assistant asks in its answer rather than waiting for a reply that never comes.
 - Fill-in-the-blank playbook prompts. A playbook reaches the client as fixed text.
 - Seeing web chat conversations in the desktop app, or opening a conversation someone shared.
 - Generating an answer through this service from the desktop app. It stores transcripts; it does not
