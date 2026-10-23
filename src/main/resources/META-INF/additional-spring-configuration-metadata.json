@@ -482,8 +482,7 @@
     {
       "name": "app.chat.model-labels",
       "type": "java.lang.String",
-      "description": "JSON object mapping wire model IDs to friendly display labels (falls back to the wire model ID when unmapped).",
-      "defaultValue": "{\"gemini-3.8-flash\":\"Gemini - 3.8 Flash\",\"gemini-3.5-flash-lite\":\"Gemini - 3.5 Flash Lite\",\"gpt-5.4-mini\":\"Azure - GPT 5.4 Mini\",\"DeepSeek-V4-Flash\":\"Azure - DeepSeek V4 Flash\",\"gpt-5.6-luna\":\"Azure - GPT 5.6 Luna\",\"deepseek/deepseek-v4.1-flash-1017\":\"OpenRouter - DeepSeek 4.1 Flash\"}"
+      "description": "JSON object mapping wire model IDs to friendly display labels (falls back to the wire model ID when unmapped)."
     },
     {
       "name": "app.web-search.enabled",

@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -560,6 +561,17 @@ public class ApplicationYamlInvariantsTest {
 
         assertThat(deployedLabels.byModel()).isEqualTo(yamlLabels.byModel());
         assertThat(envLabels.byModel()).isEqualTo(yamlLabels.byModel());
+
+        List<String> allowed = splitModels(text("app", "chat", "allowed-models"));
+        assertThat(allowed)
+            .as("every model in ALLOWED_MODELS must have an explicit friendly label so the picker"
+                + " never silently falls back to a raw wire ID")
+            .allSatisfy(model -> {
+                assertThat(yamlLabels.byModel())
+                    .as("app.chat.model-labels is missing an entry for allowed model '%s'", model)
+                    .containsKey(model.toLowerCase(Locale.ROOT));
+                assertThat(yamlLabels.labelFor(model)).isNotBlank().isNotEqualTo(model);
+            });
 
         assertThat(yamlLabels.labelFor("gemini-3.8-flash")).isEqualTo("Gemini - 3.8 Flash");
         assertThat(yamlLabels.labelFor("gemini-3.5-flash-lite"))

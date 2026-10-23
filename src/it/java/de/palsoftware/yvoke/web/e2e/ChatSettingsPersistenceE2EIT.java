@@ -59,6 +59,9 @@ class ChatSettingsPersistenceE2EIT extends AbstractE2E {
     var lastOption = options.nth(count - 1);
     String targetLabel = lastOption.innerText().trim();
     String targetValue = lastOption.getAttribute("value");
+    Assertions.assertThat(targetLabel)
+        .as("the picker option must render the friendly label rather than the raw wire ID")
+        .isNotEqualTo(targetValue);
 
     page.waitForResponse(
         r -> r.url().endsWith("/model") && r.status() == 200,

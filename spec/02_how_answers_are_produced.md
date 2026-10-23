@@ -182,8 +182,8 @@ in-depth profiles, and can inspect any search or trace.
   forbidden to do — so it does not exactly reproduce what a user's answer saw.
 - **Which AI service answers is decided per model.** An operator maps individual models to a service
   (e.g. `deepseek/deepseek-v4.1-flash-1017` to OpenRouter); anything unmapped goes to the default one. Two answers
-  in the same conversation can therefore come from different services, and nothing on screen says which one
-  answered.
+  in the same conversation can therefore come from different services, and nothing on a message says which service
+  produced a given answer.
 
 ## Not supported
 
