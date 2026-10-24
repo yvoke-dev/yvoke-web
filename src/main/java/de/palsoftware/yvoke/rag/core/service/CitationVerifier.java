@@ -525,4 +525,74 @@ public class CitationVerifier {
         List<ParsedCitation> single = List.of(parsed);
         return shouldStrip(parsed, resolveIds(single));
     }
+
+    /** Appended to every report, so the scope of the verdict travels with the verdict. */
+    public static final String SCOPE_NOTE =
+        "_Scope: this checks that each cited id exists in the corpus. It does not read the cited "
+            + "text, so it does NOT confirm that the source supports the claim it is attached to._";
+
+    private static final int MAX_CELL_CHARS = 1000;
+
+    public static String formatReport(List<CitationCheckResult> checkResults) {
+        int nFab = 0;
+        int nUnverified = 0;
+        StringBuilder table = new StringBuilder();
+        if (checkResults == null || checkResults.isEmpty()) {
+            table.append("(no rows)");
+        } else {
+            table.append("| citation | kind | status | detail |\n| --- | --- | --- | --- |\n");
+            for (CitationCheckResult res : checkResults) {
+                String statusStr = switch (res.getStatus()) {
+                    case REAL -> "REAL";
+                    case REAL_AMBIG -> "REAL(ambig)";
+                    case UNVERIFIED -> "UNVERIFIED";
+                    case FABRICATED -> "FABRICATED";
+                };
+                if (res.getStatus() == CitationStatus.FABRICATED) {
+                    nFab++;
+                } else if (res.getStatus() == CitationStatus.UNVERIFIED) {
+                    nUnverified++;
+                }
+                table.append("| ").append(formatCell(res.getCitation()))
+                    .append(" | ").append(formatCell(res.getKind()))
+                    .append(" | ").append(formatCell(statusStr))
+                    .append(" | ").append(formatCell(res.getDetail()))
+                    .append(" |\n");
+            }
+        }
+
+        int count = checkResults != null ? checkResults.size() : 0;
+        List<String> out = new ArrayList<>();
+        String header = "# Citation check — " + count + " cited, " + nFab + " FABRICATED";
+        if (nUnverified > 0) {
+            header += ", " + nUnverified + " UNVERIFIED";
+        }
+        out.add(header);
+        out.add(table.toString().trim());
+
+        if (nFab > 0) {
+            out.add(
+                "\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
+        }
+        if (nUnverified > 0) {
+            out.add(
+                "\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
+        }
+        if (nFab == 0 && nUnverified == 0) {
+            out.add("\nEvery cited id exists in the corpus. ✅");
+        }
+        out.add("\n" + SCOPE_NOTE);
+        return String.join("\n", out);
+    }
+
+    private static String formatCell(@Nullable String raw) {
+        String val = raw != null ? raw : "";
+        val = val.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+        if (val.length() > MAX_CELL_CHARS) {
+            String marker = " … [truncated, " + val.length() + " chars total]";
+            int keep = Math.max(0, MAX_CELL_CHARS - marker.length());
+            val = val.substring(0, keep) + marker;
+        }
+        return val;
+    }
 }

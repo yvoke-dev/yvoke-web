@@ -523,6 +523,19 @@ public class JobRepository {
             .query(String.class).optional();
     }
 
+    public Optional<String> findDocumentArea(UUID documentId) {
+        if (documentId == null) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT c.area
+            FROM documents d
+            JOIN collections c ON d.collection_id = c.id
+            WHERE d.id = :documentId
+            """;
+        return jdbcClient.sql(sql).param("documentId", documentId).query(String.class).optional();
+    }
+
     private String serializeSettings(Map<String, Object> settings) {
         if (settings == null || settings.isEmpty()) {
             return "{}";

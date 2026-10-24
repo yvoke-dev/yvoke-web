@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.ingest.core.service;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import jakarta.annotation.Nullable;
@@ -89,7 +90,8 @@ public class IngestService {
             if (srcCol.isPresent()) {
                 Collection col = srcCol.get();
                 if (col.area() != null && !col.area().isBlank()
-                    && !AreaAccessContext.canIngestArea(col.area())) {
+                    && !AreaAccessContext.canIngestArea(col.area())
+                    && !AreaAccessContext.canAdministerArea(col.area())) {
                     throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Collection '" + trimmedCol + "' does not exist.");
                 }
@@ -106,6 +108,22 @@ public class IngestService {
                         trimmedFile, trimmedCol, trimmedSourceTag));
             }
             targetDocId = foundId.get();
+        } else {
+            Optional<DocumentRow> docOpt = documentRepository.findById(targetDocId);
+            String docArea = null;
+            if (docOpt.isPresent()) {
+                DocumentRow doc = docOpt.get();
+                Optional<Collection> srcCol = collectionService.findById(doc.collectionId());
+                if (srcCol.isEmpty() && doc.collection() != null) {
+                    srcCol = collectionService.getCollection(doc.collection());
+                }
+                docArea = srcCol.map(Collection::area).orElse(null);
+            }
+            if (!AreaAccessContext.canIngestArea(docArea)
+                && !AreaAccessContext.canAdministerArea(docArea)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Document not found: " + targetDocId);
+            }
         }
 
         // Validate target collection exists

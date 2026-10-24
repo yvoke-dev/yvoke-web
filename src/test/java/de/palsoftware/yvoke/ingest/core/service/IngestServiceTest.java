@@ -11,12 +11,14 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.inOrder;
 
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -572,5 +574,52 @@ public class IngestServiceTest {
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void processKgWithExplicitDocumentIdFromUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        UUID sourceColId = UUID.randomUUID();
+        UUID targetColId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        Collection otherCol = new Collection(targetColId, "other-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "other");
+        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
+            null, "completed", List.of("1.0"), Instant.now());
+
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
+        when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
+        when(collectionService.getCollection("other-col")).thenReturn(Optional.of(otherCol));
+
+        assertThatThrownBy(
+            () -> ingestService.processKg(docId, null, null, null, "other-col", "1.0", null, null))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void processKgWithExplicitDocumentIdFromAuthorizedAreaSucceeds() {
+        authenticateWith("AREA_INGEST_SEC");
+        UUID sourceColId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
+            null, "completed", List.of("1.0"), Instant.now());
+
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
+        when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+        when(jobService.enqueue(any(EnqueueRequest.class)))
+            .thenReturn(EnqueueResult.created(jobId));
+
+        EnqueueResult res =
+            ingestService.processKg(docId, null, null, null, "sec-col", "1.0", null, null);
+        assertThat(res.jobId()).isEqualTo(jobId);
     }
 }

@@ -472,8 +472,9 @@ class Milestone4AdversarialChallengeTest {
             OrchestratorProperties props = new OrchestratorProperties(3, 8, null, List.of());
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            OrchestratorAdminController controller = new OrchestratorAdminController(profileService,
-                playbookService, convService, props, areaService);
+            OrchestratorAdminController controller =
+                new OrchestratorAdminController(profileService, playbookService, convService, props,
+                    areaService, new ObjectMapper().findAndRegisterModules());
 
             OrchestratorProfile existingB = new OrchestratorProfile("profile-b", 2, 8, "orch",
                 "rev", List.of(), null, null, null, null, null, null, false, null, null, "AreaB");

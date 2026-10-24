@@ -280,7 +280,9 @@ public class RagAdminController {
             (systemPrompt != null && !systemPrompt.isBlank()) ? systemPrompt.trim() : null;
         if (sysPrompt != null) {
             Optional<SystemPrompt> spOpt = systemPromptService.getPrompt(sysPrompt);
-            if (spOpt.isEmpty() || !AreaAccessContext.canAdministerArea(spOpt.get().area())) {
+            if (spOpt.isEmpty() || spOpt.get().area() == null
+                || !spOpt.get().area().equalsIgnoreCase(area)
+                || !AreaAccessContext.canAdministerArea(spOpt.get().area())) {
                 redirectAttributes.addFlashAttribute("error",
                     "Referenced system prompt not found in area: " + sysPrompt);
                 return "redirect:/admin/playbooks";
@@ -340,6 +342,21 @@ public class RagAdminController {
             }
             if (!existing.get().area().equalsIgnoreCase(targetArea)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change playbook area.");
+                return "redirect:/admin/playbooks";
+            }
+        }
+
+        String importedSysPrompt =
+            (parsed.systemPrompt() != null && !parsed.systemPrompt().isBlank())
+                ? parsed.systemPrompt().trim()
+                : null;
+        if (importedSysPrompt != null) {
+            Optional<SystemPrompt> spOpt = systemPromptService.getPrompt(importedSysPrompt);
+            if (spOpt.isEmpty() || spOpt.get().area() == null
+                || !spOpt.get().area().equalsIgnoreCase(targetArea)
+                || !AreaAccessContext.canAdministerArea(spOpt.get().area())) {
+                redirectAttributes.addFlashAttribute("error",
+                    "Referenced system prompt not found in area: " + importedSysPrompt);
                 return "redirect:/admin/playbooks";
             }
         }

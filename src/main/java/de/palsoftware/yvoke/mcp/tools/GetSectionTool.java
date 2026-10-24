@@ -33,14 +33,8 @@ public class GetSectionTool {
     private final ChunkRepository chunkRepository;
     private final CollectionService collectionService;
 
-    public GetSectionTool(SectionService sectionService) {
-        this(sectionService, null, null, null);
-    }
-
-    @Autowired
-    public GetSectionTool(SectionService sectionService,
-        @Nullable DocumentRepository documentRepository, @Nullable ChunkRepository chunkRepository,
-        @Nullable CollectionService collectionService) {
+    public GetSectionTool(SectionService sectionService, DocumentRepository documentRepository,
+        ChunkRepository chunkRepository, CollectionService collectionService) {
         this.sectionService = sectionService;
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
@@ -90,9 +84,6 @@ public class GetSectionTool {
     }
 
     private boolean isDocumentAreaAllowed(String docIdStr, @Nullable AgenticChatContext context) {
-        if (documentRepository == null || collectionService == null) {
-            return true;
-        }
         UUID docUuid;
         try {
             docUuid = UUID.fromString(docIdStr);
@@ -111,9 +102,6 @@ public class GetSectionTool {
     }
 
     private boolean isChunkAreaAllowed(String chunkIdStr, @Nullable AgenticChatContext context) {
-        if (chunkRepository == null || documentRepository == null || collectionService == null) {
-            return true;
-        }
         Optional<ChunkRow> chunkOpt;
         try {
             chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);

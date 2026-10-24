@@ -202,4 +202,36 @@ public class JobApiControllerIT {
                         new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
             .andExpect(status().isNotFound());
     }
+
+    @Test
+    public void enqueueKgExtractRejectsSourceDocumentInUnauthorizedAreaWith404() throws Exception {
+        UUID pingColId = UUID.randomUUID();
+        String pingColName = "JOB-API-IT-PINGID-COLLECTION";
+        UUID oimDocId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO areas (name, description) VALUES ('PingID', 'PingID') ON CONFLICT (name) DO NOTHING");
+        jdbcTemplate.update("INSERT INTO collections (id, name, area) VALUES (?, ?, 'PingID')",
+            pingColId, pingColName);
+        jdbcTemplate.update("""
+            INSERT INTO documents (id, collection_id, source_file, kind, title, ingestion_status)
+            VALUES (?, ?, 'secret-oim.md', 'markdown', 'Secret OIM', 'completed')
+            """, oimDocId, collectionId);
+
+        try {
+            String payload = """
+                {"kind":"kg-extract","sourceRef":"%s","collection":"%s"}
+                """.formatted(oimDocId, pingColName);
+
+            mockMvc
+                .perform(
+                    post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
+                        .with(SecurityMockMvcRequestPostProcessors.user("ping-ingest")
+                            .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
+                                new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+                .andExpect(status().isNotFound());
+        } finally {
+            jdbcTemplate.update("DELETE FROM documents WHERE id = ?", oimDocId);
+            jdbcTemplate.update("DELETE FROM collections WHERE id = ?", pingColId);
+        }
+    }
 }

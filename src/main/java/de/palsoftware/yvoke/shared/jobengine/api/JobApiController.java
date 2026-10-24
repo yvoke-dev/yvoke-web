@@ -11,8 +11,10 @@ import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import jakarta.annotation.Nullable;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -61,6 +63,18 @@ public class JobApiController {
                     "Collection not found: " + requestedCollection);
             }
         }
+        if (request.kind() != null
+            && request.kind().trim().toLowerCase(Locale.ROOT).startsWith("kg-extract")) {
+            UUID sourceDocId = parseUuidOrNull(request.sourceRef());
+            String docArea =
+                sourceDocId != null ? jobRepository.findDocumentArea(sourceDocId).orElse(null)
+                    : null;
+            if (!AreaAccessContext.canIngestArea(docArea)
+                && !AreaAccessContext.canAdministerArea(docArea)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Document not found: " + request.sourceRef());
+            }
+        }
         EnqueueResult result;
         try {
             result = jobService.enqueue(request);
@@ -105,6 +119,18 @@ public class JobApiController {
                 && !AreaAccessContext.canIngestArea(area)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id);
             }
+        }
+    }
+
+    @Nullable
+    private static UUID parseUuidOrNull(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 }

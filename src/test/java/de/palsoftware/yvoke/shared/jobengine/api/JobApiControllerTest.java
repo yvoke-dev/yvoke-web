@@ -382,4 +382,35 @@ class JobApiControllerTest {
                 .isEqualTo(HttpStatus.NOT_FOUND));
         verify(progressBroker, never()).subscribe(any());
     }
+
+    @Test
+    void enqueueKgExtractWithSourceDocumentFromUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        UUID docId = UUID.randomUUID();
+        EnqueueRequest req = new EnqueueRequest("kg-extract", docId.toString(), "1.0", "other-col");
+        when(jobRepository.findCollectionArea("other-col")).thenReturn(Optional.of("other"));
+        when(jobRepository.findDocumentArea(docId)).thenReturn(Optional.of("sec"));
+
+        assertThatThrownBy(() -> controller.enqueue(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    void enqueueKgExtractWithSourceDocumentFromAuthorizedAreaSucceeds() {
+        authenticateWith("AREA_INGEST_SEC");
+        UUID docId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        EnqueueRequest req = new EnqueueRequest("kg-extract", docId.toString(), "1.0", "sec-col");
+        when(jobRepository.findCollectionArea("sec-col")).thenReturn(Optional.of("sec"));
+        when(jobRepository.findDocumentArea(docId)).thenReturn(Optional.of("sec"));
+        when(jobService.enqueue(req)).thenReturn(EnqueueResult.created(jobId));
+
+        ResponseEntity<Map<String, UUID>> response = controller.enqueue(req);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody()).containsEntry("id", jobId);
+    }
 }

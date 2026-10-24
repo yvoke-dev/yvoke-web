@@ -173,6 +173,44 @@ class ConfluenceConnectorControllerTest {
     }
 
     @Test
+    void orphanedInstanceWithDeletedTargetCollectionFailsClosedForAreaAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        UUID orphanId = UUID.randomUUID();
+        ConfluenceInstance orphanInstance = new ConfluenceInstance(orphanId, "Orphan Wiki",
+            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "ORP", "1",
+            null, null, "Deleted - Docs", "1.0", false, true, null, null);
+        ConfluenceInstanceView orphanView = new ConfluenceInstanceView(orphanId, "Orphan Wiki",
+            "orphan-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "ORP", "1", null,
+            null, "Deleted - Docs", "1.0", false, true, TokenHealth.OK);
+        when(instanceService.findInstance(orphanId)).thenReturn(Optional.of(orphanInstance));
+        when(instanceService.findView(orphanId)).thenReturn(Optional.of(orphanView));
+        when(collectionService.getCollection("Deleted - Docs")).thenReturn(Optional.empty());
+
+        ConfluenceInstanceForm overwriteForm = new ConfluenceInstanceForm(orphanId, "Hijacked",
+            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345",
+            "public", "draft", "OIM - Docs", "10.0", false, true);
+        assertThatThrownBy(() -> controller.saveInstance(overwriteForm, noErrors(overwriteForm),
+            "tok", redirectAttributes)).isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("404");
+        verify(instanceService, never()).save(any(), any());
+
+        assertThatThrownBy(() -> controller.deleteInstance(orphanId, redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+        verify(instanceService, never()).delete(any());
+
+        assertThatThrownBy(() -> controller.syncConfluence(orphanId, redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+        verify(jobService, never()).enqueue(any());
+
+        String testHtml =
+            controller.testConfluenceConnection(orphanId, null, null, null, null, null, null, null);
+        assertThat(testHtml).contains("no longer exists");
+        verifyNoInteractions(confluenceClientService);
+    }
+
+    @Test
     void syncAllInstances_filtersOutUnadministeredInstances() {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));

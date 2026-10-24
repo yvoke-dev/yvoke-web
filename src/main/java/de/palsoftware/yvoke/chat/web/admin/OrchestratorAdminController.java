@@ -43,16 +43,17 @@ public class OrchestratorAdminController {
     private final ChatConversationService chatConversationService;
     private final OrchestratorProperties properties;
     private final AreaService areaService;
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper;
 
     public OrchestratorAdminController(OrchestratorProfileService profileService,
         PlaybookService playbookService, ChatConversationService chatConversationService,
-        OrchestratorProperties properties, AreaService areaService) {
+        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper) {
         this.areaService = areaService;
         this.profileService = profileService;
         this.playbookService = playbookService;
         this.chatConversationService = chatConversationService;
         this.properties = properties;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping

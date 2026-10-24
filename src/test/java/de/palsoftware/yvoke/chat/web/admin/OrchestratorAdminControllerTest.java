@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,7 +63,8 @@ public class OrchestratorAdminControllerTest {
                 "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
 
         controller = new OrchestratorAdminController(profileService, playbookService,
-            chatConversationService, properties, TestAreas.withAreas("OIM", "Finance"));
+            chatConversationService, properties, TestAreas.withAreas("OIM", "Finance"),
+            new ObjectMapper().findAndRegisterModules());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

@@ -109,7 +109,7 @@ public class ConfluenceConnectorController {
 
         Collection targetCol =
             collectionService.getCollection(form.targetCollection()).orElse(null);
-        if (targetCol != null && !AreaAccessContext.canAdministerArea(targetCol.area())) {
+        if (!AreaAccessContext.canAdministerArea(targetCol != null ? targetCol.area() : null)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Collection not found: " + form.targetCollection());
         }
@@ -119,8 +119,8 @@ public class ConfluenceConnectorController {
             if (existing != null) {
                 Collection existingCol =
                     collectionService.getCollection(existing.targetCollection()).orElse(null);
-                if (existingCol != null
-                    && !AreaAccessContext.canAdministerArea(existingCol.area())) {
+                if (existingCol == null
+                    || !AreaAccessContext.canAdministerArea(existingCol.area())) {
                     throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Instance not found: " + form.id());
                 }
@@ -131,7 +131,7 @@ public class ConfluenceConnectorController {
             if (form.id() == null || !other.id().equals(form.id())) {
                 Collection otherCol =
                     collectionService.getCollection(other.targetCollection()).orElse(null);
-                if (otherCol != null && !AreaAccessContext.canAdministerArea(otherCol.area())) {
+                if (otherCol == null || !AreaAccessContext.canAdministerArea(otherCol.area())) {
                     throw new IllegalArgumentException(
                         "Another Confluence instance in another area already uses the name '"
                             + form.name() + "'.");
@@ -143,7 +143,7 @@ public class ConfluenceConnectorController {
             if (form.id() == null || !other.id().equals(form.id())) {
                 Collection otherCol =
                     collectionService.getCollection(other.targetCollection()).orElse(null);
-                if (otherCol != null && !AreaAccessContext.canAdministerArea(otherCol.area())) {
+                if (otherCol == null || !AreaAccessContext.canAdministerArea(otherCol.area())) {
                     throw new IllegalArgumentException(
                         "Another Confluence instance in another area already uses the slug '"
                             + form.slug() + "'.");
@@ -204,7 +204,7 @@ public class ConfluenceConnectorController {
         if (instance != null) {
             Collection col =
                 collectionService.getCollection(instance.targetCollection()).orElse(null);
-            if (col != null && !AreaAccessContext.canAdministerArea(col.area())) {
+            if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Instance not found: " + id);
             }
@@ -241,7 +241,7 @@ public class ConfluenceConnectorController {
         }
         ConfluenceInstanceView instance = found.get();
         Collection col = collectionService.getCollection(instance.targetCollection()).orElse(null);
-        if (col != null && !AreaAccessContext.canAdministerArea(col.area())) {
+        if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Instance not found: " + id);
         }
         if (!instance.enabled()) {
@@ -376,7 +376,7 @@ public class ConfluenceConnectorController {
             }
             Collection col =
                 collectionService.getCollection(instance.targetCollection()).orElse(null);
-            if (col != null && !AreaAccessContext.canAdministerArea(col.area())) {
+            if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
                 return failureHtml(
                     "That Confluence instance no longer exists — reload the connectors page.");
             }

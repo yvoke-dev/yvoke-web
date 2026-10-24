@@ -30,13 +30,8 @@ public class GetTocTool {
     private final TocService tocService;
     private final CollectionService collectionService;
 
-    public GetTocTool(DocumentRepository documentRepository, TocService tocService) {
-        this(documentRepository, tocService, null);
-    }
-
-    @Autowired
     public GetTocTool(DocumentRepository documentRepository, TocService tocService,
-        @Nullable CollectionService collectionService) {
+        CollectionService collectionService) {
         this.documentRepository = documentRepository;
         this.tocService = tocService;
         this.collectionService = collectionService;
@@ -92,7 +87,7 @@ public class GetTocTool {
                 return "Error: Document with ID '" + docId + "' not found.";
             }
             DocumentRow doc = docOpt.get();
-            if (collectionService != null && doc.collectionId() != null) {
+            if (doc.collectionId() != null) {
                 Optional<Collection> colOpt = collectionService.findById(doc.collectionId());
                 if (colOpt.isPresent()) {
                     String area = colOpt.get().area();

@@ -37,6 +37,7 @@ import jakarta.annotation.Nullable;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -397,5 +398,65 @@ class RagServiceAreaIsolationTest {
 
         assertThat(response).contains("is version/tag-scoped").contains("9.3.1").contains("10.0");
         verify(hybridSearch, never()).searchWithId(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("search_corpus and list_documents omit-collection across multiple area collections enforce tag when any collection is tagged")
+    void omitCollectionAcrossMultipleAreaCollectionsEnforcesTagWhenAnyCollectionHasTags() {
+        createMockTool("search_corpus");
+        createMockTool("list_documents");
+        Collection taggedOim1 = new Collection(colOimId, "oim-manuals", "OIM Manuals",
+            List.of("9.3.1", "10.0"), OffsetDateTime.now(), AREA_OIM);
+        Collection untaggedOim2 = new Collection(UUID.randomUUID(), "oim-kb", "OIM KB", List.of(),
+            OffsetDateTime.now(), AREA_OIM);
+        Collection taggedOim3 = new Collection(UUID.randomUUID(), "oim-schema", "OIM Schema",
+            List.of("10.0"), OffsetDateTime.now(), AREA_OIM);
+        when(collectionService.listCollections())
+            .thenReturn(List.of(taggedOim1, untaggedOim2, taggedOim3, colPing));
+
+        String searchNoTag =
+            runTurnWithToolCall("search_corpus", "{\"query\": \"find me\"}", Set.of("oim"));
+        assertThat(searchNoTag).startsWith("Error:").contains("version/tag-scoped")
+            .contains("oim-manuals");
+        verify(hybridSearch, never()).searchWithId(anyString(), any());
+
+        String listNoTag = runTurnWithToolCall("list_documents", "{}", Set.of("oim"));
+        assertThat(listNoTag).startsWith("Error:").contains("version/tag-scoped")
+            .contains("oim-manuals");
+
+        String searchMismatchedTag = runTurnWithToolCall("search_corpus",
+            "{\"query\": \"find me\", \"tag\": \"9.3.1\"}", Set.of("oim"));
+        assertThat(searchMismatchedTag).startsWith("Error:").contains("9.3.1")
+            .contains("oim-schema");
+        verify(hybridSearch, never()).searchWithId(anyString(), any());
+
+        HybridSearchResult chunkResult =
+            new HybridSearchResult(chunkOimId, docOimId, "OIM 10.0 content", List.of("Chapter 1"),
+                "Intro", 1, 0, null, "OIM Guide", "manual", "oim-manuals", null, 0.95, null);
+        when(hybridSearch.searchWithId(eq("find me"), any(SearchOptions.class)))
+            .thenReturn(new SearchWithId(List.of(chunkResult), UUID.randomUUID()));
+
+        String searchSharedTag = runTurnWithToolCall("search_corpus",
+            "{\"query\": \"find me\", \"tag\": \"10.0\"}", Set.of("oim"));
+        assertThat(searchSharedTag).contains("OIM 10.0 content");
+    }
+
+    @Test
+    @DisplayName("list_documents omit-collection adopts stored kind casing")
+    void listDocumentsOmitCollectionAdoptsStoredKindCasing() {
+        createMockTool("list_documents");
+        DocumentDetails dd = new DocumentDetails(docOimId, colOimId, "oim-col", "table",
+            "DialogTable", null, "COMPLETED", 2L, true, Instant.now());
+        when(documentRepository.findDistinctKindsInCollection("oim-col"))
+            .thenReturn(List.of("table", "manual"));
+        when(documentRepository.listDocuments(eq("oim-col"), anyInt(), anyInt(), eq("table"), any(),
+            any(), any(), any())).thenReturn(List.of(dd));
+
+        String response =
+            runTurnWithToolCall("list_documents", "{\"kind\": \"TABLE\"}", Set.of("oim"));
+
+        assertThat(response).contains("DialogTable");
+        verify(documentRepository).listDocuments(eq("oim-col"), anyInt(), anyInt(), eq("table"),
+            any(), any(), any(), any());
     }
 }

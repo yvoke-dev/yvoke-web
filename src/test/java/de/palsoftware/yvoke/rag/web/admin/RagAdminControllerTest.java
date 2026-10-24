@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.rag.web.admin;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,10 +27,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -426,7 +429,7 @@ class RagAdminControllerTest {
     @Test
     void createPlaybook_systemPromptFromDifferentArea_redirectsWithError() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+            "dualAreaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE", "AREA_ADMIN_OIM"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("oim-sys-prompt"))
@@ -436,7 +439,33 @@ class RagAdminControllerTest {
         mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
             .param("templateText", "text").param("area", "Finance")
             .param("systemPrompt", "oim-sys-prompt")).andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/admin/playbooks"));
+            .andExpect(redirectedUrl("/admin/playbooks"))
+            .andExpect(flash().attributeExists("error"));
+
+        verify(playbookService, never()).savePlaybook(any(), any(), any(), any(), any(),
+            anyBoolean(), any(), anyBoolean(), any(), any(), anyInt());
+    }
+
+    @Test
+    void importPlaybook_systemPromptFromDifferentArea_redirectsWithError() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "dualAreaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE", "AREA_ADMIN_OIM"));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        when(systemPromptService.getPrompt("oim-sys-prompt"))
+            .thenReturn(Optional.of(new SystemPrompt("oim-sys-prompt", SystemPromptType.CHAT,
+                "Hello", "desc", Instant.now(), Instant.now(), false, "OIM")));
+
+        String md =
+            "---\nname: imported-pb\ntitle: Imported PB\narea: Finance\nsystem_prompt: oim-sys-prompt\n---\nBody";
+        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
+            md.getBytes(StandardCharsets.UTF_8));
+
+        mvc.perform(multipart("/admin/playbooks/import").file(file).param("area", "Finance"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"))
+            .andExpect(flash().attributeExists("error"));
+
+        verify(playbookService, never()).importPlaybookFromMarkdown(any(), any(), any());
     }
 
     @Test

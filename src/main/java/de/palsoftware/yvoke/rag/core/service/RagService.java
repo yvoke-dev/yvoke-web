@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -603,7 +604,7 @@ public class RagService {
             boolean isError = false;
             if (callback != null) {
                 try {
-                    String guarded = guardToolExecution(tc, ctx, callback);
+                    String guarded = guardToolExecution(tc, ctx);
                     if (guarded != null) {
                         responseData = guarded;
                         isError =
@@ -735,8 +736,7 @@ public class RagService {
     }
 
     @Nullable
-    private String guardToolExecution(LlmToolCall tc, @Nullable AgenticChatContext ctx,
-        @Nullable ToolCallback callback) {
+    private String guardToolExecution(LlmToolCall tc, @Nullable AgenticChatContext ctx) {
         if (ctx == null || collectionService == null) {
             return null;
         }
@@ -814,15 +814,9 @@ public class RagService {
                 List<String> allowedNames = allowed.stream().map(Collection::name).toList();
                 Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
                 String tag = (String) args.get("tag");
-                if (allowed.size() == 1) {
-                    Collection single = allowed.get(0);
-                    if (single.tags() != null && !single.tags().isEmpty()
-                        && (tag == null || tag.isBlank())) {
-                        return "Error: Collection '" + single.name()
-                            + "' is version/tag-scoped. Please specify 'tag' (valid values: "
-                            + String.join(", ", single.tags())
-                            + ") so results come from a single version/dataset.";
-                    }
+                String tagError = requireAreaTag(allowed, tag);
+                if (tagError != null) {
+                    return tagError;
                 }
                 List<String> tagList =
                     (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : List.of();
@@ -865,14 +859,9 @@ public class RagService {
             }
             String rawTag = (String) args.get("tag");
             String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
-            if (allowed.size() == 1) {
-                Collection single = allowed.get(0);
-                if (single.tags() != null && !single.tags().isEmpty() && parsedTag == null) {
-                    return "Error: Collection '" + single.name()
-                        + "' is version/tag-scoped. Please specify 'tag' (valid values: "
-                        + String.join(", ", single.tags())
-                        + ") so results come from a single version/dataset.";
-                }
+            String tagError = requireAreaTag(allowed, parsedTag);
+            if (tagError != null) {
+                return tagError;
             }
             String rawKind = (String) args.get("kind");
             String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
@@ -885,8 +874,20 @@ public class RagService {
                 sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
                 for (Collection c : allowed) {
                     try {
+                        String effectiveKind = parsedKind;
+                        if (parsedKind != null) {
+                            List<String> validKinds =
+                                documentRepository.findDistinctKindsInCollection(c.name());
+                            if (validKinds != null && !validKinds.isEmpty()) {
+                                effectiveKind = validKinds.stream()
+                                    .filter(parsedKind::equalsIgnoreCase).findFirst().orElse(null);
+                                if (effectiveKind == null) {
+                                    continue;
+                                }
+                            }
+                        }
                         List<DocumentDetails> docs = documentRepository.listDocuments(c.name(), lim,
-                            off, parsedKind, parsedTag, null, null, fuzzyQuery);
+                            off, effectiveKind, parsedTag, null, null, fuzzyQuery);
                         if (docs != null) {
                             for (DocumentDetails d : docs) {
                                 sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
@@ -902,6 +903,38 @@ public class RagService {
                 return sb.toString();
             }
             return "| document_id | kind | title | chunks |\n|---|---|---|---|";
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
+        List<Collection> taggedCols =
+            allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
+        if (taggedCols.isEmpty()) {
+            return null;
+        }
+        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+        if (parsedTag == null) {
+            if (allowed.size() == 1 && taggedCols.size() == 1) {
+                Collection single = taggedCols.get(0);
+                return "Error: Collection '" + single.name()
+                    + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                    + String.join(", ", single.tags())
+                    + ") so results come from a single version/dataset.";
+            }
+            String taggedSummary = taggedCols.stream()
+                .map(c -> c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
+                .collect(Collectors.joining("; "));
+            return "Error: Area contains version/tag-scoped collections (" + taggedSummary
+                + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
+        }
+        for (Collection tc : taggedCols) {
+            if (!tc.tags().contains(parsedTag)) {
+                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + tc.name()
+                    + "' (valid tags: " + String.join(", ", tc.tags())
+                    + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
+            }
         }
         return null;
     }
@@ -996,53 +1029,7 @@ public class RagService {
         }
         List<CitationVerifier.CitationCheckResult> results =
             citationVerifier.checkCitations(citations, ctx.getAllowedAreasLower());
-        return formatCitationResults(results);
-    }
-
-    private static String formatCitationResults(
-        List<CitationVerifier.CitationCheckResult> checkResults) {
-        int nFab = 0;
-        int nUnverified = 0;
-        for (CitationVerifier.CitationCheckResult res : checkResults) {
-            if (res.getStatus() == CitationVerifier.CitationStatus.FABRICATED) {
-                nFab++;
-            } else if (res.getStatus() == CitationVerifier.CitationStatus.UNVERIFIED) {
-                nUnverified++;
-            }
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("# Citation check — ").append(checkResults.size()).append(" cited, ")
-            .append(nFab).append(" FABRICATED");
-        if (nUnverified > 0) {
-            sb.append(", ").append(nUnverified).append(" UNVERIFIED");
-        }
-        sb.append("\n\n| citation | kind | status | detail |\n|---|---|---|---|\n");
-        for (CitationVerifier.CitationCheckResult res : checkResults) {
-            String statusStr = switch (res.getStatus()) {
-                case REAL -> "REAL";
-                case REAL_AMBIG -> "REAL(ambig)";
-                case UNVERIFIED -> "UNVERIFIED";
-                case FABRICATED -> "FABRICATED";
-            };
-            sb.append("| ").append(escapeTableCell(res.getCitation()))
-                .append(" | ").append(escapeTableCell(res.getKind()))
-                .append(" | ").append(statusStr)
-                .append(" | ").append(escapeTableCell(res.getDetail()))
-                .append(" |\n");
-        }
-        if (nFab > 0) {
-            sb.append("\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
-        }
-        if (nUnverified > 0) {
-            sb.append("\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
-        }
-        if (nFab == 0 && nUnverified == 0) {
-            sb.append("\nEvery cited id exists in the corpus. ✅");
-        }
-        sb.append("\n_Scope: this checks that each cited id exists in the corpus. It does not read "
-            + "the cited text, so it does NOT confirm that the source supports the claim it is "
-            + "attached to._");
-        return sb.toString();
+        return CitationVerifier.formatReport(results);
     }
 
     private static String escapeTableCell(@Nullable String val) {

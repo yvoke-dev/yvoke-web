@@ -70,7 +70,8 @@ public class GetSectionToolTest {
     @BeforeEach
     public void setUp() {
         sectionService = mock(SectionService.class);
-        getSectionTool = new GetSectionTool(sectionService);
+        getSectionTool = new GetSectionTool(sectionService, mock(DocumentRepository.class),
+            mock(ChunkRepository.class), mock(CollectionService.class));
     }
 
     private static SectionChunks section(SectionChunk... chunks) {
