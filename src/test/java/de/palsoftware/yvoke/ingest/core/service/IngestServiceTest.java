@@ -285,6 +285,8 @@ public class IngestServiceTest {
     public void processKgDeclaresTheTagOnTheCollectionBeforeEnqueueing() {
         UUID colId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(new DocumentRow(docId,
+            colId, "OIM", "markdown", "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("OIM"))
             .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
@@ -376,13 +378,16 @@ public class IngestServiceTest {
 
     @Test
     public void processKgRefusesAnUnknownAreaForANewCollection() {
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId))
+            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
+                "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
             .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
 
-        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
-            "10.0", null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> {
+        assertThatThrownBy(() -> ingestService.processKg(docId, null, null, null, "NEW", "10.0",
+            null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
                 ResponseStatusException rse = (ResponseStatusException) e;
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
@@ -392,10 +397,15 @@ public class IngestServiceTest {
 
     @Test
     public void processKgRefusesToCreateACollectionWithoutAnArea() {
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId))
+            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
+                "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
-            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(
+            () -> ingestService.processKg(docId, null, null, null, "NEW", "10.0", null, null))
+            .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
         verify(collectionService, never()).createCollection(any(), any(), any());
@@ -621,5 +631,19 @@ public class IngestServiceTest {
         EnqueueResult res =
             ingestService.processKg(docId, null, null, null, "sec-col", "1.0", null, null);
         assertThat(res.jobId()).isEqualTo(jobId);
+    }
+
+    @Test
+    public void processKgWithNonExistentExplicitDocumentIdYields404ForAllCallers() {
+        UUID missingDocId = UUID.randomUUID();
+        when(documentRepository.findById(missingDocId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ingestService.processKg(missingDocId, null, null, null, "OIM",
+            "1.0", null, "OIM")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
+                ResponseStatusException rse = (ResponseStatusException) e;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(rse.getReason()).contains(missingDocId.toString());
+            });
+        verify(jobService, never()).enqueue(any());
     }
 }

@@ -907,6 +907,17 @@ public class RagService {
         return null;
     }
 
+    /**
+     * Enforces version/tag scoping on omit-collection {@code search_corpus} and
+     * {@code list_documents} calls across an area's allowed collections.
+     *
+     * <p>
+     * Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections in
+     * the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
+     * schema only has {@code 10.0}), omitting {@code collection} would either silently drop the
+     * other collection or mix versions, so the caller is prompted to name {@code collection}
+     * explicitly.
+     */
     @Nullable
     private static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
         List<Collection> taggedCols =

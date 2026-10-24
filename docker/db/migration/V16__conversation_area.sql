@@ -15,7 +15,7 @@ FROM (
     FROM agent_runs ar
     JOIN orchestrator_profiles op ON op.name = ar.profile_name
     WHERE ar.conversation_id IS NOT NULL
-    ORDER BY ar.conversation_id, ar.created_at DESC, ar.id DESC
+    ORDER BY ar.conversation_id, ar.started_at DESC, ar.id DESC
 ) sub
 WHERE c.id = sub.conversation_id
   AND c.area IS NULL;

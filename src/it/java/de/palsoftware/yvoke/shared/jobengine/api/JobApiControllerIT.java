@@ -209,12 +209,12 @@ public class JobApiControllerIT {
         String pingColName = "JOB-API-IT-PINGID-COLLECTION";
         UUID oimDocId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO areas (name, description) VALUES ('PingID', 'PingID') ON CONFLICT (name) DO NOTHING");
+            "INSERT INTO areas (name, title, description) VALUES ('PingID', 'PingID', 'PingID') ON CONFLICT (name) DO NOTHING");
         jdbcTemplate.update("INSERT INTO collections (id, name, area) VALUES (?, ?, 'PingID')",
             pingColId, pingColName);
         jdbcTemplate.update("""
-            INSERT INTO documents (id, collection_id, source_file, kind, title, ingestion_status)
-            VALUES (?, ?, 'secret-oim.md', 'markdown', 'Secret OIM', 'completed')
+            INSERT INTO documents (id, collection_id, kind, title, ingestion_status)
+            VALUES (?, ?, 'markdown', 'Secret OIM', 'completed')
             """, oimDocId, collectionId);
 
         try {

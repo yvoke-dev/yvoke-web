@@ -110,15 +110,16 @@ public class IngestService {
             targetDocId = foundId.get();
         } else {
             Optional<DocumentRow> docOpt = documentRepository.findById(targetDocId);
-            String docArea = null;
-            if (docOpt.isPresent()) {
-                DocumentRow doc = docOpt.get();
-                Optional<Collection> srcCol = collectionService.findById(doc.collectionId());
-                if (srcCol.isEmpty() && doc.collection() != null) {
-                    srcCol = collectionService.getCollection(doc.collection());
-                }
-                docArea = srcCol.map(Collection::area).orElse(null);
+            if (docOpt.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Document not found: " + targetDocId);
             }
+            DocumentRow doc = docOpt.get();
+            Optional<Collection> srcCol = collectionService.findById(doc.collectionId());
+            if (srcCol.isEmpty() && doc.collection() != null) {
+                srcCol = collectionService.getCollection(doc.collection());
+            }
+            String docArea = srcCol.map(Collection::area).orElse(null);
             if (!AreaAccessContext.canIngestArea(docArea)
                 && !AreaAccessContext.canAdministerArea(docArea)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
