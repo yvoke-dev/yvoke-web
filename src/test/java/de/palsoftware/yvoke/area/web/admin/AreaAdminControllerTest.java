@@ -58,13 +58,13 @@ class AreaAdminControllerTest {
 
     @Test
     void everyPostedFieldReachesTheSave() throws Exception {
-        mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "Oracle IAM")
+        mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "Oracle-IAM")
             .param("title", "Oracle Identity").param("description", "Docs")
             .param("prototype", "true").param("defaultSystemPrompt", "oim-chat")
             .param("defaultPlaybook", "oim-full").param("defaultProfile", "OIM"))
             .andExpect(redirectedUrl("/admin/areas")).andExpect(flash().attributeExists("success"));
 
-        verify(areaService).saveArea("OIM", "Oracle IAM", "Oracle Identity", "Docs", true,
+        verify(areaService).saveArea("OIM", "Oracle-IAM", "Oracle Identity", "Docs", true,
             "oim-chat", "oim-full", "OIM");
     }
 

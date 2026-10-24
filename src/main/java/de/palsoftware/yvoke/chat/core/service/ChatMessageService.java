@@ -414,11 +414,8 @@ public class ChatMessageService {
                 // userMessageId, not assistantMessageId: the other three chat entry points
                 // attribute LLM spend to the persisted user message, and a GROUP BY message_id
                 // that mixed the two would be comparing questions with answers.
-                OrchestrationResult result = (turnAreas != null)
-                    ? orchestrationService.runOrchestration(conversationId, userMessageId, content,
-                        history, agentRunId, profileName, turnAreas)
-                    : orchestrationService.runOrchestration(conversationId, userMessageId, content,
-                        history, agentRunId, profileName);
+                OrchestrationResult result = orchestrationService.runOrchestration(conversationId,
+                    userMessageId, content, history, agentRunId, profileName, turnAreas);
                 transactionTemplate.executeWithoutResult(status -> {
                     messageRepository.updateContentAndStatus(assistantMessageId, result.content(),
                         result.retrievedChunkIds(), Collections.emptyList(), result.promptTokens(),

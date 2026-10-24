@@ -166,7 +166,8 @@ public class IngestService {
             if (existing.isPresent()) {
                 Collection col = existing.get();
                 if (col.area() != null && !col.area().isBlank()
-                    && !AreaAccessContext.canIngestArea(col.area())) {
+                    && !AreaAccessContext.canIngestArea(col.area())
+                    && !AreaAccessContext.canAdministerArea(col.area())) {
                     throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Collection '" + collection + "' does not exist.");
                 }
@@ -322,7 +323,8 @@ public class IngestService {
         if (existing.isPresent()) {
             Collection col = existing.get();
             if (col.area() != null && !col.area().isBlank()
-                && !AreaAccessContext.canIngestArea(col.area())) {
+                && !AreaAccessContext.canIngestArea(col.area())
+                && !AreaAccessContext.canAdministerArea(col.area())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Collection '" + collectionName + "' does not exist.");
             }
@@ -332,7 +334,7 @@ public class IngestService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Collection '"
                 + collectionName + "' does not exist; pass 'area' to create it in an area.");
         }
-        if (!AreaAccessContext.canIngestArea(area)) {
+        if (!AreaAccessContext.canIngestArea(area) && !AreaAccessContext.canAdministerArea(area)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Forbidden: cannot ingest into area '" + area + "'");
         }

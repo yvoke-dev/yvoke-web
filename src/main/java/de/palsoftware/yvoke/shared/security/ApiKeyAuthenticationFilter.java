@@ -105,6 +105,9 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken("api-key-client", null,
                         List.of(ROLE_INGEST_AUTHORITY, AREA_INGEST_ALL_AUTHORITY));
+                // A FRESH context, not getContext().setAuthentication(...): the latter mutates
+                // whatever SecurityContextHolderFilter loaded, which on this deliberately
+                // session-capable chain can be the very object held in a browser admin's session.
                 SecurityContext context = SecurityContextHolder.createEmptyContext();
                 context.setAuthentication(auth);
                 SecurityContextHolder.setContext(context);
@@ -114,6 +117,9 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     "api-key-client:" + matchedArea, null, List.of(ROLE_INGEST_AUTHORITY,
                         new SimpleGrantedAuthority("AREA_INGEST_" + upperArea)));
+                // A FRESH context, not getContext().setAuthentication(...): the latter mutates
+                // whatever SecurityContextHolderFilter loaded, which on this deliberately
+                // session-capable chain can be the very object held in a browser admin's session.
                 SecurityContext context = SecurityContextHolder.createEmptyContext();
                 context.setAuthentication(auth);
                 SecurityContextHolder.setContext(context);

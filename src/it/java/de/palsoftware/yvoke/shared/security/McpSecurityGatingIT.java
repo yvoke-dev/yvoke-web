@@ -482,12 +482,6 @@ public class McpSecurityGatingIT {
 
         String listJson = areaTools.listAreas();
         assertThat(listJson).contains("OIM").doesNotContain("PingID");
-
-        String oimOverview = areaTools.getAreaOverview("OIM");
-        assertThat(oimOverview).contains("OIM");
-
-        String pingOverview = areaTools.getAreaOverview("PingID");
-        assertThat(pingOverview).isEqualTo("Error: Area 'PingID' not found.");
     }
 
     @Test
@@ -498,12 +492,6 @@ public class McpSecurityGatingIT {
 
         String listJson = areaTools.listAreas();
         assertThat(listJson).contains("OIM").contains("PingID");
-
-        String pingOverview = areaTools.getAreaOverview("PingID");
-        assertThat(pingOverview).contains("PingID");
-
-        String nonExistent = areaTools.getAreaOverview("NonExistent");
-        assertThat(nonExistent).isEqualTo("Error: Area 'NonExistent' not found.");
     }
 
     @Test

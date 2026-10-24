@@ -95,16 +95,6 @@ class AreaServiceTest {
         assertThat(service.findByNameForUser("   ")).isEmpty();
     }
 
-    @Test
-    void findByNameForAdmin_returnsAreaWhenAdministeredAndEmptyWhenUnauthorized() {
-        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
-        assertThat(service.findByNameForAdmin("OIM")).isPresent();
-        assertThat(service.findByNameForAdmin("PingID")).isEmpty();
-
-        setAuth(AreaAccessContext.ROLE_ADMIN);
-        assertThat(service.findByNameForAdmin("PingID")).isPresent();
-    }
-
     /**
      * Validate leniently, query strictly: the caller's spelling is matched loosely, but what comes
      * back is the stored name, which is what every member row's foreign key must hold.
@@ -229,13 +219,27 @@ class AreaServiceTest {
         AreaRepository repository =
             repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
 
-        new AreaService(repository).saveArea("OIM", "Oracle IAM", "Oracle IAM", null, false,
+        new AreaService(repository).saveArea("OIM", "Oracle-IAM", "Oracle IAM", null, false,
             "oim-chat", null, null);
 
         InOrder order = inOrder(repository);
-        order.verify(repository).rename("OIM", "Oracle IAM");
+        order.verify(repository).rename("OIM", "Oracle-IAM");
         order.verify(repository).upsert(
-            new Area("Oracle IAM", "Oracle IAM", null, false, "oim-chat", null, null, null, null));
+            new Area("Oracle-IAM", "Oracle IAM", null, false, "oim-chat", null, null, null, null));
+    }
+
+    @Test
+    void areaNamesWithSpacesDotsWildcardOrNonRoundtrippingCaseAreRejected() {
+        AreaRepository repository = repoWith(List.of(), Map.of());
+        AreaService areas = new AreaService(repository);
+
+        for (String invalid : List.of("Ping ID", "OIM.v2", "*", "OIM*", "straße")) {
+            assertThatThrownBy(
+                () -> areas.saveArea(null, invalid, "Title", null, false, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
+                    "is invalid: area names must not contain spaces, dots, or '*'");
+        }
+        verify(repository, never()).upsert(any());
     }
 
     @Test

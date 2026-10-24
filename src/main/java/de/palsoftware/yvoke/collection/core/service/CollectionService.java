@@ -75,15 +75,6 @@ public class CollectionService {
             .orElseGet(this::listCollections);
     }
 
-    /**
-     * Lists collections in areas accessible to the current user (all collections for Global
-     * User/Admin).
-     */
-    public List<Collection> listForUser() {
-        return AreaAccessContext.allowedUserAreasLower().map(this::listByAreas)
-            .orElseGet(this::listCollections);
-    }
-
     public Optional<Collection> findByIdForAdmin(UUID id) {
         if (id == null) {
             return Optional.empty();
@@ -94,18 +85,6 @@ public class CollectionService {
 
     public Optional<Collection> findByNameForAdmin(String name) {
         return getCollection(name).filter(c -> AreaAccessContext.canAdministerArea(c.area()));
-    }
-
-    public Optional<Collection> findByIdForIngest(UUID id) {
-        if (id == null) {
-            return Optional.empty();
-        }
-        return collectionRepository.findById(id)
-            .filter(c -> AreaAccessContext.canIngestArea(c.area()));
-    }
-
-    public Optional<Collection> findByNameForIngest(String name) {
-        return getCollection(name).filter(c -> AreaAccessContext.canIngestArea(c.area()));
     }
 
     /**

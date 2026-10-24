@@ -75,21 +75,6 @@ public class CollectionServiceTest {
     }
 
     @Test
-    void listForUser_returnsScopedOrAllBasedOnUserAreaAuthority() {
-        Collection c1 = new Collection(UUID.randomUUID(), "Col1", "desc", List.of(),
-            OffsetDateTime.now(), "OIM");
-        Collection c2 = new Collection(UUID.randomUUID(), "Col2", "desc", List.of(),
-            OffsetDateTime.now(), "PingID");
-        when(collectionRepository.findAll()).thenReturn(List.of(c1, c2));
-
-        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
-        assertThat(collectionService.listForUser()).containsExactly(c1, c2);
-
-        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "PINGID");
-        assertThat(collectionService.listForUser()).containsExactly(c2);
-    }
-
-    @Test
     void findByIdForAdmin_and_findByNameForAdmin_enforceAdminScoping() {
         UUID id = UUID.randomUUID();
         Collection c1 =
@@ -104,26 +89,6 @@ public class CollectionServiceTest {
         setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "PINGID");
         assertThat(collectionService.findByIdForAdmin(id)).isEmpty();
         assertThat(collectionService.findByNameForAdmin("OIM-Docs")).isEmpty();
-    }
-
-    @Test
-    void findByIdForIngest_and_findByNameForIngest_enforceIngestScoping() {
-        UUID id = UUID.randomUUID();
-        Collection c1 =
-            new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
-        when(collectionRepository.findById(id)).thenReturn(Optional.of(c1));
-        when(collectionRepository.findByName("OIM-Docs")).thenReturn(Optional.of(c1));
-
-        setAuth(AreaAccessContext.ROLE_INGEST, AreaAccessContext.AREA_INGEST_PREFIX + "OIM");
-        assertThat(collectionService.findByIdForIngest(id)).contains(c1);
-        assertThat(collectionService.findByNameForIngest("OIM-Docs")).contains(c1);
-
-        setAuth(AreaAccessContext.ROLE_INGEST, AreaAccessContext.AREA_INGEST_PREFIX + "PINGID");
-        assertThat(collectionService.findByIdForIngest(id)).isEmpty();
-        assertThat(collectionService.findByNameForIngest("OIM-Docs")).isEmpty();
-
-        setAuth(AreaAccessContext.ROLE_INGEST, AreaAccessContext.AREA_INGEST_ALL);
-        assertThat(collectionService.findByIdForIngest(id)).contains(c1);
     }
 
     @Test

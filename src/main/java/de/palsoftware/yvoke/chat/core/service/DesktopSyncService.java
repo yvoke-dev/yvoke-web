@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -103,6 +104,8 @@ public class DesktopSyncService {
         }
 
         List<UUID> ids = new ArrayList<>(newMessages.size());
+        Map<String, Optional<Playbook>> playbooksByName = new HashMap<>();
+        boolean areaUpdated = false;
         for (NewMessage m : newMessages) {
             if (m.role() == null || !(m.role().equals("user") || m.role().equals("assistant"))) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -113,13 +116,18 @@ public class DesktopSyncService {
                     "content must not be blank");
             }
             if (m.playbook() != null && !m.playbook().isBlank() && playbookService != null) {
-                Playbook pb = playbookService.getPlaybook(m.playbook()).orElse(null);
+                Playbook pb = playbooksByName
+                    .computeIfAbsent(m.playbook().trim(), playbookService::getPlaybook)
+                    .orElse(null);
                 if (pb != null && pb.area() != null && !pb.area().isBlank()) {
                     if (!AreaAccessContext.canAccessUserArea(pb.area())) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "Playbook not found: " + m.playbook());
                     }
-                    conversationRepository.updateAreaIfAbsent(conversationId, pb.area());
+                    if (!areaUpdated) {
+                        conversationRepository.updateAreaIfAbsent(conversationId, pb.area());
+                        areaUpdated = true;
+                    }
                 }
             }
             UUID id = UUID.randomUUID();

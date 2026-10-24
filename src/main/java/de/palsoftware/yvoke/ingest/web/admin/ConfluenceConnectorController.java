@@ -19,6 +19,7 @@ import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -277,10 +278,12 @@ public class ConfluenceConnectorController {
      */
     @PostMapping("/connectors/confluence/sync-all")
     public String syncAllInstances(RedirectAttributes redirectAttributes) {
+        Map<String, Optional<Collection>> collectionsByName = new HashMap<>();
         List<ConfluenceInstanceView> enabled = instanceService.listInstances().stream()
             .filter(ConfluenceInstanceView::enabled).filter(inst -> {
-                Collection col =
-                    collectionService.getCollection(inst.targetCollection()).orElse(null);
+                Collection col = collectionsByName
+                    .computeIfAbsent(inst.targetCollection(), collectionService::getCollection)
+                    .orElse(null);
                 return col != null && AreaAccessContext.canAdministerArea(col.area());
             }).toList();
         if (enabled.isEmpty()) {

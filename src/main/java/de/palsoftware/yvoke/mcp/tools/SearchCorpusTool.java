@@ -72,8 +72,7 @@ public class SearchCorpusTool {
         if (matchedCol == null) {
             return "Error: Collection '" + col + "' does not exist.";
         }
-        if (matchedCol.area() != null && !matchedCol.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
+        if (!isAreaAllowed(matchedCol.area(), context)) {
             return "Error: Collection '" + col + "' does not exist.";
         }
 
@@ -142,5 +141,16 @@ public class SearchCorpusTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("search_corpus", e);
         }
+    }
+
+    private static boolean isAreaAllowed(@Nullable String area,
+        @Nullable AgenticChatContext context) {
+        if (context != null) {
+            return context.isAreaAllowed(area);
+        }
+        if (area == null || area.isBlank()) {
+            return true;
+        }
+        return AreaAccessContext.canAccessUserArea(area);
     }
 }

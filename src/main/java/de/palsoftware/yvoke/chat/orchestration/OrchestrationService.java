@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -149,13 +150,19 @@ public class OrchestrationService {
 
         runRepository.create(agentRunId, conversationId, profileName, configSnapshot(profile));
 
+        Set<String> effectiveAreas = allowedAreasLower;
+        if (effectiveAreas == null && orchestratorPlaybook.area() != null
+            && !orchestratorPlaybook.area().isBlank()) {
+            effectiveAreas = Set.of(orchestratorPlaybook.area().trim().toLowerCase(Locale.ROOT));
+        }
+
         RunState st =
             new RunState(agentRunId, conversationId, messageId, profile,
                 conversationRepository != null
                     ? conversationRepository.findById(conversationId).map(Conversation::userId)
                         .orElse(null)
                     : null,
-                allowedAreasLower);
+                effectiveAreas);
         st.specialistCfg = profile.specialist();
         int round = 0;
         String answer = "";

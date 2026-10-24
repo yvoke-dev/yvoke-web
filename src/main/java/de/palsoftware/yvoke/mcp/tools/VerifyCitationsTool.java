@@ -1,8 +1,10 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import jakarta.annotation.Nullable;
 import java.util.*;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -58,19 +60,27 @@ public class VerifyCitationsTool {
     public String verifyCitations(
         @McpToolParam(description = CITATIONS_PARAM_DESCRIPTION, required = true) @ToolParam(
             description = CITATIONS_PARAM_DESCRIPTION, required = true) List<String> citations) {
+        return verifyCitations(citations, null);
+    }
+
+    public String verifyCitations(List<String> citations, @Nullable AgenticChatContext context) {
         log.info("VerifyCitationsTool: verifying {} citations",
             citations != null ? citations.size() : 0);
         if (citations == null || citations.isEmpty()) {
             return "Error: 'citations' parameter is required. At least one citation token must be specified.";
         }
         try {
-            SecurityContext securityContext = SecurityContextHolder.getContext();
-            Authentication auth =
-                securityContext != null ? securityContext.getAuthentication() : null;
-            Set<String> allowedAreasLower = null;
-            if (auth != null && auth.isAuthenticated()
-                && !(auth instanceof AnonymousAuthenticationToken)) {
-                allowedAreasLower = AreaAccessContext.allowedUserAreasLower(auth).orElse(null);
+            Set<String> allowedAreasLower;
+            if (context != null) {
+                allowedAreasLower = context.getAllowedAreasLower();
+            } else {
+                SecurityContext securityContext = SecurityContextHolder.getContext();
+                Authentication auth =
+                    securityContext != null ? securityContext.getAuthentication() : null;
+                allowedAreasLower = (auth != null && auth.isAuthenticated()
+                    && !(auth instanceof AnonymousAuthenticationToken))
+                        ? AreaAccessContext.allowedUserAreasLower(auth).orElse(null)
+                        : Set.of();
             }
             List<CitationVerifier.CitationCheckResult> checkResults = (allowedAreasLower != null)
                 ? citationVerifier.checkCitations(citations, allowedAreasLower)

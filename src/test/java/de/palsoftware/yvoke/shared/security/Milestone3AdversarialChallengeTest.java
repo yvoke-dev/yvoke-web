@@ -305,13 +305,7 @@ public class Milestone3AdversarialChallengeTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
-        // 1. API endpoint returns 404
-        assertThatThrownBy(() -> citationController.getChunkCitation(chunkId))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
-
-        // 2. HTML partial endpoint returns NOT_FOUND_ERROR without leaking source
+        // HTML partial endpoint returns NOT_FOUND_ERROR without leaking source
         Model model = new ConcurrentModel();
         String view = citationController.getCitation(chunkId, null, model);
         assertThat(view).isEqualTo("document/fragments/citation-expander");
@@ -335,13 +329,7 @@ public class Milestone3AdversarialChallengeTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
-        // 1. API endpoint returns 404
-        assertThatThrownBy(() -> citationController.getDocumentCitation(docId.toString()))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
-
-        // 2. HTML partial endpoint returns NOT_FOUND_ERROR
+        // HTML partial endpoint returns NOT_FOUND_ERROR
         Model model = new ConcurrentModel();
         String view = citationController.getCitation(null, docId.toString(), model);
         assertThat(view).isEqualTo("document/fragments/citation-expander");
@@ -367,9 +355,6 @@ public class Milestone3AdversarialChallengeTest {
         // User has AREA_USER_PINGID
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
-
-        SectionResponse response = citationController.getChunkCitation(chunkId);
-        assertThat(response).isEqualTo(section);
 
         Model model = new ConcurrentModel();
         String view = citationController.getCitation(chunkId, null, model);
@@ -403,18 +388,9 @@ public class Milestone3AdversarialChallengeTest {
         assertThat(array).hasSize(1);
         assertThat(array.get(0).get("name").asText()).isEqualTo("PingID");
 
-        // get_area_overview on unauthorized area OIM
-        String unauthorizedError = areaTools.getAreaOverview("OIM");
-        // get_area_overview on nonexistent area UnknownArea
-        String nonexistentError = areaTools.getAreaOverview("UnknownArea");
-
-        assertThat(unauthorizedError).isEqualTo("Error: Area 'OIM' not found.");
-        assertThat(nonexistentError).isEqualTo("Error: Area 'UnknownArea' not found.");
-
-        // Authorized lookup succeeds
-        String pingOverview = areaTools.getAreaOverview("PingID");
-        JsonNode pingNode = objectMapper.readTree(pingOverview);
-        assertThat(pingNode.get("name").asText()).isEqualTo("PingID");
+        // findByNameForUser on unauthorized area OIM vs nonexistent area UnknownArea
+        assertThat(areaService.findByNameForUser("OIM")).isEmpty();
+        assertThat(areaService.findByNameForUser("UnknownArea")).isEmpty();
     }
 
     @Test

@@ -800,41 +800,43 @@ public class RagService {
         }
 
         // Omit-collection search
-        if (ctx.getAllowedAreasLower() != null) {
-            List<Collection> allowed = collectionService.listCollections().stream()
-                .filter(c -> ctx.isAreaAllowed(c.area())).toList();
-            if (allowed.isEmpty()) {
-                return "No relevant documents found.";
+        List<Collection> allowed = collectionService.listCollections().stream()
+            .filter(c -> ctx.isAreaAllowed(c.area())).toList();
+        if (allowed.isEmpty()) {
+            return "No relevant documents found.";
+        }
+        if (hybridSearch != null) {
+            String q = (String) args.get("query");
+            if (q == null || q.isBlank()) {
+                return "Error: 'query' parameter is required for search_corpus. If you wanted to list documents or modules in a collection (e.g. by kind), please use the 'list_documents' tool instead.";
             }
-            if (hybridSearch != null) {
-                String q = (String) args.get("query");
-                if (q == null || q.isBlank()) {
-                    return "Error: 'query' parameter is required for search_corpus. If you wanted to list documents or modules in a collection (e.g. by kind), please use the 'list_documents' tool instead.";
-                }
-                List<String> allowedNames = allowed.stream().map(Collection::name).toList();
-                Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
-                String tag = (String) args.get("tag");
-                String tagError = requireAreaTag(allowed, tag);
-                if (tagError != null) {
-                    return tagError;
-                }
-                List<String> tagList =
-                    (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : List.of();
-                SearchWithId swi = hybridSearch.searchWithId(q.trim(),
-                    new SearchOptions(allowedNames, limit, null, null, 0, true, tagList));
-                if (swi != null) {
-                    if (swi.searchId() != null) {
-                        ctx.getSearchIds().add(swi.searchId());
-                    }
-                    if (swi.results() != null && !swi.results().isEmpty()) {
-                        for (HybridSearchResult res : swi.results()) {
-                            ctx.getRetrievedChunkIds().add(res.id());
-                        }
-                        return ChunkBlocks.format(swi.results(), ctx);
-                    }
-                }
-                return "No relevant documents found.";
+            List<String> allowedNames = allowed.stream().map(Collection::name).toList();
+            Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
+            Integer effectiveLim = limit != null ? Math.max(1, Math.min(limit, 50)) : null;
+            String tag = (String) args.get("tag");
+            String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
+            String tagError = requireAreaTag(allowed, parsedTag);
+            if (tagError != null) {
+                return tagError;
             }
+            List<String> tagList = parsedTag != null ? List.of(parsedTag) : List.of();
+            SearchWithId swi = hybridSearch.searchWithId(q.trim(),
+                new SearchOptions(allowedNames, effectiveLim, null, null, 0, true, tagList));
+            if (swi != null) {
+                if (swi.searchId() != null) {
+                    ctx.getSearchIds().add(swi.searchId());
+                }
+                if (swi.results() != null && !swi.results().isEmpty()) {
+                    for (HybridSearchResult res : swi.results()) {
+                        ctx.getRetrievedChunkIds().add(res.id());
+                    }
+                    String header = "Searched **" + String.join(", ", allowedNames) + "**"
+                        + (parsedTag != null ? " (tag=" + parsedTag + ")" : "") + " for: _"
+                        + q.trim() + "_\n\n";
+                    return header + ChunkBlocks.format(swi.results(), ctx);
+                }
+            }
+            return "No relevant documents found.";
         }
         return null;
     }
@@ -851,60 +853,66 @@ public class RagService {
         }
 
         // Omit-collection listing
-        if (ctx.getAllowedAreasLower() != null) {
-            List<Collection> allowed = collectionService.listCollections().stream()
-                .filter(c -> ctx.isAreaAllowed(c.area())).toList();
-            if (allowed.isEmpty()) {
-                return "| document_id | kind | title | chunks |\n|---|---|---|---|";
-            }
-            String rawTag = (String) args.get("tag");
-            String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
-            String tagError = requireAreaTag(allowed, parsedTag);
-            if (tagError != null) {
-                return tagError;
-            }
-            String rawKind = (String) args.get("kind");
-            String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
-            String rawQuery = (String) args.get("query");
-            String fuzzyQuery = (rawQuery != null && !rawQuery.isBlank()) ? rawQuery.trim() : null;
-            int lim = (args.get("limit") instanceof Number n) ? n.intValue() : 100;
-            int off = (args.get("offset") instanceof Number n) ? n.intValue() : 0;
-            if (documentRepository != null) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
-                for (Collection c : allowed) {
-                    try {
-                        String effectiveKind = parsedKind;
-                        if (parsedKind != null) {
-                            List<String> validKinds =
-                                documentRepository.findDistinctKindsInCollection(c.name());
-                            if (validKinds != null && !validKinds.isEmpty()) {
-                                effectiveKind = validKinds.stream()
-                                    .filter(parsedKind::equalsIgnoreCase).findFirst().orElse(null);
-                                if (effectiveKind == null) {
-                                    continue;
-                                }
-                            }
-                        }
-                        List<DocumentDetails> docs = documentRepository.listDocuments(c.name(), lim,
-                            off, effectiveKind, parsedTag, null, null, fuzzyQuery);
-                        if (docs != null) {
-                            for (DocumentDetails d : docs) {
-                                sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
-                                    .append(escapeTableCell(d.kind())).append(" | ")
-                                    .append(escapeTableCell(d.title())).append(" | ")
-                                    .append(d.chunkCount()).append(" |\n");
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.warn("Failed to list documents for collection {}", c.name(), e);
-                    }
-                }
-                return sb.toString();
-            }
+        List<Collection> allowed = collectionService.listCollections().stream()
+            .filter(c -> ctx.isAreaAllowed(c.area())).toList();
+        if (allowed.isEmpty()) {
             return "| document_id | kind | title | chunks |\n|---|---|---|---|";
         }
-        return null;
+        String rawTag = (String) args.get("tag");
+        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+        String tagError = requireAreaTag(allowed, parsedTag);
+        if (tagError != null) {
+            return tagError;
+        }
+        String rawKind = (String) args.get("kind");
+        String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
+        String rawQuery = (String) args.get("query");
+        String fuzzyQuery = (rawQuery != null && !rawQuery.isBlank()) ? rawQuery.trim() : null;
+        int lim = Math.max(1,
+            Math.min((args.get("limit") instanceof Number n) ? n.intValue() : 100, 500));
+        int off = Math.max(0, (args.get("offset") instanceof Number n) ? n.intValue() : 0);
+        if (documentRepository != null) {
+            List<DocumentDetails> allDocs = new ArrayList<>();
+            for (Collection c : allowed) {
+                try {
+                    String effectiveKind = parsedKind;
+                    if (parsedKind != null) {
+                        List<String> validKinds =
+                            documentRepository.findDistinctKindsInCollection(c.name());
+                        if (validKinds != null && !validKinds.isEmpty()) {
+                            effectiveKind = validKinds.stream().filter(parsedKind::equalsIgnoreCase)
+                                .findFirst().orElse(null);
+                            if (effectiveKind == null) {
+                                continue;
+                            }
+                        }
+                    }
+                    List<DocumentDetails> docs = documentRepository.listDocuments(c.name(),
+                        Integer.MAX_VALUE, 0, effectiveKind, parsedTag, null, null, fuzzyQuery);
+                    if (docs != null) {
+                        allDocs.addAll(docs);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to list documents for collection {}", c.name(), e);
+                }
+            }
+            int fromIndex = Math.min(off, allDocs.size());
+            int toIndex = Math.min(off + lim, allDocs.size());
+            List<DocumentDetails> page = allDocs.subList(fromIndex, toIndex);
+            StringBuilder sb = new StringBuilder();
+            sb.append("Showing ").append(allDocs.isEmpty() ? 0 : Math.min(off + 1, allDocs.size()))
+                .append("–").append(Math.min(off + lim, allDocs.size())).append(" of ")
+                .append(allDocs.size()).append("\n\n");
+            sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
+            for (DocumentDetails d : page) {
+                sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
+                    .append(escapeTableCell(d.kind())).append(" | ")
+                    .append(escapeTableCell(d.title())).append(" | ").append(d.chunkCount())
+                    .append(" |\n");
+            }
+            return sb.toString();
+        }
+        return "| document_id | kind | title | chunks |\n|---|---|---|---|";
     }
 
     /**
@@ -1003,7 +1011,12 @@ public class RagService {
                 Optional<ChunkRow> chunkOpt = Optional.empty();
                 try {
                     chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr.trim());
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException e) {
+                    if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
+                        && ctx.getAllowedAreasLower() != null) {
+                        return "Error: Ambiguous chunk ID prefix '" + chunkIdStr.trim()
+                            + "'. Please provide the full chunk UUID.";
+                    }
                     // Short or non-hex prefix; let the tool or UUID fallback handle it
                 }
                 if (chunkOpt.isEmpty()) {
@@ -1069,12 +1082,6 @@ public class RagService {
             return null;
         }
         return matched;
-    }
-
-    public @Nullable UUID resolveCollectionId(@Nullable String collectionName,
-        @Nullable AgenticChatContext context) {
-        Collection col = resolveCollection(collectionName, context);
-        return col != null ? col.id() : null;
     }
 
     @SuppressWarnings("unchecked")

@@ -646,4 +646,31 @@ public class IngestServiceTest {
             });
         verify(jobService, never()).enqueue(any());
     }
+
+    @Test
+    public void areaAdminWithoutIngestAuthorityCanUploadAndEnqueueCustomForTheirArea() {
+        authenticateWith("ROLE_AREA_ADMIN", "AREA_ADMIN_OIM");
+        UUID colId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Collection oimCol =
+            new Collection(colId, "oim-col", "desc", List.of("1.0"), OffsetDateTime.now(), "OIM");
+        when(collectionService.getCollection("oim-col")).thenReturn(Optional.of(oimCol));
+        when(collectionService.getCollection("new-oim-col")).thenReturn(Optional.empty())
+            .thenReturn(Optional.of(new Collection(UUID.randomUUID(), "new-oim-col", "desc",
+                List.of(), OffsetDateTime.now(), "OIM")));
+        when(jobService.enqueue(any(EnqueueRequest.class)))
+            .thenReturn(EnqueueResult.created(jobId));
+
+        MockMultipartFile md =
+            new MockMultipartFile("file", "doc.md", "text/markdown", "content".getBytes());
+        assertThat(ingestService.uploadAndEnqueue(md, "oim-col", "1.0", "standard", null, null,
+            null, null)).isEqualTo(jobId);
+        assertThat(ingestService.uploadAndEnqueue(md, "new-oim-col", "1.0", "standard", null, null,
+            null, "OIM")).isEqualTo(jobId);
+
+        MockMultipartFile zip =
+            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+        assertThat(ingestService.enqueueCustom(zip, "oim-col", "1.0", "**/*.md", "entities.jsonl",
+            "relationships.jsonl", null)).isEqualTo(jobId);
+    }
 }

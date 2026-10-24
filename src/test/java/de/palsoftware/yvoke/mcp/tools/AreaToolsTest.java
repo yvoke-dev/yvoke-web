@@ -158,32 +158,6 @@ class AreaToolsTest {
         assertThat(list.get(0).get("name").asText()).isEqualTo("OIM");
     }
 
-    @Test
-    void getAreaOverviewReturnsOverviewForAccessibleArea() throws Exception {
-        SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
-        when(areaRepository.findAll()).thenReturn(List.of(area("OIM")));
-        when(areaRepository.findAllMembers()).thenReturn(
-            Map.of("OIM", new AreaMembers(List.of(), List.of("OIM - Docs"), List.of(), List.of())));
-
-        String res = tools.getAreaOverview("OIM");
-        JsonNode node = json.readTree(res);
-        assertThat(node.get("name").asText()).isEqualTo("OIM");
-        assertThat(texts(node.get("collections"))).containsExactly("OIM - Docs");
-    }
-
-    @Test
-    void getAreaOverviewReturnsNotFoundErrorForInaccessibleArea() {
-        SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
-        when(areaRepository.findAll()).thenReturn(List.of(area("OIM")));
-
-        String res = tools.getAreaOverview("OIM");
-        assertThat(res).isEqualTo("Error: Area 'OIM' not found.");
-    }
-
     private static JsonNode single(JsonNode list) {
         assertThat(list).hasSize(1);
         return list.get(0);

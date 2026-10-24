@@ -312,17 +312,17 @@ class RagServiceAreaIsolationTest {
     }
 
     @Test
-    @DisplayName("resolveCollectionId: enforces area isolation and returns null for unauthorized or non-existent collections")
-    void resolveCollectionIdWithAreaRestriction() {
+    @DisplayName("resolveCollection: enforces area isolation and returns null for unauthorized or non-existent collections")
+    void resolveCollectionWithAreaRestriction() {
         AgenticChatContext oimCtx = new AgenticChatContext(Set.of("oim"));
-        assertThat(ragService.resolveCollectionId("oim-col", oimCtx)).isEqualTo(colOimId);
-        assertThat(ragService.resolveCollectionId("pingid-col", oimCtx)).isNull();
-        assertThat(ragService.resolveCollectionId("non-existent", oimCtx)).isNull();
+        assertThat(ragService.resolveCollection("oim-col", oimCtx)).isEqualTo(colOim);
+        assertThat(ragService.resolveCollection("pingid-col", oimCtx)).isNull();
+        assertThat(ragService.resolveCollection("non-existent", oimCtx)).isNull();
 
         AgenticChatContext globalCtx = new AgenticChatContext(null);
-        assertThat(ragService.resolveCollectionId("oim-col", globalCtx)).isEqualTo(colOimId);
-        assertThat(ragService.resolveCollectionId("pingid-col", globalCtx)).isEqualTo(colPingId);
-        assertThat(ragService.resolveCollectionId("non-existent", globalCtx)).isNull();
+        assertThat(ragService.resolveCollection("oim-col", globalCtx)).isEqualTo(colOim);
+        assertThat(ragService.resolveCollection("pingid-col", globalCtx)).isEqualTo(colPing);
+        assertThat(ragService.resolveCollection("non-existent", globalCtx)).isNull();
     }
 
     @Test

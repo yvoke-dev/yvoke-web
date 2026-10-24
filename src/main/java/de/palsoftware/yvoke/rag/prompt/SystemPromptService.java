@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.rag.prompt;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
 import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
+import java.time.Instant;
 import java.util.*;
 import java.util.Objects;
 import org.yaml.snakeyaml.Yaml;
@@ -202,12 +203,10 @@ public class SystemPromptService {
     }
 
     /**
-     * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
-     * into {@code fallbackArea}, the area picked on the import form.
+     * Parses a Markdown system prompt into a {@link SystemPrompt} record without persisting it. The
+     * area named in its frontmatter wins; a file that names none uses {@code fallbackArea}.
      */
-    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
-        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
-    public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
+    public static SystemPrompt parseMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
         if (mdContent == null) {
             mdContent = "";
@@ -229,32 +228,51 @@ public class SystemPromptService {
         String area = fallbackArea;
 
         if (!yamlFrontmatter.isBlank()) {
+            Object loaded;
             try {
-                Object loaded = new Yaml().load(yamlFrontmatter);
-                if (loaded instanceof Map<?, ?> map) {
-                    if (map.get("name") != null) {
-                        name = String.valueOf(map.get("name")).trim();
-                    }
-                    if (map.get("description") != null) {
-                        description = String.valueOf(map.get("description")).trim();
-                    }
-                    if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
-                        area = String.valueOf(map.get("area")).trim();
-                    }
-                    Object typeObj = map.get("type");
-                    if (typeObj != null) {
-                        String tStr = String.valueOf(typeObj).trim().toUpperCase();
-                        try {
-                            type = SystemPromptType.valueOf(tStr);
-                        } catch (Exception ignored) {
-                        }
-                    }
+                loaded = new Yaml().load(yamlFrontmatter);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Malformed YAML frontmatter in system prompt.",
+                    e);
+            }
+            if (!(loaded instanceof Map<?, ?> map)) {
+                throw new IllegalArgumentException(
+                    "YAML frontmatter in system prompt must be a mapping.");
+            }
+            if (map.get("name") != null) {
+                name = String.valueOf(map.get("name")).trim();
+            }
+            if (map.get("description") != null) {
+                description = String.valueOf(map.get("description")).trim();
+            }
+            if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
+                area = String.valueOf(map.get("area")).trim();
+            }
+            Object typeObj = map.get("type");
+            if (typeObj != null) {
+                String tStr = String.valueOf(typeObj).trim().toUpperCase();
+                try {
+                    type = SystemPromptType.valueOf(tStr);
+                } catch (Exception ignored) {
                 }
-            } catch (Exception ignored) {
             }
         }
 
-        savePrompt(name, type, body, description, area);
-        return getPrompt(name).orElse(new SystemPrompt(name, type, body, description));
+        return new SystemPrompt(name, type, body, description, Instant.now(), Instant.now(), false,
+            area);
+    }
+
+    /**
+     * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
+     * into {@code fallbackArea}, the area picked on the import form.
+     */
+    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
+        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
+    public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
+        String fallbackArea) {
+        SystemPrompt parsed = parseMarkdown(mdContent, fallbackName, fallbackArea);
+        savePrompt(parsed.name(), parsed.type(), parsed.systemPrompt(), parsed.description(),
+            parsed.area());
+        return getPrompt(parsed.name()).orElse(parsed);
     }
 }

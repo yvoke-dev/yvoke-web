@@ -50,7 +50,6 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import org.yaml.snakeyaml.Yaml;
 
 
 @Controller
@@ -476,28 +475,10 @@ public class RagAdminController {
             ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
             : originalFilename;
 
-        String frontmatterArea = null;
-        String promptName = fallbackName;
-        if (content.startsWith("---")) {
-            int endIdx = content.indexOf("---", 3);
-            if (endIdx > 0) {
-                String yaml = content.substring(3, endIdx).trim();
-                try {
-                    Object loaded = new Yaml().load(yaml);
-                    if (loaded instanceof Map<?, ?> map) {
-                        if (map.get("name") != null) {
-                            promptName = String.valueOf(map.get("name")).trim();
-                        }
-                        if (map.get("area") != null) {
-                            frontmatterArea = String.valueOf(map.get("area")).trim();
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-        }
+        SystemPrompt parsed = SystemPromptService.parseMarkdown(content, fallbackName, area);
+        String promptName = parsed.name();
         String targetArea =
-            (frontmatterArea != null && !frontmatterArea.isBlank()) ? frontmatterArea : area;
+            (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
         if (!AreaAccessContext.canAdministerArea(targetArea)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Not authorized for area: " + targetArea);

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,6 +28,10 @@ public class VerifyCitationsToolTest {
     public void setUp() {
         citationVerifier = mock(CitationVerifier.class);
         verifyCitationsTool = new VerifyCitationsTool(citationVerifier);
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
     }
 
     @AfterEach
@@ -151,6 +156,31 @@ public class VerifyCitationsToolTest {
         String output = verifyCitationsTool.verifyCitations(List.of(cit));
         assertTrue(output.contains("Citation check — 1 cited, 1 FABRICATED"));
         verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of("oim")));
+        verify(citationVerifier, never()).checkCitations(anyList());
+    }
+
+    @Test
+    public void testVerifyCitationsDeniesByDefaultWhenUnauthenticated() {
+        SecurityContextHolder.clearContext();
+
+        String cit = "[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]";
+        CitationVerifier.CitationCheckResult fake = new CitationVerifier.CitationCheckResult(cit,
+            "chunk", CitationVerifier.CitationStatus.FABRICATED, "0 chunk(s)");
+        when(citationVerifier.checkCitations(eq(List.of(cit)), eq(Set.of())))
+            .thenReturn(List.of(fake));
+
+        String output = verifyCitationsTool.verifyCitations(List.of(cit));
+        assertTrue(output.contains("Citation check — 1 cited, 1 FABRICATED"));
+        verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of()));
+        verify(citationVerifier, never()).checkCitations(anyList());
+
+        clearInvocations(citationVerifier);
+        SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken("key",
+            "anon", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
+
+        String anonOutput = verifyCitationsTool.verifyCitations(List.of(cit));
+        assertTrue(anonOutput.contains("Citation check — 1 cited, 1 FABRICATED"));
+        verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of()));
         verify(citationVerifier, never()).checkCitations(anyList());
     }
 }

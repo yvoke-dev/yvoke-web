@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.document.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
@@ -21,12 +20,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
-import org.springframework.web.server.ResponseStatusException;
 
 public class CitationControllerTest {
 
@@ -257,17 +254,20 @@ public class CitationControllerTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
-        assertThatThrownBy(() -> controller.getChunkCitation("chunk123"))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        String unauthorizedView = controller.getCitation("chunk123", null, model);
+        assertThat(unauthorizedView).isEqualTo("document/fragments/citation-expander");
+        assertThat(model.getAttribute("section")).isNull();
+        assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
 
         // Authorized caller
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
 
-        SectionResponse result = controller.getChunkCitation("chunk123");
-        assertThat(result).isEqualTo(section);
+        Model authorizedModel = new ConcurrentModel();
+        String authorizedView = controller.getCitation("chunk123", null, authorizedModel);
+        assertThat(authorizedView).isEqualTo("document/fragments/citation-expander");
+        assertThat(authorizedModel.getAttribute("section")).isEqualTo(section);
+        assertThat(authorizedModel.getAttribute("error")).isNull();
     }
 
     @Test
@@ -293,16 +293,19 @@ public class CitationControllerTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
-        assertThatThrownBy(() -> controller.getDocumentCitation(docId.toString()))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        String unauthorizedView = controller.getCitation(null, docId.toString(), model);
+        assertThat(unauthorizedView).isEqualTo("document/fragments/citation-expander");
+        assertThat(model.getAttribute("section")).isNull();
+        assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
 
         // Authorized caller
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
 
-        SectionResponse result = controller.getDocumentCitation(docId.toString());
-        assertThat(result).isEqualTo(section);
+        Model authorizedModel = new ConcurrentModel();
+        String authorizedView = controller.getCitation(null, docId.toString(), authorizedModel);
+        assertThat(authorizedView).isEqualTo("document/fragments/citation-expander");
+        assertThat(authorizedModel.getAttribute("section")).isEqualTo(section);
+        assertThat(authorizedModel.getAttribute("error")).isNull();
     }
 }

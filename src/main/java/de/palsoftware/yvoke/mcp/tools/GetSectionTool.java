@@ -70,8 +70,9 @@ public class GetSectionTool {
                 section = sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
             } else if (chunk_id != null && !chunk_id.isBlank()) {
                 String trimmedChunkId = chunk_id.trim();
-                if (!isChunkAreaAllowed(trimmedChunkId, context)) {
-                    return "Error: Chunk not found: " + trimmedChunkId;
+                String chunkError = checkChunkAreaAccess(trimmedChunkId, context);
+                if (chunkError != null) {
+                    return chunkError;
                 }
                 section = sectionService.getSectionChunksByChunkId(trimmedChunkId);
             } else {
@@ -101,25 +102,36 @@ public class GetSectionTool {
         return isAreaAllowed(colOpt.get().area(), context);
     }
 
-    private boolean isChunkAreaAllowed(String chunkIdStr, @Nullable AgenticChatContext context) {
+    @Nullable
+    private String checkChunkAreaAccess(String chunkIdStr, @Nullable AgenticChatContext context) {
         Optional<ChunkRow> chunkOpt;
         try {
             chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
         } catch (IllegalArgumentException e) {
-            return true;
+            boolean areaRestricted = context != null ? context.getAllowedAreasLower() != null
+                : !AreaAccessContext.hasAllUserAreas();
+            if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
+                && areaRestricted) {
+                return "Error: Ambiguous chunk ID prefix '" + chunkIdStr
+                    + "'. Please provide the full chunk UUID.";
+            }
+            return null;
         }
         if (chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
-            return true;
+            return null;
         }
         Optional<DocumentRow> docOpt = documentRepository.findById(chunkOpt.get().documentId());
         if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
-            return true;
+            return null;
         }
         Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
         if (colOpt.isEmpty()) {
-            return true;
+            return null;
         }
-        return isAreaAllowed(colOpt.get().area(), context);
+        if (!isAreaAllowed(colOpt.get().area(), context)) {
+            return "Error: Chunk not found: " + chunkIdStr;
+        }
+        return null;
     }
 
     private static boolean isAreaAllowed(@Nullable String area,

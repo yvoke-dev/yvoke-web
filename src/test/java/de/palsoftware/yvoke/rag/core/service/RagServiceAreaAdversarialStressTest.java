@@ -233,7 +233,6 @@ class RagServiceAreaAdversarialStressTest {
 
         assertThat(ragService.resolveCollection("oim-col", emptyCtx)).isNull();
         assertThat(ragService.resolveCollection("pingid-col", emptyCtx)).isNull();
-        assertThat(ragService.resolveCollectionId("oim-col", emptyCtx)).isNull();
     }
 
     @Test

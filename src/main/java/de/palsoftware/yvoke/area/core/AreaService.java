@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.area.core;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.security.AvailableAreasProvider;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -39,14 +40,6 @@ public class AreaService implements AvailableAreasProvider {
      */
     public Optional<Area> findByNameForUser(String name) {
         return findArea(name).filter(a -> AreaAccessContext.canAccessUserArea(a.name()));
-    }
-
-    /**
-     * Finds an area by name for admin access, returning empty if the area does not exist or the
-     * user lacks administration rights for it.
-     */
-    public Optional<Area> findByNameForAdmin(String name) {
-        return findArea(name).filter(a -> AreaAccessContext.canAdministerArea(a.name()));
     }
 
     public List<String> listAreaNames() {
@@ -114,6 +107,12 @@ public class AreaService implements AvailableAreasProvider {
         String newName = blankToNull(name);
         if (newName == null) {
             throw new IllegalArgumentException("An area name is required.");
+        }
+        if (newName.contains(".") || newName.contains("*")
+            || !newName.equals(newName.replaceAll("\\s+", "")) || !newName.toUpperCase(Locale.ROOT)
+                .toLowerCase(Locale.ROOT).equals(newName.toLowerCase(Locale.ROOT))) {
+            throw new IllegalArgumentException("Area name '" + newName
+                + "' is invalid: area names must not contain spaces, dots, or '*'.");
         }
         String stored = null;
         if (blankToNull(originalName) == null) {

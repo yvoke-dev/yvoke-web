@@ -301,7 +301,7 @@ public class SecurityConfig {
     @Order(2)
     @Bean
     public SecurityFilterChain chatApiSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.securityMatcher("/api/chat/**", "/api/citations/**")
+        http.securityMatcher("/api/chat/**")
             .authorizeHttpRequests(authorize -> authorize.anyRequest().hasAnyAuthority(
                 "SCOPE_" + requiredScope, "SCOPE_" + relativeScope, "ROLE_USER", "ROLE_ADMIN"))
             .sessionManagement(
@@ -323,6 +323,13 @@ public class SecurityConfig {
                 // ApiKeyAuthenticationFilter); ROLE_ADMIN is how the admin UI's job-progress
                 // EventSource reaches this chain with its cookie session; ROLE_AREA_ADMIN is how
                 // Area Admins connect to job progress EventSource.
+                // ROLE_USER is deliberately NOT admitted. This is the corpus WRITE surface: a plain
+                // signed-in person could otherwise upload files and queue import jobs into ANY
+                // knowledge area straight from their browser session — content that then becomes
+                // searchable by everyone and is cited as authoritative, that spends money on
+                // summarisation and embedding, and that is never audited (only admin-screen imports
+                // are). No UI depends on the USER grant: /api/document/** has no browser caller and
+                // the only /api/jobs/** consumer is the admin-only job page.
                 .anyRequest().hasAnyRole("INGEST", "ADMIN", "AREA_ADMIN"));
         // NOTE: this chain is intentionally NOT stateless — the admin UI reaches these endpoints
         // with its cookie session (e.g. the job-progress EventSource on /api/jobs/v1/**/progress).

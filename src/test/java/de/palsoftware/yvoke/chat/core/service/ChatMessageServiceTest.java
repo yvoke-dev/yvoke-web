@@ -952,7 +952,7 @@ public class ChatMessageServiceTest {
             chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null);
         assertThat(assistantMessageId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
-            any());
+            any(), any());
     }
 
     @Test
@@ -1306,7 +1306,7 @@ public class ChatMessageServiceTest {
         UUID searchId = UUID.randomUUID();
         OrchestrationResult result = new OrchestrationResult("Orchestrated answer",
             List.of(UUID.randomUUID()), List.of(searchId), 11, 22, 33, 4, 5, "done");
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(result);
 
         UUID assistantMessageId =
@@ -1319,7 +1319,7 @@ public class ChatMessageServiceTest {
         // The orchestrator ran for this conversation's configured profile, on the user's raw
         // question with no playbook template prepended.
         verify(orchestrationService).runOrchestration(eq(conversationId), any(), eq("Async Query"),
-            any(), any(), eq("oim"));
+            any(), any(), eq("oim"), any());
         // Single-agent RAG was never reached. never() is sound here because taskExecutor is a mock
         // and the submitted task is run inline above — nothing is pending on a real executor.
         verify(ragService, never()).generateAgenticAnswer(any(), any());
@@ -1482,7 +1482,7 @@ public class ChatMessageServiceTest {
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
 
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenThrow(new CancellationException("stopped by user"));
 
         UUID assistantMessageId =
@@ -1554,7 +1554,7 @@ public class ChatMessageServiceTest {
         String flaggedContent = "The kit ships 9.3.1.\n\n> ⚠️ Delivered with reservations.";
         OrchestrationResult flagged = new OrchestrationResult(flaggedContent, List.of(), List.of(),
             11, 22, 33, 4, 5, "delivered_flagged");
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(flagged);
 
         UUID assistantMessageId =
@@ -1628,7 +1628,7 @@ public class ChatMessageServiceTest {
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
 
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenThrow(new RuntimeException("429 quota key=abc"));
 
         UUID assistantMessageId =
@@ -1836,7 +1836,7 @@ public class ChatMessageServiceTest {
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
 
@@ -1853,7 +1853,7 @@ public class ChatMessageServiceTest {
 
         ArgumentCaptor<UUID> delegatedMessageId = ArgumentCaptor.forClass(UUID.class);
         verify(orchestrationService).runOrchestration(eq(conversationId),
-            delegatedMessageId.capture(), eq("Async Query"), any(), any(), eq("oim"));
+            delegatedMessageId.capture(), eq("Async Query"), any(), any(), eq("oim"), any());
 
         assertThat(delegatedMessageId.getValue())
             .as("agent_runs.message_id and llm_call_logs.message_id point at the QUESTION")
@@ -2017,7 +2017,7 @@ public class ChatMessageServiceTest {
         AgentRunRepository agentRunRepositoryMock = mock(AgentRunRepository.class);
         ChatMessageService service =
             createService(orchestrationService, null, agentRunRepositoryMock, null);
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
 
@@ -2465,7 +2465,7 @@ public class ChatMessageServiceTest {
 
         assertThat(asstId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
-            any());
+            any(), any());
         verify(messageRepository, times(2)).findInitialPlaybook(convId);
         verify(messageRepository, times(1)).hasInDepthTurns(convId);
     }
