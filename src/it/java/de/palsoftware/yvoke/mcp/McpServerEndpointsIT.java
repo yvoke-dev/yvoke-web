@@ -405,6 +405,25 @@ public class McpServerEndpointsIT {
     }
 
     /**
+     * A client that asks its own user intercepts {@code ask_clarifying_question} before it reaches
+     * the server, so a {@code tools/call} that does arrive was shown to nobody. The reply must say
+     * so: a client that does not intercept (a plain connector) was told "asked successfully", and
+     * its model waited for an answer that never came.
+     */
+    @Test
+    public void askClarifyingQuestionOverMcpSaysNobodyWasAsked() throws Exception {
+        try (McpSession session = establishSession()) {
+            String body = callTool(session, "8", "ask_clarifying_question",
+                    "{ \"question\": \"Which kit version?\", \"options\": [\"9.3.1\", \"10.0\"] }")
+                    .body();
+            assertTrue(body.contains("Nobody was asked"),
+                    "the MCP reply must say nobody was asked — BODY=" + body);
+            assertFalse(body.contains("asked successfully"),
+                    "the MCP reply must not claim the question was asked — BODY=" + body);
+        }
+    }
+
+    /**
      * {@code doRegister} captures the {@link de.palsoftware.yvoke.rag.prompt.Playbook} object in its
      * handler closure, and the single line {@code getPlaybook(playbook.name()).orElse(playbook)} is
      * the only thing that makes a later edit visible to an external MCP client. Delete it — it reads
