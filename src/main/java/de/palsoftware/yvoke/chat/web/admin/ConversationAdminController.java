@@ -4,11 +4,13 @@ import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.Conver
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.ConversationAdminView;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.time.Clock;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,10 +54,11 @@ public class ConversationAdminController {
 
         log.info("ConversationAdminController: Accessing Conversations view");
 
+        Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
         ConversationFilter filter;
         try {
             filter = ConversationAdminFilterParser.parse(rawUserIds, timeRange, rawFromDate,
-                rawToDate, feedback, clock);
+                rawToDate, feedback, areas, clock);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }

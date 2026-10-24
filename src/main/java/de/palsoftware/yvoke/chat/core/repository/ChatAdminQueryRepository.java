@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
 import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
+import jakarta.annotation.Nullable;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -77,10 +79,19 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         Set<UUID> userIds,
         boolean includeAnonymous,
         TimeFilter timeFilter,
-        FeedbackFilter feedbackFilter) {
+        FeedbackFilter feedbackFilter,
+        @Nullable Set<String> allowedAreasLower) {
+
+        public ConversationFilter(
+            Set<UUID> userIds,
+            boolean includeAnonymous,
+            TimeFilter timeFilter,
+            FeedbackFilter feedbackFilter) {
+            this(userIds, includeAnonymous, timeFilter, feedbackFilter, null);
+        }
 
         public static ConversationFilter empty() {
-            return new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL);
+            return new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL, null);
         }
     }
 
@@ -320,6 +331,17 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 }
             }
         }
+
+        // 4. Area filter
+        Set<String> allowedAreasLower = filter.allowedAreasLower();
+        if (allowedAreasLower != null) {
+            if (allowedAreasLower.isEmpty()) {
+                sql.append(" AND 1=0");
+            } else {
+                sql.append(" AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)");
+                params.put("allowedAreas", allowedAreasLower);
+            }
+        }
     }
 
     @Override
@@ -347,33 +369,86 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public long countFeedbackByRating(int rating) {
-        return jdbcClient.sql("SELECT COUNT(*) FROM message_feedback WHERE rating = :rating")
-            .param("rating", rating).query(Long.class).single();
+        return countFeedbackByRating(rating, null);
+    }
+
+    public long countFeedbackByRating(int rating, @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return 0L;
+        }
+        if (allowedAreasLower == null) {
+            return jdbcClient.sql("SELECT COUNT(*) FROM message_feedback WHERE rating = :rating")
+                .param("rating", rating).query(Long.class).single();
+        }
+        String sql = """
+            SELECT COUNT(*)
+            FROM message_feedback f
+            JOIN messages m ON f.message_id = m.id
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE f.rating = :rating
+              AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
+            """;
+        return jdbcClient.sql(sql).param("rating", rating).param("allowedAreas", allowedAreasLower)
+            .query(Long.class).single();
     }
 
     public long countFilteredFeedback(String rating, Boolean reviewed, String timeRange) {
+        return countFilteredFeedback(rating, reviewed, timeRange, null);
+    }
+
+    public long countFilteredFeedback(String rating, Boolean reviewed, String timeRange,
+        @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return 0L;
+        }
         StringBuilder sql = new StringBuilder("""
             SELECT COUNT(*)
             FROM message_feedback f
             JOIN messages m ON f.message_id = m.id
-            WHERE 1=1
             """);
+        if (allowedAreasLower != null) {
+            sql.append(" JOIN conversations c ON m.conversation_id = c.id ");
+        }
+        sql.append(" WHERE 1=1 ");
+        if (allowedAreasLower != null) {
+            sql.append(" AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas) ");
+        }
         Map<String, Object> params = new HashMap<>();
+        if (allowedAreasLower != null) {
+            params.put("allowedAreas", allowedAreasLower);
+        }
         appendFilters(sql, params, rating, reviewed, timeRange);
         return jdbcClient.sql(sql.toString()).params(params).query(Long.class).single();
     }
 
     public List<FeedbackComment> listFeedback(String rating, Boolean reviewed, String timeRange,
         String sort, int size, int offset) {
+        return listFeedback(rating, reviewed, timeRange, sort, size, offset, null);
+    }
+
+    public List<FeedbackComment> listFeedback(String rating, Boolean reviewed, String timeRange,
+        String sort, int size, int offset, @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
         StringBuilder sql = new StringBuilder(
             """
                 SELECT f.id::text AS feedback_id, f.message_id::text AS message_id, f.rating, f.comment, f.created_at,
                        f.reviewed, f.notes, m.content AS query_text, m.conversation_id::text AS conversation_id
                 FROM message_feedback f
                 JOIN messages m ON f.message_id = m.id
-                WHERE 1=1
                 """);
+        if (allowedAreasLower != null) {
+            sql.append(" JOIN conversations c ON m.conversation_id = c.id ");
+        }
+        sql.append(" WHERE 1=1 ");
+        if (allowedAreasLower != null) {
+            sql.append(" AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas) ");
+        }
         Map<String, Object> params = new HashMap<>();
+        if (allowedAreasLower != null) {
+            params.put("allowedAreas", allowedAreasLower);
+        }
         params.put("limit", size);
         params.put("offset", offset);
         appendFilters(sql, params, rating, reviewed, timeRange);
@@ -391,6 +466,20 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 rs.getObject("created_at", OffsetDateTime.class), rs.getString("query_text"),
                 rs.getString("conversation_id"), rs.getBoolean("reviewed"), rs.getString("notes")))
             .list();
+    }
+
+    public Optional<String> findFeedbackArea(UUID feedbackId) {
+        if (feedbackId == null) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT c.area
+            FROM message_feedback f
+            JOIN messages m ON f.message_id = m.id
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE f.id = :id
+            """;
+        return jdbcClient.sql(sql).param("id", feedbackId).query(String.class).optional();
     }
 
     public void setFeedbackReviewed(UUID id, boolean reviewed) {

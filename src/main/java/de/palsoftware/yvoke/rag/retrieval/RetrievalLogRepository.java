@@ -3,8 +3,10 @@ package de.palsoftware.yvoke.rag.retrieval;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,7 +20,15 @@ public class RetrievalLogRepository {
     }
 
     public List<RetrievalLogDetails> listLogs(int limit, int offset) {
-        String sql =
+        return listLogs(limit, offset, null);
+    }
+
+    public List<RetrievalLogDetails> listLogs(int limit, int offset,
+        @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder sql = new StringBuilder(
             """
                 SELECT l.id, l.message_id, l.collection_id, c.name AS collection, l.tag, l.pools::text AS pools_text, l.final::text AS final_text, l.rerank::text AS rerank_text, l.created_at,
                        l.query AS message_content,
@@ -28,16 +38,44 @@ public class RetrievalLogRepository {
                 JOIN collections c ON l.collection_id = c.id
                 LEFT JOIN messages m ON l.message_id = m.id
                 LEFT JOIN message_feedback f ON f.message_id = m.id
-                ORDER BY l.created_at DESC, l.id ASC
-                LIMIT :limit OFFSET :offset
-                """;
+                """);
 
-        return jdbcClient.sql(sql).param("limit", limit).param("offset", offset)
-            .query(new RetrievalLogDetailsMapper()).list();
+        if (allowedAreasLower != null) {
+            sql.append(" WHERE (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)) ");
+        }
+
+        sql.append("""
+            ORDER BY l.created_at DESC, l.id ASC
+            LIMIT :limit OFFSET :offset
+            """);
+
+        var client = jdbcClient.sql(sql.toString()).param("limit", limit).param("offset", offset);
+        if (allowedAreasLower != null) {
+            client = client.param("allowedAreasLower", allowedAreasLower);
+        }
+        return client.query(new RetrievalLogDetailsMapper()).list();
     }
 
     public long countLogs() {
-        return jdbcClient.sql("SELECT count(*) FROM retrieval_logs").query(Long.class).single();
+        String sql = "SELECT count(*) FROM retrieval_logs";
+        return jdbcClient.sql(sql).query(Long.class).single();
+    }
+
+    public long countLogs(@Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower == null) {
+            return countLogs();
+        }
+        if (allowedAreasLower.isEmpty()) {
+            return 0L;
+        }
+        String sql = """
+            SELECT count(*)
+            FROM retrieval_logs l
+            JOIN collections c ON l.collection_id = c.id
+            WHERE (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower))
+            """;
+        return jdbcClient.sql(sql).param("allowedAreasLower", allowedAreasLower).query(Long.class)
+            .single();
     }
 
     public void updateMessageId(UUID id, UUID messageId) {

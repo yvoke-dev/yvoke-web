@@ -14,6 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceClientService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstance;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceService;
@@ -24,16 +26,21 @@ import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 class ConfluenceConnectorControllerTest {
@@ -42,6 +49,7 @@ class ConfluenceConnectorControllerTest {
 
     private ConfluenceClientService confluenceClientService;
     private ConfluenceInstanceService instanceService;
+    private CollectionService collectionService;
     private AuditLogRepository auditLogRepository;
     private JobService jobService;
     private UserService userService;
@@ -51,6 +59,10 @@ class ConfluenceConnectorControllerTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
+        collectionService = mock(CollectionService.class);
         confluenceClientService = mock(ConfluenceClientService.class);
         instanceService = mock(ConfluenceInstanceService.class);
         auditLogRepository = mock(AuditLogRepository.class);
@@ -62,8 +74,131 @@ class ConfluenceConnectorControllerTest {
         when(instanceService.save(any(), any()))
             .thenAnswer(invocation -> invocation.getArgument(0, ConfluenceInstance.class));
 
+        Collection defaultCol = new Collection(UUID.randomUUID(), "OIM - Docs", "", List.of("10.0"),
+            OffsetDateTime.now(), "OIM");
+        when(collectionService.getCollection(any())).thenReturn(Optional.of(defaultCol));
+
+        ConfluenceInstance defaultInstance = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki",
+            "icc-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS",
+            "12345", "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+        when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(defaultInstance));
+
         controller = new ConfluenceConnectorController(confluenceClientService, instanceService,
-            auditLogRepository, jobService, userService);
+            collectionService, auditLogRepository, jobService, userService);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void saveInstance_unauthorizedTargetCollection_throwsNotFound() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
+
+        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Fin Wiki", "fin-wiki",
+            "https://acme.atlassian.net", "svc@example.com", "FIN", "12345", "public", "draft",
+            "Finance - Docs", "1.0", false, true);
+
+        assertThatThrownBy(
+            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+    }
+
+    @Test
+    void saveInstance_duplicateNameInAnotherArea_throwsIllegalArgumentException() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        ConfluenceInstance other = new ConfluenceInstance(UUID.randomUUID(), "Existing Wiki",
+            "other-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "SPACE", "1",
+            null, null, "Finance - Docs", "1.0", false, true, null, null);
+        when(instanceService.findByName("Existing Wiki")).thenReturn(Optional.of(other));
+
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
+
+        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Existing Wiki", "new-slug",
+            "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345", "public", "draft",
+            "OIM - Docs", "10.0", false, true);
+
+        assertThatThrownBy(
+            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
+                "Another Confluence instance in another area already uses the name");
+    }
+
+    @Test
+    void deleteInstance_unauthorizedArea_throwsNotFound() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        UUID finId = UUID.randomUUID();
+        ConfluenceInstance finInstance = new ConfluenceInstance(finId, "Fin Wiki", "fin-wiki",
+            "https://acme.atlassian.net", "svc@example.com", null, null, "FIN", "1", null, null,
+            "Finance - Docs", "1.0", false, true, null, null);
+        when(instanceService.findInstance(finId)).thenReturn(Optional.of(finInstance));
+
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
+
+        assertThatThrownBy(() -> controller.deleteInstance(finId, redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+    }
+
+    @Test
+    void syncConfluence_unauthorizedArea_throwsNotFound() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        UUID finId = UUID.randomUUID();
+        ConfluenceInstanceView finView = new ConfluenceInstanceView(finId, "Fin Wiki", "fin-wiki",
+            "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "12345", "public", null,
+            "Finance - Docs", "1.0", false, true, TokenHealth.OK);
+        when(instanceService.findView(finId)).thenReturn(Optional.of(finView));
+
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
+
+        assertThatThrownBy(() -> controller.syncConfluence(finId, redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+    }
+
+    @Test
+    void syncAllInstances_filtersOutUnadministeredInstances() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        ConfluenceInstanceView oimView = new ConfluenceInstanceView(UUID.randomUUID(), "OIM Wiki",
+            "oim-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345",
+            "public", null, "OIM - Docs", "10.0", false, true, TokenHealth.OK);
+        ConfluenceInstanceView finView = new ConfluenceInstanceView(UUID.randomUUID(), "Fin Wiki",
+            "fin-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "54321",
+            "public", null, "Finance - Docs", "1.0", false, true, TokenHealth.OK);
+        when(instanceService.listInstances()).thenReturn(List.of(oimView, finView));
+
+        Collection oimCol = new Collection(UUID.randomUUID(), "OIM - Docs", "", List.of("10.0"),
+            OffsetDateTime.now(), "OIM");
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("OIM - Docs")).thenReturn(Optional.of(oimCol));
+        when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
+        when(jobService.enqueue(any(EnqueueRequest.class)))
+            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+
+        controller.syncAllInstances(redirectAttributes);
+
+        ArgumentCaptor<EnqueueRequest> reqCaptor = ArgumentCaptor.forClass(EnqueueRequest.class);
+        verify(jobService).enqueue(reqCaptor.capture());
+        assertThat(reqCaptor.getValue().collection()).isEqualTo("OIM - Docs");
     }
 
     private static ConfluenceInstanceForm form(UUID id) {

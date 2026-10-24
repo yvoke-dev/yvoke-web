@@ -23,6 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.jdbc.BadSqlGrammarException;
 
 
@@ -51,17 +54,25 @@ public class JsonObjectAdminController {
         @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
         Model model) {
         log.info("JsonObjectAdminController: Accessing JSON Objects view");
-        List<Collection> collections = collectionService.listCollections();
+        List<Collection> collections = collectionService.listForAdminUser();
         model.addAttribute("collections", collections);
 
         String targetCollection = collection;
-        if ((targetCollection == null || targetCollection.isBlank()) && !collections.isEmpty()) {
+        if (targetCollection != null && !targetCollection.isBlank()) {
+            Optional<Collection> colOpt = collectionService.getCollection(targetCollection);
+            if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Collection not found: " + targetCollection);
+            }
+        } else if (!collections.isEmpty()) {
             targetCollection = collections.get(0).name();
+        } else {
+            targetCollection = null;
         }
 
         if (targetCollection != null) {
             Optional<Collection> colOpt = collectionService.getCollection(targetCollection);
-            if (colOpt.isPresent()) {
+            if (colOpt.isPresent() && AreaAccessContext.canAdministerArea(colOpt.get().area())) {
                 UUID colId = colOpt.get().id();
 
                 // Load tags for the selected collection
@@ -121,13 +132,24 @@ public class JsonObjectAdminController {
                     Optional<JsonObject> objOpt = jsonObjectService.getObject(selectedObject);
                     if (objOpt.isPresent()) {
                         JsonObject obj = objOpt.get();
-                        model.addAttribute("activeObject", obj);
-                        try {
-                            model.addAttribute("formattedData", objectMapper
-                                .writerWithDefaultPrettyPrinter().writeValueAsString(obj.data()));
-                        } catch (JsonProcessingException e) {
-                            model.addAttribute("formattedData", "{}");
+                        Optional<Collection> objColOpt =
+                            collectionService.findByIdForAdmin(obj.collectionId());
+                        if (objColOpt.isPresent()) {
+                            model.addAttribute("activeObject", obj);
+                            try {
+                                model.addAttribute("formattedData",
+                                    objectMapper.writerWithDefaultPrettyPrinter()
+                                        .writeValueAsString(obj.data()));
+                            } catch (JsonProcessingException e) {
+                                model.addAttribute("formattedData", "{}");
+                            }
+                        } else {
+                            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                "JSON Object not found: " + selectedObject);
                         }
+                    } else {
+                        throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "JSON Object not found: " + selectedObject);
                     }
                 }
             }
@@ -148,7 +170,7 @@ public class JsonObjectAdminController {
     public List<String> getDistinctValues(@RequestParam String collection,
         @RequestParam String fieldName) {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
-        if (colOpt.isEmpty()) {
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             return List.of();
         }
         return jsonObjectService.getDistinctValues(colOpt.get().id(), fieldName);
@@ -159,7 +181,7 @@ public class JsonObjectAdminController {
         @RequestParam(required = false) String tag, @RequestParam String schemaJson,
         RedirectAttributes redirectAttributes) throws JsonProcessingException {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
-        if (colOpt.isEmpty()) {
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             redirectAttributes.addFlashAttribute("error", "Collection not found.");
             return "redirect:/admin/json-objects";
         }
@@ -181,7 +203,7 @@ public class JsonObjectAdminController {
     public String rebuildSchema(@RequestParam String collection,
         @RequestParam(required = false) String tag, RedirectAttributes redirectAttributes) {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
-        if (colOpt.isEmpty()) {
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             redirectAttributes.addFlashAttribute("error", "Collection not found.");
             return "redirect:/admin/json-objects";
         }

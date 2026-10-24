@@ -9,7 +9,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,12 +35,22 @@ public class RagAdminViewService {
 
     @Transactional(readOnly = true)
     public List<RetrievalLogView> listLogs(int limit, int offset) {
-        return retrievalLogRepository.listLogs(limit, offset).stream()
+        return listLogs(limit, offset, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RetrievalLogView> listLogs(int limit, int offset,
+        @Nullable Set<String> allowedAreasLower) {
+        return retrievalLogRepository.listLogs(limit, offset, allowedAreasLower).stream()
             .map(RagAdminViewService::toLogView).toList();
     }
 
     public long countLogs() {
-        return retrievalLogRepository.countLogs();
+        return countLogs(null);
+    }
+
+    public long countLogs(@Nullable Set<String> allowedAreasLower) {
+        return retrievalLogRepository.countLogs(allowedAreasLower);
     }
 
     /**

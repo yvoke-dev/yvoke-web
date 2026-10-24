@@ -4,8 +4,10 @@ import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetail;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetailPage;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunSummary;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.StepView;
+import jakarta.annotation.Nullable;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,8 +30,18 @@ public class AgentRunAdminViewService {
 
     @Transactional(readOnly = true)
     public List<RunSummary> recentRuns(int limit) {
-        return agentRunRepository.findRecent(limit).stream()
+        return recentRuns(limit, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RunSummary> recentRuns(int limit, @Nullable Set<String> allowedAreasLower) {
+        return agentRunRepository.findRecent(limit, allowedAreasLower).stream()
             .map(AgentRunAdminViewService::toSummary).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<String> findRunArea(UUID id) {
+        return agentRunRepository.findRunArea(id);
     }
 
     @Transactional(readOnly = true)

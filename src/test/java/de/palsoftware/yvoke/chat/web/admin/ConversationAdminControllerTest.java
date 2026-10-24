@@ -20,7 +20,9 @@ import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.Conversat
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +30,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -44,7 +49,14 @@ class ConversationAdminControllerTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -225,5 +237,27 @@ class ConversationAdminControllerTest {
             .andExpect(model().attribute("pageSize", 30))
             .andExpect(model().attribute("totalPages", 4));
         verify(conversationAdminService).getConversationAdminView(any(), eq(2), eq(30));
+    }
+
+    @Test
+    void testAreaAdminFiltersByAdministeredAreas() throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        ConversationOverviewStats stats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+        ConversationAdminView mockView =
+            new ConversationAdminView(List.of(), List.of(), stats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
+            eq(20))).thenReturn(mockView);
+
+        mockMvc.perform(get("/admin/conversations")).andExpect(status().isOk());
+
+        ArgumentCaptor<ConversationFilter> captor =
+            ArgumentCaptor.forClass(ConversationFilter.class);
+        verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
+        ConversationFilter filter = captor.getValue();
+        assertThat(filter.allowedAreasLower()).containsExactly("finance");
     }
 }
