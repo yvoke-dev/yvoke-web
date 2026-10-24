@@ -86,6 +86,11 @@ public class CitationVerifier {
      * Collects all valid ids from the parsed citations and checks existence in one query per table.
      */
     private ResolvedIds resolveIds(List<ParsedCitation> parsed) {
+        return resolveIds(parsed, null);
+    }
+
+    private ResolvedIds resolveIds(List<ParsedCitation> parsed,
+        @Nullable Set<String> allowedAreasLower) {
         Set<UUID> chunkIds = new HashSet<>();
         Set<UUID> documentIds = new HashSet<>();
         for (ParsedCitation p : parsed) {
@@ -97,8 +102,13 @@ public class CitationVerifier {
                 collectId(p, chunkIds, documentIds);
             }
         }
-        return new ResolvedIds(chunkRepository.findExistingIds(chunkIds),
-            documentRepository.findExistingIds(documentIds));
+        Set<UUID> existingChunks =
+            allowedAreasLower != null ? chunkRepository.findExistingIds(chunkIds, allowedAreasLower)
+                : chunkRepository.findExistingIds(chunkIds);
+        Set<UUID> existingDocs = allowedAreasLower != null
+            ? documentRepository.findExistingIds(documentIds, allowedAreasLower)
+            : documentRepository.findExistingIds(documentIds);
+        return new ResolvedIds(existingChunks, existingDocs);
     }
 
     private static void collectId(ParsedCitation p, Set<UUID> chunkIds, Set<UUID> documentIds) {
@@ -334,13 +344,18 @@ public class CitationVerifier {
     }
 
     public List<CitationCheckResult> checkCitations(List<String> citations) {
+        return checkCitations(citations, null);
+    }
+
+    public List<CitationCheckResult> checkCitations(List<String> citations,
+        @Nullable Set<String> allowedAreasLower) {
         if (citations == null || citations.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<ParsedCitation> parsedList =
             citations.stream().map(CitationVerifier::parseCitation).toList();
-        ResolvedIds resolved = resolveIds(parsedList);
+        ResolvedIds resolved = resolveIds(parsedList, allowedAreasLower);
 
         List<CitationCheckResult> results = new ArrayList<>();
         for (ParsedCitation parsed : parsedList) {

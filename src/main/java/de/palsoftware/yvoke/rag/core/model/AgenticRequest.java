@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.rag.core.model;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import jakarta.annotation.Nullable;
 import java.util.List;
+import java.util.Set;
 import org.springframework.ai.tool.ToolCallback;
 
 public record AgenticRequest(
@@ -22,8 +23,33 @@ public record AgenticRequest(
      * {@code query} is appended to it as the next user turn.
      */
     @Nullable List<LlmMessage> priorMessages,
-    boolean traceToolCalls) {
+    boolean traceToolCalls,
+    @Nullable Set<String> allowedAreasLower) {
 
+  public AgenticRequest(
+      String query,
+      @Nullable String modelOverride,
+      @Nullable List<LlmMessage> history,
+      @Nullable String systemPromptOverride,
+      @Nullable List<String> allowedTools,
+      @Nullable String thinkingLevel,
+      boolean codeExecution,
+      @Nullable List<ToolCallback> extraTools,
+      @Nullable List<LlmMessage> priorMessages,
+      boolean traceToolCalls) {
+    this(
+        query,
+        modelOverride,
+        history,
+        systemPromptOverride,
+        allowedTools,
+        thinkingLevel,
+        codeExecution,
+        extraTools,
+        priorMessages,
+        traceToolCalls,
+        null);
+  }
 
   public static Builder builder() {
     return new Builder();
@@ -40,6 +66,7 @@ public record AgenticRequest(
     private List<ToolCallback> extraTools;
     private List<LlmMessage> priorMessages;
     private boolean traceToolCalls;
+    private Set<String> allowedAreasLower;
 
     public Builder query(String query) {
       this.query = query;
@@ -91,6 +118,11 @@ public record AgenticRequest(
       return this;
     }
 
+    public Builder allowedAreasLower(Set<String> allowedAreasLower) {
+      this.allowedAreasLower = allowedAreasLower;
+      return this;
+    }
+
     public AgenticRequest build() {
       return new AgenticRequest(
           query,
@@ -102,6 +134,7 @@ public record AgenticRequest(
           codeExecution,
           extraTools,
           priorMessages,
-          traceToolCalls);
+          traceToolCalls,
+          allowedAreasLower);
     }
   }}

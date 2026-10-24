@@ -11,13 +11,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalMatchers.not;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -179,5 +183,96 @@ public class ConversationRepositoryTest {
         verify(jdbcClient).sql(contains("FOR UPDATE"));
         verify(statementSpec).param("id", id);
         verify(mockQuery).optional();
+    }
+
+    @Test
+    public void testUpdateAreaIfAbsent_executesUpdateWithTrimmedArea() {
+        UUID id = UUID.randomUUID();
+        conversationRepository.updateAreaIfAbsent(id, "  OIM  ");
+
+        verify(jdbcClient).sql(contains("UPDATE conversations"));
+        verify(jdbcClient).sql(contains("SET area = :area"));
+        verify(jdbcClient).sql(contains("WHERE id = :id AND area IS NULL"));
+        verify(statementSpec).param("id", id);
+        verify(statementSpec).param("area", "OIM");
+        verify(statementSpec).update();
+    }
+
+    @Test
+    public void testUpdateAreaIfAbsent_noopWhenAreaNullOrBlank() {
+        UUID id = UUID.randomUUID();
+        conversationRepository.updateAreaIfAbsent(id, null);
+        conversationRepository.updateAreaIfAbsent(id, "   ");
+
+        verify(statementSpec, never()).update();
+    }
+
+    @Test
+    public void testListAll_withoutAreaFilter() {
+        UUID userId = UUID.randomUUID();
+        List<Conversation> mockList = List.of();
+        when(querySpec.list()).thenReturn(mockList);
+
+        conversationRepository.listAll(userId, 10, 0, null);
+
+        verify(jdbcClient).sql(contains(
+            "SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area"));
+        verify(jdbcClient).sql(not(contains("AND area IS NULL")));
+        verify(jdbcClient).sql(not(contains("LOWER(area) IN")));
+        verify(statementSpec).param("userId", userId);
+        verify(statementSpec).param("limit", 10);
+        verify(statementSpec).param("offset", 0);
+    }
+
+    @Test
+    public void testListAll_withAreaFilter() {
+        UUID userId = UUID.randomUUID();
+        Set<String> allowedAreas = Set.of("oim", "pingid");
+        List<Conversation> mockList = List.of();
+        when(querySpec.list()).thenReturn(mockList);
+
+        conversationRepository.listAll(userId, 10, 0, allowedAreas);
+
+        verify(jdbcClient)
+            .sql(contains("AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))"));
+        verify(statementSpec).param("userId", userId);
+        verify(statementSpec).param("limit", 10);
+        verify(statementSpec).param("offset", 0);
+        verify(statementSpec).param("allowedAreasLower", allowedAreas);
+    }
+
+    @Test
+    public void testListAll_withEmptyAreaFilter() {
+        UUID userId = UUID.randomUUID();
+        Set<String> allowedAreas = Collections.emptySet();
+        List<Conversation> mockList = List.of();
+        when(querySpec.list()).thenReturn(mockList);
+
+        conversationRepository.listAll(userId, 10, 0, allowedAreas);
+
+        verify(jdbcClient).sql(contains("AND area IS NULL"));
+        verify(jdbcClient).sql(not(contains("LOWER(area) IN")));
+        verify(statementSpec).param("userId", userId);
+        verify(statementSpec).param("limit", 10);
+        verify(statementSpec).param("offset", 0);
+        verify(statementSpec, never()).param(eq("allowedAreasLower"), any());
+    }
+
+    @Test
+    public void testListByUserAndSource_withAreaFilter() {
+        UUID userId = UUID.randomUUID();
+        Set<String> allowedAreas = Set.of("oim");
+        List<Conversation> mockList = List.of();
+        when(querySpec.list()).thenReturn(mockList);
+
+        conversationRepository.listByUserAndSource(userId, "desktop", 10, 0, allowedAreas);
+
+        verify(jdbcClient)
+            .sql(contains("AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))"));
+        verify(statementSpec).param("userId", userId);
+        verify(statementSpec).param("source", "desktop");
+        verify(statementSpec).param("limit", 10);
+        verify(statementSpec).param("offset", 0);
+        verify(statementSpec).param("allowedAreasLower", allowedAreas);
     }
 }

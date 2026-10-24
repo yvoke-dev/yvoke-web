@@ -220,6 +220,13 @@ public class ChunkRepository {
             .query(new ChunkRowMapper(objectMapper, null)).list();
     }
 
+    public Optional<ChunkRow> findById(UUID id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return findByIdPrefix(id.toString());
+    }
+
     public Optional<ChunkRow> findByIdPrefix(String idPrefix) {
         if (idPrefix == null) {
             throw new IllegalArgumentException("ID prefix cannot be null.");
@@ -264,12 +271,36 @@ public class ChunkRepository {
 
     /** Returns which of the given chunk ids exist, in a single query. */
     public Set<UUID> findExistingIds(Collection<UUID> ids) {
+        return findExistingIds(ids, null);
+    }
+
+    /**
+     * Returns which of the given chunk ids exist and belong to allowed areas, in a single query.
+     */
+    public Set<UUID> findExistingIds(Collection<UUID> ids,
+        @Nullable Set<String> allowedAreasLower) {
         if (ids == null || ids.isEmpty()) {
             return Set.of();
         }
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return Set.of();
+        }
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
-        return new HashSet<>(jdbcClient.sql("SELECT id FROM chunks WHERE id = ANY(:ids::uuid[])")
-            .param("ids", idStrings).query(UUID.class).list());
+        if (allowedAreasLower == null) {
+            return new HashSet<>(
+                jdbcClient.sql("SELECT id FROM chunks WHERE id = ANY(:ids::uuid[])")
+                    .param("ids", idStrings).query(UUID.class).list());
+        }
+        String sql = """
+            SELECT ch.id
+            FROM chunks ch
+            JOIN collections coll ON ch.collection_id = coll.id
+            WHERE ch.id = ANY(:ids::uuid[])
+              AND coll.area IS NOT NULL
+              AND LOWER(coll.area) IN (:allowedAreasLower)
+            """;
+        return new HashSet<>(jdbcClient.sql(sql).param("ids", idStrings)
+            .param("allowedAreasLower", allowedAreasLower).query(UUID.class).list());
     }
 
     public boolean chunkHasEmbedding(UUID chunkId) {

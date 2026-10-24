@@ -408,6 +408,46 @@ public class SchemaPresenceIT {
     }
 
     @Test
+    public void testMigrationV16ConversationAreaColumnAndIndexes() {
+        assertThat(columnExists("conversations", "area"))
+            .withFailMessage("Column conversations.area should exist (V16)").isTrue();
+        assertThat(indexExists("conversations", "idx_conversations_area"))
+            .withFailMessage("Index idx_conversations_area should exist (V16)").isTrue();
+        assertThat(indexExists("conversations", "idx_conversations_visibility_area"))
+            .withFailMessage("Index idx_conversations_visibility_area should exist (V16)").isTrue();
+    }
+
+    @Test
+    public void testMigrationV16ConversationAreaForeignKeyBehavior() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        String area1 = "v16-area-" + UUID.randomUUID();
+        String area2 = "v16-area-renamed-" + UUID.randomUUID();
+
+        jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", area1, area1);
+        jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)",
+            userId, "oid-" + userId, userId + "@test.com");
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, ?, ?)",
+            convId, userId, "Title", area1);
+
+        try {
+            // 1. Verify CASCADE on area rename
+            jdbcTemplate.update("UPDATE areas SET name = ? WHERE name = ?", area2, area1);
+            String updatedArea = jdbcTemplate.queryForObject(
+                "SELECT area FROM conversations WHERE id = ?", String.class, convId);
+            assertThat(updatedArea).isEqualTo(area2);
+
+            // 2. Verify RESTRICT on area delete
+            assertThatThrownBy(() -> jdbcTemplate.update("DELETE FROM areas WHERE name = ?", area2))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        } finally {
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+            jdbcTemplate.update("DELETE FROM areas WHERE name IN (?, ?)", area1, area2);
+        }
+    }
+
+    @Test
     public void testUniquenessIndexesExist() {
         // Wave 3b (V3): job admission control and document identity. Both are the ARBITER of an
         // ON CONFLICT in application code (JobRepository.enqueue, DocumentRepository's upsert), so

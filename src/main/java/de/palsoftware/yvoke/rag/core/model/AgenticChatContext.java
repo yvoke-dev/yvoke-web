@@ -3,10 +3,14 @@ package de.palsoftware.yvoke.rag.core.model;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.lang.Nullable;
 
 public class AgenticChatContext implements SeenChunks {
+    @Nullable
+    private final Set<String> allowedAreasLower;
     private final List<UUID> retrievedChunkIds = new ArrayList<>();
     private final List<UUID> searchIds = new ArrayList<>();
 
@@ -25,6 +29,29 @@ public class AgenticChatContext implements SeenChunks {
      * thread. A concurrent set here would advertise sharing that must never happen.
      */
     private final Set<UUID> shownChunkIds = new HashSet<>();
+
+    public AgenticChatContext() {
+        this(null);
+    }
+
+    public AgenticChatContext(@Nullable Set<String> allowedAreasLower) {
+        this.allowedAreasLower = allowedAreasLower != null ? Set.copyOf(allowedAreasLower) : null;
+    }
+
+    @Nullable
+    public Set<String> getAllowedAreasLower() {
+        return allowedAreasLower;
+    }
+
+    public boolean isAreaAllowed(@Nullable String area) {
+        if (allowedAreasLower == null) {
+            return true;
+        }
+        if (area == null || area.isBlank()) {
+            return false;
+        }
+        return allowedAreasLower.contains(area.trim().toLowerCase(Locale.ROOT));
+    }
 
     @Override
     public boolean firstSighting(UUID chunkId) {

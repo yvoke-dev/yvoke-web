@@ -26,11 +26,84 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.palsoftware.yvoke.area.TestAreas;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.util.Arrays;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class AreaServiceTest {
 
     private final AreaService service = TestAreas.withAreas("OIM", "PingID");
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void setAuth(String... authorities) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "n/a",
+            Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
+        SecurityContextHolder.setContext(context);
+    }
+
+    @Test
+    void listAccessibleForCurrentUser_returnsAllForGlobalUserOrSuperadmin() {
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+    }
+
+    @Test
+    void listAccessibleForCurrentUser_filtersByAreaUserAuthority() {
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "OIM");
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactly("OIM");
+
+        setAuth(AreaAccessContext.ROLE_USER);
+        assertThat(service.listAccessibleForCurrentUser()).isEmpty();
+    }
+
+    @Test
+    void listAdministeredForCurrentUser_returnsAllForSuperadminAndFilteredForAreaAdmin() {
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
+            .containsExactly("OIM");
+
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
+        assertThat(service.listAdministeredForCurrentUser()).isEmpty();
+    }
+
+    @Test
+    void findByNameForUser_returnsAreaWhenAuthorizedAndEmptyWhenUnauthorized() {
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "OIM");
+        assertThat(service.findByNameForUser("oim")).isPresent();
+        assertThat(service.findByNameForUser("pingid")).isEmpty();
+        assertThat(service.findByNameForUser("unknown")).isEmpty();
+        assertThat(service.findByNameForUser("   ")).isEmpty();
+    }
+
+    @Test
+    void findByNameForAdmin_returnsAreaWhenAdministeredAndEmptyWhenUnauthorized() {
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        assertThat(service.findByNameForAdmin("OIM")).isPresent();
+        assertThat(service.findByNameForAdmin("PingID")).isEmpty();
+
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(service.findByNameForAdmin("PingID")).isPresent();
+    }
 
     /**
      * Validate leniently, query strictly: the caller's spelling is matched loosely, but what comes

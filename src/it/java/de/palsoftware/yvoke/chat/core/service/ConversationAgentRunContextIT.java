@@ -48,7 +48,7 @@ import org.springframework.security.test.context.support.WithMockUser;
     "spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration"
 })
-@WithMockUser(username = "conv-context-user")
+@WithMockUser(username = "conv-context-user", authorities = {"ROLE_USER", "AREA_USER_OIM"})
 public class ConversationAgentRunContextIT {
 
     @Autowired

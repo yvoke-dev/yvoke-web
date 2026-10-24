@@ -174,6 +174,14 @@
     and the preflight all share so the displayed model is always the one that will answer.
   - `playbook-validation-enabled` (default `true`) — configures whether the LLM preflight validation runs on the first message of a conversation.
 
+## Security Configuration
+
+- Config keys (`application.yml`, prefix `app.security`):
+  - `mock` (default `false`) — enables simulated authentication for local development and test profiles.
+  - `api-key` — global machine-to-machine API key granting `ROLE_INGEST` and `AREA_INGEST_*`.
+  - `area-api-keys` — JSON map of area names to API keys (`${APP_SECURITY_AREA_API_KEYS:}`) granting `ROLE_INGEST` and `AREA_INGEST_<AREA>`.
+  - `admin-claim` / `user-claim` — Entra ID role claims mapping to Superadmin (`Admin`) and Global User (`User`). Per-area roles follow `<Area>.Admin` and `<Area>.User`.
+
 ## Web & UI Layer Guidelines
 
 ### Dynamic Updates with htmx
