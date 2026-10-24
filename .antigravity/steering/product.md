@@ -2,7 +2,7 @@
 
 > This file is the **short** product orientation: personas, domain glossary, and guardrails. For what the
 > product does, the limits people hit and what it deliberately does not do, read the relevant chapter of
-> [`spec.md`](../../spec.md) at the repo root — do that before any substantial change, since intent and
+> [`spec/`](../../spec/README.md) at the repo root — do that before any substantial change, since intent and
 > deliberate non-features are not visible in the code. The MUST/MUST NOT rules an agent can regress
 > against are not written down in prose — they are enforced by the **test suite**; if no test fails when
 > a rule is broken, that rule is not enforced.
@@ -15,7 +15,7 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **RAG & Chat UI**: Streaming assistant responses via Server-Sent Events (SSE) with inline citation verification, adjustable settings, and rating/feedback.
 - **Admin UI**: Document inspection, database object summary cache, data validators, audit trail, and async upload pipeline.
 - **External REST API**: Exposes core retrieval and Q&A capabilities to external applications, desktop apps, and automation scripts.
-- **MCP Server**: Read-only Model Context Protocol (MCP) server exposing 10 tools to allow Claude Code/Desktop/Cursor programmatic access to the corpus, Knowledge Graph, and structured JSON data. What each tool offers a user is described in [`spec.md` ch. 7](../../spec.md#7-using-the-assistant-from-other-tools); the authoritative per-tool contract is the tool's own tests under `src/test/java/de/palsoftware/yvoke/mcp/` and `src/it/java/de/palsoftware/yvoke/mcp/`.
+- **MCP Server**: Read-only Model Context Protocol (MCP) server exposing 14 tools (10 shared with the in-app assistant, 4 client-only) to allow Claude Code/Desktop/Cursor programmatic access to the corpus, Knowledge Graph, and structured JSON data. What each tool offers a user is described in [`spec/` ch. 7](../../spec/07_using_the_assistant_from_other_tools.md); the authoritative per-tool contract is the tool's own tests under `src/test/java/de/palsoftware/yvoke/mcp/` and `src/it/java/de/palsoftware/yvoke/mcp/`.
 - **Ingestion Pipeline**: Multi-pipeline ingestion worker for manuals (Markdown), Confluence pages, database extracts (zipped directories), and structured data (JSON/JSONL).
 
 ## Domain Context
@@ -44,10 +44,10 @@ Permissions are managed via Microsoft Entra ID app role assignments, parsed into
 - **Corpora / Collections**: Collections belong to an Area (`collections.area`). Administrators can create and manage collections representing different corpora, products, or versions within their authorized areas. Moving a collection between areas requires admin access to both source and target areas.
 - **Document**: The top-level knowledge container (e.g., a Confluence page, a Markdown file, or a database SQL script) belonging to a collection.
 - **Chunk**: A smaller, semantically partitioned segment of a Document. Vector embeddings and BM25 indexing are applied at this level for granular retrieval.
-- **Entity & Relationship (KG)**: Nodes and edges extracted from text or database structures. They form the Knowledge Graph, scoped by collection and canonical tags.
-- **Conversation & Message**: A **conversation** is one chat thread — owner, title, settings, source (`web` or `desktop`), tags, and `area` (`conversations.area` column, V16 migration). A conversation is locked to an area upon the first turn. Shared (`public`) conversations are visible only to users authorized for that conversation's area. Its **messages** are the individual questions and answers, each carrying its role, status, model, token counts, citations, and retrieved chunk ids.
-- **Feedback**: A user-submitted rating (`1` or `-1`) with an optional comment, at most one per `Message`. Scoped by conversation area for review in the Admin Console.
-- **JSON Object & Schema**: Structured JSON data ingested into collections, stored in a GIN-indexed JSONB column.
+- **Entity & Relationship (KG)**: Nodes and edges extracted from text or database structures. They form the Knowledge Graph, scoped by collection and canonical tags, providing structured conceptual context alongside unstructured text.
+- **Conversation & Message**: A **conversation** is one chat thread — owner, title, settings, source (`web` or `desktop`), tags, and `area` (`conversations.area` column, V16 migration). A conversation is locked to an area upon the first turn, and shared (`public`) conversations are visible only to users authorized for that conversation's area. Its **messages** are the individual questions and answers, each carrying its role, status, model, token counts, citations and retrieved chunk ids. There is no `sessions` table and no session concept in the domain: the vocabulary is `conversations` + `messages` throughout the schema, the repositories and the UI.
+- **Feedback**: A user-submitted rating (`1` or `-1`) with an optional comment, at most one per `Message` (`message_feedback` is unique on `message_id`; a new thumb replaces the previous one). It exists for **human** review only — the feedback dashboard (scoped by conversation area in the Admin Console), the reviewed flag and reviewer notes. Nothing is trained on it: a rating changes neither retrieval ranking nor future answers, which [`spec/` ch. 2](../../spec/02_how_answers_are_produced.md) records under *Not supported*.
+- **JSON Object & Schema**: Structured JSON data ingested into collections, stored in a GIN-indexed JSONB column. Schemas are inferred automatically or managed manually.
 
 ## Product Tenets & Guardrails
 

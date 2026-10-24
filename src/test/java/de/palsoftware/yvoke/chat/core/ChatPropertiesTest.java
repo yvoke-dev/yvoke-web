@@ -39,10 +39,12 @@ public class ChatPropertiesTest {
     public void testTraceToolCallsBindsFromPropertySource() {
         MapConfigurationPropertySource source = new MapConfigurationPropertySource(
             Map.of("app.chat.enabled", "true", "app.chat.playbook-validation-enabled", "true",
-                "app.chat.allowed-models", "model1", "app.chat.trace-tool-calls", "true"));
+                "app.chat.allowed-models", "model1", "app.chat.trace-tool-calls", "true",
+                "app.chat.model-labels", "{\"model1\":\"Model One\"}"));
 
         ChatProperties props = new Binder(source).bind("app.chat", ChatProperties.class).get();
         assertThat(props.traceToolCalls()).isTrue();
+        assertThat(props.modelLabels()).isEqualTo("{\"model1\":\"Model One\"}");
     }
 
     /**

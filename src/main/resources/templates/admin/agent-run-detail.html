@@ -65,7 +65,7 @@
                     <span th:if="${step.status == 'failed'}" class="badge badge-danger" style="margin-left: .5rem;">failed</span>
                 </h2>
                 <p class="page-subtitle">
-                    model <span class="mono-text" th:text="${step.model}"></span>,
+                    model <span class="mono-text" th:text="${@modelLabels.labelFor(step.model)}"></span>,
                     thinking <span th:text="${step.thinkingLevel}"></span>,
                     round <span th:text="${step.round}"></span>,
                     tokens <span th:text="${step.totalTokens}"></span>

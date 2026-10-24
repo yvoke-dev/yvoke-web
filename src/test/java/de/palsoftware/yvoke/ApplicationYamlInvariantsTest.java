@@ -3,6 +3,7 @@ package de.palsoftware.yvoke;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.ModelLabels;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.llm.core.LlmModelRoutes;
 import de.palsoftware.yvoke.llm.core.LlmRouteId;
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -450,7 +452,7 @@ public class ApplicationYamlInvariantsTest {
                 + " conversation and is the model the playbook preflight runs against, so a reorder"
                 + " changes what everybody gets by default")
             .containsExactly("gemini-3.8-flash", "gemini-3.5-flash-lite", "gpt-5.4-mini",
-                "DeepSeek-V4-Flash", "gpt-5.6-luna", "deepseek/deepseek-v4.1-flash");
+                "DeepSeek-V4-Flash", "gpt-5.6-luna", "deepseek/deepseek-v4.1-flash-1017");
         assertThat(text("app", "ai", "azure-openai", "reasoning-models"))
             .as("this list REPLACES the name heuristic rather than extending it, so a half-filled"
                 + " value declassifies every deployment it omits and 400s each of them; empty means"
@@ -497,7 +499,8 @@ public class ApplicationYamlInvariantsTest {
         assertThat(routes.routeFor("DeepSeek-V4-Flash"))
             .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
         assertThat(routes.routeFor("gpt-5.6-luna")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
-        assertThat(routes.routeFor("deepseek/deepseek-v4.1-flash")).contains(LlmRouteId.OPENROUTER);
+        assertThat(routes.routeFor("deepseek/deepseek-v4.1-flash-1017"))
+            .contains(LlmRouteId.OPENROUTER);
 
         List<String> allowed =
             Arrays.stream(data.get("ALLOWED_MODELS").split(",")).map(String::trim).toList();
@@ -541,6 +544,43 @@ public class ApplicationYamlInvariantsTest {
             .as("the local Compose environment is the third declaration and drifts just as"
                 + " silently")
             .containsExactlyElementsOf(yaml);
+    }
+
+    @Test
+    void theModelLabelsAreTheSameInAllThreePlacesAndCoverEveryAllowedModel() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ModelLabels yamlLabels = ModelLabels.parse(mapper, text("app", "chat", "model-labels"));
+        ModelLabels deployedLabels =
+            ModelLabels.parse(mapper, deployedConfigMap().get("AI_MODEL_LABELS"));
+
+        String envExampleLine = Files.readAllLines(Path.of(".env.example"), StandardCharsets.UTF_8)
+            .stream().filter(l -> l.startsWith("AI_MODEL_LABELS=")).findFirst()
+            .orElseThrow(() -> new AssertionError(".env.example declares no AI_MODEL_LABELS"));
+        ModelLabels envLabels =
+            ModelLabels.parse(mapper, envExampleLine.substring("AI_MODEL_LABELS=".length()));
+
+        assertThat(deployedLabels.byModel()).isEqualTo(yamlLabels.byModel());
+        assertThat(envLabels.byModel()).isEqualTo(yamlLabels.byModel());
+
+        List<String> allowed = splitModels(text("app", "chat", "allowed-models"));
+        assertThat(allowed)
+            .as("every model in ALLOWED_MODELS must have an explicit friendly label so the picker"
+                + " never silently falls back to a raw wire ID")
+            .allSatisfy(model -> {
+                assertThat(yamlLabels.byModel())
+                    .as("app.chat.model-labels is missing an entry for allowed model '%s'", model)
+                    .containsKey(model.toLowerCase(Locale.ROOT));
+                assertThat(yamlLabels.labelFor(model)).isNotBlank().isNotEqualTo(model);
+            });
+
+        assertThat(yamlLabels.labelFor("gemini-3.8-flash")).isEqualTo("Gemini - 3.8 Flash");
+        assertThat(yamlLabels.labelFor("gemini-3.5-flash-lite"))
+            .isEqualTo("Gemini - 3.5 Flash Lite");
+        assertThat(yamlLabels.labelFor("gpt-5.4-mini")).isEqualTo("Azure - GPT 5.4 Mini");
+        assertThat(yamlLabels.labelFor("DeepSeek-V4-Flash")).isEqualTo("Azure - DeepSeek V4 Flash");
+        assertThat(yamlLabels.labelFor("gpt-5.6-luna")).isEqualTo("Azure - GPT 5.6 Luna");
+        assertThat(yamlLabels.labelFor("deepseek/deepseek-v4.1-flash-1017"))
+            .isEqualTo("OpenRouter - DeepSeek 4.1 Flash");
     }
 
     private static List<String> splitModels(String csv) {

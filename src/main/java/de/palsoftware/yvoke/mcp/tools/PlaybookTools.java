@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.api.model.PlaybookDto;
+import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
  * (orchestrator and reviewer playbooks left out, since a user cannot pick one), while
  * {@code get_playbook} resolves any name, as MCP {@code prompts/get} does.
  */
+@ClientOnlyTools
 @Component
 public class PlaybookTools {
 

@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.mcp.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
+import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
@@ -10,9 +11,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,6 +22,7 @@ import org.springframework.stereotype.Component;
  * A default is reported only when it is a member the client can pick (see {@link AreaWithMembers});
  * anything else would start a session on an item the setup band does not list.
  */
+@ClientOnlyTools
 @Component
 public class AreaTools {
 
@@ -33,9 +33,6 @@ public class AreaTools {
             + "defaultProfile, systemPrompts, collections, playbooks, profiles}, where the last "
             + "four are the names of the area's members. It does not answer questions about the "
             + "knowledge base.";
-
-    private static final String GET_AREA_OVERVIEW_DESCRIPTION =
-        "Returns an overview of an area including its description and member collections.";
 
     /** One area as {@code list_areas} returns it. */
     record AreaDto(String name, String title, String description, boolean prototype,
@@ -80,11 +77,7 @@ public class AreaTools {
         }
     }
 
-    @McpTool(name = "get_area_overview", description = GET_AREA_OVERVIEW_DESCRIPTION)
-    @Tool(name = "get_area_overview", description = GET_AREA_OVERVIEW_DESCRIPTION)
-    public String getAreaOverview(
-        @McpToolParam(description = "The area name to look up.", required = true)
-        @ToolParam(description = "The area name to look up.", required = true) String area) {
+    public String getAreaOverview(String area) {
         if (area == null || area.isBlank() || !AreaAccessContext.canAccessUserArea(area.trim())) {
             return "Error: Area '" + area + "' not found.";
         }

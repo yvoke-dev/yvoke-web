@@ -1,8 +1,9 @@
 # 7. Using the assistant from other tools
 
 **What it is for.** The knowledge base is not locked inside the web app. AI coding assistants search it
-directly using the same tools the in-app assistant uses, and a desktop app keeps its conversations in the
-user's account.
+directly using the same knowledge-base tools the in-app assistant uses, and a desktop app keeps its
+conversations in the user's account. A few client-only tools (the Claude plugin's setup tools, below)
+exist only for connected clients and are never offered to the in-app assistant.
 
 **Who uses it.** Consultants working inside AI coding assistants; desktop app users; the platform team
 running corpus scripts and the evaluation harness.
@@ -39,12 +40,17 @@ running corpus scripts and the evaluation harness.
   and needs neither.*
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
+- **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
+- **Client-only tools stay out of the in-app assistant.** Fetching the base instructions, listing
+  the areas, and listing or fetching playbooks as tools are offered on the client connection and never to
+  the in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
+  one gets nothing for it.
 - **Access control is enforced per area on every request.** When an AI client or desktop app authenticates
   with a Bearer JWT, Yvoke parses the user's Entra app roles (`AreaAccessContext`). The client is granted
   access only to areas where the user holds `<Area>.User`, `<Area>.Admin`, or global `User`/`Admin`. All
   tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
   `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
-  `get_area_overview`, `list_playbooks`, `get_playbook`, `get_system_prompt`) enforce this boundary.
+  `list_playbooks`, `get_playbook`, `get_system_prompt`) enforce this boundary.
 - **Unauthorized access returns opaque refusal.** Requesting an area, document, chunk, or playbook
   outside the caller's authorized areas returns an opaque *not found* error, never confirming whether the
   resource exists in another area.
@@ -71,10 +77,12 @@ running corpus scripts and the evaluation harness.
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second
   one. Clients should follow that job rather than read the response as a failure.
-- **AI clients and the in-app assistant share one knowledge-base and playbook tool set.** All 14 corpus and
-  playbook tools are shared identically between connected AI clients and the in-app assistant — adding,
-  renaming or re-describing one changes both surfaces at once — while `WebSearch` is an in-app chat-only tool
-  because connected AI clients provide their own web tools.
+- **AI clients and the in-app assistant share one knowledge-base tool set.** The 10 search, browse,
+  graph, structured-record, citation and clarifying-question tools are shared identically between
+  connected AI clients and the in-app assistant — adding, renaming or re-describing one changes both
+  surfaces at once. The 4 client-only tools (base instructions, areas, playbook list, one playbook) are
+  offered to connected clients only. `WebSearch` is an in-app chat-only tool because connected AI clients
+  provide their own web tools.
 - **A connecting client is told which build of the assistant it is talking to.** The version it receives
   when it connects is the version that was released, so a client or a bug report can state which build
   produced an answer. Builds that are not a release identify themselves as such rather than borrowing
@@ -117,8 +125,10 @@ running corpus scripts and the evaluation harness.
 - Writing to the knowledge base from an AI client. No upload, edit or delete.
 - Restricting an AI client to specific collections or documents within an authorized area (access is granted at the area level).
 - Cross-area multi-search in a single MCP tool call.
-- Asking the user a clarifying question from an AI client. The request always reports success and nobody
-  is ever asked.
+- Asking the user a clarifying question on an AI client's behalf. The question tool is offered to AI
+  clients, but each client is expected to put the question to its user itself (the desktop app and the
+  Claude plugin do). If the question reaches this service instead, the reply says plainly that nobody was
+  asked, so the assistant asks in its answer rather than waiting for a reply that never comes.
 - Fill-in-the-blank playbook prompts. A playbook reaches the client as fixed text.
 - Seeing web chat conversations in the desktop app, or opening a conversation someone shared.
 - Generating an answer through this service from the desktop app. It stores transcripts; it does not

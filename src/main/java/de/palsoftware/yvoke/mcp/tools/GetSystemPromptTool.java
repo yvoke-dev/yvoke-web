@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.mcp.tools;
 
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
+import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
  * desktop runs on without a prompt; the plugin must refuse to start a session that has none, and it
  * can only do that if the failure is visible.
  */
+@ClientOnlyTools
 @Component
 public class GetSystemPromptTool {
 

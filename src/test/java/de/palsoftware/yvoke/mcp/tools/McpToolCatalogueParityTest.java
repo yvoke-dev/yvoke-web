@@ -14,7 +14,8 @@ import org.springframework.ai.tool.annotation.ToolParam;
 
 /**
  * Every tool in {@code mcp.tools} is published twice: {@code @McpTool}/{@code @McpToolParam} to
- * external MCP clients, and {@code @Tool}/{@code @ToolParam} to the in-app agentic catalogue. The
+ * external MCP clients, and {@code @Tool}/{@code @ToolParam} to the in-app agentic catalogue (for a
+ * {@code @ClientOnlyTools} class, {@code @Tool} is what builds its MCP-only callback instead). The
  * two are hand-maintained, sit on the same method, and nothing ties them together — so a parameter
  * annotated for one catalogue and not the other silently exists for one kind of caller and not the
  * other, with no compile or startup error.

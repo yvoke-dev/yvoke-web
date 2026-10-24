@@ -81,20 +81,20 @@
                                 <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Orchestrator Role</strong>
                                 <div style="margin-top: 0.35rem; font-size: 0.9rem;">
                                     <div>Playbook: <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-primary);" th:text="${profile.orchestratorPlaybook}">-</span></div>
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.orchestratorModel != null ? profile.orchestratorModel : 'Default'}"></span> (<span th:text="${profile.orchestratorThinkingLevel != null ? profile.orchestratorThinkingLevel : 'Default'}"></span>)</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.orchestratorModel != null ? @modelLabels.labelFor(profile.orchestratorModel) : 'Default'}"></span> (<span th:text="${profile.orchestratorThinkingLevel != null ? profile.orchestratorThinkingLevel : 'Default'}"></span>)</div>
                                 </div>
                             </div>
                             <div>
                                 <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Reviewer Role</strong>
                                 <div style="margin-top: 0.35rem; font-size: 0.9rem;">
                                     <div>Playbook: <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-primary);" th:text="${profile.reviewerPlaybook}">-</span></div>
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.reviewerModel != null ? profile.reviewerModel : 'Default'}"></span> (<span th:text="${profile.reviewerThinkingLevel != null ? profile.reviewerThinkingLevel : 'Default'}"></span>)</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Model: <span th:text="${profile.reviewerModel != null ? @modelLabels.labelFor(profile.reviewerModel) : 'Default'}"></span> (<span th:text="${profile.reviewerThinkingLevel != null ? profile.reviewerThinkingLevel : 'Default'}"></span>)</div>
                                 </div>
                             </div>
                             <div>
                                 <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Specialist Role</strong>
                                 <div style="margin-top: 0.35rem; font-size: 0.9rem;">
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Model: <span th:text="${profile.specialistModel != null ? profile.specialistModel : 'Default'}"></span> (<span th:text="${profile.specialistThinkingLevel != null ? profile.specialistThinkingLevel : 'Default'}"></span>)</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Model: <span th:text="${profile.specialistModel != null ? @modelLabels.labelFor(profile.specialistModel) : 'Default'}"></span> (<span th:text="${profile.specialistThinkingLevel != null ? profile.specialistThinkingLevel : 'Default'}"></span>)</div>
                                     <div style="margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.3rem;">
                                         <span th:each="specPb : ${profile.specialistPlaybooks}" style="font-family: monospace; font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary);" th:text="${specPb}"></span>
                                     </div>
@@ -186,7 +186,7 @@
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                                     <select name="orchestratorModel" id="orchestratorModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Model</option>
-                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${@modelLabels.labelFor(m)}"></option>
                                     </select>
                                     <select name="orchestratorThinkingLevel" id="orchestratorThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Thinking</option>
@@ -203,7 +203,7 @@
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                                     <select name="reviewerModel" id="reviewerModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Model</option>
-                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${@modelLabels.labelFor(m)}"></option>
                                     </select>
                                     <select name="reviewerThinkingLevel" id="reviewerThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Thinking</option>
@@ -220,7 +220,7 @@
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                                     <select name="specialistModel" id="specialistModel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Model</option>
-                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${m}"></option>
+                                        <option th:each="m : ${allowedModels}" th:value="${m}" th:text="${@modelLabels.labelFor(m)}"></option>
                                     </select>
                                     <select name="specialistThinkingLevel" id="specialistThinkingLevel" class="form-input" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
                                         <option value="">Default Thinking</option>

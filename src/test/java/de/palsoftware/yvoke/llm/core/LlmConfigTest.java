@@ -177,12 +177,13 @@ public class LlmConfigTest {
 
     @Test
     public void aModelRouteMappedToOpenRouterRoutesToOpenRouterClient() {
-        LlmClient client = build("gemini", "{\"deepseek/deepseek-v4.1-flash\": \"openrouter\"}");
+        LlmClient client =
+            build("gemini", "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}");
         try {
             assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
 
-            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash"))
+            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash-1017"))
                 .isExactlyInstanceOf(OpenRouterLlmClient.class);
         } finally {
             close(client);
@@ -241,14 +242,14 @@ public class LlmConfigTest {
     @Test
     public void missingOpenRouterKeyLogsWarningAndDoesNotThrowAtStartup() {
         LlmClient client = config().llmProviderClient("gemini",
-            "{\"deepseek/deepseek-v4.1-flash\": \"openrouter\"}", new ObjectMapper(),
+            "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}", new ObjectMapper(),
             "test-gemini-key", false, "low", "https://gemini.example", "https://azure.example",
             "test-azure-key", false, "low", "", "https://openrouter.ai/api/v1",
             "placeholder-openrouter-api-key", true, "high", "");
         try {
             assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
-            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash"))
+            assertThat(router.clientFor("deepseek/deepseek-v4.1-flash-1017"))
                 .isExactlyInstanceOf(OpenRouterLlmClient.class);
         } finally {
             close(client);

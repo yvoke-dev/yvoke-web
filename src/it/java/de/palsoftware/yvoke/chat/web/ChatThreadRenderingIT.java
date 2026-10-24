@@ -203,6 +203,13 @@ public class ChatThreadRenderingIT {
         assertThat(viewModel.get("isReadOnly")).isEqualTo(false);
         assertThat(viewModel.get("playbookValidationEnabled")).isInstanceOf(Boolean.class);
 
+        String html = result.getResponse().getContentAsString();
+        assertThat(html)
+            .as("the model picker options keep the wire ID as value while rendering the friendly label")
+            .contains(
+                "<option value=\"deepseek/deepseek-v4.1-flash-1017\">OpenRouter - DeepSeek 4.1 Flash</option>")
+            .contains(">Gemini - 3.8 Flash</option>");
+
         // Cleanup (the security filter clears the holder after each MockMvc request).
         setSecurityContext(userOid, "thread-model@local", "Thread Model User");
         chatConversationService.deleteConversation(convId);
