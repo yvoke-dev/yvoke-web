@@ -58,6 +58,93 @@ public class EntraAuthoritiesMapperTest {
             .doesNotContain("ROLE_ADMIN");
     }
 
+    @Test
+    public void testMapAuthoritiesWithAreaAdminRole() {
+        EntraAuthoritiesMapper mapper = new EntraAuthoritiesMapper("Admin", "User");
+
+        OidcIdToken idToken = new OidcIdToken("token-value", Instant.now(),
+            Instant.now().plusSeconds(3600), Map.of("roles", List.of("OIM.Admin")));
+        OidcUserAuthority authority =
+            new OidcUserAuthority(idToken, new OidcUserInfo(Map.of("sub", "oim-admin-sub")));
+
+        Collection<? extends GrantedAuthority> mapped =
+            mapper.mapAuthorities(Collections.singletonList(authority));
+
+        assertThat(mapped).extracting(GrantedAuthority::getAuthority)
+            .contains("ROLE_AREA_ADMIN", "ROLE_USER", "AREA_ADMIN_OIM", "AREA_USER_OIM")
+            .doesNotContain("ROLE_ADMIN", "AREA_ADMIN_*", "AREA_USER_*", "AREA_USER_PINGID");
+    }
+
+    @Test
+    public void testMapAuthoritiesWithAreaUserRole() {
+        EntraAuthoritiesMapper mapper = new EntraAuthoritiesMapper("Admin", "User");
+
+        OidcIdToken idToken = new OidcIdToken("token-value", Instant.now(),
+            Instant.now().plusSeconds(3600), Map.of("roles", List.of("oim.user")));
+        OidcUserAuthority authority =
+            new OidcUserAuthority(idToken, new OidcUserInfo(Map.of("sub", "oim-user-sub")));
+
+        Collection<? extends GrantedAuthority> mapped =
+            mapper.mapAuthorities(Collections.singletonList(authority));
+
+        assertThat(mapped).extracting(GrantedAuthority::getAuthority)
+            .contains("ROLE_USER", "AREA_USER_OIM")
+            .doesNotContain("ROLE_AREA_ADMIN", "ROLE_ADMIN", "AREA_ADMIN_OIM", "AREA_USER_*");
+    }
+
+    @Test
+    public void testMapAuthoritiesWithMultiRole() {
+        EntraAuthoritiesMapper mapper = new EntraAuthoritiesMapper("Admin", "User");
+
+        OidcIdToken idToken = new OidcIdToken("token-value", Instant.now(),
+            Instant.now().plusSeconds(3600), Map.of("roles", List.of("OIM.Admin", "PingID.User")));
+        OidcUserAuthority authority =
+            new OidcUserAuthority(idToken, new OidcUserInfo(Map.of("sub", "multi-sub")));
+
+        Collection<? extends GrantedAuthority> mapped =
+            mapper.mapAuthorities(Collections.singletonList(authority));
+
+        assertThat(mapped).extracting(GrantedAuthority::getAuthority)
+            .contains("ROLE_AREA_ADMIN", "ROLE_USER", "AREA_ADMIN_OIM", "AREA_USER_OIM",
+                "AREA_USER_PINGID")
+            .doesNotContain("ROLE_ADMIN", "AREA_ADMIN_PINGID", "AREA_USER_*");
+    }
+
+    @Test
+    public void testMapAuthoritiesWithGlobalUserAndAreaAdmin() {
+        EntraAuthoritiesMapper mapper = new EntraAuthoritiesMapper("Admin", "User");
+
+        OidcIdToken idToken = new OidcIdToken("token-value", Instant.now(),
+            Instant.now().plusSeconds(3600), Map.of("roles", List.of("User", "OIM.Admin")));
+        OidcUserAuthority authority =
+            new OidcUserAuthority(idToken, new OidcUserInfo(Map.of("sub", "user-oim-sub")));
+
+        Collection<? extends GrantedAuthority> mapped =
+            mapper.mapAuthorities(Collections.singletonList(authority));
+
+        assertThat(mapped)
+            .extracting(GrantedAuthority::getAuthority).contains("ROLE_USER", "ROLE_AREA_ADMIN",
+                "AREA_USER_*", "AREA_ADMIN_OIM", "AREA_USER_OIM")
+            .doesNotContain("ROLE_ADMIN", "AREA_ADMIN_*");
+    }
+
+    @Test
+    public void testMalformedAndUnrecognizedClaimsIgnored() {
+        EntraAuthoritiesMapper mapper = new EntraAuthoritiesMapper("Admin", "User");
+
+        OidcIdToken idToken =
+            new OidcIdToken("token-value", Instant.now(), Instant.now().plusSeconds(3600),
+                Map.of("roles", List.of(".Admin", "*.Admin", "OIM.Viewer", "Guest", "   ", "")));
+        OidcUserAuthority authority =
+            new OidcUserAuthority(idToken, new OidcUserInfo(Map.of("sub", "bad-sub")));
+
+        Collection<? extends GrantedAuthority> mapped =
+            mapper.mapAuthorities(Collections.singletonList(authority));
+
+        assertThat(mapped).extracting(GrantedAuthority::getAuthority)
+            .filteredOn(a -> a.startsWith("ROLE_") || a.startsWith("AREA_")).isEmpty();
+    }
+
     /**
      * The roles→authority derivation exists TWICE — here (OIDC login, reading the ID token) and in
      * {@code SecurityConfig.jwtAuthenticationConverter} (bearer, reading the {@code roles} claim) —
@@ -70,12 +157,15 @@ public class EntraAuthoritiesMapperTest {
     @Test
     void theBearerConverterDerivesTheSameRoleAuthoritiesAsTheOidcMapper() throws Exception {
         for (List<String> roles : List.of(List.of("Admin"), List.of("User"), List.of("admin"),
-            List.of("USER"), List.of("Admin", "User"), List.of("SomethingElse"),
-            List.<String>of())) {
+            List.of("USER"), List.of("Admin", "User"), List.of("OIM.Admin"), List.of("oim.admin"),
+            List.of("OIM.User"), List.of("oim.user"), List.of("OIM.Admin", "PingID.User"),
+            List.of("User", "OIM.Admin"), List.of("*.Admin"), List.of(".Admin"),
+            List.of("SomethingElse"), List.<String>of())) {
 
             Set<String> viaOidc = new EntraAuthoritiesMapper("Admin", "User")
                 .mapAuthorities(List.of(new OidcUserAuthority(idTokenWithRoles(roles)))).stream()
-                .map(GrantedAuthority::getAuthority).filter(a -> a.startsWith("ROLE_"))
+                .map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("ROLE_") || a.startsWith("AREA_"))
                 .collect(Collectors.toSet());
 
             Set<String> viaBearer = bearerRoleAuthorities(roles);
@@ -126,7 +216,8 @@ public class EntraAuthoritiesMapperTest {
         assertThat(mapped)
             .as("a tenant that emits roles only via userinfo must still get its role authorities, "
                 + "and the OIDC scopes must survive the mapping")
-            .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_USER", "SCOPE_openid");
+            .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_AREA_ADMIN", "ROLE_USER",
+                "SCOPE_openid");
 
         OidcUserAuthority bothSources = new OidcUserAuthority(
             new OidcIdToken("tok", Instant.now(), Instant.now().plusSeconds(300),
@@ -160,6 +251,7 @@ public class EntraAuthoritiesMapperTest {
         Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").claim("sub", "s")
             .claim("roles", roles).build();
         return converter.convert(jwt).getAuthorities().stream().map(GrantedAuthority::getAuthority)
-            .filter(a -> a.startsWith("ROLE_")).collect(Collectors.toSet());
+            .filter(a -> a.startsWith("ROLE_") || a.startsWith("AREA_"))
+            .collect(Collectors.toSet());
     }
 }

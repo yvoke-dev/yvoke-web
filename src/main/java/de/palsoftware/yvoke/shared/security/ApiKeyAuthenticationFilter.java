@@ -7,7 +7,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
@@ -42,13 +46,34 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
     private static final SecurityContextRepository CONTEXT_REPOSITORY =
         new RequestAttributeSecurityContextRepository();
 
+    private static final SimpleGrantedAuthority ROLE_INGEST_AUTHORITY =
+        new SimpleGrantedAuthority("ROLE_INGEST");
+    private static final SimpleGrantedAuthority AREA_INGEST_ALL_AUTHORITY =
+        new SimpleGrantedAuthority("AREA_INGEST_*");
+
     private final String apiKeyHeader;
-    private final byte[] apiKeyBytes;
+    private final byte[] globalKeyBytes;
+    private final Map<String, byte[]> areaKeyBytes;
 
     public ApiKeyAuthenticationFilter(String apiKeyHeader, String apiKeyValue) {
+        this(apiKeyHeader, apiKeyValue, Map.of());
+    }
+
+    public ApiKeyAuthenticationFilter(String apiKeyHeader, String apiKeyValue,
+        Map<String, String> areaApiKeys) {
         this.apiKeyHeader = apiKeyHeader;
-        this.apiKeyBytes =
-            apiKeyValue == null ? new byte[0] : apiKeyValue.getBytes(StandardCharsets.UTF_8);
+        this.globalKeyBytes = (apiKeyValue == null || apiKeyValue.isBlank()) ? null
+            : apiKeyValue.getBytes(StandardCharsets.UTF_8);
+
+        Map<String, byte[]> areaKeys = new LinkedHashMap<>();
+        if (areaApiKeys != null) {
+            for (Map.Entry<String, String> entry : areaApiKeys.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    areaKeys.put(entry.getKey(), entry.getValue().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        }
+        this.areaKeyBytes = Collections.unmodifiableMap(areaKeys);
     }
 
     @Override
@@ -58,12 +83,37 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         String requestKey = request.getHeader(apiKeyHeader);
 
         if (requestKey != null && !requestKey.isBlank()) {
-            if (MessageDigest.isEqual(apiKeyBytes, requestKey.getBytes(StandardCharsets.UTF_8))) {
+            byte[] requestKeyBytes = requestKey.getBytes(StandardCharsets.UTF_8);
+            boolean globalMatched = false;
+            String matchedArea = null;
+
+            if (globalKeyBytes != null) {
+                if (MessageDigest.isEqual(globalKeyBytes, requestKeyBytes)) {
+                    globalMatched = true;
+                }
+            }
+
+            for (Map.Entry<String, byte[]> entry : areaKeyBytes.entrySet()) {
+                if (MessageDigest.isEqual(entry.getValue(), requestKeyBytes)) {
+                    if (matchedArea == null) {
+                        matchedArea = entry.getKey();
+                    }
+                }
+            }
+
+            if (globalMatched) {
+                UsernamePasswordAuthenticationToken auth =
+                    new UsernamePasswordAuthenticationToken("api-key-client", null,
+                        List.of(ROLE_INGEST_AUTHORITY, AREA_INGEST_ALL_AUTHORITY));
+                SecurityContext context = SecurityContextHolder.createEmptyContext();
+                context.setAuthentication(auth);
+                SecurityContextHolder.setContext(context);
+                CONTEXT_REPOSITORY.saveContext(context, request, response);
+            } else if (matchedArea != null) {
+                String upperArea = matchedArea.trim().toUpperCase(Locale.ROOT);
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                    "api-user", null, List.of(new SimpleGrantedAuthority("ROLE_INGEST")));
-                // A FRESH context, not getContext().setAuthentication(...): the latter mutates
-                // whatever SecurityContextHolderFilter loaded, which on this deliberately
-                // session-capable chain can be the very object held in a browser admin's session.
+                    "api-key-client:" + matchedArea, null, List.of(ROLE_INGEST_AUTHORITY,
+                        new SimpleGrantedAuthority("AREA_INGEST_" + upperArea)));
                 SecurityContext context = SecurityContextHolder.createEmptyContext();
                 context.setAuthentication(auth);
                 SecurityContextHolder.setContext(context);

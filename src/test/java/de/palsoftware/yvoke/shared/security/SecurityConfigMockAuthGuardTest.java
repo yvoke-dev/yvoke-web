@@ -125,10 +125,14 @@ class SecurityConfigMockAuthGuardTest {
     }
 
     private SecurityConfig buildWithApiKey(String apiKey) {
+        return buildWithApiKeyAndAreaKeys(apiKey, "");
+    }
+
+    private SecurityConfig buildWithApiKeyAndAreaKeys(String apiKey, String areaKeysJson) {
         MockEnvironment environment = new MockEnvironment().withProperty("unused", "x");
         environment.setActiveProfiles("test");
-        return new SecurityConfig(mock(UserService.class), environment, false, apiKey, "Admin",
-            "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
+        return new SecurityConfig(mock(UserService.class), environment, false, apiKey, areaKeysJson,
+            "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
             "https://example/issuer", "http://localhost:8080/mcp");
     }
 
@@ -232,6 +236,14 @@ class SecurityConfigMockAuthGuardTest {
         assertThat(apiKeyConfigured(buildWithApiKey("   "))).isFalse();
         assertThat(apiKeyConfigured(buildWithApiKey(null))).isFalse();
         assertThat(apiKeyConfigured(buildWithApiKey("a-real-deployment-key"))).isTrue();
+
+        assertThat(
+            apiKeyConfigured(buildWithApiKeyAndAreaKeys("dev-key-12345", "{\"OIM\":\"secret\"}")))
+            .isTrue();
+        assertThat(apiKeyConfigured(
+            buildWithApiKeyAndAreaKeys("a-real-deployment-key", "{\"OIM\":\"secret\"}"))).isTrue();
+        assertThat(apiKeyConfigured(buildWithApiKeyAndAreaKeys("dev-key-12345", ""))).isFalse();
+        assertThat(apiKeyConfigured(buildWithApiKeyAndAreaKeys("dev-key-12345", "{}"))).isFalse();
     }
 
     @SuppressWarnings("unchecked")
@@ -559,5 +571,31 @@ class SecurityConfigMockAuthGuardTest {
         assertThat(configSource)
             .as("/document root path must be explicitly gated alongside /document/**")
             .contains("requestMatchers(\"/document/**\", \"/document\")");
+    }
+
+    @Test
+    void theSuperadminAndTraceRoutesAreProperlyGated() throws Exception {
+        String configSource = Files
+            .readString(
+                Path.of("src/main/java/de/palsoftware/yvoke/shared/security/SecurityConfig.java"))
+            .replaceAll("\\s+", " ");
+        assertThat(configSource).as("Superadmin sections require ROLE_ADMIN").contains(
+            "requestMatchers(\"/admin/costs/**\", \"/admin/costs\", \"/admin/pricing/**\", \"/admin/pricing\", \"/admin/audit/**\", \"/admin/audit\", \"/admin/areas/delete\", \"/admin/prompts/active\")")
+            .contains(".hasRole(\"ADMIN\")");
+        assertThat(configSource).as("Trace endpoint requires ADMIN or AREA_ADMIN")
+            .contains("requestMatchers(\"/chat/*/messages/*/trace\")");
+        assertThat(configSource).as("/admin/** requires ADMIN or AREA_ADMIN")
+            .contains("requestMatchers(\"/admin/**\", \"/admin\")");
+        int superadminIdx = configSource.indexOf("requestMatchers(\"/admin/costs/**\"");
+        int traceIdx = configSource.indexOf("requestMatchers(\"/chat/*/messages/*/trace\")");
+        int adminIdx = configSource.indexOf("requestMatchers(\"/admin/**\", \"/admin\")");
+        int chatIdx = configSource.indexOf("requestMatchers(\"/chat/**\", \"/chat\")");
+        assertThat(superadminIdx).isGreaterThan(-1);
+        assertThat(traceIdx).isGreaterThan(-1);
+        assertThat(adminIdx).isGreaterThan(-1);
+        assertThat(chatIdx).isGreaterThan(-1);
+        assertThat(superadminIdx).as("Superadmin matcher must precede general /admin/**")
+            .isLessThan(adminIdx);
+        assertThat(traceIdx).as("Trace matcher must precede /chat/** matcher").isLessThan(chatIdx);
     }
 }

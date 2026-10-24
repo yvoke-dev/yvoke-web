@@ -21,7 +21,7 @@
             border: 1px solid var(--border-color);
             border-radius: var(--radius-lg);
             width: 100%;
-            max-width: 440px;
+            max-width: 520px;
             padding: 2.5rem;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
@@ -33,18 +33,6 @@
             gap: 0.75rem;
             margin-bottom: 2rem;
         }
-        .login-logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--color-accent), hsl(190, 90%, 45%));
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--bg-base);
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
         .login-logo-text {
             font-size: 1.35rem;
             font-weight: 700;
@@ -55,7 +43,7 @@
         }
         .login-header {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
         .login-title {
             font-size: 1.25rem;
@@ -87,20 +75,20 @@
             margin-bottom: 1.5rem;
             text-align: center;
         }
-        .quick-select-title {
-            font-size: 0.8rem;
+        .section-label {
+            font-size: 0.75rem;
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
             display: block;
         }
         .quick-select-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 0.75rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.25rem;
         }
         .quick-btn {
             background-color: var(--bg-surface-elevated);
@@ -125,6 +113,48 @@
             font-size: 0.75rem;
             color: var(--text-secondary);
         }
+        .area-roles-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+            max-height: 180px;
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+        .area-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.35rem 0.5rem;
+            background-color: var(--bg-surface-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+        }
+        .area-label {
+            font-size: 0.825rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .chip-group {
+            display: flex;
+            gap: 0.35rem;
+        }
+        .role-chip {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.725rem;
+            font-weight: 500;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition-base);
+        }
+        .role-chip:hover {
+            border-color: var(--color-accent);
+            color: var(--text-primary);
+        }
         .divider {
             display: flex;
             align-items: center;
@@ -133,7 +163,7 @@
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin: 1.5rem 0;
+            margin: 1.25rem 0;
         }
         .divider::before, .divider::after {
             content: '';
@@ -147,17 +177,45 @@
             margin-left: .5em;
         }
         .login-form .form-group {
-            margin-bottom: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .form-help {
+            display: block;
+            margin-top: 0.25rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
         }
         .login-btn {
             width: 100%;
-            margin-top: 1.5rem;
+            margin-top: 1.25rem;
         }
     </style>
     <script>
-        function selectProfile(username) {
-            document.getElementById('username').value = username;
-            document.getElementById('password').value = 'password';
+        function selectProfile(username, roles) {
+            var u = document.getElementById('username');
+            var p = document.getElementById('password');
+            if (u) {
+                u.value = username;
+            }
+            if (p) {
+                p.value = roles;
+            }
+        }
+
+        function toggleRole(roleClaim) {
+            var p = document.getElementById('password');
+            if (!p) {
+                return;
+            }
+            var current = p.value.trim();
+            var roles = current ? current.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+            var idx = roles.indexOf(roleClaim);
+            if (idx > -1) {
+                roles.splice(idx, 1);
+            } else {
+                roles.push(roleClaim);
+            }
+            p.value = roles.join(',');
         }
     </script>
 </head>
@@ -168,44 +226,66 @@
                 <img th:src="@{/images/logo-48.png}" alt="Yvoke Logo" style="width: 32px; height: 32px;" />
                 <span class="login-logo-text">Yvoke</span>
             </div>
-            
+
             <div class="login-header">
                 <h2 class="login-title">Simulated Authentication</h2>
-                <p class="login-subtitle">Sign in locally with mock development users</p>
+                <p class="login-subtitle">Sign in locally with simulated Entra role claims</p>
             </div>
-            
+
             <div th:if="${param.error}" class="error-message">
-                Invalid username or password.
+                Invalid role claims or credentials.
             </div>
             <div th:if="${param.logout}" class="logout-message">
                 You have been signed out successfully.
             </div>
-            
-            <span class="quick-select-title">Quick Select Profile</span>
+
+            <span class="section-label">Global Roles</span>
             <div class="quick-select-grid">
-                <button type="button" class="quick-btn" onclick="selectProfile('user')">
-                    <strong>Mock User</strong>
-                    <span class="role">ROLE_USER</span>
+                <button type="button" class="quick-btn" onclick="selectProfile('user', 'User')">
+                    <strong>Global User</strong>
+                    <span class="role">User (All Areas)</span>
                 </button>
-                <button type="button" class="quick-btn" onclick="selectProfile('admin')">
-                    <strong>Mock Admin</strong>
-                    <span class="role">ROLE_ADMIN</span>
+                <button type="button" class="quick-btn" onclick="selectProfile('admin', 'Admin')">
+                    <strong>Superadmin</strong>
+                    <span class="role">Admin (Full Access)</span>
                 </button>
             </div>
-            
-            <div class="divider">or use credentials</div>
-            
+
+            <div th:if="${availableAreas != null and not #lists.isEmpty(availableAreas)}">
+                <span class="section-label">Toggle Knowledge Area Roles</span>
+                <div class="area-roles-container">
+                    <div th:each="area : ${availableAreas}" class="area-row">
+                        <span class="area-label" th:text="${area}">Area</span>
+                        <div class="chip-group">
+                            <button type="button" class="role-chip"
+                                    th:data-role="${area + '.User'}"
+                                    onclick="toggleRole(this.getAttribute('data-role'))">
+                                <span th:text="${area + '.User'}">Area.User</span>
+                            </button>
+                            <button type="button" class="role-chip"
+                                    th:data-role="${area + '.Admin'}"
+                                    onclick="toggleRole(this.getAttribute('data-role'))">
+                                <span th:text="${area + '.Admin'}">Area.Admin</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider">or enter custom role claims</div>
+
             <form th:action="@{/login}" method="post" class="login-form">
                 <div class="form-group">
                     <label for="username" class="form-label">Username</label>
-                    <input type="text" id="username" name="username" class="form-input" placeholder="e.g. user or admin" required autocomplete="username">
+                    <input type="text" id="username" name="username" class="form-input" placeholder="e.g. user, admin, or name" required autocomplete="username">
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" id="password" name="password" class="form-input" placeholder="Any password" required autocomplete="current-password">
+                    <label for="password" class="form-label">Roles / Password</label>
+                    <input type="text" id="password" name="password" class="form-input" placeholder="e.g. User, Admin, or OIM.Admin,PingID.User" required autocomplete="current-password">
+                    <small class="form-help">Comma-separated Entra role claims (e.g. OIM.Admin,PingID.User). Also accepts password="password" for backward compatibility.</small>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary login-btn">Sign In</button>
             </form>
         </div>
