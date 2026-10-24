@@ -323,4 +323,79 @@ class RagServiceAreaIsolationTest {
         assertThat(ragService.resolveCollectionId("pingid-col", globalCtx)).isEqualTo(colPingId);
         assertThat(ragService.resolveCollectionId("non-existent", globalCtx)).isNull();
     }
+
+    @Test
+    @DisplayName("Denied tool (not in allowedTools) is rejected before guardToolExecution can synthesise a response")
+    void deniedToolCannotBypassAllowListViaAreaGuard() {
+        createMockTool("verify_citations");
+        createMockTool("search_corpus");
+
+        doAnswer((Answer<Void>) inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            LlmToolCallDelta delta =
+                new LlmToolCallDelta(0, "call_1", "search_corpus", "{\"query\": \"secret\"}");
+            cb.accept(new LlmResponseChunk(null, null, List.of(delta), null));
+            return null;
+        }).doAnswer((Answer<Void>) inv -> {
+            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+            cb.accept(new LlmResponseChunk("Done", null, null, null));
+            return null;
+        }).when(llmClient).generateStream(any(), any());
+
+        AgenticRequest request =
+            AgenticRequest.builder().query("review this").modelOverride("gemini-test")
+                .allowedTools(List.of("verify_citations")).allowedAreasLower(Set.of("oim")).build();
+
+        RagResult result = ragService.generateAgenticAnswer(request, token -> {
+        });
+        LlmMessage toolMsg = result.messages().stream().filter(m -> "tool".equals(m.role()))
+            .findFirst().orElseThrow();
+
+        assertThat(toolMsg.content()).isEqualTo("Error: Tool search_corpus not found.");
+        verify(hybridSearch, never()).searchWithId(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("get_section with invalid short chunk_id prefix is caught by the tool error boundary instead of aborting the turn")
+    void guardExceptionIsContainedWithinToolErrorBoundary() {
+        ToolCallback mockTool = createMockTool("get_section");
+        when(chunkRepository.findByIdPrefix("123")).thenThrow(
+            new IllegalArgumentException("Chunk ID prefix must be at least 8 hex chars"));
+
+        String response =
+            runTurnWithToolCall("get_section", "{\"chunk_id\": \"123\"}", Set.of("oim"));
+
+        assertThat(response).isNotNull();
+        verify(mockTool).call(anyString());
+    }
+
+    @Test
+    @DisplayName("verify_citations guard preserves VerifyCitationsTool.SCOPE_NOTE and formatting")
+    void verifyCitationsGuardPreservesScopeNote() {
+        createMockTool("verify_citations");
+        String citToken = "[chunk_id=" + chunkOimId + "]";
+        when(citationVerifier.checkCitations(List.of(citToken), Set.of("oim"))).thenReturn(
+            List.of(new CitationCheckResult(citToken, "chunk", CitationStatus.REAL, "1 chunk(s)")));
+
+        String response = runTurnWithToolCall("verify_citations",
+            "{\"citations\": [\"" + citToken + "\"]}", Set.of("oim"));
+
+        assertThat(response).contains("Every cited id exists in the corpus.");
+        assertThat(response).contains("does not read the cited text");
+    }
+
+    @Test
+    @DisplayName("search_corpus omit-collection on a single tag-scoped collection enforces requireTag")
+    void searchCorpusOmitCollectionOnTagScopedCollectionRequiresTag() {
+        createMockTool("search_corpus");
+        Collection taggedOim = new Collection(colOimId, "oim-col", "OIM Docs",
+            List.of("9.3.1", "10.0"), OffsetDateTime.now(), AREA_OIM);
+        when(collectionService.listCollections()).thenReturn(List.of(taggedOim, colPing));
+
+        String response =
+            runTurnWithToolCall("search_corpus", "{\"query\": \"find me\"}", Set.of("oim"));
+
+        assertThat(response).contains("is version/tag-scoped").contains("9.3.1").contains("10.0");
+        verify(hybridSearch, never()).searchWithId(anyString(), any());
+    }
 }

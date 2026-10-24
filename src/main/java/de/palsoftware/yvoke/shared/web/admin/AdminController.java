@@ -117,8 +117,9 @@ public class AdminController {
      * left alone (stop those individually).
      *
      * <p>
-     * {@code /admin/**} is already {@code hasRole("ADMIN")} in the filter chain, which is where
-     * authorization for this endpoint lives.
+     * {@code /admin/**} admits {@code ROLE_ADMIN} and {@code ROLE_AREA_ADMIN} in the filter chain,
+     * and {@link AreaAccessContext#allowedAdminAreasLower()} scopes cancellation to the caller's
+     * administered areas (all areas for Superadmin).
      */
     @PostMapping("/jobs/cancel-queued")
     public String cancelQueuedJobs(@RequestParam String kind,

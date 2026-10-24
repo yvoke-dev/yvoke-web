@@ -13,8 +13,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.mcp.tools.AreaTools;
+import de.palsoftware.yvoke.mcp.tools.GetGraphNeighborsTool;
+import de.palsoftware.yvoke.mcp.tools.GetJsonSchemaTool;
+import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
+import de.palsoftware.yvoke.mcp.tools.GetTocTool;
 import de.palsoftware.yvoke.mcp.tools.PlaybookTools;
+import de.palsoftware.yvoke.mcp.tools.QueryJsonObjectsTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchGraphEntitiesTool;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -52,6 +59,27 @@ public class McpSecurityGatingIT {
 
     @Autowired
     private SearchCorpusTool searchCorpusTool;
+
+    @Autowired
+    private SearchGraphEntitiesTool searchGraphEntitiesTool;
+
+    @Autowired
+    private GetGraphNeighborsTool getGraphNeighborsTool;
+
+    @Autowired
+    private GetJsonSchemaTool getJsonSchemaTool;
+
+    @Autowired
+    private QueryJsonObjectsTool queryJsonObjectsTool;
+
+    @Autowired
+    private GetTocTool getTocTool;
+
+    @Autowired
+    private GetSectionTool getSectionTool;
+
+    @Autowired
+    private VerifyCitationsTool verifyCitationsTool;
 
     private MockMvc mockMvc;
 
@@ -496,5 +524,47 @@ public class McpSecurityGatingIT {
 
         String result = searchCorpusTool.searchCorpus("query", "Ping - Docs", null, null, null);
         assertThat(result).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+    }
+
+    @Test
+    public void testAllMcpCorpusGraphJsonAndCitationToolsEnforceAreaScoping() {
+        UUID pingColId = jdbcTemplate.queryForObject(
+            "SELECT id FROM collections WHERE name = 'Ping - Docs'", UUID.class);
+        UUID pingDocId = UUID.randomUUID();
+        UUID pingChunkId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status) VALUES (?, ?, 'manual', 'Ping Guide', 'completed')",
+            pingDocId, pingColId);
+        jdbcTemplate.update(
+            "INSERT INTO chunks (id, document_id, collection_id, text, heading_path, heading, depth, sort_order) VALUES (?, ?, ?, 'Ping secret', ARRAY['Ch1'], 'Ch1', 1, 0)",
+            pingChunkId, pingDocId, pingColId);
+
+        try {
+            SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("user", "pass",
+                    AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin",
+                        "User")));
+
+            assertThat(searchGraphEntitiesTool.searchGraphEntities("node", "Ping - Docs", null,
+                null, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getGraphNeighborsTool.getGraphNeighbors("node", "Ping - Docs", null, null,
+                null, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getJsonSchemaTool.getJsonSchema("Ping - Docs", null))
+                .isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(queryJsonObjectsTool.queryJsonObjects("Ping - Docs", null, null, "name",
+                10, 0, false, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getTocTool.getToc(pingDocId.toString(), null))
+                .isEqualTo("Error: Document with ID '" + pingDocId + "' not found.");
+            assertThat(getSectionTool.getSection(pingDocId.toString(), "Ch1", null))
+                .isEqualTo("Error: Document not found: " + pingDocId);
+            assertThat(getSectionTool.getSection(null, null, pingChunkId.toString()))
+                .isEqualTo("Error: Chunk not found: " + pingChunkId);
+            assertThat(verifyCitationsTool
+                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]")))
+                .contains("1 cited, 1 FABRICATED");
+        } finally {
+            jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", pingChunkId);
+            jdbcTemplate.update("DELETE FROM documents WHERE id = ?", pingDocId);
+        }
     }
 }

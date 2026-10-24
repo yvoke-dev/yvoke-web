@@ -517,7 +517,7 @@ public class JobRepository {
         String sql = """
             SELECT area
             FROM collections
-            WHERE name = :collectionName
+            WHERE LOWER(name) = LOWER(:collectionName)
             """;
         return jdbcClient.sql(sql).param("collectionName", collectionName.trim())
             .query(String.class).optional();

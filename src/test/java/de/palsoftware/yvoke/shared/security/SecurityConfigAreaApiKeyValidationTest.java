@@ -109,4 +109,11 @@ class SecurityConfigAreaApiKeyValidationTest {
             "{\"OIM\":\"shared-key\",\"PingID\":\"shared-key\"}"))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("same API key");
     }
+
+    @Test
+    void areaKeyCollidingWithGlobalApiKeyFailsStartupValidation() {
+        assertThatThrownBy(() -> SecurityConfig.parseAreaApiKeys(mapper,
+            "{\"OIM\":\"global-secret-key\"}", "global-secret-key"))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("app.security.api-key");
+    }
 }

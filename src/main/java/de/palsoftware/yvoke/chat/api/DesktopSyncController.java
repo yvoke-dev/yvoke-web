@@ -1,20 +1,22 @@
 package de.palsoftware.yvoke.chat.api;
 
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.api.model.*;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
-import de.palsoftware.yvoke.chat.core.service.DesktopSyncService;
-import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.service.DesktopSyncService;
+import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
+import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
-import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
-import de.palsoftware.yvoke.shared.user.model.User;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.user.model.User;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,10 +36,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import de.palsoftware.yvoke.area.core.AreaService;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
-import org.springframework.lang.Nullable;
-import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/chat/v1")

@@ -217,27 +217,46 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds) {
-        StringBuilder sql = new StringBuilder(
-            """
-                SELECT opt.id, opt.display_name, opt.email FROM (
-                    (
-                        SELECT u.id, u.display_name, u.email
-                        FROM users u
-                        WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id)
+        return listConversationUserOptions(additionalUserIds, null);
+    }
+
+    public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds,
+        @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        String areaClause = allowedAreasLower != null
+            ? " AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)"
+            : "";
+        StringBuilder sql = new StringBuilder("""
+            SELECT opt.id, opt.display_name, opt.email FROM (
+                (
+                    SELECT u.id, u.display_name, u.email
+                    FROM users u
+                    WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id"""
+            + areaClause
+            + """
+                )
                         ORDER BY COALESCE(NULLIF(TRIM(u.display_name), ''), u.email) ASC NULLS LAST, u.email ASC, u.id ASC
                         LIMIT 200
                     )
                 """);
         Map<String, Object> params = new HashMap<>();
+        if (allowedAreasLower != null) {
+            params.put("allowedAreas", allowedAreasLower);
+        }
         if (additionalUserIds != null && !additionalUserIds.isEmpty()) {
             sql.append("""
                 UNION
                 (
                     SELECT u.id, u.display_name, u.email
                     FROM users u
-                    WHERE u.id IN (:additionalUserIds)
-                )
-                """);
+                    WHERE u.id IN (:additionalUserIds)""");
+            if (allowedAreasLower != null) {
+                sql.append(" AND EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id")
+                    .append(areaClause).append(")");
+            }
+            sql.append("\n)\n");
             params.put("additionalUserIds", additionalUserIds);
         }
         sql.append(
@@ -252,7 +271,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                     rs.getString("display_name"), rs.getString("email")))
                 .list());
 
-        if (additionalUserIds != null && !additionalUserIds.isEmpty()) {
+        if (additionalUserIds != null && !additionalUserIds.isEmpty()
+            && allowedAreasLower == null) {
             Set<UUID> returnedIds = new HashSet<>();
             for (ConversationUserOption opt : options) {
                 returnedIds.add(opt.id());

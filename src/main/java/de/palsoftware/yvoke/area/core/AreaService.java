@@ -153,7 +153,7 @@ public class AreaService implements AvailableAreasProvider {
             areaRepository.delete(stored);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("Area '" + stored
-                + "' still has system prompts, collections, playbooks or profiles. "
+                + "' still has system prompts, collections, playbooks, profiles or conversations. "
                 + "Move or delete them first.");
         }
         return stored;

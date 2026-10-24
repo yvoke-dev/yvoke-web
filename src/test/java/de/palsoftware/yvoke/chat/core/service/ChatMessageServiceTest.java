@@ -123,6 +123,7 @@ public class ChatMessageServiceTest {
             systemPromptService, transactionManager, taskExecutor, chatCancellationService,
             orchestrationService, messageToolCallRepository, toolCallTraceExtractor, chatProperties,
             agentRunRepository, agentStepRepository);
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
     }
 
     @AfterEach
@@ -2811,5 +2812,21 @@ public class ChatMessageServiceTest {
 
         Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", null));
+    }
+
+    @Test
+    public void prepare_whenUnauthenticated_deniesAccessFailClosed() {
+        SecurityContextHolder.clearContext();
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, null, "Chat",
+            Map.of(ConversationSetting.MODEL.getValue(), "model1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("oim-playbook", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 1);
+        when(playbookService.getPlaybook("oim-playbook")).thenReturn(Optional.of(pb));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Hello", "oim-playbook"));
     }
 }

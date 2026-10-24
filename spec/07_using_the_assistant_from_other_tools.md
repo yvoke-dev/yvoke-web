@@ -47,7 +47,10 @@ running corpus scripts and the evaluation harness.
   one gets nothing for it.
 - **Access control is enforced per area on every request.** When an AI client or desktop app authenticates
   with a Bearer JWT, Yvoke parses the user's Entra app roles (`AreaAccessContext`). The client is granted
-  access only to areas where the user holds `<Area>.User`, `<Area>.Admin`, or global `User`/`Admin`. All
+  access only to areas where the user holds `<Area>.User`, `<Area>.Admin`, or global `User`/`Admin`. A
+  token carrying only the OAuth scope (`SCOPE_mcp.read` / `desktop`) with no recognized Entra app role
+  clears transport authentication so the MCP handshake and tool discovery succeed, but holds access to
+  zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). All
   tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
   `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
   `list_playbooks`, `get_playbook`, `get_system_prompt`) enforce this boundary.

@@ -44,8 +44,13 @@ public class CollectionAdminController {
     @GetMapping("/collections")
     public String viewCollections(Model model) {
         log.info("CollectionAdminController: Accessing Collections view");
-        model.addAttribute("collections", collectionService.listForAdminUser());
-        model.addAttribute("allTags", collectionService.listAllTags());
+        List<Collection> collections = collectionService.listForAdminUser();
+        model.addAttribute("collections", collections);
+        List<String> allTags =
+            AreaAccessContext.allowedAdminAreasLower().isEmpty() ? collectionService.listAllTags()
+                : collections.stream().filter(c -> c.tags() != null).flatMap(c -> c.tags().stream())
+                    .filter(t -> t != null && !t.isBlank()).distinct().sorted().toList();
+        model.addAttribute("allTags", allTags);
         model.addAttribute("areas",
             areaService.listAdministeredForCurrentUser().stream().map(Area::name).toList());
         return "admin/collections";
@@ -109,8 +114,10 @@ public class CollectionAdminController {
         @RequestHeader(value = "HX-Current-URL", required = false) String currentUrl, Model model) {
         String targetName =
             name != null ? name : (collectionName != null ? collectionName : targetCollectionName);
-        Optional<Collection> colOpt =
-            targetName != null ? collectionService.getCollection(targetName) : Optional.empty();
+        Optional<Collection> colOpt = targetName != null
+            ? collectionService.getCollection(targetName)
+                .filter(c -> c.area() == null || AreaAccessContext.canAdministerArea(c.area()))
+            : Optional.empty();
         List<String> versions = colOpt.map(Collection::tags).orElse(List.of());
         model.addAttribute("versions", versions);
         model.addAttribute("tags", versions);

@@ -331,6 +331,19 @@ class JobApiControllerTest {
     }
 
     @Test
+    void enqueueCollectionTrimsCollectionNameBeforeAreaLookup() {
+        authenticateWith("AREA_INGEST_OTHER");
+        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "  sec-col  ");
+        when(jobRepository.findCollectionArea("sec-col")).thenReturn(Optional.of("sec"));
+
+        assertThatThrownBy(() -> controller.enqueue(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
     void enqueueCollectionWithAuthorizedAreaSucceeds() {
         authenticateWith("AREA_INGEST_SEC");
         UUID id = UUID.randomUUID();

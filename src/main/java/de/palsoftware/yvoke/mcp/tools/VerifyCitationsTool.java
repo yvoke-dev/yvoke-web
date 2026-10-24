@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.mcp.tools;
 
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.*;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -9,6 +10,10 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 
@@ -50,68 +55,81 @@ public class VerifyCitationsTool {
         this.citationVerifier = citationVerifier;
     }
 
-  @McpTool(name = "verify_citations", description = DESCRIPTION)
-  @Tool(name = "verify_citations", description = DESCRIPTION)
-  public String verifyCitations(
-      @McpToolParam(description = CITATIONS_PARAM_DESCRIPTION, required = true)
-          @ToolParam(description = CITATIONS_PARAM_DESCRIPTION, required = true)
-          List<String> citations) {
-    log.info("VerifyCitationsTool: verifying {} citations", citations != null ? citations.size() : 0);
-    if (citations == null || citations.isEmpty()) {
-      return "Error: 'citations' parameter is required. At least one citation token must be specified.";
-    }
-    try {
-      List<CitationVerifier.CitationCheckResult> checkResults =
-          citationVerifier.checkCitations(citations);
-      List<Map<String, String>> rows = new ArrayList<>();
-      int n_fab = 0;
-      int n_unverified = 0;
-      for (CitationVerifier.CitationCheckResult res : checkResults) {
-        Map<String, String> row = new HashMap<>();
-        row.put("citation", res.getCitation());
-        row.put("kind", res.getKind());
-
-        String statusStr =
-            switch (res.getStatus()) {
-              case REAL -> "REAL";
-              case REAL_AMBIG -> "REAL(ambig)";
-              case UNVERIFIED -> "UNVERIFIED";
-              case FABRICATED -> "FABRICATED";
-            };
-        if (res.getStatus() == CitationVerifier.CitationStatus.FABRICATED) {
-          n_fab++;
-        } else if (res.getStatus() == CitationVerifier.CitationStatus.UNVERIFIED) {
-          n_unverified++;
+    @McpTool(name = "verify_citations", description = DESCRIPTION)
+    @Tool(name = "verify_citations", description = DESCRIPTION)
+    public String verifyCitations(
+        @McpToolParam(description = CITATIONS_PARAM_DESCRIPTION, required = true) @ToolParam(
+            description = CITATIONS_PARAM_DESCRIPTION, required = true) List<String> citations) {
+        log.info("VerifyCitationsTool: verifying {} citations",
+            citations != null ? citations.size() : 0);
+        if (citations == null || citations.isEmpty()) {
+            return "Error: 'citations' parameter is required. At least one citation token must be specified.";
         }
-
-        row.put("status", statusStr);
-        row.put("detail", res.getDetail());
-        rows.add(row);
-      }
-
-      List<String> out = new ArrayList<>();
-      String header = "# Citation check — " + rows.size() + " cited, " + n_fab + " FABRICATED";
-      if (n_unverified > 0) {
-        header += ", " + n_unverified + " UNVERIFIED";
-      }
-      out.add(header);
-      out.add(McpToolUtils.formatTableRows(rows, List.of("citation", "kind", "status", "detail")));
-
-      if (n_fab > 0) {
-        out.add(
-            "\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
-      }
-      if (n_unverified > 0) {
-        out.add(
-            "\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
-      }
-      if (n_fab == 0 && n_unverified == 0) {
-        out.add("\nEvery cited id exists in the corpus. ✅");
-      }
-      out.add("\n" + SCOPE_NOTE);
-      return String.join("\n", out);
-    } catch (Exception e) {
-      return McpToolUtils.toolError("verify_citations", e);
+        try {
+            SecurityContext securityContext = SecurityContextHolder.getContext();
+            Authentication auth =
+                securityContext != null ? securityContext.getAuthentication() : null;
+            Set<String> allowedAreasLower = null;
+            if (auth != null && auth.isAuthenticated()
+                && !(auth instanceof AnonymousAuthenticationToken)) {
+                allowedAreasLower = AreaAccessContext.allowedUserAreasLower(auth).orElse(null);
+            }
+            List<CitationVerifier.CitationCheckResult> checkResults = (allowedAreasLower != null)
+                ? citationVerifier.checkCitations(citations, allowedAreasLower)
+                : citationVerifier.checkCitations(citations);
+            return formatReport(checkResults);
+        } catch (Exception e) {
+            return McpToolUtils.toolError("verify_citations", e);
+        }
     }
+
+  public static String formatReport(List<CitationVerifier.CitationCheckResult> checkResults) {
+    List<Map<String, String>> rows = new ArrayList<>();
+    int n_fab = 0;
+    int n_unverified = 0;
+    for (CitationVerifier.CitationCheckResult res : checkResults) {
+      Map<String, String> row = new HashMap<>();
+      row.put("citation", res.getCitation());
+      row.put("kind", res.getKind());
+
+      String statusStr =
+          switch (res.getStatus()) {
+            case REAL -> "REAL";
+            case REAL_AMBIG -> "REAL(ambig)";
+            case UNVERIFIED -> "UNVERIFIED";
+            case FABRICATED -> "FABRICATED";
+          };
+      if (res.getStatus() == CitationVerifier.CitationStatus.FABRICATED) {
+        n_fab++;
+      } else if (res.getStatus() == CitationVerifier.CitationStatus.UNVERIFIED) {
+        n_unverified++;
+      }
+
+      row.put("status", statusStr);
+      row.put("detail", res.getDetail());
+      rows.add(row);
+    }
+
+    List<String> out = new ArrayList<>();
+    String header = "# Citation check — " + rows.size() + " cited, " + n_fab + " FABRICATED";
+    if (n_unverified > 0) {
+      header += ", " + n_unverified + " UNVERIFIED";
+    }
+    out.add(header);
+    out.add(McpToolUtils.formatTableRows(rows, List.of("citation", "kind", "status", "detail")));
+
+    if (n_fab > 0) {
+      out.add(
+          "\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
+    }
+    if (n_unverified > 0) {
+      out.add(
+          "\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
+    }
+    if (n_fab == 0 && n_unverified == 0) {
+      out.add("\nEvery cited id exists in the corpus. ✅");
+    }
+    out.add("\n" + SCOPE_NOTE);
+    return String.join("\n", out);
   }
 }

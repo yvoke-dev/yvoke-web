@@ -186,7 +186,7 @@
   - `mock` (default `false`) — enables simulated authentication for local development and test profiles.
   - `api-key` — global machine-to-machine API key granting `ROLE_INGEST` and `AREA_INGEST_*`.
   - `area-api-keys` — JSON map of area names to API keys (`${APP_SECURITY_AREA_API_KEYS:}`) granting `ROLE_INGEST` and `AREA_INGEST_<AREA>`.
-  - `admin-claim` / `user-claim` — Entra ID role claims mapping to Superadmin (`Admin`) and Global User (`User`). Per-area roles follow `<Area>.Admin` and `<Area>.User`.
+  - `roles.admin-claim` / `roles.user-claim` — Entra ID role claims mapping to Superadmin (`Admin`) and Global User (`User`). Per-area roles follow `<Area>.Admin` and `<Area>.User`.
 
 ## Web & UI Layer Guidelines
 

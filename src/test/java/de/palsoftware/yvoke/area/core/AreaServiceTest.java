@@ -262,8 +262,8 @@ class AreaServiceTest {
 
         assertThatThrownBy(() -> new AreaService(repository).deleteArea("oim"))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks or profiles. "
-                + "Move or delete them first.");
+            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks, profiles or "
+                + "conversations. Move or delete them first.");
     }
 
     @Test

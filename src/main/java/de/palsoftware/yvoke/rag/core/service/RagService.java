@@ -601,24 +601,27 @@ public class RagService {
 
             String responseData;
             boolean isError = false;
-            String guarded = guardToolExecution(tc, ctx, callback);
-            if (guarded != null) {
-                responseData = guarded;
-                isError = responseData.startsWith("Error:") || responseData.startsWith("Error ");
-                log.info("Tool {} intercepted by area guard: {}", tc.name(), responseData);
-            } else if (callback != null) {
+            if (callback != null) {
                 try {
-                    if (callback instanceof ContextAwareToolCallback contextAware) {
-                        responseData = contextAware.callWithContext(tc.arguments(), ctx);
+                    String guarded = guardToolExecution(tc, ctx, callback);
+                    if (guarded != null) {
+                        responseData = guarded;
+                        isError =
+                            responseData.startsWith("Error:") || responseData.startsWith("Error ");
+                        log.info("Tool {} intercepted by area guard: {}", tc.name(), responseData);
                     } else {
-                        responseData = callback.call(tc.arguments());
+                        if (callback instanceof ContextAwareToolCallback contextAware) {
+                            responseData = contextAware.callWithContext(tc.arguments(), ctx);
+                        } else {
+                            responseData = callback.call(tc.arguments());
+                        }
+                        if (responseData != null && (responseData.startsWith("Error:")
+                            || responseData.startsWith("Error "))) {
+                            isError = true;
+                        }
+                        log.info("Tool {} executed successfully, response length: {}", tc.name(),
+                            responseData != null ? responseData.length() : 0);
                     }
-                    if (responseData != null && (responseData.startsWith("Error:")
-                        || responseData.startsWith("Error "))) {
-                        isError = true;
-                    }
-                    log.info("Tool {} executed successfully, response length: {}", tc.name(),
-                        responseData != null ? responseData.length() : 0);
                 } catch (Exception e) {
                     if (Thread.currentThread().isInterrupted() || e instanceof InterruptedException
                         || e instanceof CancellationException
@@ -811,6 +814,16 @@ public class RagService {
                 List<String> allowedNames = allowed.stream().map(Collection::name).toList();
                 Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
                 String tag = (String) args.get("tag");
+                if (allowed.size() == 1) {
+                    Collection single = allowed.get(0);
+                    if (single.tags() != null && !single.tags().isEmpty()
+                        && (tag == null || tag.isBlank())) {
+                        return "Error: Collection '" + single.name()
+                            + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                            + String.join(", ", single.tags())
+                            + ") so results come from a single version/dataset.";
+                    }
+                }
                 List<String> tagList =
                     (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : List.of();
                 SearchWithId swi = hybridSearch.searchWithId(q.trim(),
@@ -850,18 +863,35 @@ public class RagService {
             if (allowed.isEmpty()) {
                 return "| document_id | kind | title | chunks |\n|---|---|---|---|";
             }
+            String rawTag = (String) args.get("tag");
+            String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+            if (allowed.size() == 1) {
+                Collection single = allowed.get(0);
+                if (single.tags() != null && !single.tags().isEmpty() && parsedTag == null) {
+                    return "Error: Collection '" + single.name()
+                        + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                        + String.join(", ", single.tags())
+                        + ") so results come from a single version/dataset.";
+                }
+            }
+            String rawKind = (String) args.get("kind");
+            String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
+            String rawQuery = (String) args.get("query");
+            String fuzzyQuery = (rawQuery != null && !rawQuery.isBlank()) ? rawQuery.trim() : null;
+            int lim = (args.get("limit") instanceof Number n) ? n.intValue() : 100;
+            int off = (args.get("offset") instanceof Number n) ? n.intValue() : 0;
             if (documentRepository != null) {
                 StringBuilder sb = new StringBuilder();
                 sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
                 for (Collection c : allowed) {
                     try {
-                        List<DocumentDetails> docs = documentRepository.listDocuments(c.name(), 100,
-                            0, null, null, null, null, null);
+                        List<DocumentDetails> docs = documentRepository.listDocuments(c.name(), lim,
+                            off, parsedKind, parsedTag, null, null, fuzzyQuery);
                         if (docs != null) {
                             for (DocumentDetails d : docs) {
                                 sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
-                                    .append(d.kind() != null ? d.kind() : "").append(" | ")
-                                    .append(d.title() != null ? d.title() : "").append(" | ")
+                                    .append(escapeTableCell(d.kind())).append(" | ")
+                                    .append(escapeTableCell(d.title())).append(" | ")
                                     .append(d.chunkCount()).append(" |\n");
                             }
                         }
@@ -926,7 +956,12 @@ public class RagService {
 
         if (chunkIdStr != null && !chunkIdStr.isBlank()) {
             if (chunkRepository != null && documentRepository != null) {
-                Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr.trim());
+                Optional<ChunkRow> chunkOpt = Optional.empty();
+                try {
+                    chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr.trim());
+                } catch (IllegalArgumentException ignored) {
+                    // Short or non-hex prefix; let the tool or UUID fallback handle it
+                }
                 if (chunkOpt.isEmpty()) {
                     UUID chunkId = parseUuid(chunkIdStr);
                     if (chunkId != null) {
@@ -989,10 +1024,10 @@ public class RagService {
                 case UNVERIFIED -> "UNVERIFIED";
                 case FABRICATED -> "FABRICATED";
             };
-            sb.append("| ").append(res.getCitation())
-                .append(" | ").append(res.getKind())
+            sb.append("| ").append(escapeTableCell(res.getCitation()))
+                .append(" | ").append(escapeTableCell(res.getKind()))
                 .append(" | ").append(statusStr)
-                .append(" | ").append(res.getDetail() != null ? res.getDetail() : "")
+                .append(" | ").append(escapeTableCell(res.getDetail()))
                 .append(" |\n");
         }
         if (nFab > 0) {
@@ -1004,7 +1039,17 @@ public class RagService {
         if (nFab == 0 && nUnverified == 0) {
             sb.append("\nEvery cited id exists in the corpus. ✅");
         }
+        sb.append("\n_Scope: this checks that each cited id exists in the corpus. It does not read "
+            + "the cited text, so it does NOT confirm that the source supports the claim it is "
+            + "attached to._");
         return sb.toString();
+    }
+
+    private static String escapeTableCell(@Nullable String val) {
+        if (val == null) {
+            return "";
+        }
+        return val.replace("|", "\\|").replace("\n", " ");
     }
 
     public @Nullable Collection resolveCollection(@Nullable String collectionName,

@@ -50,13 +50,15 @@ public class JobApiController {
     @PostMapping
     public ResponseEntity<Map<String, UUID>> enqueue(@Valid @RequestBody EnqueueRequest request) {
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(request.kind());
-        Optional<String> colArea = jobRepository.findCollectionArea(request.collection());
+        String requestedCollection =
+            request.collection() != null ? request.collection().trim() : null;
+        Optional<String> colArea = jobRepository.findCollectionArea(requestedCollection);
         if (colArea.isPresent() && !colArea.get().isBlank()) {
             String area = colArea.get().trim();
             if (!AreaAccessContext.canIngestArea(area)
                 && !AreaAccessContext.canAdministerArea(area)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + request.collection());
+                    "Collection not found: " + requestedCollection);
             }
         }
         EnqueueResult result;

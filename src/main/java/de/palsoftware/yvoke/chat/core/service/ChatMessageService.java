@@ -13,10 +13,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
@@ -213,7 +209,7 @@ public class ChatMessageService {
             return new IllegalArgumentException("The selected playbook is invalid.");
         });
 
-        Optional<Set<String>> userAllowedAreas = resolveUserAllowedAreas();
+        Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
         if (userAllowedAreas.isPresent()) {
             if (playbook.area() == null || playbook.area().isBlank() || !userAllowedAreas.get()
                 .contains(playbook.area().trim().toLowerCase(Locale.ROOT))) {
@@ -374,7 +370,7 @@ public class ChatMessageService {
                 + "' no longer exists; please start a new conversation.");
         }
 
-        Optional<Set<String>> userAllowedAreas = resolveUserAllowedAreas();
+        Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
         Optional<String> profileArea = orchestrationService.getProfileArea(profileName);
         if (userAllowedAreas.isPresent()) {
             if (profileArea.isEmpty() || profileArea.get().isBlank() || !userAllowedAreas.get()
@@ -830,21 +826,5 @@ public class ChatMessageService {
         return "[DONE] {\"messageId\":\"" + messageId + "\",\"promptTokens\":" + promptTokens
             + ",\"completionTokens\":" + completionTokens + ",\"totalTokens\":" + totalTokens
             + ",\"cachedTokens\":" + cachedTokens + ",\"thoughtTokens\":" + thoughtTokens + "}";
-    }
-
-    /**
-     * Resolves the allowed user areas for the current caller. When there is no authenticated user
-     * (e.g. in unit tests or background execution), returns {@link Optional#empty()} representing
-     * an unconstrained environment. Otherwise delegates to
-     * {@link AreaAccessContext#allowedUserAreasLower(Authentication)}.
-     */
-    private Optional<Set<String>> resolveUserAllowedAreas() {
-        SecurityContext context = SecurityContextHolder.getContext();
-        Authentication auth = context != null ? context.getAuthentication() : null;
-        if (auth == null || !auth.isAuthenticated()
-            || auth instanceof AnonymousAuthenticationToken) {
-            return Optional.empty();
-        }
-        return AreaAccessContext.allowedUserAreasLower(auth);
     }
 }

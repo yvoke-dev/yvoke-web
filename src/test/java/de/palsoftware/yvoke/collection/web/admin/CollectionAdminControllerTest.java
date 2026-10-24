@@ -137,6 +137,32 @@ class CollectionAdminControllerTest {
         assertThat(model.getAttribute("tags")).isEqualTo(TAGS);
     }
 
+    @Test
+    void getVersionOptions_asAreaAdmin_returnsEmptyForCollectionInUnadministeredArea() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_PINGID"));
+
+        Model model = optionsFor("OIM - Docs", null, "http://localhost:8080/admin/ingest");
+
+        assertThat(model.getAttribute("tags")).isEqualTo(List.of());
+        assertThat(model.getAttribute("versions")).isEqualTo(List.of());
+    }
+
+    @Test
+    void viewCollections_asAreaAdmin_scopesSuggestedTagsToAdministeredCollections() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        when(collectionService.listForAdminUser()).thenReturn(
+            List.of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null, "OIM")));
+        when(collectionService.listAllTags())
+            .thenReturn(List.of("10.0", "9.3.1", "pingid-secret-tag"));
+
+        Model model = new ConcurrentModel();
+        controller.viewCollections(model);
+
+        assertThat(model.getAttribute("allTags")).isEqualTo(List.of("10.0", "9.3.1"));
+    }
+
     /**
      * The add-tag datalist offers the vocabulary already declared across collections, derived from
      * {@code collections.tags}. It used to come from a {@code tags} registry table that only the

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -186,5 +187,19 @@ public class JobApiControllerIT {
             .isEqualTo(tag);
         assertThat(body).as("the 202 body hands back the id of the row just written")
             .contains(row.get("id").toString());
+    }
+
+    @Test
+    public void enqueueRejectsCaseVariantCollectionInUnauthorizedAreaWith404() throws Exception {
+        String payload = """
+            {"kind":"job-api-it-wire-format","sourceRef":"kit/10.0/unauthorized.md","collection":"%s"}
+            """.formatted(COLLECTION.toUpperCase());
+
+        mockMvc
+            .perform(post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
+                .with(SecurityMockMvcRequestPostProcessors.user("other-ingest")
+                    .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
+                        new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+            .andExpect(status().isNotFound());
     }
 }

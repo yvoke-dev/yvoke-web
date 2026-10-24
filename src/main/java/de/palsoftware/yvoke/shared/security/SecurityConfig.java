@@ -119,7 +119,7 @@ public class SecurityConfig {
         this.userService = userService;
         this.mockAuth = mockAuth;
         this.apiKey = apiKey;
-        this.areaApiKeys = parseAreaApiKeys(new ObjectMapper(), areaApiKeysJson);
+        this.areaApiKeys = parseAreaApiKeys(new ObjectMapper(), areaApiKeysJson, apiKey);
         this.adminClaim = adminClaim;
         this.userClaim = userClaim;
         this.allowedAudience = allowedAudience;
@@ -160,6 +160,11 @@ public class SecurityConfig {
     }
 
     static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json) {
+        return parseAreaApiKeys(mapper, json, null);
+    }
+
+    static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json,
+        String globalApiKey) {
         if (json == null || json.isBlank()) {
             return Map.of();
         }
@@ -206,6 +211,11 @@ public class SecurityConfig {
             if (DEFAULT_DEV_API_KEY.equals(key)) {
                 throw new IllegalStateException("app.security.area-api-keys maps area '" + area
                     + "' to the placeholder default 'dev-key-12345'. Configure a real secret key.");
+            }
+            if (globalApiKey != null && !globalApiKey.isBlank()
+                && globalApiKey.trim().equals(key)) {
+                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
+                    + "' to the same key configured in app.security.api-key. Area keys must be distinct from the global API key.");
             }
             String lowerArea = area.toLowerCase(Locale.ROOT);
             if (!seenLowerAreas.add(lowerArea)) {
