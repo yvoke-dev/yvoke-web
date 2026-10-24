@@ -454,39 +454,18 @@ public class SchemaPresenceIT {
     @Test
     public void testMigrationV16ConversationAreaBackfill() throws IOException {
         UUID userId = UUID.randomUUID();
-        UUID convProfileId = UUID.randomUUID();
-        UUID convPlaybookId = UUID.randomUUID();
-        UUID convUnlinkedId = UUID.randomUUID();
-        UUID runId = UUID.randomUUID();
-        UUID msgId = UUID.randomUUID();
-        String customArea = "v16-backfill-area-" + UUID.randomUUID();
-        String profileName = "v16-profile-" + UUID.randomUUID();
-        String playbookName = "v16-playbook-" + UUID.randomUUID();
+        UUID conv1Id = UUID.randomUUID();
+        UUID conv2Id = UUID.randomUUID();
 
         try {
-            jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", customArea, customArea);
             jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)",
                 userId, "oid-" + userId, userId + "@test.com");
             jdbcTemplate.update(
-                "INSERT INTO playbooks (name, title, description, template_text, area) VALUES (?, 'Playbook', 'desc', 'tpl', ?)",
-                playbookName, customArea);
+                "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Pre-existing Conv 1', NULL)",
+                conv1Id, userId);
             jdbcTemplate.update(
-                "INSERT INTO orchestrator_profiles (name, orchestrator_playbook, reviewer_playbook, area) VALUES (?, ?, ?, ?)",
-                profileName, playbookName, playbookName, customArea);
-
-            jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Profile Conv', NULL)",
-                convProfileId, userId);
-            jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Playbook Conv', NULL)",
-                convPlaybookId, userId);
-            jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Pre-existing Unlinked Conv', NULL)",
-                convUnlinkedId, userId);
-
-            jdbcTemplate.update(
-                "INSERT INTO agent_runs (id, conversation_id, profile_name, status) VALUES (?, ?, ?, 'done')",
-                runId, convProfileId, profileName);
-            jdbcTemplate.update(
-                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'q', ?, 1)",
-                msgId, convPlaybookId, playbookName);
+                "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Pre-existing Conv 2', NULL)",
+                conv2Id, userId);
 
             String v16Sql = Files.readString(Path.of("docker/db/migration/V16__conversation_area.sql"));
             List<String> backfillStatements = Arrays.stream(v16Sql.split(";"))
@@ -494,30 +473,19 @@ public class SchemaPresenceIT {
                 .filter(stmt -> stmt.startsWith("UPDATE conversations"))
                 .toList();
             assertThat(backfillStatements)
-                .as("V16 must define 3 backfill UPDATE statements (agent_runs, messages, and OIM fallback)")
-                .hasSize(3);
-            for (String stmt : backfillStatements) {
-                jdbcTemplate.update(stmt);
-            }
+                .as("V16 must define a single UPDATE statement backfilling existing conversations to OIM")
+                .hasSize(1);
+            jdbcTemplate.update(backfillStatements.get(0));
 
             assertThat(jdbcTemplate.queryForObject(
-                "SELECT area FROM conversations WHERE id = ?", String.class, convProfileId))
-                .isEqualTo(customArea);
+                "SELECT area FROM conversations WHERE id = ?", String.class, conv1Id))
+                .isEqualTo("OIM");
             assertThat(jdbcTemplate.queryForObject(
-                "SELECT area FROM conversations WHERE id = ?", String.class, convPlaybookId))
-                .isEqualTo(customArea);
-            assertThat(jdbcTemplate.queryForObject(
-                "SELECT area FROM conversations WHERE id = ?", String.class, convUnlinkedId))
+                "SELECT area FROM conversations WHERE id = ?", String.class, conv2Id))
                 .isEqualTo("OIM");
         } finally {
-            jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", runId);
-            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", msgId);
-            jdbcTemplate.update("DELETE FROM conversations WHERE id IN (?, ?, ?)",
-                convProfileId, convPlaybookId, convUnlinkedId);
-            jdbcTemplate.update("DELETE FROM orchestrator_profiles WHERE name = ?", profileName);
-            jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", playbookName);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id IN (?, ?)", conv1Id, conv2Id);
             jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
-            jdbcTemplate.update("DELETE FROM areas WHERE name = ?", customArea);
         }
     }
 
