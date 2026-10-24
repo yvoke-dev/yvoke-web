@@ -111,7 +111,7 @@
                                     <div>
                                         <label style="font-weight: 600; font-size: 0.85em; display: block; margin-bottom: 0.4rem; color: #888;">Models (Multiselect)</label>
                                         <select name="selectedModels" multiple class="input-field" style="width: 100%; height: 75px; padding: 0.4rem; border-radius: 4px; font-size: 0.85em; background-color: var(--input-bg, #0d1117); color: #fff; border: 1px solid var(--border-color, #3a3f50);">
-                                            <option th:each="m : ${availableModels}" th:value="${m}" th:text="${m}" th:selected="${#lists.contains(selectedModels, m)}"></option>
+                                            <option th:each="m : ${availableModels}" th:value="${m}" th:text="${@modelLabels.labelFor(m)}" th:selected="${#lists.contains(selectedModels, m)}"></option>
                                         </select>
                                     </div>
 
@@ -229,7 +229,7 @@
                                             </td>
                                             <td th:text="${row.userName != null ? row.userName : '—'}">User</td>
                                             <td>
-                                                <span th:text="${row.modelsUsed}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;"></span>
+                                                <span th:text="${@modelLabels.formatCsv(row.modelsUsed)}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;"></span>
                                             </td>
                                             <td>
                                                 <span th:if="${row.masProfilesUsed != null and !row.masProfilesUsed.isBlank()}" th:text="${row.masProfilesUsed}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">OIM</span>
@@ -288,7 +288,7 @@
                                                 <span th:if="${row.playbook == null or row.playbook.isBlank()}" style="color: #666;">—</span>
                                             </td>
                                             <td>
-                                                <span th:text="${row.model}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;">model</span>
+                                                <span th:text="${@modelLabels.formatCsv(row.model)}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;">model</span>
                                             </td>
                                             <td>
                                                 <span style="background: rgba(0,123,255,0.15); color: #66b0ff; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">
@@ -351,7 +351,7 @@
                                                 <a th:href="@{'/chat/' + ${row.conversationId}}" target="_blank" style="color: var(--color-accent, #007bff); text-decoration: underline; font-family: monospace; font-size: 0.85em; font-weight: 600;" th:text="${row.conversationId}">ID</a>
                                             </td>
                                             <td th:text="${row.userName != null ? row.userName : '—'}">User</td>
-                                            <td th:text="${row.model}" style="font-family: monospace; font-size: 0.85em;">model</td>
+                                            <td th:text="${@modelLabels.labelFor(row.model)}" style="font-family: monospace; font-size: 0.85em;">model</td>
                                             <td th:text="${#numbers.formatInteger(row.promptTokens, 1, 'COMMA')}">0</td>
                                             <td th:text="${#numbers.formatInteger(row.completionTokens, 1, 'COMMA')}">0</td>
                                             <td th:text="${#numbers.formatInteger(row.cachedTokens, 1, 'COMMA')}">0</td>
