@@ -12,6 +12,7 @@ import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,18 +83,29 @@ public class DocumentAdminController {
         String searchTitleFilter =
             (searchTitle != null && !searchTitle.isBlank()) ? searchTitle.trim() : null;
 
+        List<Collection> allCols = collectionService.listForAdminUser();
+        Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
+
+        if (collFilter != null) {
+            Collection col = collectionService.getCollection(collFilter).orElse(null);
+            if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Collection not found: " + collFilter);
+            }
+        }
+
         long totalCount = documentAdminViewService.countDocuments(collFilter, kindFilter, tagFilter,
-            searchIdFilter, searchTitleFilter);
+            searchIdFilter, searchTitleFilter, collFilter == null ? allowedAreasLower : null);
         int totalPages = (int) Math.ceil((double) totalCount / size);
 
-        List<Collection> allCols = collectionService.listCollections();
-
-        model.addAttribute("documents", documentAdminViewService.listDocuments(collFilter, size,
-            page * size, kindFilter, tagFilter, searchIdFilter, searchTitleFilter));
+        model.addAttribute("documents",
+            documentAdminViewService.listDocuments(collFilter, size, page * size, kindFilter,
+                tagFilter, searchIdFilter, searchTitleFilter,
+                collFilter == null ? allowedAreasLower : null));
         model.addAttribute("collections", allCols.stream().map(Collection::name).toList());
         model.addAttribute("allCollections", allCols);
         model.addAttribute("kinds", documentAdminViewService.distinctKinds());
-        model.addAttribute("allTags", tagOptions(collFilter, tagFilter));
+        model.addAttribute("allTags", tagOptions(collFilter, tagFilter, allCols));
 
         model.addAttribute("selectedCollection", collFilter);
         model.addAttribute("selectedKind", kindFilter);
@@ -123,8 +136,11 @@ public class DocumentAdminController {
      * switching collection while a tag filter is applied would render "All Tags" over a query that
      * is still filtered — rows vanish with no visible cause.
      */
-    private List<String> tagOptions(String collFilter, String selectedTag) {
-        List<String> declared = collFilter == null ? collectionService.listAllTags()
+    private List<String> tagOptions(String collFilter, String selectedTag,
+        List<Collection> allCols) {
+        List<String> declared = collFilter == null
+            ? (AreaAccessContext.isSuperAdmin() ? collectionService.listAllTags()
+                : allCols.stream().flatMap(c -> c.tags().stream()).distinct().sorted().toList())
             : collectionService.listTagsOf(collFilter);
         if (selectedTag == null || declared.contains(selectedTag)) {
             return declared;
@@ -138,6 +154,10 @@ public class DocumentAdminController {
     public String getDocumentDetails(@PathVariable UUID id, Model model) {
         DocumentDetailPage page = documentAdminViewService.documentDetailPage(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        Collection col = collectionService.getCollection(page.document().collection()).orElse(null);
+        if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
+        }
 
         model.addAttribute("document", page.document());
         model.addAttribute("chunks", page.chunks());
@@ -160,6 +180,17 @@ public class DocumentAdminController {
 
         DocumentRow document = documentRepository.findById(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
+        if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
+        }
+        if (collection != null && !collection.isBlank()) {
+            Collection targetCol = collectionService.getCollection(collection.trim()).orElse(null);
+            if (targetCol == null || !AreaAccessContext.canAdministerArea(targetCol.area())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Collection not found: " + collection);
+            }
+        }
 
         String targetCollection = (collection != null && !collection.isBlank()) ? collection.trim()
             : document.collection();
@@ -199,6 +230,10 @@ public class DocumentAdminController {
     public String getChunkDetails(@PathVariable UUID id, Model model) {
         ChunkDetailPage page = documentAdminViewService.chunkDetailPage(id.toString()).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chunk not found: " + id));
+        Collection col = collectionService.getCollection(page.chunk().collection()).orElse(null);
+        if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Chunk not found: " + id);
+        }
 
         model.addAttribute("chunk", page.chunk());
         model.addAttribute("hasEmbedding", page.hasEmbedding());
@@ -211,6 +246,12 @@ public class DocumentAdminController {
     @PostMapping("/documents/{id}/add-tag")
     public String addDocumentTag(@PathVariable UUID id, @RequestParam String tag,
         RedirectAttributes redirectAttributes) {
+        DocumentRow document = documentRepository.findById(id).orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
+        if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
+        }
         tagService.addTagToDocument(id, tag);
         redirectAttributes.addFlashAttribute("success", "Tag added successfully.");
         return "redirect:/admin/documents/" + id;
@@ -219,6 +260,12 @@ public class DocumentAdminController {
     @PostMapping("/documents/{id}/remove-tag")
     public String removeDocumentTag(@PathVariable UUID id, @RequestParam String tag,
         RedirectAttributes redirectAttributes) {
+        DocumentRow document = documentRepository.findById(id).orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
+        if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
+        }
         tagService.removeTagFromDocument(id, tag);
         redirectAttributes.addFlashAttribute("success", "Tag removed successfully.");
         return "redirect:/admin/documents/" + id;

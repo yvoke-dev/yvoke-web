@@ -43,9 +43,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
 import org.springframework.web.server.ResponseStatusException;
@@ -78,6 +81,8 @@ class ChatControllerTest {
             orchestratorProfileService);
         when(messageService.resolveLockState(any(), any()))
             .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
     }
 
     @Test
@@ -549,5 +554,88 @@ class ChatControllerTest {
             "the model picker must select on effectiveModel: " + block);
         assertFalse(block.contains("settings['model']"),
             "reading the raw setting reintroduces the retired-model divergence: " + block);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void threadView_filtersPlaybooksToAuthorizedAreas() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        Playbook oimPlaybook = new Playbook("p1", "P1", "d", "c", List.of(), false, "specialist",
+            false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook finPlaybook = new Playbook("p2", "P2", "d", "c", List.of(), false, "specialist",
+            false, Instant.now(), Instant.now(), false, "Finance");
+        when(playbookService.listSpecializedPlaybooks())
+            .thenReturn(List.of(oimPlaybook, finPlaybook));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        @SuppressWarnings("unchecked")
+        List<Playbook> prompts = (List<Playbook>) model.getAttribute("prompts");
+        assertEquals(List.of(oimPlaybook), prompts);
+    }
+
+    @Test
+    void threadView_filtersOrchestratorProfilesToAuthorizedAreas() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
+            Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        OrchestratorProfileOption oimOption =
+            new OrchestratorProfileOption("oim-prof", false, "OIM");
+        OrchestratorProfileOption finOption =
+            new OrchestratorProfileOption("fin-prof", false, "Finance");
+        when(orchestratorProfileService.listProfileOptions())
+            .thenReturn(List.of(oimOption, finOption));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        Model model = new ConcurrentModel();
+        controller.threadView(conversationId, model);
+
+        @SuppressWarnings("unchecked")
+        List<OrchestratorProfileOption> profiles =
+            (List<OrchestratorProfileOption>) model.getAttribute("orchestratorProfiles");
+        assertEquals(List.of(oimOption), profiles);
+    }
+
+    @Test
+    void updateOrchestratorProfile_withUnauthorizedProfile_throwsBadRequest() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
+            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
+
+        OrchestratorProfile dbProfile =
+            new OrchestratorProfile("FinanceProfile", 3, 8, "orch", "rev", List.of(), null, null,
+                null, null, null, null, false, Instant.now(), Instant.now(), "Finance");
+        when(orchestratorProfileService.getProfile("FinanceProfile"))
+            .thenReturn(Optional.of(dbProfile));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.updateOrchestratorProfile(conversationId, "FinanceProfile"));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
     }
 }

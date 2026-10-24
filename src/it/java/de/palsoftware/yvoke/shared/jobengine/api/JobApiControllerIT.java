@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -186,5 +187,51 @@ public class JobApiControllerIT {
             .isEqualTo(tag);
         assertThat(body).as("the 202 body hands back the id of the row just written")
             .contains(row.get("id").toString());
+    }
+
+    @Test
+    public void enqueueRejectsCaseVariantCollectionInUnauthorizedAreaWith404() throws Exception {
+        String payload = """
+            {"kind":"job-api-it-wire-format","sourceRef":"kit/10.0/unauthorized.md","collection":"%s"}
+            """.formatted(COLLECTION.toUpperCase());
+
+        mockMvc
+            .perform(post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
+                .with(SecurityMockMvcRequestPostProcessors.user("other-ingest")
+                    .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
+                        new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    public void enqueueKgExtractRejectsSourceDocumentInUnauthorizedAreaWith404() throws Exception {
+        UUID pingColId = UUID.randomUUID();
+        String pingColName = "JOB-API-IT-PINGID-COLLECTION";
+        UUID oimDocId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO areas (name, title, description) VALUES ('PingID', 'PingID', 'PingID') ON CONFLICT (name) DO NOTHING");
+        jdbcTemplate.update("INSERT INTO collections (id, name, area) VALUES (?, ?, 'PingID')",
+            pingColId, pingColName);
+        jdbcTemplate.update("""
+            INSERT INTO documents (id, collection_id, kind, title, ingestion_status)
+            VALUES (?, ?, 'markdown', 'Secret OIM', 'completed')
+            """, oimDocId, collectionId);
+
+        try {
+            String payload = """
+                {"kind":"kg-extract","sourceRef":"%s","collection":"%s"}
+                """.formatted(oimDocId, pingColName);
+
+            mockMvc
+                .perform(
+                    post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
+                        .with(SecurityMockMvcRequestPostProcessors.user("ping-ingest")
+                            .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
+                                new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+                .andExpect(status().isNotFound());
+        } finally {
+            jdbcTemplate.update("DELETE FROM documents WHERE id = ?", oimDocId);
+            jdbcTemplate.update("DELETE FROM collections WHERE id = ?", pingColId);
+        }
     }
 }

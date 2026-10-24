@@ -11,11 +11,14 @@ import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import static org.assertj.core.api.Assertions.entry;
@@ -24,6 +27,8 @@ import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import org.mockito.ArgumentMatchers;
 
@@ -344,7 +349,8 @@ public class ChatConversationServiceTest {
         Conversation c5 = conv(otherUserId, null);
         Conversation c6 = conv(otherUserId, List.of("x", "y"));
         List<Conversation> all = List.of(c1, c2, c3, c4, c5, c6);
-        when(conversationRepository.listAll(currentUserId, 100, 0)).thenReturn(all);
+        when(conversationRepository.listAll(eq(currentUserId), eq(100), eq(0), any()))
+            .thenReturn(all);
 
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
 
@@ -470,4 +476,98 @@ public class ChatConversationServiceTest {
         assertThat(chatConversationService.effectiveModel("retired-model"))
             .isEqualTo("gemini-3.1-flash-lite");
     }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    public void verifyConversationOwnership_withUnauthorizedArea_throwsNotFoundForOwner() {
+        UUID convId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        User user = new User(userId, "entra-owner", "owner@test.local", "O", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(user));
+
+        Conversation conv = new Conversation(convId, userId, "Title", Collections.emptyMap(),
+            Instant.now(), Instant.now(), List.of(), "web", "Finance");
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, false))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    public void verifyConversationOwnership_withUnauthorizedArea_throwsNotFoundForPublicViewer() {
+        UUID convId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        User viewer = new User(viewerId, "entra-viewer", "viewer@test.local", "V", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
+
+        Conversation conv = new Conversation(convId, ownerId, "Title", Collections.emptyMap(),
+            Instant.now(), Instant.now(), List.of("public"), "web", "Finance");
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, true))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    public void verifyConversationOwnership_withAuthorizedArea_allowsOwner() {
+        UUID convId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        User user = new User(userId, "entra-owner", "owner@test.local", "O", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(user));
+
+        Conversation conv = new Conversation(convId, userId, "Title", Collections.emptyMap(),
+            Instant.now(), Instant.now(), List.of(), "web", "OIM");
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        // Should not throw
+        chatConversationService.verifyConversationOwnership(conv, false);
+    }
+
+    @Test
+    public void verifyConversationOwnership_withNullArea_allowsOwnerAndPublicViewer() {
+        UUID convId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        User viewer = new User(viewerId, "entra-viewer", "viewer@test.local", "V", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
+
+        Conversation conv = new Conversation(convId, ownerId, "Title", Collections.emptyMap(),
+            Instant.now(), Instant.now(), List.of("public"), "web", null);
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        // Public read allowed when area is null
+        chatConversationService.verifyConversationOwnership(conv, true);
+    }
+
+    @Test
+    public void listAllConversations_passesAllowedAreasLowerFromContext() {
+        UUID userId = UUID.randomUUID();
+        User user = new User(userId, "entra-user", "user@test.local", "U", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(user));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        chatConversationService.listAllConversations(20, 0);
+
+        verify(conversationRepository).listAll(userId, 20, 0, Set.of("oim"));
+    }
 }
+

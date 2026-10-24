@@ -21,18 +21,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import java.util.Set;
 
 public class DesktopSyncServiceTest {
 
     private ConversationRepository conversationRepository;
     private MessageRepository messageRepository;
     private FeedbackRepository feedbackRepository;
+    private PlaybookService playbookService;
     private DesktopSyncService service;
 
     private final UUID currentUserId = UUID.randomUUID();
@@ -41,11 +48,19 @@ public class DesktopSyncServiceTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         conversationRepository = mock(ConversationRepository.class);
         messageRepository = mock(MessageRepository.class);
         feedbackRepository = mock(FeedbackRepository.class);
-        service =
-            new DesktopSyncService(conversationRepository, messageRepository, feedbackRepository);
+        playbookService = mock(PlaybookService.class);
+        service = new DesktopSyncService(conversationRepository, messageRepository,
+            feedbackRepository, playbookService);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     private Conversation ownConversation(UUID id, String title) {
@@ -82,7 +97,65 @@ public class DesktopSyncServiceTest {
     public void listConversationsScopesToUserAndDesktopSource() {
         service.listConversations(currentUser, 50, 10);
 
-        verify(conversationRepository).listByUserAndSource(currentUserId, "desktop", 50, 10);
+        verify(conversationRepository).listByUserAndSource(currentUserId, "desktop", 50, 10, null);
+    }
+
+    @Test
+    public void listConversationsFiltersByAreaWhenRestricted() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+
+        service.listConversations(currentUser, 50, 10);
+
+        verify(conversationRepository).listByUserAndSource(currentUserId, "desktop", 50, 10,
+            Set.of("security"));
+    }
+
+    @Test
+    public void verifyOwnershipRejectsConversationFromUnauthorizedAreaWith404() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Restricted",
+                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "restricted-area")));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OTHER"));
+
+        assertThatThrownBy(() -> service.getMessages(conversationId, currentUser, 50, 0))
+            .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    public void appendMessagesRejectsPlaybookFromUnauthorizedAreaWith400() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(ownConversation(conversationId, "Title")));
+        when(playbookService.getPlaybook("restricted-pb")).thenReturn(Optional
+            .of(new Playbook("restricted-pb", "Restricted", "desc", "tmpl", List.of(), false,
+                "specialist", false, Instant.now(), Instant.now(), false, "restricted-area")));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OTHER"));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(
+                new NewMessage("user", "Hello", null, null, null, null, null, "restricted-pb", 1))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    public void appendMessagesStampsConversationAreaIfAbsent() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(ownConversation(conversationId, "Title")));
+        when(playbookService.getPlaybook("sec-pb"))
+            .thenReturn(Optional.of(new Playbook("sec-pb", "Security", "desc", "tmpl", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "security")));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+
+        service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Hello", null, null, null, null, null, "sec-pb", 1)));
+
+        verify(conversationRepository).updateAreaIfAbsent(conversationId, "security");
     }
 
     // --- appendMessages -------------------------------------------------------

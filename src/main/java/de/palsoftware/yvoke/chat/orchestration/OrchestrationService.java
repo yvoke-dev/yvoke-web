@@ -88,6 +88,27 @@ public class OrchestrationService {
             || properties.profile(trimmed).isPresent();
     }
 
+    public Optional<String> getProfileArea(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = name.trim();
+        if (profileService != null) {
+            Optional<OrchestratorProfile> p = profileService.getProfile(trimmed);
+            if (p.isPresent() && p.get().area() != null) {
+                return Optional.of(p.get().area());
+            }
+        }
+        Optional<OrchestratorProperties.Profile> propOpt = properties.profile(trimmed);
+        if (propOpt.isPresent()) {
+            String orchPbName = propOpt.get().orchestratorPlaybook();
+            if (orchPbName != null && playbookService != null) {
+                return playbookService.getPlaybook(orchPbName).map(Playbook::area);
+            }
+        }
+        return Optional.empty();
+    }
+
     public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
         List<UUID> searchIds, int promptTokens, int completionTokens, int totalTokens,
         int cachedTokens, int thoughtTokens, String status) {}
@@ -95,6 +116,14 @@ public class OrchestrationService {
     /** Blocking; intended to run on a background (virtual) thread. */
     public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
         String question, List<LlmMessage> history, UUID agentRunId, String profileName) {
+        return runOrchestration(conversationId, messageId, question, history, agentRunId,
+            profileName, null);
+    }
+
+    /** Blocking; intended to run on a background (virtual) thread with area isolation. */
+    public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
+        String question, List<LlmMessage> history, UUID agentRunId, String profileName,
+        @Nullable Set<String> allowedAreasLower) {
 
         ResolvedProfile profile;
         Playbook orchestratorPlaybook;
@@ -125,7 +154,8 @@ public class OrchestrationService {
                 conversationRepository != null
                     ? conversationRepository.findById(conversationId).map(Conversation::userId)
                         .orElse(null)
-                    : null);
+                    : null,
+                allowedAreasLower);
         st.specialistCfg = profile.specialist();
         int round = 0;
         String answer = "";
@@ -444,16 +474,18 @@ public class OrchestrationService {
         try {
             LlmCallContextHolder.set(st.conversationId, st.messageId, st.runId, st.userId,
                 "orchestrator", role);
-            RagResult result = ragService.generateAgenticAnswer(
-                AgenticRequest.builder().query(query).modelOverride(cfg.model()).history(history)
-                    .priorMessages(priorMessages).systemPromptOverride(systemPromptOverride)
-                    .allowedTools(allowedTools).thinkingLevel(cfg.thinkingLevel())
-                    .codeExecution(codeExecution).extraTools(extraTools).build(),
-                token -> {
-                    if (token != null) {
-                        emitted.append(token);
-                    }
-                });
+            RagResult result =
+                ragService.generateAgenticAnswer(
+                    AgenticRequest.builder().query(query).modelOverride(cfg.model())
+                        .history(history).priorMessages(priorMessages)
+                        .systemPromptOverride(systemPromptOverride).allowedTools(allowedTools)
+                        .thinkingLevel(cfg.thinkingLevel()).codeExecution(codeExecution)
+                        .extraTools(extraTools).allowedAreasLower(st.allowedAreasLower).build(),
+                    token -> {
+                        if (token != null) {
+                            emitted.append(token);
+                        }
+                    });
 
             String answerText = extractAnswerText(result, emitted.toString());
             Verdict verdict = verdictHolder != null ? verdictHolder[0] : null;
@@ -953,6 +985,7 @@ public class OrchestrationService {
         final UUID messageId;
         final UUID userId;
         final ResolvedProfile profile;
+        final Set<String> allowedAreasLower;
         final AtomicInteger seq = new AtomicInteger(0);
         final Set<UUID> chunkIds = new LinkedHashSet<>();
         final Set<UUID> searchIds = new LinkedHashSet<>();
@@ -1019,20 +1052,27 @@ public class OrchestrationService {
         int evidenceSent;
 
         RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
-            UUID userId) {
+            UUID userId, Set<String> allowedAreasLower) {
             this.runId = runId;
             this.conversationId = conversationId;
             this.messageId = messageId;
             this.profile = profile;
             this.userId = userId;
+            this.allowedAreasLower =
+                allowedAreasLower != null ? Set.copyOf(allowedAreasLower) : null;
+        }
+
+        RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
+            UUID userId) {
+            this(runId, conversationId, messageId, profile, userId, null);
         }
 
         RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile) {
-            this(runId, conversationId, messageId, profile, null);
+            this(runId, conversationId, messageId, profile, null, null);
         }
 
         RunState(UUID runId, ResolvedProfile profile) {
-            this(runId, null, null, profile, null);
+            this(runId, null, null, profile, null, null);
         }
 
         void accumulate(RagResult r) {

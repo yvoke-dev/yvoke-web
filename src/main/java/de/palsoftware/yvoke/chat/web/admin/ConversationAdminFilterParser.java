@@ -27,6 +27,12 @@ public final class ConversationAdminFilterParser {
 
     public static ConversationFilter parse(List<String> rawUserIds, String rawTimeRange,
         String rawFromDate, String rawToDate, String rawFeedback, Clock clock) {
+        return parse(rawUserIds, rawTimeRange, rawFromDate, rawToDate, rawFeedback, null, clock);
+    }
+
+    public static ConversationFilter parse(List<String> rawUserIds, String rawTimeRange,
+        String rawFromDate, String rawToDate, String rawFeedback, Set<String> allowedAreasLower,
+        Clock clock) {
 
         Set<UUID> userIds = new LinkedHashSet<>();
         boolean includeAnonymous = false;
@@ -69,7 +75,7 @@ public final class ConversationAdminFilterParser {
         FeedbackFilter feedbackFilter = parseFeedback(rawFeedback);
 
         return new ConversationFilter(Collections.unmodifiableSet(userIds), includeAnonymous,
-            timeFilter, feedbackFilter);
+            timeFilter, feedbackFilter, allowedAreasLower);
     }
 
     public static LocalDate parseDate(String raw) {

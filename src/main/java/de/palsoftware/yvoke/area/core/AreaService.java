@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.area.core;
 
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.security.AvailableAreasProvider;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -9,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
-public class AreaService {
+public class AreaService implements AvailableAreasProvider {
 
     private final AreaRepository areaRepository;
 
@@ -19,6 +21,32 @@ public class AreaService {
 
     public List<Area> listAreas() {
         return areaRepository.findAll();
+    }
+
+    /** Lists all areas accessible to the currently authenticated user. */
+    public List<Area> listAccessibleForCurrentUser() {
+        return AreaAccessContext.filterByUserArea(listAreas(), Area::name);
+    }
+
+    /** Lists all areas administered by the currently authenticated user. */
+    public List<Area> listAdministeredForCurrentUser() {
+        return AreaAccessContext.filterByAdminArea(listAreas(), Area::name);
+    }
+
+    /**
+     * Finds an area by name for user access, returning empty if the area does not exist or the user
+     * lacks access to it (opaque refusal).
+     */
+    public Optional<Area> findByNameForUser(String name) {
+        return findArea(name).filter(a -> AreaAccessContext.canAccessUserArea(a.name()));
+    }
+
+    /**
+     * Finds an area by name for admin access, returning empty if the area does not exist or the
+     * user lacks administration rights for it.
+     */
+    public Optional<Area> findByNameForAdmin(String name) {
+        return findArea(name).filter(a -> AreaAccessContext.canAdministerArea(a.name()));
     }
 
     public List<String> listAreaNames() {
@@ -58,6 +86,13 @@ public class AreaService {
         return areaRepository.findAll().stream()
             .map(a -> new AreaWithMembers(a, members.getOrDefault(a.name(), AreaMembers.NONE)))
             .toList();
+    }
+
+    /**
+     * Lists all areas with their members that are administered by the currently authenticated user.
+     */
+    public List<AreaWithMembers> listAdministeredAreasWithMembers() {
+        return AreaAccessContext.filterByAdminArea(listAreasWithMembers(), a -> a.area().name());
     }
 
     /** One area with its members, matched as {@link #findArea(String)} matches. */
@@ -118,7 +153,7 @@ public class AreaService {
             areaRepository.delete(stored);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("Area '" + stored
-                + "' still has system prompts, collections, playbooks or profiles. "
+                + "' still has system prompts, collections, playbooks, profiles or conversations. "
                 + "Move or delete them first.");
         }
         return stored;

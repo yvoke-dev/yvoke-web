@@ -458,4 +458,32 @@ public class ChatAdminQueryRepositoryIT {
         assertThat(stats.totalConversations()).isGreaterThan(listedConversations);
         assertThat(stats.registeredUserCount()).isGreaterThan(userStats.size());
     }
+
+    @Test
+    void listConversationUserOptions_whenScopedByAllowedAreas_excludesOtherAreasUsers() {
+        jdbcTemplate.update(
+            "INSERT INTO areas (name, title) VALUES ('PingID', 'PingID') ON CONFLICT DO NOTHING");
+        try {
+            UUID oimUser = createUser("caqr-it-oim-user@example.com", "CAQR OIM User");
+            UUID pingUser = createUser("caqr-it-ping-user@example.com", "CAQR Ping User");
+
+            UUID oimConv =
+                createConversation(oimUser, "CAQR-IT OIM Conv", OffsetDateTime.now(ZoneOffset.UTC));
+            jdbcTemplate.update("UPDATE conversations SET area = 'OIM' WHERE id = ?", oimConv);
+
+            UUID pingConv = createConversation(pingUser, "CAQR-IT Ping Conv",
+                OffsetDateTime.now(ZoneOffset.UTC));
+            jdbcTemplate.update("UPDATE conversations SET area = 'PingID' WHERE id = ?", pingConv);
+
+            List<ConversationUserOption> oimOptions =
+                chatAdminQueryRepository.listConversationUserOptions(Set.of(pingUser),
+                    Set.of("oim"));
+
+            assertThat(oimOptions).extracting(ConversationUserOption::id).contains(oimUser)
+                .doesNotContain(pingUser);
+        } finally {
+            jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAQR-IT%'");
+            jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
+        }
+    }
 }

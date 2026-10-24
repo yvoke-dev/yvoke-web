@@ -53,7 +53,7 @@ class ConversationAdminServiceTest {
         when(chatAdminQueryRepository.getConversationStats(filter)).thenReturn(stats);
         when(chatAdminQueryRepository.listFilteredConversations(eq(filter), eq(20), eq(0L)))
             .thenReturn(List.of(conv));
-        when(chatAdminQueryRepository.listConversationUserOptions(eq(Set.of())))
+        when(chatAdminQueryRepository.listConversationUserOptions(eq(Set.of()), eq(null)))
             .thenReturn(List.of(userOption));
 
         ConversationAdminView view = service.getConversationAdminView(filter, 0, 20);
@@ -69,7 +69,25 @@ class ConversationAdminServiceTest {
 
         verify(chatAdminQueryRepository).getConversationStats(filter);
         verify(chatAdminQueryRepository).listFilteredConversations(filter, 20, 0L);
-        verify(chatAdminQueryRepository).listConversationUserOptions(filter.userIds());
+        verify(chatAdminQueryRepository).listConversationUserOptions(filter.userIds(),
+            filter.allowedAreasLower());
+    }
+
+    @Test
+    void testGetConversationAdminView_scopesUserOptionsByAllowedAreas() {
+        ConversationFilter filter =
+            new ConversationFilter(Set.of(), false, null, null, Set.of("oim"));
+        ConversationOverviewStats emptyStats =
+            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+        when(chatAdminQueryRepository.getConversationStats(filter)).thenReturn(emptyStats);
+        when(chatAdminQueryRepository.listFilteredConversations(eq(filter), eq(20), eq(0L)))
+            .thenReturn(List.of());
+        when(chatAdminQueryRepository.listConversationUserOptions(eq(Set.of()), eq(Set.of("oim"))))
+            .thenReturn(List.of());
+
+        service.getConversationAdminView(filter, 0, 20);
+
+        verify(chatAdminQueryRepository).listConversationUserOptions(Set.of(), Set.of("oim"));
     }
 
     @Test
@@ -80,7 +98,8 @@ class ConversationAdminServiceTest {
         when(chatAdminQueryRepository.getConversationStats(filter)).thenReturn(emptyStats);
         when(chatAdminQueryRepository.listFilteredConversations(eq(filter), eq(20), eq(0L)))
             .thenReturn(List.of());
-        when(chatAdminQueryRepository.listConversationUserOptions(any())).thenReturn(List.of());
+        when(chatAdminQueryRepository.listConversationUserOptions(any(), any()))
+            .thenReturn(List.of());
 
         // Negative page, extreme size
         ConversationAdminView view = service.getConversationAdminView(filter, -5, 999);

@@ -370,7 +370,7 @@ public class ChatAsyncControllerTraceIT {
             }
         }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
-        var login = testUserLogin(userOid, "user-async-trace@local", "User Async Trace", "ROLE_USER");
+        var login = testUserLogin(userOid, "user-async-trace@local", "User Async Trace", "ROLE_USER", "AREA_USER_OIM");
 
         MvcResult postResult = mockMvc.perform(post("/chat/" + conv.id() + "/send-async")
                 .with(login)

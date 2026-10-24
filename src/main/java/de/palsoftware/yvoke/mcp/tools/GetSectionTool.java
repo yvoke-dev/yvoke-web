@@ -1,15 +1,25 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionChunks;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 
@@ -19,9 +29,16 @@ public class GetSectionTool {
     private static final Logger log = LoggerFactory.getLogger(GetSectionTool.class);
 
     private final SectionService sectionService;
+    private final DocumentRepository documentRepository;
+    private final ChunkRepository chunkRepository;
+    private final CollectionService collectionService;
 
-    public GetSectionTool(SectionService sectionService) {
+    public GetSectionTool(SectionService sectionService, DocumentRepository documentRepository,
+        ChunkRepository chunkRepository, CollectionService collectionService) {
         this.sectionService = sectionService;
+        this.documentRepository = documentRepository;
+        this.chunkRepository = chunkRepository;
+        this.collectionService = collectionService;
     }
 
     /** No conversation: an external MCP client, which is never told text is "shown above". */
@@ -46,10 +63,17 @@ public class GetSectionTool {
         try {
             SectionChunks section;
             if (document_id != null && !document_id.isBlank()) {
-                section =
-                    sectionService.getSectionChunksByDocumentId(document_id.trim(), heading_path);
+                String trimmedDocId = document_id.trim();
+                if (!isDocumentAreaAllowed(trimmedDocId, context)) {
+                    return "Error: Document not found: " + trimmedDocId;
+                }
+                section = sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
             } else if (chunk_id != null && !chunk_id.isBlank()) {
-                section = sectionService.getSectionChunksByChunkId(chunk_id.trim());
+                String trimmedChunkId = chunk_id.trim();
+                if (!isChunkAreaAllowed(trimmedChunkId, context)) {
+                    return "Error: Chunk not found: " + trimmedChunkId;
+                }
+                section = sectionService.getSectionChunksByChunkId(trimmedChunkId);
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -57,6 +81,56 @@ public class GetSectionTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("get_section", e);
         }
+    }
+
+    private boolean isDocumentAreaAllowed(String docIdStr, @Nullable AgenticChatContext context) {
+        UUID docUuid;
+        try {
+            docUuid = UUID.fromString(docIdStr);
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+        Optional<DocumentRow> docOpt = documentRepository.findById(docUuid);
+        if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
+            return true;
+        }
+        Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
+        if (colOpt.isEmpty()) {
+            return true;
+        }
+        return isAreaAllowed(colOpt.get().area(), context);
+    }
+
+    private boolean isChunkAreaAllowed(String chunkIdStr, @Nullable AgenticChatContext context) {
+        Optional<ChunkRow> chunkOpt;
+        try {
+            chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+        if (chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
+            return true;
+        }
+        Optional<DocumentRow> docOpt = documentRepository.findById(chunkOpt.get().documentId());
+        if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
+            return true;
+        }
+        Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
+        if (colOpt.isEmpty()) {
+            return true;
+        }
+        return isAreaAllowed(colOpt.get().area(), context);
+    }
+
+    private static boolean isAreaAllowed(@Nullable String area,
+        @Nullable AgenticChatContext context) {
+        if (context != null) {
+            return context.isAreaAllowed(area);
+        }
+        if (area == null || area.isBlank()) {
+            return true;
+        }
+        return AreaAccessContext.canAccessUserArea(area);
     }
 
     /**

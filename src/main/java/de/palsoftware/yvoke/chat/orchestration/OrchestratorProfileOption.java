@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
+import org.springframework.lang.Nullable;
+
 /**
  * What the chat thread's profile dropdown needs to render one option: the name it posts back and
  * whether the profile is a prototype, so the client can hide it while prototype visibility is off.
@@ -8,4 +10,4 @@ package de.palsoftware.yvoke.chat.orchestration;
  * Deliberately not the whole {@link OrchestratorProfile} — the per-role model bindings are operator
  * configuration and have no business being rendered into a user-facing page.
  */
-public record OrchestratorProfileOption(String name,boolean prototype){}
+public record OrchestratorProfileOption(String name,boolean prototype,@Nullable String area){public OrchestratorProfileOption(String name,boolean prototype){this(name,prototype,null);}}

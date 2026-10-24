@@ -11,12 +11,15 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.inOrder;
 
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,11 +30,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import de.palsoftware.yvoke.collection.core.model.Collection;
+import java.util.Arrays;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.mockito.InOrder;
 import java.nio.file.Files;
 import java.util.stream.Stream;
 import org.mockito.Mockito;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Path-traversal confinement for the ingest staging paths (SEC-01 / SEC-16), moved here from the
@@ -51,12 +59,24 @@ public class IngestServiceTest {
 
     @BeforeEach
     public void setUp() {
+        authenticateWith("ROLE_INGEST", "AREA_INGEST_*");
         jobService = mock(JobService.class);
         collectionService = mock(CollectionService.class);
         tagService = mock(TagService.class);
         documentRepository = mock(DocumentRepository.class);
         ingestService = new IngestService(jobService, collectionService, tagService,
             documentRepository, uploadDir.toString());
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticateWith(String... roles) {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
+                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     /**
@@ -265,6 +285,8 @@ public class IngestServiceTest {
     public void processKgDeclaresTheTagOnTheCollectionBeforeEnqueueing() {
         UUID colId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(new DocumentRow(docId,
+            colId, "OIM", "markdown", "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("OIM"))
             .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
@@ -356,13 +378,16 @@ public class IngestServiceTest {
 
     @Test
     public void processKgRefusesAnUnknownAreaForANewCollection() {
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId))
+            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
+                "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
             .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
 
-        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
-            "10.0", null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> {
+        assertThatThrownBy(() -> ingestService.processKg(docId, null, null, null, "NEW", "10.0",
+            null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
                 ResponseStatusException rse = (ResponseStatusException) e;
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
@@ -372,10 +397,15 @@ public class IngestServiceTest {
 
     @Test
     public void processKgRefusesToCreateACollectionWithoutAnArea() {
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.findById(docId))
+            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
+                "Title", null, "completed", List.of(), Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ingestService.processKg(UUID.randomUUID(), null, null, null, "NEW",
-            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
+        assertThatThrownBy(
+            () -> ingestService.processKg(docId, null, null, null, "NEW", "10.0", null, null))
+            .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST));
         verify(collectionService, never()).createCollection(any(), any(), any());
@@ -504,5 +534,116 @@ public class IngestServiceTest {
 
         assertThat(captor.getAllValues()).extracting(EnqueueRequest::kind)
             .containsExactly("standard", "hierarchical", "json-import");
+    }
+
+    @Test
+    public void uploadAndEnqueueExistingCollectionUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "sec-col", null, "standard",
+            null, null, null, null)).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void uploadAndEnqueueCreateCollectionUnauthorizedAreaYields403() {
+        authenticateWith("AREA_INGEST_OTHER");
+        when(collectionService.getCollection("new-col")).thenReturn(Optional.empty());
+
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "new-col", null, "standard",
+            null, null, null, "sec")).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN));
+        verify(collectionService, never()).createCollection(any(), any(), any());
+    }
+
+    @Test
+    public void enqueueCustomExistingCollectionUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+
+        MockMultipartFile zip =
+            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+
+        assertThatThrownBy(() -> ingestService.enqueueCustom(zip, "sec-col", "1.0", "**/*.md",
+            "entities.jsonl", "relationships.jsonl", null))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void processKgWithExplicitDocumentIdFromUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        UUID sourceColId = UUID.randomUUID();
+        UUID targetColId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        Collection otherCol = new Collection(targetColId, "other-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "other");
+        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
+            null, "completed", List.of("1.0"), Instant.now());
+
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
+        when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
+        when(collectionService.getCollection("other-col")).thenReturn(Optional.of(otherCol));
+
+        assertThatThrownBy(
+            () -> ingestService.processKg(docId, null, null, null, "other-col", "1.0", null, null))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void processKgWithExplicitDocumentIdFromAuthorizedAreaSucceeds() {
+        authenticateWith("AREA_INGEST_SEC");
+        UUID sourceColId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
+            null, "completed", List.of("1.0"), Instant.now());
+
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
+        when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+        when(jobService.enqueue(any(EnqueueRequest.class)))
+            .thenReturn(EnqueueResult.created(jobId));
+
+        EnqueueResult res =
+            ingestService.processKg(docId, null, null, null, "sec-col", "1.0", null, null);
+        assertThat(res.jobId()).isEqualTo(jobId);
+    }
+
+    @Test
+    public void processKgWithNonExistentExplicitDocumentIdYields404ForAllCallers() {
+        UUID missingDocId = UUID.randomUUID();
+        when(documentRepository.findById(missingDocId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ingestService.processKg(missingDocId, null, null, null, "OIM",
+            "1.0", null, "OIM")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
+                ResponseStatusException rse = (ResponseStatusException) e;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(rse.getReason()).contains(missingDocId.toString());
+            });
+        verify(jobService, never()).enqueue(any());
     }
 }

@@ -2,9 +2,11 @@ package de.palsoftware.yvoke.chat.web;
 
 import de.palsoftware.yvoke.chat.api.model.MessageDto;
 import de.palsoftware.yvoke.chat.api.model.MessageTraceDto;
+import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.util.Map;
 import java.util.Optional;
@@ -108,12 +110,18 @@ public class ChatAsyncController {
     public ResponseEntity<MessageTraceDto> getMessageTrace(@PathVariable UUID id,
         @PathVariable UUID messageId) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth != null
-            && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
-        if (!isAdmin) {
-            throw new AccessDeniedException("Access denied: trace endpoint requires ROLE_ADMIN");
+        boolean isSuper = AreaAccessContext.isSuperAdmin(auth);
+        boolean isAreaAdmin =
+            AreaAccessContext.hasAuthority(auth, AreaAccessContext.ROLE_AREA_ADMIN);
+        if (!isSuper && !isAreaAdmin) {
+            throw new AccessDeniedException(
+                "Access denied: trace endpoint requires ROLE_ADMIN or ROLE_AREA_ADMIN");
         }
-        chatConversationService.verifyOwnership(id, true);
+        Conversation conv = chatConversationService.verifyOwnership(id, true);
+        if (!AreaAccessContext.canAdministerArea(auth, conv.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + id);
+        }
         return chatMessageService.getMessageTrace(id, messageId).map(MessageTraceDto::from)
             .map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }

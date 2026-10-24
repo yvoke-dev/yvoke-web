@@ -5,7 +5,11 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
@@ -56,10 +60,35 @@ public class AreaTools {
     @Tool(name = "list_areas", description = DESCRIPTION)
     public String listAreas() {
         try {
-            return objectMapper.writeValueAsString(
-                areaService.listAreasWithMembers().stream().map(AreaDto::from).toList());
+            List<AreaWithMembers> all = areaService.listAreasWithMembers();
+            Optional<Set<String>> allowed = AreaAccessContext.allowedUserAreasLower();
+            List<AreaWithMembers> accessible;
+            if (allowed.isEmpty()) {
+                accessible = all;
+            } else {
+                Set<String> allowedSet = allowed.get();
+                accessible = all.stream()
+                    .filter(a -> allowedSet.contains(a.area().name().toLowerCase(Locale.ROOT)))
+                    .toList();
+            }
+            return objectMapper.writeValueAsString(accessible.stream().map(AreaDto::from).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_areas", e);
+        }
+    }
+
+    public String getAreaOverview(String area) {
+        if (area == null || area.isBlank() || !AreaAccessContext.canAccessUserArea(area.trim())) {
+            return "Error: Area '" + area + "' not found.";
+        }
+        try {
+            Optional<AreaWithMembers> found = areaService.findAreaWithMembers(area.trim());
+            if (found.isEmpty()) {
+                return "Error: Area '" + area + "' not found.";
+            }
+            return objectMapper.writeValueAsString(AreaDto.from(found.get()));
+        } catch (Exception e) {
+            return McpToolUtils.toolError("get_area_overview", e);
         }
     }
 }

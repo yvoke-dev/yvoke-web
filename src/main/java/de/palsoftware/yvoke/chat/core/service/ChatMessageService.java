@@ -4,13 +4,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
@@ -205,6 +209,21 @@ public class ChatMessageService {
             return new IllegalArgumentException("The selected playbook is invalid.");
         });
 
+        Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
+        if (userAllowedAreas.isPresent()) {
+            if (playbook.area() == null || playbook.area().isBlank() || !userAllowedAreas.get()
+                .contains(playbook.area().trim().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("The selected playbook is invalid.");
+            }
+        }
+        Set<String> turnAreas = (playbook.area() != null && !playbook.area().isBlank())
+            ? Set.of(playbook.area().trim().toLowerCase(Locale.ROOT))
+            : userAllowedAreas.orElse(null);
+
+        if (playbook.area() != null && !playbook.area().isBlank()) {
+            conversationRepository.updateAreaIfAbsent(conversationId, playbook.area());
+        }
+
         List<String> allowedTools = playbook.tools();
         boolean codeExecution = playbook.codeExecution();
 
@@ -229,7 +248,7 @@ public class ChatMessageService {
 
         return new PreparedChat(conversationId, userMessageId, userContent, modelToUse,
             systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution,
-            effectivePlaybookName, playbook.version());
+            effectivePlaybookName, playbook.version(), turnAreas);
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
@@ -350,6 +369,23 @@ public class ChatMessageService {
             throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
                 + "' no longer exists; please start a new conversation.");
         }
+
+        Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
+        Optional<String> profileArea = orchestrationService.getProfileArea(profileName);
+        if (userAllowedAreas.isPresent()) {
+            if (profileArea.isEmpty() || profileArea.get().isBlank() || !userAllowedAreas.get()
+                .contains(profileArea.get().trim().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
+                    + "' no longer exists; please start a new conversation.");
+            }
+        }
+        Set<String> turnAreas = profileArea.filter(a -> !a.isBlank())
+            .map(a -> Set.of(a.trim().toLowerCase(Locale.ROOT)))
+            .orElseGet(() -> userAllowedAreas.orElse(null));
+
+        profileArea.filter(a -> !a.isBlank())
+            .ifPresent(a -> conversationRepository.updateAreaIfAbsent(conversationId, a));
+
         chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
@@ -378,8 +414,11 @@ public class ChatMessageService {
                 // userMessageId, not assistantMessageId: the other three chat entry points
                 // attribute LLM spend to the persisted user message, and a GROUP BY message_id
                 // that mixed the two would be comparing questions with answers.
-                OrchestrationResult result = orchestrationService.runOrchestration(conversationId,
-                    userMessageId, content, history, agentRunId, profileName);
+                OrchestrationResult result = (turnAreas != null)
+                    ? orchestrationService.runOrchestration(conversationId, userMessageId, content,
+                        history, agentRunId, profileName, turnAreas)
+                    : orchestrationService.runOrchestration(conversationId, userMessageId, content,
+                        history, agentRunId, profileName);
                 transactionTemplate.executeWithoutResult(status -> {
                     messageRepository.updateContentAndStatus(assistantMessageId, result.content(),
                         result.retrievedChunkIds(), Collections.emptyList(), result.promptTokens(),
@@ -586,7 +625,16 @@ public class ChatMessageService {
     public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
         String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
         String thinkingLevel, boolean codeExecution, String playbookName,
-        Integer playbookVersion) {}
+        Integer playbookVersion, @Nullable Set<String> allowedAreasLower) {
+
+        public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
+            String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
+            String thinkingLevel, boolean codeExecution, String playbookName,
+            Integer playbookVersion) {
+            this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history,
+                allowedTools, thinkingLevel, codeExecution, playbookName, playbookVersion, null);
+        }
+    }
 
     private void saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
         String playbookName, Integer playbookVersion) {
@@ -702,7 +750,8 @@ public class ChatMessageService {
             .modelOverride(prepared.modelToUse()).history(prepared.history())
             .systemPromptOverride(prepared.systemPrompt()).allowedTools(prepared.allowedTools())
             .thinkingLevel(prepared.thinkingLevel()).codeExecution(prepared.codeExecution())
-            .traceToolCalls(chatProperties.traceToolCalls()).build();
+            .traceToolCalls(chatProperties.traceToolCalls())
+            .allowedAreasLower(prepared.allowedAreasLower()).build();
     }
 
     /**

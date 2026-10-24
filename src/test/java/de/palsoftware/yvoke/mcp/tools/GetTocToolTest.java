@@ -4,15 +4,23 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.service.TocService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Map;
@@ -22,13 +30,20 @@ public class GetTocToolTest {
 
     private DocumentRepository documentRepository;
     private TocService tocService;
+    private CollectionService collectionService;
     private GetTocTool getTocTool;
 
     @BeforeEach
     public void setUp() {
         documentRepository = mock(DocumentRepository.class);
         tocService = mock(TocService.class);
-        getTocTool = new GetTocTool(documentRepository, tocService);
+        collectionService = mock(CollectionService.class);
+        getTocTool = new GetTocTool(documentRepository, tocService, collectionService);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -170,5 +185,26 @@ public class GetTocToolTest {
         when(documentRepository.findById(eq(missingId))).thenReturn(Optional.empty());
         String out3 = getTocTool.getToc(missingId.toString(), null);
         assertTrue(out3.contains("not found"));
+    }
+
+    @Test
+    public void testUnauthorizedDocumentAreaReturnsNotFound() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("oim-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        UUID pingColId = UUID.randomUUID();
+        UUID pingDocId = UUID.randomUUID();
+        DocumentRow pingDoc = new DocumentRow(pingDocId, pingColId, "PingID - Manuals", "manual",
+            "PingID Manual", Map.of(), "completed", Collections.emptyList(), Instant.now());
+        when(documentRepository.findById(eq(pingDocId))).thenReturn(Optional.of(pingDoc));
+        when(collectionService.findById(eq(pingColId)))
+            .thenReturn(Optional.of(new Collection(pingColId, "PingID - Manuals", "desc", List.of(),
+                OffsetDateTime.now(), "PingID")));
+
+        String output = getTocTool.getToc(pingDocId.toString(), null);
+        assertEquals("Error: Document with ID '" + pingDocId + "' not found.", output);
+        verify(tocService, never()).getToc(any(UUID.class), any());
     }
 }

@@ -1,18 +1,34 @@
 package de.palsoftware.yvoke.shared.security;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.mcp.tools.AreaTools;
+import de.palsoftware.yvoke.mcp.tools.GetGraphNeighborsTool;
+import de.palsoftware.yvoke.mcp.tools.GetJsonSchemaTool;
+import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
+import de.palsoftware.yvoke.mcp.tools.GetTocTool;
+import de.palsoftware.yvoke.mcp.tools.PlaybookTools;
+import de.palsoftware.yvoke.mcp.tools.QueryJsonObjectsTool;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchGraphEntitiesTool;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -32,6 +48,39 @@ public class McpSecurityGatingIT {
     @Autowired
     private WebApplicationContext context;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AreaTools areaTools;
+
+    @Autowired
+    private PlaybookTools playbookTools;
+
+    @Autowired
+    private SearchCorpusTool searchCorpusTool;
+
+    @Autowired
+    private SearchGraphEntitiesTool searchGraphEntitiesTool;
+
+    @Autowired
+    private GetGraphNeighborsTool getGraphNeighborsTool;
+
+    @Autowired
+    private GetJsonSchemaTool getJsonSchemaTool;
+
+    @Autowired
+    private QueryJsonObjectsTool queryJsonObjectsTool;
+
+    @Autowired
+    private GetTocTool getTocTool;
+
+    @Autowired
+    private GetSectionTool getSectionTool;
+
+    @Autowired
+    private VerifyCitationsTool verifyCitationsTool;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -40,6 +89,18 @@ public class McpSecurityGatingIT {
                 .webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
+
+        jdbcTemplate.update("INSERT INTO areas (name, title) VALUES ('PingID', 'PingID') ON CONFLICT DO NOTHING");
+        jdbcTemplate.update("INSERT INTO playbooks (name, area, title, template_text) VALUES ('ping-full', 'PingID', 'Ping Full', 'ping template') ON CONFLICT DO NOTHING");
+        jdbcTemplate.update("INSERT INTO collections (id, name, area, tags) VALUES (?, 'Ping - Docs', 'PingID', '{}') ON CONFLICT DO NOTHING", UUID.randomUUID());
+    }
+
+    @AfterEach
+    public void tearDown() {
+        jdbcTemplate.update("DELETE FROM collections WHERE name = 'Ping - Docs'");
+        jdbcTemplate.update("DELETE FROM playbooks WHERE name = 'ping-full'");
+        jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -358,5 +419,152 @@ public class McpSecurityGatingIT {
         mockMvc.perform(get("/mcp").header("X-Yvoke-Dev-Mode", "false"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().string("WWW-Authenticate", containsString("Bearer realm=\"mcp\"")));
+    }
+
+    @Test
+    public void testDesktopSyncAreasSingleAreaUser() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User"))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].name").value("OIM"));
+    }
+
+    @Test
+    public void testDesktopSyncAreasMultiAreaUser() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User", "PingID.Admin"), "Admin", "User"))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    public void testDesktopSyncAreasGlobalUser() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("User"), "Admin", "User"))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.length()").value(greaterThanOrEqualTo(2)));
+    }
+
+    @Test
+    public void testDesktopSyncAreasGlobalAdmin() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("Admin"), "Admin", "User"))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.length()").value(greaterThanOrEqualTo(2)));
+    }
+
+    @Test
+    public void testDesktopSyncAreaPackageAuthorized() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas/OIM/package")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User"))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.name").value("OIM"));
+    }
+
+    @Test
+    public void testDesktopSyncAreaPackageUnauthorizedReturns404() throws Exception {
+        mockMvc.perform(get("/api/chat/v1/areas/PingID/package")
+                .with(jwt().authorities(AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User"))))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    public void testMcpAreaToolsScoping() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User")));
+
+        String listJson = areaTools.listAreas();
+        assertThat(listJson).contains("OIM").doesNotContain("PingID");
+
+        String oimOverview = areaTools.getAreaOverview("OIM");
+        assertThat(oimOverview).contains("OIM");
+
+        String pingOverview = areaTools.getAreaOverview("PingID");
+        assertThat(pingOverview).isEqualTo("Error: Area 'PingID' not found.");
+    }
+
+    @Test
+    public void testMcpAreaToolsMultiRoleUnion() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User", "PingID.Admin"), "Admin", "User")));
+
+        String listJson = areaTools.listAreas();
+        assertThat(listJson).contains("OIM").contains("PingID");
+
+        String pingOverview = areaTools.getAreaOverview("PingID");
+        assertThat(pingOverview).contains("PingID");
+
+        String nonExistent = areaTools.getAreaOverview("NonExistent");
+        assertThat(nonExistent).isEqualTo("Error: Area 'NonExistent' not found.");
+    }
+
+    @Test
+    public void testMcpPlaybookToolsScoping() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User")));
+
+        String result = playbookTools.getPlaybook("ping-full");
+        assertThat(result).isEqualTo("ERROR: playbook 'ping-full' not found.");
+    }
+
+    @Test
+    public void testMcpSearchCorpusToolScoping() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User")));
+
+        String result = searchCorpusTool.searchCorpus("query", "Ping - Docs", null, null, null);
+        assertThat(result).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+    }
+
+    @Test
+    public void testAllMcpCorpusGraphJsonAndCitationToolsEnforceAreaScoping() {
+        UUID pingColId = jdbcTemplate.queryForObject(
+            "SELECT id FROM collections WHERE name = 'Ping - Docs'", UUID.class);
+        UUID pingDocId = UUID.randomUUID();
+        UUID pingChunkId = UUID.randomUUID();
+        jdbcTemplate.update(
+            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status) VALUES (?, ?, 'manual', 'Ping Guide', 'completed')",
+            pingDocId, pingColId);
+        jdbcTemplate.update(
+            "INSERT INTO chunks (id, document_id, collection_id, text, heading_path, heading, depth, sort_order) VALUES (?, ?, ?, 'Ping secret', ARRAY['Ch1'], 'Ch1', 1, 0)",
+            pingChunkId, pingDocId, pingColId);
+
+        try {
+            SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("user", "pass",
+                    AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin",
+                        "User")));
+
+            assertThat(searchGraphEntitiesTool.searchGraphEntities("node", "Ping - Docs", null,
+                null, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getGraphNeighborsTool.getGraphNeighbors("node", "Ping - Docs", null, null,
+                null, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getJsonSchemaTool.getJsonSchema("Ping - Docs", null))
+                .isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(queryJsonObjectsTool.queryJsonObjects("Ping - Docs", null, null, "name",
+                10, 0, false, null)).isEqualTo("Error: Collection 'Ping - Docs' does not exist.");
+            assertThat(getTocTool.getToc(pingDocId.toString(), null))
+                .isEqualTo("Error: Document with ID '" + pingDocId + "' not found.");
+            assertThat(getSectionTool.getSection(pingDocId.toString(), "Ch1", null))
+                .isEqualTo("Error: Document not found: " + pingDocId);
+            assertThat(getSectionTool.getSection(null, null, pingChunkId.toString()))
+                .isEqualTo("Error: Chunk not found: " + pingChunkId);
+            assertThat(verifyCitationsTool
+                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]")))
+                .contains("1 cited, 1 FABRICATED");
+        } finally {
+            jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", pingChunkId);
+            jdbcTemplate.update("DELETE FROM documents WHERE id = ?", pingDocId);
+        }
     }
 }

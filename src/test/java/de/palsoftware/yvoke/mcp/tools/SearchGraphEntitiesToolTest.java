@@ -8,12 +8,18 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.ArrayList;
 
 public class SearchGraphEntitiesToolTest {
@@ -267,6 +273,11 @@ public class SearchGraphEntitiesToolTest {
             output.contains("Error: Tag '9.3,10.0' does not exist in collection 'OIM - DB'."));
     }
 
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     public void testUntaggedCallOnATagScopedCollectionIsRejected() {
         String output =
@@ -276,6 +287,23 @@ public class SearchGraphEntitiesToolTest {
         assertTrue(output.contains("tag-scoped"));
         assertTrue(output.contains("9.3") && output.contains("10.0"),
             "expected the valid tags listed, got:\n" + output);
+    }
+
+    @Test
+    public void testUnauthorizedCollectionAreaReturnsOpaqueNotFound() {
+        Collection pingCol = new Collection(UUID.randomUUID(), "Ping - KG", "Ping Graph", List.of(),
+            OffsetDateTime.now(), "PingID");
+        when(collectionService.listCollections()).thenReturn(List.of(pingCol));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        String output =
+            searchGraphEntitiesTool.searchGraphEntities("User", "Ping - KG", null, null, 20);
+
+        assertEquals("Error: Collection 'Ping - KG' does not exist.", output);
+        verifyNoInteractions(kgRepository);
     }
 
 }

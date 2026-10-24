@@ -7,6 +7,17 @@ import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentDetails;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
+import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
+import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
+import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -30,10 +41,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -46,11 +59,15 @@ public class RagService {
 
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
 
+    private final HybridSearch hybridSearch;
     private final LlmClient llmClient;
     private final CitationVerifier citationVerifier;
     private final ObjectMapper objectMapper;
     private final SystemPromptService systemPromptService;
     private final WebSearchService webSearchService;
+    private final CollectionService collectionService;
+    private final DocumentRepository documentRepository;
+    private final ChunkRepository chunkRepository;
     private final int maxIterations;
     private final int maxTokens;
     private final double temperature;
@@ -68,7 +85,7 @@ public class RagService {
         CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
         int maxTokens, double temperature) {
         this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
-            temperature, null, true, null, List.of(), null);
+            temperature, null, true, null, List.of(), null, null, null, null);
     }
 
     public RagService(HybridSearch hybridSearch, LlmClient llmClient,
@@ -76,7 +93,27 @@ public class RagService {
         int maxTokens, double temperature, String thinkingLevel, boolean chatEnabled,
         @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks) {
         this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
-            temperature, thinkingLevel, chatEnabled, systemPromptService, toolCallbacks, null);
+            temperature, thinkingLevel, chatEnabled, systemPromptService, toolCallbacks, null, null,
+            null, null);
+    }
+
+    public RagService(HybridSearch hybridSearch, LlmClient llmClient,
+        CitationVerifier citationVerifier, ObjectMapper objectMapper, int maxIterations,
+        int maxTokens, double temperature, String thinkingLevel, boolean chatEnabled,
+        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks,
+        @Nullable WebSearchService webSearchService) {
+        this(hybridSearch, llmClient, citationVerifier, objectMapper, maxIterations, maxTokens,
+            temperature, thinkingLevel, chatEnabled, systemPromptService, toolCallbacks,
+            webSearchService, null, null, null);
+    }
+
+    public RagService(HybridSearch hybridSearch, LlmClient llmClient,
+        CitationVerifier citationVerifier, ObjectMapper objectMapper,
+        @Nullable CollectionService collectionService,
+        @Nullable DocumentRepository documentRepository,
+        @Nullable ChunkRepository chunkRepository) {
+        this(hybridSearch, llmClient, citationVerifier, objectMapper, 6, 4096, 0.7, null, true,
+            null, List.of(), null, collectionService, documentRepository, chunkRepository);
     }
 
     @Autowired
@@ -87,13 +124,20 @@ public class RagService {
         @Value("${app.ai.rag.temperature}") double temperature,
         @Value("${app.ai.rag.thinking-level}") String thinkingLevel,
         @Value("${app.chat.enabled}") boolean chatEnabled,
-        @Nullable SystemPromptService systemPromptService, List<ToolCallback> toolCallbacks,
-        @Nullable WebSearchService webSearchService) {
+        @Nullable SystemPromptService systemPromptService,
+        @Nullable List<ToolCallback> toolCallbacks, @Nullable WebSearchService webSearchService,
+        @Nullable CollectionService collectionService,
+        @Nullable DocumentRepository documentRepository,
+        @Nullable ChunkRepository chunkRepository) {
+        this.hybridSearch = hybridSearch;
         this.llmClient = llmClient;
         this.citationVerifier = citationVerifier;
         this.objectMapper = objectMapper;
         this.systemPromptService = systemPromptService;
         this.webSearchService = webSearchService;
+        this.collectionService = collectionService;
+        this.documentRepository = documentRepository;
+        this.chunkRepository = chunkRepository;
         this.maxIterations = maxIterations;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
@@ -161,7 +205,7 @@ public class RagService {
         log.info("Generating agentic answer for query: '{}', modelOverride: '{}'", query,
             resolvedModel);
 
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(request.allowedAreasLower());
         List<LlmMessage> messages = seedMessages(request, systemPromptOverride, history, query);
 
         // Per-run tool dispatch: the shared registry plus any run-scoped extra tools (e.g. the
@@ -560,17 +604,25 @@ public class RagService {
             boolean isError = false;
             if (callback != null) {
                 try {
-                    if (callback instanceof ContextAwareToolCallback contextAware) {
-                        responseData = contextAware.callWithContext(tc.arguments(), ctx);
+                    String guarded = guardToolExecution(tc, ctx);
+                    if (guarded != null) {
+                        responseData = guarded;
+                        isError =
+                            responseData.startsWith("Error:") || responseData.startsWith("Error ");
+                        log.info("Tool {} intercepted by area guard: {}", tc.name(), responseData);
                     } else {
-                        responseData = callback.call(tc.arguments());
+                        if (callback instanceof ContextAwareToolCallback contextAware) {
+                            responseData = contextAware.callWithContext(tc.arguments(), ctx);
+                        } else {
+                            responseData = callback.call(tc.arguments());
+                        }
+                        if (responseData != null && (responseData.startsWith("Error:")
+                            || responseData.startsWith("Error "))) {
+                            isError = true;
+                        }
+                        log.info("Tool {} executed successfully, response length: {}", tc.name(),
+                            responseData != null ? responseData.length() : 0);
                     }
-                    if (responseData != null && (responseData.startsWith("Error:")
-                        || responseData.startsWith("Error "))) {
-                        isError = true;
-                    }
-                    log.info("Tool {} executed successfully, response length: {}", tc.name(),
-                        responseData != null ? responseData.length() : 0);
                 } catch (Exception e) {
                     if (Thread.currentThread().isInterrupted() || e instanceof InterruptedException
                         || e instanceof CancellationException
@@ -680,6 +732,384 @@ public class RagService {
     private void checkChatEnabled() {
         if (!chatEnabled) {
             throw new IllegalStateException("Webchat is disabled.");
+        }
+    }
+
+    @Nullable
+    private String guardToolExecution(LlmToolCall tc, @Nullable AgenticChatContext ctx) {
+        if (ctx == null || collectionService == null) {
+            return null;
+        }
+
+        String name = tc.name();
+        if (name == null) {
+            return null;
+        }
+
+        Map<String, Object> args = parseJsonArguments(tc.arguments());
+
+        switch (name) {
+            case "search_corpus":
+                return guardSearchCorpus(args, ctx);
+            case "list_documents":
+                return guardListDocuments(args, ctx);
+            case "get_toc":
+                return guardGetToc(args, ctx);
+            case "get_section":
+                return guardGetSection(args, ctx);
+            case "search_graph_entities":
+            case "get_graph_neighbors":
+            case "get_json_schema":
+            case "query_json_objects":
+                return guardCollectionParamTool(name, args, ctx);
+            case "verify_citations":
+                return guardVerifyCitations(args, ctx);
+            default:
+                return null;
+        }
+    }
+
+    @Nullable
+    private String guardCollectionParamTool(String toolName, Map<String, Object> args,
+        AgenticChatContext ctx) {
+        String colName = (String) args.get("collection");
+        if (colName != null && !colName.isBlank()) {
+            Collection col = resolveCollection(colName, ctx);
+            if (col == null) {
+                return "Error: Collection '" + colName.trim() + "' does not exist.";
+            }
+        } else if ("search_graph_entities".equals(toolName) && ctx.getAllowedAreasLower() != null) {
+            List<Collection> allowed = collectionService.listCollections().stream()
+                .filter(c -> ctx.isAreaAllowed(c.area())).toList();
+            if (allowed.isEmpty()) {
+                return "[]";
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private String guardSearchCorpus(Map<String, Object> args, AgenticChatContext ctx) {
+        String colName = (String) args.get("collection");
+        if (colName != null && !colName.isBlank()) {
+            Collection col = resolveCollection(colName, ctx);
+            if (col == null) {
+                return "Error: Collection '" + colName.trim() + "' does not exist.";
+            }
+            return null;
+        }
+
+        // Omit-collection search
+        if (ctx.getAllowedAreasLower() != null) {
+            List<Collection> allowed = collectionService.listCollections().stream()
+                .filter(c -> ctx.isAreaAllowed(c.area())).toList();
+            if (allowed.isEmpty()) {
+                return "No relevant documents found.";
+            }
+            if (hybridSearch != null) {
+                String q = (String) args.get("query");
+                if (q == null || q.isBlank()) {
+                    return "Error: 'query' parameter is required for search_corpus. If you wanted to list documents or modules in a collection (e.g. by kind), please use the 'list_documents' tool instead.";
+                }
+                List<String> allowedNames = allowed.stream().map(Collection::name).toList();
+                Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
+                String tag = (String) args.get("tag");
+                String tagError = requireAreaTag(allowed, tag);
+                if (tagError != null) {
+                    return tagError;
+                }
+                List<String> tagList =
+                    (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : List.of();
+                SearchWithId swi = hybridSearch.searchWithId(q.trim(),
+                    new SearchOptions(allowedNames, limit, null, null, 0, true, tagList));
+                if (swi != null) {
+                    if (swi.searchId() != null) {
+                        ctx.getSearchIds().add(swi.searchId());
+                    }
+                    if (swi.results() != null && !swi.results().isEmpty()) {
+                        for (HybridSearchResult res : swi.results()) {
+                            ctx.getRetrievedChunkIds().add(res.id());
+                        }
+                        return ChunkBlocks.format(swi.results(), ctx);
+                    }
+                }
+                return "No relevant documents found.";
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private String guardListDocuments(Map<String, Object> args, AgenticChatContext ctx) {
+        String colName = (String) args.get("collection");
+        if (colName != null && !colName.isBlank()) {
+            Collection col = resolveCollection(colName, ctx);
+            if (col == null) {
+                return "Error: Collection '" + colName.trim() + "' does not exist.";
+            }
+            return null;
+        }
+
+        // Omit-collection listing
+        if (ctx.getAllowedAreasLower() != null) {
+            List<Collection> allowed = collectionService.listCollections().stream()
+                .filter(c -> ctx.isAreaAllowed(c.area())).toList();
+            if (allowed.isEmpty()) {
+                return "| document_id | kind | title | chunks |\n|---|---|---|---|";
+            }
+            String rawTag = (String) args.get("tag");
+            String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+            String tagError = requireAreaTag(allowed, parsedTag);
+            if (tagError != null) {
+                return tagError;
+            }
+            String rawKind = (String) args.get("kind");
+            String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
+            String rawQuery = (String) args.get("query");
+            String fuzzyQuery = (rawQuery != null && !rawQuery.isBlank()) ? rawQuery.trim() : null;
+            int lim = (args.get("limit") instanceof Number n) ? n.intValue() : 100;
+            int off = (args.get("offset") instanceof Number n) ? n.intValue() : 0;
+            if (documentRepository != null) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
+                for (Collection c : allowed) {
+                    try {
+                        String effectiveKind = parsedKind;
+                        if (parsedKind != null) {
+                            List<String> validKinds =
+                                documentRepository.findDistinctKindsInCollection(c.name());
+                            if (validKinds != null && !validKinds.isEmpty()) {
+                                effectiveKind = validKinds.stream()
+                                    .filter(parsedKind::equalsIgnoreCase).findFirst().orElse(null);
+                                if (effectiveKind == null) {
+                                    continue;
+                                }
+                            }
+                        }
+                        List<DocumentDetails> docs = documentRepository.listDocuments(c.name(), lim,
+                            off, effectiveKind, parsedTag, null, null, fuzzyQuery);
+                        if (docs != null) {
+                            for (DocumentDetails d : docs) {
+                                sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
+                                    .append(escapeTableCell(d.kind())).append(" | ")
+                                    .append(escapeTableCell(d.title())).append(" | ")
+                                    .append(d.chunkCount()).append(" |\n");
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to list documents for collection {}", c.name(), e);
+                    }
+                }
+                return sb.toString();
+            }
+            return "| document_id | kind | title | chunks |\n|---|---|---|---|";
+        }
+        return null;
+    }
+
+    /**
+     * Enforces version/tag scoping on omit-collection {@code search_corpus} and
+     * {@code list_documents} calls across an area's allowed collections.
+     *
+     * <p>
+     * Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections in
+     * the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
+     * schema only has {@code 10.0}), omitting {@code collection} would either silently drop the
+     * other collection or mix versions, so the caller is prompted to name {@code collection}
+     * explicitly.
+     */
+    @Nullable
+    private static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
+        List<Collection> taggedCols =
+            allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
+        if (taggedCols.isEmpty()) {
+            return null;
+        }
+        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+        if (parsedTag == null) {
+            if (allowed.size() == 1 && taggedCols.size() == 1) {
+                Collection single = taggedCols.get(0);
+                return "Error: Collection '" + single.name()
+                    + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                    + String.join(", ", single.tags())
+                    + ") so results come from a single version/dataset.";
+            }
+            String taggedSummary = taggedCols.stream()
+                .map(c -> c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
+                .collect(Collectors.joining("; "));
+            return "Error: Area contains version/tag-scoped collections (" + taggedSummary
+                + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
+        }
+        for (Collection tc : taggedCols) {
+            if (!tc.tags().contains(parsedTag)) {
+                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + tc.name()
+                    + "' (valid tags: " + String.join(", ", tc.tags())
+                    + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private String guardGetToc(Map<String, Object> args, AgenticChatContext ctx) {
+        String docIdStr = (String) args.get("document_id");
+        if (docIdStr == null || docIdStr.isBlank()) {
+            docIdStr = (String) args.get("documentId");
+        }
+        if (docIdStr == null || docIdStr.isBlank()) {
+            return null;
+        }
+        UUID docId = parseUuid(docIdStr);
+        if (docId != null && documentRepository != null) {
+            Optional<DocumentRow> docOpt = documentRepository.findById(docId);
+            if (docOpt.isPresent()) {
+                Optional<Collection> colOpt =
+                    collectionService.findById(docOpt.get().collectionId());
+                if (colOpt.isEmpty() || !ctx.isAreaAllowed(colOpt.get().area())) {
+                    return "Error: Document with ID '" + docId + "' not found.";
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private String guardGetSection(Map<String, Object> args, AgenticChatContext ctx) {
+        String docIdStr = (String) args.get("document_id");
+        if (docIdStr == null || docIdStr.isBlank()) {
+            docIdStr = (String) args.get("documentId");
+        }
+        String chunkIdStr = (String) args.get("chunk_id");
+        if (chunkIdStr == null || chunkIdStr.isBlank()) {
+            chunkIdStr = (String) args.get("chunkId");
+        }
+
+        if (docIdStr != null && !docIdStr.isBlank()) {
+            UUID docId = parseUuid(docIdStr);
+            if (docId != null && documentRepository != null) {
+                Optional<DocumentRow> docOpt = documentRepository.findById(docId);
+                if (docOpt.isPresent()) {
+                    Optional<Collection> colOpt =
+                        collectionService.findById(docOpt.get().collectionId());
+                    if (colOpt.isEmpty() || !ctx.isAreaAllowed(colOpt.get().area())) {
+                        return "Error: Document not found: " + docIdStr.trim();
+                    }
+                }
+            }
+        }
+
+        if (chunkIdStr != null && !chunkIdStr.isBlank()) {
+            if (chunkRepository != null && documentRepository != null) {
+                Optional<ChunkRow> chunkOpt = Optional.empty();
+                try {
+                    chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr.trim());
+                } catch (IllegalArgumentException ignored) {
+                    // Short or non-hex prefix; let the tool or UUID fallback handle it
+                }
+                if (chunkOpt.isEmpty()) {
+                    UUID chunkId = parseUuid(chunkIdStr);
+                    if (chunkId != null) {
+                        chunkOpt = chunkRepository.findById(chunkId);
+                    }
+                }
+                if (chunkOpt.isPresent()) {
+                    Optional<DocumentRow> docOpt =
+                        documentRepository.findById(chunkOpt.get().documentId());
+                    if (docOpt.isPresent()) {
+                        Optional<Collection> colOpt =
+                            collectionService.findById(docOpt.get().collectionId());
+                        if (colOpt.isEmpty() || !ctx.isAreaAllowed(colOpt.get().area())) {
+                            return "Error: Chunk not found: " + chunkIdStr.trim();
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    @Nullable
+    private String guardVerifyCitations(Map<String, Object> args, AgenticChatContext ctx) {
+        if (citationVerifier == null) {
+            return null;
+        }
+        List<String> citations = extractCitations(args.get("citations"));
+        if (citations == null || citations.isEmpty()) {
+            return "Error: 'citations' parameter is required. At least one citation token must be specified.";
+        }
+        List<CitationVerifier.CitationCheckResult> results =
+            citationVerifier.checkCitations(citations, ctx.getAllowedAreasLower());
+        return CitationVerifier.formatReport(results);
+    }
+
+    private static String escapeTableCell(@Nullable String val) {
+        if (val == null) {
+            return "";
+        }
+        return val.replace("|", "\\|").replace("\n", " ");
+    }
+
+    public @Nullable Collection resolveCollection(@Nullable String collectionName,
+        @Nullable AgenticChatContext context) {
+        if (collectionName == null || collectionName.isBlank() || collectionService == null) {
+            return null;
+        }
+        String trimmed = collectionName.trim();
+        List<Collection> allCols = collectionService.listCollections();
+        if (allCols == null) {
+            return null;
+        }
+        Collection matched = allCols.stream().filter(c -> c.name().equalsIgnoreCase(trimmed))
+            .findFirst().orElse(null);
+        if (matched == null) {
+            return null;
+        }
+        if (context != null && !context.isAreaAllowed(matched.area())) {
+            return null;
+        }
+        return matched;
+    }
+
+    public @Nullable UUID resolveCollectionId(@Nullable String collectionName,
+        @Nullable AgenticChatContext context) {
+        Collection col = resolveCollection(collectionName, context);
+        return col != null ? col.id() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseJsonArguments(String json) {
+        if (json == null || json.isBlank()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return objectMapper.readValue(json, Map.class);
+        } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private List<String> extractCitations(Object citationsObj) {
+        if (citationsObj instanceof List<?> list) {
+            List<String> result = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) {
+                    result.add(item.toString());
+                }
+            }
+            return result;
+        }
+        return Collections.emptyList();
+    }
+
+    private static UUID parseUuid(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.toString().trim());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

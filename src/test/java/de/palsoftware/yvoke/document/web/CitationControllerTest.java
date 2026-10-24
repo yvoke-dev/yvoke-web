@@ -1,26 +1,53 @@
 package de.palsoftware.yvoke.document.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.SectionService;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
+import org.springframework.web.server.ResponseStatusException;
 
 public class CitationControllerTest {
 
     private SectionService sectionService;
+    private ChunkRepository chunkRepository;
+    private DocumentRepository documentRepository;
+    private CollectionService collectionService;
     private Model model;
 
     @BeforeEach
     public void setUp() {
         sectionService = mock(SectionService.class);
+        chunkRepository = mock(ChunkRepository.class);
+        documentRepository = mock(DocumentRepository.class);
+        collectionService = mock(CollectionService.class);
         model = new ConcurrentModel();
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -159,5 +186,123 @@ public class CitationControllerTest {
         assertThat(error).doesNotContain("relation");
         assertThat(error).doesNotContain("chunks");
         assertThat(error).doesNotContain("does not exist");
+    }
+
+    @Test
+    public void testGetCitationForChunkInUnauthorizedAreaReturnsNotFound() {
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
+
+        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
+            "heading", 1, 1, null, "docTitle", "md", "FinanceCol", null, 1.0);
+        when(chunkRepository.findByIdPrefix("chunk123")).thenReturn(Optional.of(chunk));
+
+        Collection col = new Collection(UUID.randomUUID(), "FinanceCol", "desc", List.of(),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("FinanceCol")).thenReturn(Optional.of(col));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        String view = controller.getCitation("chunk123", null, model);
+
+        assertThat(view).isEqualTo("document/fragments/citation-expander");
+        assertThat(model.getAttribute("section")).isNull();
+        assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
+    }
+
+    @Test
+    public void testGetCitationForDocumentInUnauthorizedAreaReturnsNotFound() {
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
+
+        UUID docId = UUID.randomUUID();
+        UUID colId = UUID.randomUUID();
+        DocumentRow doc = new DocumentRow(docId, colId, "FinanceCol", "md", "Title", null,
+            "SUCCESS", List.of(), Instant.now());
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
+
+        Collection col =
+            new Collection(colId, "FinanceCol", "desc", List.of(), OffsetDateTime.now(), "Finance");
+        when(collectionService.findById(colId)).thenReturn(Optional.of(col));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        String view = controller.getCitation(null, docId.toString(), model);
+
+        assertThat(view).isEqualTo("document/fragments/citation-expander");
+        assertThat(model.getAttribute("section")).isNull();
+        assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
+    }
+
+    @Test
+    public void testGetChunkCitationEndpoint200WhenAuthorizedAnd404WhenUnauthorized() {
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
+
+        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
+            "heading", 1, 1, null, "docTitle", "md", "Col", null, 1.0);
+        when(chunkRepository.findByIdPrefix("chunk123")).thenReturn(Optional.of(chunk));
+
+        Collection col = new Collection(UUID.randomUUID(), "Col", "desc", List.of(),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Col")).thenReturn(Optional.of(col));
+
+        SectionResponse section =
+            new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
+        when(sectionService.getChunkContent("chunk123")).thenReturn(section);
+
+        // Unauthorized caller
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        assertThatThrownBy(() -> controller.getChunkCitation("chunk123"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+
+        // Authorized caller
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
+
+        SectionResponse result = controller.getChunkCitation("chunk123");
+        assertThat(result).isEqualTo(section);
+    }
+
+    @Test
+    public void testGetDocumentCitationEndpoint200WhenAuthorizedAnd404WhenUnauthorized() {
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
+
+        UUID docId = UUID.randomUUID();
+        UUID colId = UUID.randomUUID();
+        DocumentRow doc = new DocumentRow(docId, colId, "Col", "md", "Title", null, "SUCCESS",
+            List.of(), Instant.now());
+        when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
+
+        Collection col =
+            new Collection(colId, "Col", "desc", List.of(), OffsetDateTime.now(), "Finance");
+        when(collectionService.findById(colId)).thenReturn(Optional.of(col));
+
+        SectionResponse section =
+            new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
+        when(sectionService.getSectionByDocumentId(docId.toString(), null)).thenReturn(section);
+
+        // Unauthorized caller
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        assertThatThrownBy(() -> controller.getDocumentCitation(docId.toString()))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+
+        // Authorized caller
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
+
+        SectionResponse result = controller.getDocumentCitation(docId.toString());
+        assertThat(result).isEqualTo(section);
     }
 }
