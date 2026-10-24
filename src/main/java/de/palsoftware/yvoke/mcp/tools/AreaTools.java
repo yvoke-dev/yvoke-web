@@ -4,9 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,6 +33,9 @@ public class AreaTools {
             + "defaultProfile, systemPrompts, collections, playbooks, profiles}, where the last "
             + "four are the names of the area's members. It does not answer questions about the "
             + "knowledge base.";
+
+    private static final String GET_AREA_OVERVIEW_DESCRIPTION =
+        "Returns an overview of an area including its description and member collections.";
 
     /** One area as {@code list_areas} returns it. */
     record AreaDto(String name, String title, String description, boolean prototype,
@@ -54,10 +63,39 @@ public class AreaTools {
     @Tool(name = "list_areas", description = DESCRIPTION)
     public String listAreas() {
         try {
-            return objectMapper.writeValueAsString(
-                areaService.listAreasWithMembers().stream().map(AreaDto::from).toList());
+            List<AreaWithMembers> all = areaService.listAreasWithMembers();
+            Optional<Set<String>> allowed = AreaAccessContext.allowedUserAreasLower();
+            List<AreaWithMembers> accessible;
+            if (allowed.isEmpty()) {
+                accessible = all;
+            } else {
+                Set<String> allowedSet = allowed.get();
+                accessible = all.stream()
+                    .filter(a -> allowedSet.contains(a.area().name().toLowerCase(Locale.ROOT)))
+                    .toList();
+            }
+            return objectMapper.writeValueAsString(accessible.stream().map(AreaDto::from).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_areas", e);
+        }
+    }
+
+    @McpTool(name = "get_area_overview", description = GET_AREA_OVERVIEW_DESCRIPTION)
+    @Tool(name = "get_area_overview", description = GET_AREA_OVERVIEW_DESCRIPTION)
+    public String getAreaOverview(
+        @McpToolParam(description = "The area name to look up.", required = true)
+        @ToolParam(description = "The area name to look up.", required = true) String area) {
+        if (area == null || area.isBlank() || !AreaAccessContext.canAccessUserArea(area.trim())) {
+            return "Error: Area '" + area + "' not found.";
+        }
+        try {
+            Optional<AreaWithMembers> found = areaService.findAreaWithMembers(area.trim());
+            if (found.isEmpty()) {
+                return "Error: Area '" + area + "' not found.";
+            }
+            return objectMapper.writeValueAsString(AreaDto.from(found.get()));
+        } catch (Exception e) {
+            return McpToolUtils.toolError("get_area_overview", e);
         }
     }
 }

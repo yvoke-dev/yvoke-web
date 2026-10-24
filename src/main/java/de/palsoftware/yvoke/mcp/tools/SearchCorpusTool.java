@@ -10,6 +10,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.List;
 import org.slf4j.Logger;
@@ -69,6 +70,10 @@ public class SearchCorpusTool {
         Collection matchedCol =
             allCols.stream().filter(c -> c.name().equalsIgnoreCase(col)).findFirst().orElse(null);
         if (matchedCol == null) {
+            return "Error: Collection '" + col + "' does not exist.";
+        }
+        if (matchedCol.area() != null && !matchedCol.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
             return "Error: Collection '" + col + "' does not exist.";
         }
 

@@ -8,6 +8,7 @@ import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -84,6 +85,15 @@ public class IngestService {
             }
             String trimmedFile = sourceFile.trim();
             String trimmedCol = sourceCollection.trim();
+            Optional<Collection> srcCol = collectionService.getCollection(trimmedCol);
+            if (srcCol.isPresent()) {
+                Collection col = srcCol.get();
+                if (col.area() != null && !col.area().isBlank()
+                    && !AreaAccessContext.canIngestArea(col.area())) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Collection '" + trimmedCol + "' does not exist.");
+                }
+            }
             String trimmedSourceTag =
                 (sourceTag != null && !sourceTag.isBlank()) ? sourceTag.trim() : targetTag.trim();
 
@@ -130,6 +140,18 @@ public class IngestService {
         @Nullable String summarizePromptName) {
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+        }
+
+        if (collection != null && !collection.isBlank()) {
+            Optional<Collection> existing = collectionService.getCollection(collection.trim());
+            if (existing.isPresent()) {
+                Collection col = existing.get();
+                if (col.area() != null && !col.area().isBlank()
+                    && !AreaAccessContext.canIngestArea(col.area())) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Collection '" + collection + "' does not exist.");
+                }
+            }
         }
 
         try {
@@ -277,12 +299,23 @@ public class IngestService {
      */
     private void ensureCollection(String collectionName, String description,
         @Nullable String area) {
-        if (collectionService.getCollection(collectionName).isPresent()) {
+        Optional<Collection> existing = collectionService.getCollection(collectionName);
+        if (existing.isPresent()) {
+            Collection col = existing.get();
+            if (col.area() != null && !col.area().isBlank()
+                && !AreaAccessContext.canIngestArea(col.area())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Collection '" + collectionName + "' does not exist.");
+            }
             return;
         }
         if (area == null || area.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Collection '"
                 + collectionName + "' does not exist; pass 'area' to create it in an area.");
+        }
+        if (!AreaAccessContext.canIngestArea(area)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Forbidden: cannot ingest into area '" + area + "'");
         }
         try {
             collectionService.createCollection(collectionName, description, area);

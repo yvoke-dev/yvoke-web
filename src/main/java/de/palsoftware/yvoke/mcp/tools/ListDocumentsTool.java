@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -82,6 +83,10 @@ public class ListDocumentsTool {
         Collection matchedCol =
             allCols.stream().filter(c -> c.name().equalsIgnoreCase(col)).findFirst().orElse(null);
         if (matchedCol == null) {
+            return "Error: Collection '" + col + "' does not exist.";
+        }
+        if (matchedCol.area() != null && !matchedCol.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
             return "Error: Collection '" + col + "' does not exist.";
         }
 

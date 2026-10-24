@@ -13,6 +13,7 @@ import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -32,6 +33,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import org.springframework.lang.Nullable;
 import jakarta.validation.Valid;
 
 @RestController
@@ -44,19 +48,21 @@ public class DesktopSyncController {
     private final OrchestratorProperties orchestratorProperties;
     private final OrchestratorProfileService orchestratorProfileService;
     private final DesktopOrchestratorRunService orchestratorRunService;
+    private final AreaService areaService;
 
     @Autowired
     public DesktopSyncController(DesktopSyncService syncService,
         SystemPromptService systemPromptService, PlaybookService playbookService,
         OrchestratorProperties orchestratorProperties,
-        OrchestratorProfileService orchestratorProfileService,
-        DesktopOrchestratorRunService orchestratorRunService) {
+        @Nullable OrchestratorProfileService orchestratorProfileService,
+        DesktopOrchestratorRunService orchestratorRunService, @Nullable AreaService areaService) {
         this.syncService = syncService;
         this.systemPromptService = systemPromptService;
         this.playbookService = playbookService;
         this.orchestratorProperties = orchestratorProperties;
         this.orchestratorProfileService = orchestratorProfileService;
         this.orchestratorRunService = orchestratorRunService;
+        this.areaService = areaService;
     }
 
     public DesktopSyncController(DesktopSyncService syncService,
@@ -64,12 +70,42 @@ public class DesktopSyncController {
         OrchestratorProperties orchestratorProperties,
         DesktopOrchestratorRunService orchestratorRunService) {
         this(syncService, systemPromptService, playbookService, orchestratorProperties, null,
-            orchestratorRunService);
+            orchestratorRunService, null);
+    }
+
+    public DesktopSyncController(DesktopSyncService syncService,
+        SystemPromptService systemPromptService, PlaybookService playbookService,
+        OrchestratorProperties orchestratorProperties,
+        OrchestratorProfileService orchestratorProfileService,
+        DesktopOrchestratorRunService orchestratorRunService) {
+        this(syncService, systemPromptService, playbookService, orchestratorProperties,
+            orchestratorProfileService, orchestratorRunService, null);
+    }
+
+    @GetMapping("/areas")
+    public List<AreaDto> listAreas() {
+        if (areaService == null) {
+            return List.of();
+        }
+        return areaService.listAccessibleForCurrentUser().stream().map(AreaDto::from).toList();
+    }
+
+    @GetMapping("/areas/{area}/package")
+    public AreaPackageDto getAreaPackage(@PathVariable String area) {
+        if (areaService == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Area not found: " + area);
+        }
+        return areaService.findByNameForUser(area)
+            .flatMap(a -> areaService.findAreaWithMembers(a.name())).map(AreaPackageDto::from)
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Area not found: " + area));
     }
 
     @GetMapping("/playbooks")
     public List<PlaybookDto> listPlaybooks() {
-        return playbookService.listSpecializedPlaybooks().stream().map(PlaybookDto::from).toList();
+        return AreaAccessContext
+            .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area).stream()
+            .map(PlaybookDto::from).toList();
     }
 
     /**
@@ -82,7 +118,8 @@ public class DesktopSyncController {
         if (orchestratorProfileService != null) {
             List<OrchestratorProfile> profiles = orchestratorProfileService.listAllProfiles();
             if (!profiles.isEmpty()) {
-                return profiles.stream().map(OrchestratorProfileDto::fromDbProfile).toList();
+                return AreaAccessContext.filterByUserArea(profiles, OrchestratorProfile::area)
+                    .stream().map(OrchestratorProfileDto::fromDbProfile).toList();
             }
         }
         List<OrchestratorProperties.Profile> profiles = orchestratorProperties.profiles();
@@ -108,8 +145,10 @@ public class DesktopSyncController {
 
     @GetMapping("/prompts/system/{name}")
     public ResponseEntity<Map<String, String>> getSystemPrompt(@PathVariable String name) {
-        String systemPromptText =
-            systemPromptService.findChatPrompt(name).map(SystemPrompt::systemPrompt).orElse("");
+        String systemPromptText = systemPromptService.findChatPrompt(name)
+            .filter(p -> p.area() == null || p.area().isBlank()
+                || AreaAccessContext.canAccessUserArea(p.area()))
+            .map(SystemPrompt::systemPrompt).orElse("");
         return ResponseEntity.ok(Map.of("systemPrompt", systemPromptText));
     }
 

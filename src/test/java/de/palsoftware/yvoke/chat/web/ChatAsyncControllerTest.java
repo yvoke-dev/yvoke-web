@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.chat.api.model.MessageDto;
 import de.palsoftware.yvoke.chat.api.model.MessageTraceDto;
+import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
@@ -37,6 +38,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -55,6 +57,14 @@ class ChatAsyncControllerTest {
     private static void authenticateAsAdmin() {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+        SecurityContextHolder.setContext(context);
+    }
+
+    private static void authenticateAsAreaAdmin(String area) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+            List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                new SimpleGrantedAuthority("AREA_ADMIN_" + area.toUpperCase()))));
         SecurityContextHolder.setContext(context);
     }
 
@@ -400,6 +410,9 @@ class ChatAsyncControllerTest {
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "finance"));
 
         when(chatMessageService.getMessageTrace(conversationId, messageId))
             .thenReturn(Optional.empty());
@@ -421,6 +434,9 @@ class ChatAsyncControllerTest {
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "finance"));
 
         MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
             "content", "model", "pb-single", 3, 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
@@ -455,6 +471,9 @@ class ChatAsyncControllerTest {
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "finance"));
 
         MessageTrace trace = new MessageTrace("single", messageId, conversationId, "generating", "",
             "model", null, null, null, null, null, null, null, List.of(), List.of(), null, null);
@@ -519,6 +538,9 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "finance"));
 
         AgentRun run = new AgentRun(runId, conversationId, messageId, null, "oim", "done", "{}", 1,
             "approved", 100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
@@ -557,6 +579,72 @@ class ChatAsyncControllerTest {
         assertEquals(2, dto.steps().get(0).playbookVersion());
         assertThat(dto.toolCalls()).isNull();
         verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void testTraceAreaAdminCanAccessAdministeredArea() {
+        authenticateAsAreaAdmin("finance");
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "finance"));
+
+        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
+            "content", "model", "pb-single", 3, 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
+        when(chatMessageService.getMessageTrace(conversationId, messageId))
+            .thenReturn(Optional.of(trace));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseEntity<MessageTraceDto> response =
+            controller.getMessageTrace(conversationId, messageId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(chatConversationService).verifyOwnership(conversationId, true);
+    }
+
+    @Test
+    void testTraceAreaAdminCannotAccessUnadministeredArea() {
+        authenticateAsAreaAdmin("finance");
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", "hr"));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.getMessageTrace(conversationId, messageId));
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(chatMessageService, never()).getMessageTrace(any(), any());
+    }
+
+    @Test
+    void testTraceAreaAdminCannotAccessNullArea() {
+        authenticateAsAreaAdmin("finance");
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        UUID conversationId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(conversationId, true))
+            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
+                "web", null));
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.getMessageTrace(conversationId, messageId));
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(chatMessageService, never()).getMessageTrace(any(), any());
     }
 
     @Test

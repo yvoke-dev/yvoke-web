@@ -13,8 +13,12 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * {@code list_areas} hands the Yvoke plugin's setup band everything it offers: each area, its
@@ -28,6 +32,9 @@ class AreaToolsTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         areaRepository = mock(AreaRepository.class);
         when(areaRepository.findAll()).thenReturn(List.of());
         when(areaRepository.findAllMembers()).thenReturn(Map.of());
@@ -131,6 +138,50 @@ class AreaToolsTest {
 
         assertThat(tools.listAreas())
             .isEqualTo("ERROR: the 'list_areas' tool failed to complete the request.");
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void listAreasFiltersByAllowedUserAreas() throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+        when(areaRepository.findAll()).thenReturn(List.of(area("OIM"), area("PingID")));
+        when(areaRepository.findAllMembers()).thenReturn(Map.of());
+
+        JsonNode list = json.readTree(tools.listAreas());
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).get("name").asText()).isEqualTo("OIM");
+    }
+
+    @Test
+    void getAreaOverviewReturnsOverviewForAccessibleArea() throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+        when(areaRepository.findAll()).thenReturn(List.of(area("OIM")));
+        when(areaRepository.findAllMembers()).thenReturn(
+            Map.of("OIM", new AreaMembers(List.of(), List.of("OIM - Docs"), List.of(), List.of())));
+
+        String res = tools.getAreaOverview("OIM");
+        JsonNode node = json.readTree(res);
+        assertThat(node.get("name").asText()).isEqualTo("OIM");
+        assertThat(texts(node.get("collections"))).containsExactly("OIM - Docs");
+    }
+
+    @Test
+    void getAreaOverviewReturnsNotFoundErrorForInaccessibleArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+        when(areaRepository.findAll()).thenReturn(List.of(area("OIM")));
+
+        String res = tools.getAreaOverview("OIM");
+        assertThat(res).isEqualTo("Error: Area 'OIM' not found.");
     }
 
     private static JsonNode single(JsonNode list) {

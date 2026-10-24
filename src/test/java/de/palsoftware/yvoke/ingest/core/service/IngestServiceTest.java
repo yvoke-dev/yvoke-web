@@ -17,6 +17,7 @@ import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,11 +28,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import de.palsoftware.yvoke.collection.core.model.Collection;
+import java.util.Arrays;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.mockito.InOrder;
 import java.nio.file.Files;
 import java.util.stream.Stream;
 import org.mockito.Mockito;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Path-traversal confinement for the ingest staging paths (SEC-01 / SEC-16), moved here from the
@@ -51,12 +57,24 @@ public class IngestServiceTest {
 
     @BeforeEach
     public void setUp() {
+        authenticateWith("ROLE_INGEST", "AREA_INGEST_*");
         jobService = mock(JobService.class);
         collectionService = mock(CollectionService.class);
         tagService = mock(TagService.class);
         documentRepository = mock(DocumentRepository.class);
         ingestService = new IngestService(jobService, collectionService, tagService,
             documentRepository, uploadDir.toString());
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticateWith(String... roles) {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
+                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     /**
@@ -504,5 +522,55 @@ public class IngestServiceTest {
 
         assertThat(captor.getAllValues()).extracting(EnqueueRequest::kind)
             .containsExactly("standard", "hierarchical", "json-import");
+    }
+
+    @Test
+    public void uploadAndEnqueueExistingCollectionUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "sec-col", null, "standard",
+            null, null, null, null)).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
+    }
+
+    @Test
+    public void uploadAndEnqueueCreateCollectionUnauthorizedAreaYields403() {
+        authenticateWith("AREA_INGEST_OTHER");
+        when(collectionService.getCollection("new-col")).thenReturn(Optional.empty());
+
+        MockMultipartFile file =
+            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+
+        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "new-col", null, "standard",
+            null, null, null, "sec")).isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN));
+        verify(collectionService, never()).createCollection(any(), any(), any());
+    }
+
+    @Test
+    public void enqueueCustomExistingCollectionUnauthorizedAreaYields404() {
+        authenticateWith("AREA_INGEST_OTHER");
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
+
+        MockMultipartFile zip =
+            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+
+        assertThatThrownBy(() -> ingestService.enqueueCustom(zip, "sec-col", "1.0", "**/*.md",
+            "entities.jsonl", "relationships.jsonl", null))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+        verify(jobService, never()).enqueue(any());
     }
 }
