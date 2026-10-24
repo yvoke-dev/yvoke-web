@@ -7,6 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/logo-32.png}">
     <link rel="icon" type="image/png" sizes="16x16" th:href="@{/images/logo-16.png}">
     <link rel="stylesheet" th:href="@{/css/index.css}">
+    <meta name="_csrf" th:content="${_csrf?.token}">
+    <meta name="_csrf_header" th:content="${_csrf?.headerName}">
     <style>
         .login-container {
             display: flex;
