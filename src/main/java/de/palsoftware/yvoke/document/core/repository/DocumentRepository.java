@@ -115,7 +115,7 @@ public class DocumentRepository {
             return Set.of();
         }
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
-        if (allowedAreasLower == null) {
+        if (allowedAreasLower == null || allowedAreasLower.contains("*")) {
             return new HashSet<>(
                 jdbcClient.sql("SELECT id FROM documents WHERE id = ANY(:ids::uuid[])")
                     .param("ids", idStrings).query(UUID.class).list());

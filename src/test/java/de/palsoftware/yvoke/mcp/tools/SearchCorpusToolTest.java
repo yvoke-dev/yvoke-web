@@ -364,7 +364,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theFirstSearchOfAConversationRendersEveryBodyInFull() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -379,7 +379,7 @@ public class SearchCorpusToolTest {
 
     @Test
     public void aSecondSearchInTheSameConversationMarksTheRepeatInsteadOfResendingIt() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -402,7 +402,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theTelemetryListStillRecordsEverySightingIncludingSuppressedOnes() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -435,9 +435,13 @@ public class SearchCorpusToolTest {
             .contains("This is chunk text."));
 
         // Two different conversations on the one shared tool instance.
-        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+        assertTrue(searchCorpusTool
+            .searchCorpus("q", "OIM", "9.3", null,
+                new AgenticChatContext(AgenticChatContext.ALL_AREAS))
             .contains("This is chunk text."));
-        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+        assertTrue(searchCorpusTool
+            .searchCorpus("q", "OIM", "9.3", null,
+                new AgenticChatContext(AgenticChatContext.ALL_AREAS))
             .contains("This is chunk text."));
     }
 
@@ -449,7 +453,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theCappedNoticeCountsRankedSlotsNotFullyRenderedBodies() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         HybridSearchResult repeated = hit(UUID.randomUUID(), UUID.randomUUID(), "text");
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class)))
             .thenReturn(new SearchWithId(List.of(repeated, repeated), UUID.randomUUID()));

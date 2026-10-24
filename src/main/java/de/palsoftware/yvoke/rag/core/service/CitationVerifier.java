@@ -102,12 +102,13 @@ public class CitationVerifier {
                 collectId(p, chunkIds, documentIds);
             }
         }
+        boolean unrestricted = allowedAreasLower == null || allowedAreasLower.contains("*");
         Set<UUID> existingChunks =
-            allowedAreasLower != null ? chunkRepository.findExistingIds(chunkIds, allowedAreasLower)
+            !unrestricted ? chunkRepository.findExistingIds(chunkIds, allowedAreasLower)
                 : chunkRepository.findExistingIds(chunkIds);
-        Set<UUID> existingDocs = allowedAreasLower != null
-            ? documentRepository.findExistingIds(documentIds, allowedAreasLower)
-            : documentRepository.findExistingIds(documentIds);
+        Set<UUID> existingDocs =
+            !unrestricted ? documentRepository.findExistingIds(documentIds, allowedAreasLower)
+                : documentRepository.findExistingIds(documentIds);
         return new ResolvedIds(existingChunks, existingDocs);
     }
 

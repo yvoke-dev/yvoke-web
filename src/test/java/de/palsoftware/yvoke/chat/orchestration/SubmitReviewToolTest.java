@@ -71,7 +71,7 @@ class SubmitReviewToolTest {
     void callWithContext_setsHaltRequested() {
         Verdict[] holder = new Verdict[1];
         SubmitReviewTool tool = toolCapturing(holder);
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
 
         String out = tool.callWithContext("{\"approved\":true,\"feedback\":\"ok\"}", ctx);
 
@@ -95,7 +95,7 @@ class SubmitReviewToolTest {
     void malformedJson_returnsParseError_doesNotHaltOrDeliver() {
         Verdict[] holder = new Verdict[1];
         SubmitReviewTool tool = toolCapturing(holder);
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
 
         String out = tool.callWithContext("garbage{", ctx);
 

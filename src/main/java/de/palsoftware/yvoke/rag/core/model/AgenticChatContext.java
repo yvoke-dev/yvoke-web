@@ -4,12 +4,14 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.lang.Nullable;
 
 public class AgenticChatContext implements SeenChunks {
-    @Nullable
+    public static final Set<String> ALL_AREAS = Set.of("*");
+
     private final Set<String> allowedAreasLower;
     private final List<UUID> retrievedChunkIds = new ArrayList<>();
     private final List<UUID> searchIds = new ArrayList<>();
@@ -30,21 +32,21 @@ public class AgenticChatContext implements SeenChunks {
      */
     private final Set<UUID> shownChunkIds = new HashSet<>();
 
-    public AgenticChatContext() {
-        this(null);
+    public AgenticChatContext(Set<String> allowedAreasLower) {
+        this.allowedAreasLower = Set.copyOf(Objects.requireNonNull(allowedAreasLower,
+            "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access"));
     }
 
-    public AgenticChatContext(@Nullable Set<String> allowedAreasLower) {
-        this.allowedAreasLower = allowedAreasLower != null ? Set.copyOf(allowedAreasLower) : null;
-    }
-
-    @Nullable
     public Set<String> getAllowedAreasLower() {
         return allowedAreasLower;
     }
 
+    public boolean isAllAreas() {
+        return allowedAreasLower.contains("*");
+    }
+
     public boolean isAreaAllowed(@Nullable String area) {
-        if (allowedAreasLower == null) {
+        if (allowedAreasLower.contains("*")) {
             return true;
         }
         if (area == null || area.isBlank()) {

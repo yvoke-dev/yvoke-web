@@ -32,6 +32,7 @@ import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -218,7 +219,7 @@ public class ChatMessageService {
         }
         Set<String> turnAreas = (playbook.area() != null && !playbook.area().isBlank())
             ? Set.of(playbook.area().trim().toLowerCase(Locale.ROOT))
-            : userAllowedAreas.orElse(null);
+            : userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS);
 
         if (playbook.area() != null && !playbook.area().isBlank()) {
             conversationRepository.updateAreaIfAbsent(conversationId, playbook.area());
@@ -381,7 +382,7 @@ public class ChatMessageService {
         }
         Set<String> turnAreas = profileArea.filter(a -> !a.isBlank())
             .map(a -> Set.of(a.trim().toLowerCase(Locale.ROOT)))
-            .orElseGet(() -> userAllowedAreas.orElse(null));
+            .orElseGet(() -> userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS));
 
         profileArea.filter(a -> !a.isBlank())
             .ifPresent(a -> conversationRepository.updateAreaIfAbsent(conversationId, a));
@@ -622,14 +623,15 @@ public class ChatMessageService {
     public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
         String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
         String thinkingLevel, boolean codeExecution, String playbookName,
-        Integer playbookVersion, @Nullable Set<String> allowedAreasLower) {
+        Integer playbookVersion, Set<String> allowedAreasLower) {
 
         public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
             String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
             String thinkingLevel, boolean codeExecution, String playbookName,
             Integer playbookVersion) {
             this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history,
-                allowedTools, thinkingLevel, codeExecution, playbookName, playbookVersion, null);
+                allowedTools, thinkingLevel, codeExecution, playbookName, playbookVersion,
+                AgenticChatContext.ALL_AREAS);
         }
     }
 

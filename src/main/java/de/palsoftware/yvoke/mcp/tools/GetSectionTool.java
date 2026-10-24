@@ -16,10 +16,12 @@ import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 
@@ -70,11 +72,14 @@ public class GetSectionTool {
                 section = sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
             } else if (chunk_id != null && !chunk_id.isBlank()) {
                 String trimmedChunkId = chunk_id.trim();
-                String chunkError = checkChunkAreaAccess(trimmedChunkId, context);
-                if (chunkError != null) {
-                    return chunkError;
+                ChunkAccessCheck accessCheck = checkChunkAreaAccess(trimmedChunkId, context);
+                if (accessCheck.error() != null) {
+                    return accessCheck.error();
                 }
-                section = sectionService.getSectionChunksByChunkId(trimmedChunkId);
+                String targetChunkId =
+                    accessCheck.resolvedChunkId() != null ? accessCheck.resolvedChunkId().toString()
+                        : trimmedChunkId;
+                section = sectionService.getSectionChunksByChunkId(targetChunkId);
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -102,36 +107,59 @@ public class GetSectionTool {
         return isAreaAllowed(colOpt.get().area(), context);
     }
 
-    @Nullable
-    private String checkChunkAreaAccess(String chunkIdStr, @Nullable AgenticChatContext context) {
-        Optional<ChunkRow> chunkOpt;
+    private record ChunkAccessCheck(@Nullable String error, @Nullable UUID resolvedChunkId) {}
+
+    private ChunkAccessCheck checkChunkAreaAccess(String chunkIdStr,
+        @Nullable AgenticChatContext context) {
+        boolean areaRestricted;
+        Set<String> allowedAreas;
+        if (context != null) {
+            areaRestricted = !context.isAllAreas();
+            allowedAreas = areaRestricted ? context.getAllowedAreasLower() : null;
+        } else {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated()
+                && !AreaAccessContext.hasAllUserAreas(auth)) {
+                areaRestricted = true;
+                allowedAreas = AreaAccessContext.allowedUserAreasLower(auth).orElse(null);
+            } else {
+                areaRestricted = false;
+                allowedAreas = null;
+            }
+        }
+        Optional<ChunkRow> chunkOpt = Optional.empty();
         try {
-            chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
+            if (areaRestricted && allowedAreas != null) {
+                chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr, allowedAreas);
+            } else {
+                chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
+            }
         } catch (IllegalArgumentException e) {
-            boolean areaRestricted = context != null ? context.getAllowedAreasLower() != null
-                : !AreaAccessContext.hasAllUserAreas();
             if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
                 && areaRestricted) {
-                return "Error: Ambiguous chunk ID prefix '" + chunkIdStr
-                    + "'. Please provide the full chunk UUID.";
+                return new ChunkAccessCheck("Error: Ambiguous chunk ID prefix '" + chunkIdStr
+                    + "'. Please provide the full chunk UUID.", null);
             }
-            return null;
+            return new ChunkAccessCheck(null, null);
         }
         if (chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
-            return null;
+            if (areaRestricted && allowedAreas != null) {
+                return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
+            }
+            return new ChunkAccessCheck(null, null);
         }
         Optional<DocumentRow> docOpt = documentRepository.findById(chunkOpt.get().documentId());
         if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
-            return null;
+            return new ChunkAccessCheck(null, chunkOpt.get().id());
         }
         Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
         if (colOpt.isEmpty()) {
-            return null;
+            return new ChunkAccessCheck(null, chunkOpt.get().id());
         }
         if (!isAreaAllowed(colOpt.get().area(), context)) {
-            return "Error: Chunk not found: " + chunkIdStr;
+            return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
         }
-        return null;
+        return new ChunkAccessCheck(null, chunkOpt.get().id());
     }
 
     private static boolean isAreaAllowed(@Nullable String area,

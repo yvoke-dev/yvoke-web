@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.rag.core.service;
 
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 
@@ -202,8 +203,8 @@ public class RagServiceAgenticTest {
     private static List<String> toolResultsOf(RagService service, String args) {
         RagResult result = service.generateAgenticAnswer(AgenticRequest.builder()
             .query("What is the Person table?").modelOverride("model-override")
-            .history(Collections.emptyList()).allowedTools(List.of("search_corpus")).build(),
-            token -> {
+            .history(Collections.emptyList()).allowedTools(List.of("search_corpus"))
+            .allowedAreasLower(AgenticChatContext.ALL_AREAS).build(), token -> {
             });
         return result.messages().stream().filter(m -> "tool".equals(m.role()))
             .map(LlmMessage::content).toList();

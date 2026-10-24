@@ -72,7 +72,7 @@ public class VerifyCitationsTool {
         try {
             Set<String> allowedAreasLower;
             if (context != null) {
-                allowedAreasLower = context.getAllowedAreasLower();
+                allowedAreasLower = context.isAllAreas() ? null : context.getAllowedAreasLower();
             } else {
                 SecurityContext securityContext = SecurityContextHolder.getContext();
                 Authentication auth =

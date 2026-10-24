@@ -24,6 +24,12 @@ import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsTool;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsToolCallback;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
@@ -129,8 +135,15 @@ class RagServiceAreaAdversarialStressTest {
         when(chunkRepository.findByIdPrefix(chunkNullAreaId.toString()))
             .thenReturn(Optional.of(chunkNullArea));
 
-        ragService = new RagService(hybridSearch, llmClient, citationVerifier, new ObjectMapper(),
+        ObjectMapper mapper = new ObjectMapper();
+        ragService = new RagService(hybridSearch, llmClient, citationVerifier, mapper,
             collectionService, documentRepository, chunkRepository);
+        ragService.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
+            new SearchCorpusTool(hybridSearch, collectionService, 10, 50), mapper, 50));
+        ragService.getToolRegistry().put("list_documents", new ListDocumentsToolCallback(
+            new ListDocumentsTool(documentRepository, collectionService), mapper));
+        ragService.getToolRegistry().put("verify_citations",
+            new VerifyCitationsToolCallback(new VerifyCitationsTool(citationVerifier), mapper));
     }
 
     private ToolCallback createMockTool(String name) {
@@ -238,7 +251,6 @@ class RagServiceAreaAdversarialStressTest {
     @Test
     @DisplayName("Empty allowedAreasLower Set.of() in search_corpus omit-collection yields no results")
     void emptyAllowedAreasOmitCollectionSearch() {
-        createMockTool("search_corpus");
         String response =
             runTurnWithToolCall("search_corpus", "{\"query\": \"anything\"}", Set.of());
 
@@ -247,21 +259,19 @@ class RagServiceAreaAdversarialStressTest {
     }
 
     @Test
-    @DisplayName("Empty allowedAreasLower Set.of() in list_documents omit-collection yields empty table")
+    @DisplayName("Empty allowedAreasLower Set.of() in list_documents omit-collection yields empty notice")
     void emptyAllowedAreasOmitCollectionListDocs() {
-        createMockTool("list_documents");
         String response = runTurnWithToolCall("list_documents", "{}", Set.of());
 
-        assertThat(response)
-            .isEqualTo("| document_id | kind | title | chunks |\n|---|---|---|---|");
+        assertThat(response).isEqualTo("(no documents in **all allowed collections**)");
         verify(documentRepository, never()).listDocuments(anyString(), anyInt(), anyInt(), any(),
             any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("Null allowedAreasLower (unrestricted) permits access to collections with null area")
+    @DisplayName("ALL_AREAS allowedAreasLower (unrestricted) permits access to collections with null area")
     void nullAllowedAreasPermitsAllIncludingNullArea() {
-        AgenticChatContext globalCtx = new AgenticChatContext(null);
+        AgenticChatContext globalCtx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         assertThat(globalCtx.isAreaAllowed(null)).isTrue();
         assertThat(globalCtx.isAreaAllowed("oim")).isTrue();
         assertThat(globalCtx.isAreaAllowed("pingid")).isTrue();
@@ -330,7 +340,6 @@ class RagServiceAreaAdversarialStressTest {
     @Test
     @DisplayName("verify_citations marks cross-area chunk citations as FABRICATED")
     void verifyCitationsCrossAreaIsFabricated() {
-        createMockTool("verify_citations");
         String pingCit = "[chunk_id=" + chunkPingId + "]";
         when(citationVerifier.checkCitations(List.of(pingCit), Set.of("oim"))).thenReturn(List.of(
             new CitationCheckResult(pingCit, "chunk", CitationStatus.FABRICATED, "0 chunk(s)")));

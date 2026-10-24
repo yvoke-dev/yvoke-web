@@ -11,12 +11,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRowMapper;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -394,5 +398,56 @@ public class ChunkRepositoryTest {
         assertThat(files).containsExactly("file1.md", "file2.md");
 
         verify(jdbcClient).sql(contains("DISTINCT d.title"));
+    }
+
+    @Test
+    public void findByIdPrefixWithAllowedAreasFiltersInSqlAndShortCircuitsEmptySet() {
+        assertThat(chunkRepository.findByIdPrefix("a1b2c3d4", Set.of())).isEmpty();
+        verify(jdbcClient, never()).sql(anyString());
+
+        UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
+        ChunkRow one = new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
+            "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
+        when(querySpec.list()).thenReturn(List.of(one));
+
+        Optional<ChunkRow> result = chunkRepository.findByIdPrefix("a1b2c3d4", Set.of("hr"));
+        assertThat(result).contains(one);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcClient).sql(sqlCaptor.capture());
+        verify(statementSpec).param("prefix", "a1b2c3d4%");
+        verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
+
+        assertThat(sqlCaptor.getValue())
+            .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+    }
+
+    @Test
+    public void findByIdPrefixOneArgScopesBySecurityContextWhenAreaUserAuthenticated() {
+        try {
+            SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken("hr-user", "n/a",
+                    List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                        new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "HR"))));
+
+            UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
+            ChunkRow one =
+                new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
+                    "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
+            when(querySpec.list()).thenReturn(List.of(one));
+
+            Optional<ChunkRow> result = chunkRepository.findByIdPrefix("a1b2c3d4");
+            assertThat(result).contains(one);
+
+            ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+            verify(jdbcClient).sql(sqlCaptor.capture());
+            verify(statementSpec).param("prefix", "a1b2c3d4%");
+            verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
+
+            assertThat(sqlCaptor.getValue())
+                .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 }

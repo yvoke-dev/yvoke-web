@@ -221,7 +221,7 @@ public class GetSectionToolTest {
      */
     @Test
     public void aSectionReadMarksItsPassagesSoALaterSearchDoesNotRepeatThem() {
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         when(sectionService.getSectionChunksByDocumentId(anyString(), any()))
             .thenReturn(section(new SectionChunk(CHUNK_A, DOC, "Prerequisites", "The body.")));
 
@@ -235,7 +235,7 @@ public class GetSectionToolTest {
     /** The converse: a passage a search already showed is not printed again by a section read. */
     @Test
     public void aPassageAlreadyShownIsRenderedAsAReferenceNotRepeatedInFull() {
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         ctx.firstSighting(CHUNK_A); // as if a search had already rendered it
         when(sectionService.getSectionChunksByDocumentId(anyString(), any()))
             .thenReturn(section(new SectionChunk(CHUNK_A, DOC, "Prerequisites", "The body."),

@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.orchestration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -118,7 +119,7 @@ public class OrchestrationService {
     public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
         String question, List<LlmMessage> history, UUID agentRunId, String profileName) {
         return runOrchestration(conversationId, messageId, question, history, agentRunId,
-            profileName, null);
+            profileName, AgenticChatContext.ALL_AREAS);
     }
 
     /** Blocking; intended to run on a background (virtual) thread with area isolation. */
@@ -150,8 +151,9 @@ public class OrchestrationService {
 
         runRepository.create(agentRunId, conversationId, profileName, configSnapshot(profile));
 
-        Set<String> effectiveAreas = allowedAreasLower;
-        if (effectiveAreas == null && orchestratorPlaybook.area() != null
+        Set<String> effectiveAreas =
+            allowedAreasLower != null ? allowedAreasLower : AgenticChatContext.ALL_AREAS;
+        if (effectiveAreas.contains("*") && orchestratorPlaybook.area() != null
             && !orchestratorPlaybook.area().isBlank()) {
             effectiveAreas = Set.of(orchestratorPlaybook.area().trim().toLowerCase(Locale.ROOT));
         }
@@ -1065,21 +1067,8 @@ public class OrchestrationService {
             this.messageId = messageId;
             this.profile = profile;
             this.userId = userId;
-            this.allowedAreasLower =
-                allowedAreasLower != null ? Set.copyOf(allowedAreasLower) : null;
-        }
-
-        RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
-            UUID userId) {
-            this(runId, conversationId, messageId, profile, userId, null);
-        }
-
-        RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile) {
-            this(runId, conversationId, messageId, profile, null, null);
-        }
-
-        RunState(UUID runId, ResolvedProfile profile) {
-            this(runId, null, null, profile, null, null);
+            this.allowedAreasLower = Set.copyOf(
+                Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null"));
         }
 
         void accumulate(RagResult r) {

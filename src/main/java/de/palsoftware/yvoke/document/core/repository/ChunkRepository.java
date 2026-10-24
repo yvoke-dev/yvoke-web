@@ -1,15 +1,16 @@
 package de.palsoftware.yvoke.document.core.repository;
 
-import de.palsoftware.yvoke.shared.config.JdbcMappers;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
-
-
-import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -228,6 +229,27 @@ public class ChunkRepository {
     }
 
     public Optional<ChunkRow> findByIdPrefix(String idPrefix) {
+        return findByIdPrefix(idPrefix, resolveSecurityContextAllowedAreasLower());
+    }
+
+    @Nullable
+    private static Set<String> resolveSecurityContextAllowedAreasLower() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()
+            || auth instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        if (AreaAccessContext.hasAllUserAreas(auth) || AreaAccessContext.isSuperAdmin(auth)) {
+            return null;
+        }
+        Set<String> allowed = new HashSet<>();
+        AreaAccessContext.allowedUserAreasLower(auth).ifPresent(allowed::addAll);
+        AreaAccessContext.allowedAdminAreasLower(auth).ifPresent(allowed::addAll);
+        return allowed;
+    }
+
+    public Optional<ChunkRow> findByIdPrefix(String idPrefix,
+        @Nullable Set<String> allowedAreasLower) {
         if (idPrefix == null) {
             throw new IllegalArgumentException("ID prefix cannot be null.");
         }
@@ -241,6 +263,11 @@ public class ChunkRepository {
             }
         }
 
+        boolean filterByArea = allowedAreasLower != null && !allowedAreasLower.contains("*");
+        if (filterByArea && allowedAreasLower.isEmpty()) {
+            return Optional.empty();
+        }
+
         String sql =
             """
                 SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
@@ -251,8 +278,16 @@ public class ChunkRepository {
                 """;
 
         String cleanPrefix = idPrefix.replace("-", "").toLowerCase();
-        List<ChunkRow> matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
-            .query(new ChunkRowMapper(objectMapper, null)).list();
+        List<ChunkRow> matches;
+        if (filterByArea) {
+            sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
+            matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
+                .param("allowedAreasLower", allowedAreasLower)
+                .query(new ChunkRowMapper(objectMapper, null)).list();
+        } else {
+            matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
+                .query(new ChunkRowMapper(objectMapper, null)).list();
+        }
 
         if (matches.isEmpty()) {
             return Optional.empty();
@@ -286,7 +321,7 @@ public class ChunkRepository {
             return Set.of();
         }
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
-        if (allowedAreasLower == null) {
+        if (allowedAreasLower == null || allowedAreasLower.contains("*")) {
             return new HashSet<>(
                 jdbcClient.sql("SELECT id FROM chunks WHERE id = ANY(:ids::uuid[])")
                     .param("ids", idStrings).query(UUID.class).list());

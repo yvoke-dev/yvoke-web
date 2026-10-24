@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.rag.core.model;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import jakarta.annotation.Nullable;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -24,31 +25,14 @@ public record AgenticRequest(
      */
     @Nullable List<LlmMessage> priorMessages,
     boolean traceToolCalls,
-    @Nullable Set<String> allowedAreasLower) {
+    Set<String> allowedAreasLower) {
 
-  public AgenticRequest(
-      String query,
-      @Nullable String modelOverride,
-      @Nullable List<LlmMessage> history,
-      @Nullable String systemPromptOverride,
-      @Nullable List<String> allowedTools,
-      @Nullable String thinkingLevel,
-      boolean codeExecution,
-      @Nullable List<ToolCallback> extraTools,
-      @Nullable List<LlmMessage> priorMessages,
-      boolean traceToolCalls) {
-    this(
-        query,
-        modelOverride,
-        history,
-        systemPromptOverride,
-        allowedTools,
-        thinkingLevel,
-        codeExecution,
-        extraTools,
-        priorMessages,
-        traceToolCalls,
-        null);
+  public AgenticRequest {
+    allowedAreasLower =
+        Set.copyOf(
+            Objects.requireNonNull(
+                allowedAreasLower,
+                "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access"));
   }
 
   public static Builder builder() {
@@ -66,7 +50,7 @@ public record AgenticRequest(
     private List<ToolCallback> extraTools;
     private List<LlmMessage> priorMessages;
     private boolean traceToolCalls;
-    private Set<String> allowedAreasLower;
+    private Set<String> allowedAreasLower = Set.of();
 
     public Builder query(String query) {
       this.query = query;
@@ -119,7 +103,10 @@ public record AgenticRequest(
     }
 
     public Builder allowedAreasLower(Set<String> allowedAreasLower) {
-      this.allowedAreasLower = allowedAreasLower;
+      this.allowedAreasLower =
+          Objects.requireNonNull(
+              allowedAreasLower,
+              "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access");
       return this;
     }
 

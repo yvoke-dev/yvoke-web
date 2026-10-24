@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.rag.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -24,6 +25,12 @@ import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsTool;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsToolCallback;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
@@ -108,8 +115,15 @@ class RagServiceAreaIsolationTest {
         when(chunkRepository.findByIdPrefix(chunkPingId.toString()))
             .thenReturn(Optional.of(chunkPing));
 
-        ragService = new RagService(hybridSearch, llmClient, citationVerifier, new ObjectMapper(),
+        ObjectMapper mapper = new ObjectMapper();
+        ragService = new RagService(hybridSearch, llmClient, citationVerifier, mapper,
             collectionService, documentRepository, chunkRepository);
+        ragService.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
+            new SearchCorpusTool(hybridSearch, collectionService, 10, 50), mapper, 50));
+        ragService.getToolRegistry().put("list_documents", new ListDocumentsToolCallback(
+            new ListDocumentsTool(documentRepository, collectionService), mapper));
+        ragService.getToolRegistry().put("verify_citations",
+            new VerifyCitationsToolCallback(new VerifyCitationsTool(citationVerifier), mapper));
     }
 
     private ToolCallback createMockTool(String name) {
@@ -174,7 +188,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("search_corpus: omit-collection search scopes strictly to OIM collections")
     void searchCorpusOmitCollectionScopedToArea() {
-        createMockTool("search_corpus");
         HybridSearchResult chunkResult =
             new HybridSearchResult(chunkOimId, docOimId, "OIM chunk content", List.of("Chapter 1"),
                 "Intro", 1, 0, null, "OIM Guide", "manual", "oim-col", null, 0.95, null);
@@ -205,7 +218,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("list_documents: omit-collection scopes listing to OIM collections")
     void listDocumentsOmitCollectionScopedToArea() {
-        createMockTool("list_documents");
         DocumentDetails dd = new DocumentDetails(docOimId, colOimId, "oim-col", "manual",
             "OIM Overview", null, "COMPLETED", 4L, true, Instant.now());
 
@@ -283,7 +295,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("verify_citations: citation pointing to PingID chunk reported as FABRICATED when restricted to OIM")
     void verifyCitationsCrossAreaReportedAsFabricated() {
-        createMockTool("verify_citations");
         String citToken = "[chunk_id=" + chunkPingId + "]";
         when(citationVerifier.checkCitations(List.of(citToken), Set.of("oim"))).thenReturn(List.of(
             new CitationCheckResult(citToken, "chunk", CitationStatus.FABRICATED, "0 chunk(s)")));
@@ -297,17 +308,17 @@ class RagServiceAreaIsolationTest {
     }
 
     @Test
-    @DisplayName("Global User (allowedAreasLower = null) can access both OIM and PingID collections")
+    @DisplayName("Global User (allowedAreasLower = ALL_AREAS) can access both OIM and PingID collections")
     void globalUserUnrestrictedAccess() {
         ToolCallback mockTool = createMockTool("search_corpus");
         when(mockTool.call(anyString())).thenReturn("Global access granted");
 
         String pingResponse = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"pingid-col\", \"query\": \"test\"}", null);
+            "{\"collection\": \"pingid-col\", \"query\": \"test\"}", AgenticChatContext.ALL_AREAS);
         assertThat(pingResponse).isEqualTo("Global access granted");
 
         String oimResponse = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"oim-col\", \"query\": \"test\"}", null);
+            "{\"collection\": \"oim-col\", \"query\": \"test\"}", AgenticChatContext.ALL_AREAS);
         assertThat(oimResponse).isEqualTo("Global access granted");
     }
 
@@ -319,10 +330,18 @@ class RagServiceAreaIsolationTest {
         assertThat(ragService.resolveCollection("pingid-col", oimCtx)).isNull();
         assertThat(ragService.resolveCollection("non-existent", oimCtx)).isNull();
 
-        AgenticChatContext globalCtx = new AgenticChatContext(null);
+        AgenticChatContext globalCtx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         assertThat(ragService.resolveCollection("oim-col", globalCtx)).isEqualTo(colOim);
         assertThat(ragService.resolveCollection("pingid-col", globalCtx)).isEqualTo(colPing);
         assertThat(ragService.resolveCollection("non-existent", globalCtx)).isNull();
+
+        assertThatThrownBy(() -> new AgenticChatContext(null))
+            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> AgenticRequest.builder().allowedAreasLower(null))
+            .isInstanceOf(NullPointerException.class);
+        assertThat(
+            AgenticRequest.builder().query("q").modelOverride("m").build().allowedAreasLower())
+            .isEmpty();
     }
 
     @Test
@@ -362,6 +381,8 @@ class RagServiceAreaIsolationTest {
         ToolCallback mockTool = createMockTool("get_section");
         when(chunkRepository.findByIdPrefix("123")).thenThrow(
             new IllegalArgumentException("Chunk ID prefix must be at least 8 hex chars"));
+        when(chunkRepository.findByIdPrefix(eq("123"), any())).thenThrow(
+            new IllegalArgumentException("Chunk ID prefix must be at least 8 hex chars"));
 
         String response =
             runTurnWithToolCall("get_section", "{\"chunk_id\": \"123\"}", Set.of("oim"));
@@ -371,9 +392,8 @@ class RagServiceAreaIsolationTest {
     }
 
     @Test
-    @DisplayName("verify_citations guard preserves VerifyCitationsTool.SCOPE_NOTE and formatting")
+    @DisplayName("verify_citations callback preserves VerifyCitationsTool.SCOPE_NOTE and formatting")
     void verifyCitationsGuardPreservesScopeNote() {
-        createMockTool("verify_citations");
         String citToken = "[chunk_id=" + chunkOimId + "]";
         when(citationVerifier.checkCitations(List.of(citToken), Set.of("oim"))).thenReturn(
             List.of(new CitationCheckResult(citToken, "chunk", CitationStatus.REAL, "1 chunk(s)")));
@@ -388,7 +408,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("search_corpus omit-collection on a single tag-scoped collection enforces requireTag")
     void searchCorpusOmitCollectionOnTagScopedCollectionRequiresTag() {
-        createMockTool("search_corpus");
         Collection taggedOim = new Collection(colOimId, "oim-col", "OIM Docs",
             List.of("9.3.1", "10.0"), OffsetDateTime.now(), AREA_OIM);
         when(collectionService.listCollections()).thenReturn(List.of(taggedOim, colPing));
@@ -403,8 +422,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("search_corpus and list_documents omit-collection across multiple area collections enforce tag when any collection is tagged")
     void omitCollectionAcrossMultipleAreaCollectionsEnforcesTagWhenAnyCollectionHasTags() {
-        createMockTool("search_corpus");
-        createMockTool("list_documents");
         Collection taggedOim1 = new Collection(colOimId, "oim-manuals", "OIM Manuals",
             List.of("9.3.1", "10.0"), OffsetDateTime.now(), AREA_OIM);
         Collection untaggedOim2 = new Collection(UUID.randomUUID(), "oim-kb", "OIM KB", List.of(),
@@ -444,7 +461,6 @@ class RagServiceAreaIsolationTest {
     @Test
     @DisplayName("list_documents omit-collection adopts stored kind casing")
     void listDocumentsOmitCollectionAdoptsStoredKindCasing() {
-        createMockTool("list_documents");
         DocumentDetails dd = new DocumentDetails(docOimId, colOimId, "oim-col", "table",
             "DialogTable", null, "COMPLETED", 2L, true, Instant.now());
         when(documentRepository.findDistinctKindsInCollection("oim-col"))

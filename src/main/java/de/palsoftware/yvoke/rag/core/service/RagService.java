@@ -10,14 +10,9 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
-import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
-import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
-import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
-import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -46,7 +41,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -749,21 +743,17 @@ public class RagService {
         Map<String, Object> args = parseJsonArguments(tc.arguments());
 
         switch (name) {
-            case "search_corpus":
-                return guardSearchCorpus(args, ctx);
-            case "list_documents":
-                return guardListDocuments(args, ctx);
             case "get_toc":
                 return guardGetToc(args, ctx);
             case "get_section":
                 return guardGetSection(args, ctx);
+            case "search_corpus":
+            case "list_documents":
             case "search_graph_entities":
             case "get_graph_neighbors":
             case "get_json_schema":
             case "query_json_objects":
                 return guardCollectionParamTool(name, args, ctx);
-            case "verify_citations":
-                return guardVerifyCitations(args, ctx);
             default:
                 return null;
         }
@@ -778,181 +768,11 @@ public class RagService {
             if (col == null) {
                 return "Error: Collection '" + colName.trim() + "' does not exist.";
             }
-        } else if ("search_graph_entities".equals(toolName) && ctx.getAllowedAreasLower() != null) {
+        } else if ("search_graph_entities".equals(toolName) && !ctx.isAllAreas()) {
             List<Collection> allowed = collectionService.listCollections().stream()
                 .filter(c -> ctx.isAreaAllowed(c.area())).toList();
             if (allowed.isEmpty()) {
                 return "[]";
-            }
-        }
-        return null;
-    }
-
-    @Nullable
-    private String guardSearchCorpus(Map<String, Object> args, AgenticChatContext ctx) {
-        String colName = (String) args.get("collection");
-        if (colName != null && !colName.isBlank()) {
-            Collection col = resolveCollection(colName, ctx);
-            if (col == null) {
-                return "Error: Collection '" + colName.trim() + "' does not exist.";
-            }
-            return null;
-        }
-
-        // Omit-collection search
-        List<Collection> allowed = collectionService.listCollections().stream()
-            .filter(c -> ctx.isAreaAllowed(c.area())).toList();
-        if (allowed.isEmpty()) {
-            return "No relevant documents found.";
-        }
-        if (hybridSearch != null) {
-            String q = (String) args.get("query");
-            if (q == null || q.isBlank()) {
-                return "Error: 'query' parameter is required for search_corpus. If you wanted to list documents or modules in a collection (e.g. by kind), please use the 'list_documents' tool instead.";
-            }
-            List<String> allowedNames = allowed.stream().map(Collection::name).toList();
-            Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
-            Integer effectiveLim = limit != null ? Math.max(1, Math.min(limit, 50)) : null;
-            String tag = (String) args.get("tag");
-            String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-            String tagError = requireAreaTag(allowed, parsedTag);
-            if (tagError != null) {
-                return tagError;
-            }
-            List<String> tagList = parsedTag != null ? List.of(parsedTag) : List.of();
-            SearchWithId swi = hybridSearch.searchWithId(q.trim(),
-                new SearchOptions(allowedNames, effectiveLim, null, null, 0, true, tagList));
-            if (swi != null) {
-                if (swi.searchId() != null) {
-                    ctx.getSearchIds().add(swi.searchId());
-                }
-                if (swi.results() != null && !swi.results().isEmpty()) {
-                    for (HybridSearchResult res : swi.results()) {
-                        ctx.getRetrievedChunkIds().add(res.id());
-                    }
-                    String header = "Searched **" + String.join(", ", allowedNames) + "**"
-                        + (parsedTag != null ? " (tag=" + parsedTag + ")" : "") + " for: _"
-                        + q.trim() + "_\n\n";
-                    return header + ChunkBlocks.format(swi.results(), ctx);
-                }
-            }
-            return "No relevant documents found.";
-        }
-        return null;
-    }
-
-    @Nullable
-    private String guardListDocuments(Map<String, Object> args, AgenticChatContext ctx) {
-        String colName = (String) args.get("collection");
-        if (colName != null && !colName.isBlank()) {
-            Collection col = resolveCollection(colName, ctx);
-            if (col == null) {
-                return "Error: Collection '" + colName.trim() + "' does not exist.";
-            }
-            return null;
-        }
-
-        // Omit-collection listing
-        List<Collection> allowed = collectionService.listCollections().stream()
-            .filter(c -> ctx.isAreaAllowed(c.area())).toList();
-        if (allowed.isEmpty()) {
-            return "| document_id | kind | title | chunks |\n|---|---|---|---|";
-        }
-        String rawTag = (String) args.get("tag");
-        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
-        String tagError = requireAreaTag(allowed, parsedTag);
-        if (tagError != null) {
-            return tagError;
-        }
-        String rawKind = (String) args.get("kind");
-        String parsedKind = (rawKind != null && !rawKind.isBlank()) ? rawKind.trim() : null;
-        String rawQuery = (String) args.get("query");
-        String fuzzyQuery = (rawQuery != null && !rawQuery.isBlank()) ? rawQuery.trim() : null;
-        int lim = Math.max(1,
-            Math.min((args.get("limit") instanceof Number n) ? n.intValue() : 100, 500));
-        int off = Math.max(0, (args.get("offset") instanceof Number n) ? n.intValue() : 0);
-        if (documentRepository != null) {
-            List<DocumentDetails> allDocs = new ArrayList<>();
-            for (Collection c : allowed) {
-                try {
-                    String effectiveKind = parsedKind;
-                    if (parsedKind != null) {
-                        List<String> validKinds =
-                            documentRepository.findDistinctKindsInCollection(c.name());
-                        if (validKinds != null && !validKinds.isEmpty()) {
-                            effectiveKind = validKinds.stream().filter(parsedKind::equalsIgnoreCase)
-                                .findFirst().orElse(null);
-                            if (effectiveKind == null) {
-                                continue;
-                            }
-                        }
-                    }
-                    List<DocumentDetails> docs = documentRepository.listDocuments(c.name(),
-                        Integer.MAX_VALUE, 0, effectiveKind, parsedTag, null, null, fuzzyQuery);
-                    if (docs != null) {
-                        allDocs.addAll(docs);
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to list documents for collection {}", c.name(), e);
-                }
-            }
-            int fromIndex = Math.min(off, allDocs.size());
-            int toIndex = Math.min(off + lim, allDocs.size());
-            List<DocumentDetails> page = allDocs.subList(fromIndex, toIndex);
-            StringBuilder sb = new StringBuilder();
-            sb.append("Showing ").append(allDocs.isEmpty() ? 0 : Math.min(off + 1, allDocs.size()))
-                .append("–").append(Math.min(off + lim, allDocs.size())).append(" of ")
-                .append(allDocs.size()).append("\n\n");
-            sb.append("| document_id | kind | title | chunks |\n|---|---|---|---|\n");
-            for (DocumentDetails d : page) {
-                sb.append("| ").append(d.id() != null ? d.id() : "").append(" | ")
-                    .append(escapeTableCell(d.kind())).append(" | ")
-                    .append(escapeTableCell(d.title())).append(" | ").append(d.chunkCount())
-                    .append(" |\n");
-            }
-            return sb.toString();
-        }
-        return "| document_id | kind | title | chunks |\n|---|---|---|---|";
-    }
-
-    /**
-     * Enforces version/tag scoping on omit-collection {@code search_corpus} and
-     * {@code list_documents} calls across an area's allowed collections.
-     *
-     * <p>
-     * Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections in
-     * the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
-     * schema only has {@code 10.0}), omitting {@code collection} would either silently drop the
-     * other collection or mix versions, so the caller is prompted to name {@code collection}
-     * explicitly.
-     */
-    @Nullable
-    private static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
-        List<Collection> taggedCols =
-            allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
-        if (taggedCols.isEmpty()) {
-            return null;
-        }
-        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
-        if (parsedTag == null) {
-            if (allowed.size() == 1 && taggedCols.size() == 1) {
-                Collection single = taggedCols.get(0);
-                return "Error: Collection '" + single.name()
-                    + "' is version/tag-scoped. Please specify 'tag' (valid values: "
-                    + String.join(", ", single.tags())
-                    + ") so results come from a single version/dataset.";
-            }
-            String taggedSummary = taggedCols.stream()
-                .map(c -> c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
-                .collect(Collectors.joining("; "));
-            return "Error: Area contains version/tag-scoped collections (" + taggedSummary
-                + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
-        }
-        for (Collection tc : taggedCols) {
-            if (!tc.tags().contains(parsedTag)) {
-                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + tc.name()
-                    + "' (valid tags: " + String.join(", ", tc.tags())
-                    + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
             }
         }
         return null;
@@ -1009,12 +829,19 @@ public class RagService {
         if (chunkIdStr != null && !chunkIdStr.isBlank()) {
             if (chunkRepository != null && documentRepository != null) {
                 Optional<ChunkRow> chunkOpt = Optional.empty();
+                String trimmedChunkId = chunkIdStr.trim();
+                boolean areaRestricted = !ctx.isAllAreas();
                 try {
-                    chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr.trim());
+                    if (areaRestricted) {
+                        chunkOpt = chunkRepository.findByIdPrefix(trimmedChunkId,
+                            ctx.getAllowedAreasLower());
+                    } else {
+                        chunkOpt = chunkRepository.findByIdPrefix(trimmedChunkId);
+                    }
                 } catch (IllegalArgumentException e) {
                     if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
-                        && ctx.getAllowedAreasLower() != null) {
-                        return "Error: Ambiguous chunk ID prefix '" + chunkIdStr.trim()
+                        && areaRestricted) {
+                        return "Error: Ambiguous chunk ID prefix '" + trimmedChunkId
                             + "'. Please provide the full chunk UUID.";
                     }
                     // Short or non-hex prefix; let the tool or UUID fallback handle it
@@ -1032,7 +859,7 @@ public class RagService {
                         Optional<Collection> colOpt =
                             collectionService.findById(docOpt.get().collectionId());
                         if (colOpt.isEmpty() || !ctx.isAreaAllowed(colOpt.get().area())) {
-                            return "Error: Chunk not found: " + chunkIdStr.trim();
+                            return "Error: Chunk not found: " + trimmedChunkId;
                         }
                     }
                 }
@@ -1040,27 +867,6 @@ public class RagService {
         }
 
         return null;
-    }
-
-    @Nullable
-    private String guardVerifyCitations(Map<String, Object> args, AgenticChatContext ctx) {
-        if (citationVerifier == null) {
-            return null;
-        }
-        List<String> citations = extractCitations(args.get("citations"));
-        if (citations == null || citations.isEmpty()) {
-            return "Error: 'citations' parameter is required. At least one citation token must be specified.";
-        }
-        List<CitationVerifier.CitationCheckResult> results =
-            citationVerifier.checkCitations(citations, ctx.getAllowedAreasLower());
-        return CitationVerifier.formatReport(results);
-    }
-
-    private static String escapeTableCell(@Nullable String val) {
-        if (val == null) {
-            return "";
-        }
-        return val.replace("|", "\\|").replace("\n", " ");
     }
 
     public @Nullable Collection resolveCollection(@Nullable String collectionName,
@@ -1094,19 +900,6 @@ public class RagService {
         } catch (Exception e) {
             return Collections.emptyMap();
         }
-    }
-
-    private List<String> extractCitations(Object citationsObj) {
-        if (citationsObj instanceof List<?> list) {
-            List<String> result = new ArrayList<>();
-            for (Object item : list) {
-                if (item != null) {
-                    result.add(item.toString());
-                }
-            }
-            return result;
-        }
-        return Collections.emptyList();
     }
 
     private static UUID parseUuid(Object raw) {
