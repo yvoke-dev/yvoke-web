@@ -135,7 +135,9 @@ public class ChatAsyncControllerIT {
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
         
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        List<GrantedAuthority> authorities = List.of(
+            new SimpleGrantedAuthority("ROLE_USER"),
+            new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext secContext = SecurityContextHolder.createEmptyContext();
@@ -146,7 +148,9 @@ public class ChatAsyncControllerIT {
     private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+            .authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
     @Test
@@ -267,7 +271,9 @@ public class ChatAsyncControllerIT {
         var login = oidcLogin()
             .idToken(token -> token.subject("missing-content-probe").claim("oid", userOid)
                 .claim("name", "User A").claim("email", "user-a-async@local"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+            .authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("AREA_USER_OIM"));
 
         // No conversation is needed: @RequestParam resolution fails before the handler body runs.
         String body = mockMvc
@@ -339,7 +345,9 @@ public class ChatAsyncControllerIT {
         var login = oidcLogin()
             .idToken(token -> token.subject(subject).claim("oid", userOid)
                 .claim("name", "Rate Limit Probe").claim("email", "rate-limit-probe@local"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+            .authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("AREA_USER_OIM"));
 
         MvcResult result = mockMvc
             .perform(post("/chat/" + conv.id() + "/send").with(login).with(csrf()).param("content",
