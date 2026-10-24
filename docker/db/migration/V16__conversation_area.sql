@@ -31,6 +31,12 @@ JOIN playbooks p ON p.name = m.playbook
 WHERE c.id = m.conversation_id
   AND c.area IS NULL;
 
+-- Backfill any remaining pre-existing conversations to 'OIM' — before per-area authorization
+-- existed, every conversation in the system belonged to OIM.
+UPDATE conversations
+SET area = 'OIM'
+WHERE area IS NULL;
+
 CREATE INDEX idx_conversations_area ON conversations(area);
 
 -- Partial index for public conversations by area.
