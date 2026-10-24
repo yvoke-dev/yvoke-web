@@ -3,27 +3,28 @@
 **What it is for.** The chat workspace: where someone puts a question to Yvoke and reads the answer
 together with the documentation it came from.
 
-**Who uses it.** Every signed-in user. Administrators use the same screens, plus a ratings dashboard and
-a register of everyone's conversations.
+**Who uses it.** Every signed-in user with access to at least one knowledge area. Administrators use the
+same screens, plus a ratings dashboard and a register of user conversations scoped to their administered
+areas (or all conversations for Superadmins).
 
 ## What you can do
 
 | Capability | What happens |
 | --- | --- |
 | **Start a conversation** | *New Chat* opens an empty thread titled *New Conversation*. The first question becomes the title, shortened if long, and is then fixed. Conversations made in the desktop app appear in the same sidebar, marked *Desktop*. |
-| **Pick a playbook** | Before asking the first question, the user picks a named way of answering. Suggestions appear as chips on an empty conversation; typing `/` or clicking **+** opens the full list with descriptions (searchable by name when typing `/`). The starter chips, the `/` list, the active playbook indicator above the input box, and the playbook badge on messages in the thread all show the playbook's version (`v1`, `v2`, …) alongside its name when a version is known. The choice is locked for the rest of the conversation once the first question is sent. |
+| **Pick a playbook** | Before asking the first question, the user picks a named way of answering. Playbook options, starter chips, typing `/` or clicking **+** are strictly filtered to the knowledge areas the user is authorized for. The starter chips, the `/` list, the active playbook indicator above the input box, and the playbook badge on messages in the thread all show the playbook's version (`v1`, `v2`, …) alongside its name when a version is known. The choice is locked for the rest of the conversation once the first question is sent, permanently binding the conversation to that area. |
 | **Ask by typing or by voice** | The input grows as you type; Enter sends, Shift+Enter adds a line. A microphone button dictates into the box — tap to start and stop, or hold to record, chosen in voice settings. |
 | **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response*, *Polishing the answer* — and names each research tool as it runs. |
 | **Read a formatted answer** | Answers render headings, tables, code blocks, mathematical formulas and drawn diagrams. HTML tables in an answer (typically copied from an imported passage, including split passages that start or end mid-table) are balanced and rendered as tables, while other markup an answer quotes (an XML fragment, a configuration snippet, a stray HTML tag) is shown verbatim as source rather than rendered, so it survives intact instead of vanishing (HTML comments and empty bookmark anchors outside code are dropped instead); a multi-line fragment is shown as a code block. A link to somewhere outside Yvoke opens in a new tab, so following one never loses the conversation. In Streaming mode a diagram shows as its source text while the answer is still arriving, and is drawn once it finishes. |
 | **Stop a running answer** | The send button becomes a stop button while an answer runs. Stopping marks the answer *[Generation stopped by user]*. In Standard mode the text so far is kept; in in-depth mode the partial answer is discarded. |
-| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel showing the cited passage and nothing else — deliberately, since a citation is the claim that *this* passage supports the sentence, and padding it out with neighbouring text invites confirming a claim against material the assistant never read. The panel carries the document title, its version, the passage's place in the document, and a link to the original page where one exists. |
+| **Open the source behind a citation** | Clicking a citation opens a *Citation Source* panel showing the cited passage and nothing else — deliberately, since a citation is the claim that *this* passage supports the sentence, and padding it out with neighbouring text invites confirming a claim against material the assistant never read. The panel carries the document title, its version, the passage's place in the document, and a link to the original page where one exists. Access is guarded by area authorization: clicking a citation whose underlying collection belongs to an unauthorized area returns *not found* (`404`). |
 | **See the reasoning and tools used** | *Show thinking & tools* reveals the assistant's reasoning and every tool it called. A *View Thinking Process* button opens the full reasoning in a panel. Forced on in Streaming mode. |
 | **See how much work an answer took** | Each answer shows how much text the assistant read, re-used, thought with and wrote. Users see effort, never money — no prices appear in chat. |
 | **Answer a clarifying question** | When the assistant needs more information it posts a *Clarification Required* card, often with ready-made options. The input is locked until the user answers. The card then collapses to *Clarification Provided*. |
 | **Get a playbook check before the first question** | On the first question Yvoke checks whether the chosen playbook suits it. If not, a *Playbook Recommendation* card explains why and offers **Switch to …** and **Send Anyway**. |
 | **Rate an answer** | Thumbs up and thumbs down on every answer. Clicking one opens a comment box; submitting stores the rating and shows *Feedback saved*. Changing the thumb later keeps the comment. |
 | **Organise conversations into folders** | Folder tags group conversations in the sidebar; a conversation appears under each tag it carries, or under *No Tag*. Autocomplete offers the user's own existing folder names. |
-| **Share a conversation** | Adding the tag `public` moves it into a *Public Conversations* folder that every signed-in user sees, with a *Shared* badge. Removing the tag un-shares it. |
+| **Share a conversation** | Adding the tag `public` moves it into a *Public Conversations* folder, with a *Shared* badge. Visibility is strictly scoped to the conversation's knowledge area: only users authorized for that area can view or open it. Removing the tag un-shares it. |
 | **Choose model, effort and mode** | Each conversation picks its own model from the allowed list, a reasoning effort of Low / Medium / High, and Standard or Streaming delivery. Where in-depth profiles exist, a selector switches to one. |
 | **Toggle prototypes** | A button in the composer toolbar toggles *Show prototype playbooks & profiles*. When enabled, experimental playbooks (marked with 🧪) appear in empty-thread suggestion chips and in `/` and `+` playbook menus, and experimental in-depth profiles appear in the profile selector. Disabled by default. |
 | **Delete a conversation** | Confirmed, then permanent — the thread, its answers and its ratings. |
@@ -33,7 +34,8 @@ a register of everyone's conversations.
 
 - **The user never picks the knowledge area or the tag.** The chosen playbook decides which area and which
   tag are searched. Asking about a different product version means picking a different playbook — there is
-  no tag selector in chat. *This surprises most new users.*
+  no tag selector in chat. *This surprises most new users.* Suggestion chips, menus, and autocomplete list
+  only playbooks belonging to knowledge areas the user is authorized to access.
 - **Prototypes (`prototype = true`) are hidden from user selection by default.** An experimental
   playbook does not appear in prompt chips, slash autocomplete or preflight recommendations, and an
   experimental in-depth profile does not appear in the profile selector, unless the user enables prototype
@@ -48,6 +50,9 @@ a register of everyone's conversations.
   area's default playbook (such as `oim-full`), the preflight check is skipped and the question sends immediately.
   Furthermore, if the validator recommends the very playbook that the user already selected, the preflight
   check succeeds immediately as valid rather than displaying a redundant recommendation card.
+- **Preflight recommendations only offer playbooks from authorized areas.** If a preflight check suggests
+  switching to a different playbook, candidates are filtered strictly to the user's authorized areas; a
+  playbook in an unauthorized area is never recommended.
 - **The mode and playbook/profile are chosen on the first question and locked for the conversation.** Once a
   message has been sent, neither the mode (single-playbook vs in-depth multi-agent) nor the playbook/profile
   can be changed. The mode selector is disabled. In single-playbook mode, the playbook selection button (**+**),
@@ -55,6 +60,8 @@ a register of everyone's conversations.
   automatically use the locked playbook; attempting to specify a different playbook on a follow-up turn is
   rejected with an error. If the locked playbook is subsequently deleted, follow-up turns are refused with an
   error advising the user to start a new conversation.
+  Sending the first question also locks and stamps the conversation's knowledge area (`conversations.area`).
+  All subsequent turns, citations, and sharing permissions are bound to this area.
 - **A playbook adds to the base instructions; it does not replace them.** The administrator's base
   instructions always apply, and the playbook is layered on top for the conversation. So rules that
   hold for every answer — how sources are cited, never naming an unverified object, always naming a knowledge
@@ -67,8 +74,17 @@ a register of everyone's conversations.
   instructions; it is not inherited.
 - **Only the owner may change anything.** Administrators and viewers of a shared conversation can read a
   thread and its ratings, but cannot post, rate, tag, stop or delete it.
+- **In-app research tools enforce strict area isolation.** During answer generation in single-playbook or
+  in-depth mode, all background tool calls (`search_corpus`, `list_documents`, `get_toc`, `get_section`,
+  `search_graph_entities`, `get_graph_neighbors`, `get_json_schema`, `query_json_objects`,
+  `verify_citations`) run under an execution context restricted to the intersection of the user's
+  authorized areas and the active playbook's area. Even when a tool call omits a collection name, queries
+  are bounded to that scope and never read data from unauthorized areas.
 - **Sharing is one tag away** — immediate, no confirmation step, no per-person control. Adding `public`
-  exposes the whole conversation to every signed-in user.
+  exposes the whole conversation to every user who has access to the conversation's knowledge area (or
+  Global Users and Superadmins). Unscoped public conversations (`area IS NULL`) are visible to any signed-in
+  user until locked to an area. Attempting to open a shared conversation outside one's authorized areas
+  returns an opaque *not found* (`404`).
 - **A bare thumb is recorded in web chat.** Clicking thumbs-up or thumbs-down stores the rating
   immediately, with or without a comment, and it survives a reload. The desktop app is stricter on one
   point: it takes a bare thumbs-up, but a thumbs-down without a comment is refused rather than stored.
@@ -123,6 +139,12 @@ a register of everyone's conversations.
   removing the tag from every conversation and adding a new one.
 - **In-depth mode is only available** where an administrator has defined at least one profile.
 - **The reasoning effort setting does nothing on some models.** Low / Medium / High is offered on every conversation and always saves, but only models that support extended thinking act on it — on the others the answer is produced with no thinking effort at all, and neither the selector nor the answer says so.
+- **A conversation is bound to a single area permanently.** Follow-up questions cannot search across multiple
+  knowledge areas, even if the user has access to multiple areas. Querying another area requires starting a
+  new conversation.
+- **Revoked area permissions immediately block access.** If a user's role assignment for an area is removed,
+  their existing conversations in that area become unreachable (`404 Not Found`), and citation links in
+  cached answers stop opening.
 
 ## Not supported
 
@@ -130,7 +152,8 @@ a register of everyone's conversations.
 - Regenerating an answer, retrying with a different playbook, switching playbooks mid-thread, switching between single-playbook and in-depth multi-agent mode mid-thread, or branching from an earlier point.
 - Renaming a conversation or a folder in the web app. The title comes from the first question; **only the
   desktop app can retitle a conversation**.
-- Sharing with a named person or group. A conversation is either private or visible to everyone.
+- Sharing with a named person or group. A conversation is either private, or shared across all users authorized for that conversation's knowledge area.
+- Cross-area conversations or blending sources from multiple knowledge areas in a single chat thread.
 - Searching or filtering conversations from the sidebar.
 - Exporting, printing or downloading a conversation.
 - Attaching a file to a question. Answers draw only on what was imported.
