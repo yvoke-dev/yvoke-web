@@ -4,8 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.tool.AskClarifyingQuestionToolCallback;
 import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
 import de.palsoftware.yvoke.mcp.tools.GetSectionToolCallback;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsTool;
+import de.palsoftware.yvoke.mcp.tools.ListDocumentsToolCallback;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
+import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -72,12 +76,32 @@ public class McpToolsConfig {
             log.error("Failed to register custom GetSectionToolCallback", e);
         }
 
+        try {
+            ListDocumentsTool listDocumentsTool =
+                applicationContext.getBean(ListDocumentsTool.class);
+            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
+            registerByHand(new ListDocumentsToolCallback(listDocumentsTool, objectMapper),
+                registeredNames, callbacksList);
+        } catch (Exception e) {
+            log.error("Failed to register custom ListDocumentsToolCallback", e);
+        }
+
+        try {
+            VerifyCitationsTool verifyCitationsTool =
+                applicationContext.getBean(VerifyCitationsTool.class);
+            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
+            registerByHand(new VerifyCitationsToolCallback(verifyCitationsTool, objectMapper),
+                registeredNames, callbacksList);
+        } catch (Exception e) {
+            log.error("Failed to register custom VerifyCitationsToolCallback", e);
+        }
+
         for (Class<?> clazz : scanToolClasses()) {
-            // Both are registered by hand above with a context-aware callback. The
-            // duplicate-name guard below would skip the scanned copy anyway, but that
-            // leaves two sources of truth for one tool's schema; skipping the class keeps
-            // exactly one.
+            // Registered by hand above with a context-aware callback. The duplicate-name
+            // guard below would skip the scanned copy anyway, but that leaves two sources
+            // of truth for one tool's schema; skipping the class keeps exactly one.
             if (clazz.equals(SearchCorpusTool.class) || clazz.equals(GetSectionTool.class)
+                || clazz.equals(ListDocumentsTool.class) || clazz.equals(VerifyCitationsTool.class)
                 || clazz.isAnnotationPresent(ClientOnlyTools.class)) {
                 continue;
             }

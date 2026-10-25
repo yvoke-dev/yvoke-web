@@ -9,15 +9,31 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionChunks;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.document.core.model.SectionChunks.SectionChunk;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * {@code get_section} returns the passages of a section, each preceded by its own id.
@@ -54,7 +70,12 @@ public class GetSectionToolTest {
     @BeforeEach
     public void setUp() {
         sectionService = mock(SectionService.class);
-        getSectionTool = new GetSectionTool(sectionService);
+        getSectionTool = new GetSectionTool(sectionService, mock(DocumentRepository.class),
+            mock(ChunkRepository.class), mock(CollectionService.class));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
     }
 
     private static SectionChunks section(SectionChunk... chunks) {
@@ -204,7 +225,7 @@ public class GetSectionToolTest {
      */
     @Test
     public void aSectionReadMarksItsPassagesSoALaterSearchDoesNotRepeatThem() {
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         when(sectionService.getSectionChunksByDocumentId(anyString(), any()))
             .thenReturn(section(new SectionChunk(CHUNK_A, DOC, "Prerequisites", "The body.")));
 
@@ -218,7 +239,7 @@ public class GetSectionToolTest {
     /** The converse: a passage a search already showed is not printed again by a section read. */
     @Test
     public void aPassageAlreadyShownIsRenderedAsAReferenceNotRepeatedInFull() {
-        AgenticChatContext ctx = new AgenticChatContext();
+        AgenticChatContext ctx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         ctx.firstSighting(CHUNK_A); // as if a search had already rendered it
         when(sectionService.getSectionChunksByDocumentId(anyString(), any()))
             .thenReturn(section(new SectionChunk(CHUNK_A, DOC, "Prerequisites", "The body."),
@@ -247,5 +268,56 @@ public class GetSectionToolTest {
         assertThat(first).contains("The body.");
         assertThat(second).as("no conversation means no ledger, however many times it is called")
             .contains("The body.");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    public void testUnauthorizedDocumentAndChunkAreaReturnsNotFound() {
+        DocumentRepository docRepo = mock(DocumentRepository.class);
+        ChunkRepository chunkRepo = mock(ChunkRepository.class);
+        CollectionService colService = mock(CollectionService.class);
+        GetSectionTool scopedTool =
+            new GetSectionTool(sectionService, docRepo, chunkRepo, colService);
+
+        UUID pingColId = UUID.randomUUID();
+        when(colService.findById(eq(pingColId))).thenReturn(Optional.of(new Collection(pingColId,
+            "PingID - Manuals", "desc", List.of(), OffsetDateTime.now(), "PingID")));
+        when(docRepo.findById(eq(DOC)))
+            .thenReturn(Optional.of(new DocumentRow(DOC, pingColId, "PingID - Manuals", "manual",
+                "PingID Guide", null, "completed", Collections.emptyList(), Instant.now())));
+        when(chunkRepo.findByIdPrefix(eq(CHUNK_A.toString())))
+            .thenReturn(Optional.of(new ChunkRow(CHUNK_A, DOC, "secret text", List.of("Ch1"), "Ch1",
+                1, 0, null, "PingID Guide", "manual", "PingID - Manuals", null, 0.9)));
+
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("oim-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        assertEquals("Error: Document not found: " + DOC,
+            scopedTool.getSection(DOC.toString(), "Ch1", null));
+        assertEquals("Error: Chunk not found: " + CHUNK_A,
+            scopedTool.getSection(null, null, CHUNK_A.toString()));
+
+        SecurityContextHolder.clearContext();
+        AgenticChatContext oimCtx = new AgenticChatContext(Set.of("oim"));
+        assertEquals("Error: Document not found: " + DOC,
+            scopedTool.getSection(DOC.toString(), "Ch1", null, oimCtx));
+        assertEquals("Error: Chunk not found: " + CHUNK_A,
+            scopedTool.getSection(null, null, CHUNK_A.toString(), oimCtx));
+    }
+
+    @Test
+    public void noContextAndNoAuthenticationDeniesByDefault() {
+        SecurityContextHolder.clearContext();
+
+        assertEquals("Error: Document not found: " + DOC,
+            getSectionTool.getSection(DOC.toString(), "Ch1", null));
+        assertEquals("Error: Chunk not found: chunk-123",
+            getSectionTool.getSection(null, null, "chunk-123"));
     }
 }

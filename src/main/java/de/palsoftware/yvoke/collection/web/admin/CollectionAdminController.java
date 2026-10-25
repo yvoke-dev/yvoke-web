@@ -1,14 +1,17 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
+import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 
@@ -40,9 +44,15 @@ public class CollectionAdminController {
     @GetMapping("/collections")
     public String viewCollections(Model model) {
         log.info("CollectionAdminController: Accessing Collections view");
-        model.addAttribute("collections", collectionService.listCollections());
-        model.addAttribute("allTags", collectionService.listAllTags());
-        model.addAttribute("areas", areaService.listAreaNames());
+        List<Collection> collections = collectionService.listForAdminUser();
+        model.addAttribute("collections", collections);
+        List<String> allTags =
+            AreaAccessContext.allowedAdminAreasLower().isEmpty() ? collectionService.listAllTags()
+                : collections.stream().filter(c -> c.tags() != null).flatMap(c -> c.tags().stream())
+                    .filter(t -> t != null && !t.isBlank()).distinct().sorted().toList();
+        model.addAttribute("allTags", allTags);
+        model.addAttribute("areas",
+            areaService.listAdministeredForCurrentUser().stream().map(Area::name).toList());
         return "admin/collections";
     }
 
@@ -50,6 +60,13 @@ public class CollectionAdminController {
     public String createCollection(@RequestParam String name,
         @RequestParam(required = false) String description, @RequestParam String area,
         RedirectAttributes redirectAttributes) {
+        if (!AreaAccessContext.canAdministerArea(area)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Not authorized to create collection in area: " + area);
+        }
+        if (collectionService.findByName(name).isPresent()) {
+            throw new IllegalArgumentException("Collection '" + name.trim() + "' already exists.");
+        }
         collectionService.createCollection(name, description, area);
         redirectAttributes.addFlashAttribute("success",
             "Collection '" + name.trim() + "' created successfully.");
@@ -59,6 +76,16 @@ public class CollectionAdminController {
     @PostMapping("/collections/area")
     public String moveCollection(@RequestParam String name, @RequestParam String area,
         RedirectAttributes redirectAttributes) {
+        Collection current = collectionService.findByName(name).orElseThrow(
+            () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
+        if (!AreaAccessContext.canAdministerArea(current.area())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Not authorized to administer source area: " + current.area());
+        }
+        if (!AreaAccessContext.canAdministerArea(area)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Not authorized to administer target area: " + area);
+        }
         String movedTo = collectionService.moveCollection(name, area);
         redirectAttributes.addFlashAttribute("success",
             "Collection '" + name + "' moved to area '" + movedTo + "'.");
@@ -87,8 +114,10 @@ public class CollectionAdminController {
         @RequestHeader(value = "HX-Current-URL", required = false) String currentUrl, Model model) {
         String targetName =
             name != null ? name : (collectionName != null ? collectionName : targetCollectionName);
-        Optional<Collection> colOpt =
-            targetName != null ? collectionService.getCollection(targetName) : Optional.empty();
+        Optional<Collection> colOpt = targetName != null
+            ? collectionService.getCollection(targetName)
+                .filter(c -> c.area() == null || AreaAccessContext.canAdministerArea(c.area()))
+            : Optional.empty();
         List<String> versions = colOpt.map(Collection::tags).orElse(List.of());
         model.addAttribute("versions", versions);
         model.addAttribute("tags", versions);
@@ -105,7 +134,9 @@ public class CollectionAdminController {
     @PostMapping("/collections/add-tag")
     public String addCollectionTag(@RequestParam UUID collectionId, @RequestParam String tag,
         RedirectAttributes redirectAttributes) {
-        tagService.addTagToCollection(collectionId, tag);
+        Collection col = collectionService.findByIdForAdmin(collectionId).orElseThrow(
+            () -> new IllegalArgumentException("Collection not found: " + collectionId));
+        tagService.addTagToCollection(col.id(), tag);
         redirectAttributes.addFlashAttribute("success", "Tag added successfully.");
         return "redirect:/admin/collections";
     }

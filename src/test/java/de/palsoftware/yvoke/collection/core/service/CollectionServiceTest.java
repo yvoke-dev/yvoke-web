@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.collection.core.service;
 import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,8 +11,13 @@ import static org.mockito.Mockito.*;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class CollectionServiceTest {
 
@@ -22,6 +28,81 @@ public class CollectionServiceTest {
     public void setUp() {
         collectionRepository = mock(CollectionRepository.class);
         collectionService = new CollectionService(collectionRepository, TestAreas.withAreas("OIM"));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void setAuth(String... authorities) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "n/a",
+            Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
+        SecurityContextHolder.setContext(context);
+    }
+
+    @Test
+    void listByAreas_filtersByLowercaseAreaSet() {
+        Collection c1 = new Collection(UUID.randomUUID(), "Col1", "desc", List.of(),
+            OffsetDateTime.now(), "OIM");
+        Collection c2 = new Collection(UUID.randomUUID(), "Col2", "desc", List.of(),
+            OffsetDateTime.now(), "PingID");
+        when(collectionRepository.findAll()).thenReturn(List.of(c1, c2));
+
+        assertThat(collectionService.listByAreas(null)).containsExactly(c1, c2);
+        assertThat(collectionService.listByAreas(List.of())).isEmpty();
+        assertThat(collectionService.listByAreas(List.of("oim"))).containsExactly(c1);
+        assertThat(collectionService.listByAreas(List.of("  PINGID  "))).containsExactly(c2);
+    }
+
+    @Test
+    void listForAdminUser_returnsScopedOrAllBasedOnRole() {
+        Collection c1 = new Collection(UUID.randomUUID(), "Col1", "desc", List.of(),
+            OffsetDateTime.now(), "OIM");
+        Collection c2 = new Collection(UUID.randomUUID(), "Col2", "desc", List.of(),
+            OffsetDateTime.now(), "PingID");
+        when(collectionRepository.findAll()).thenReturn(List.of(c1, c2));
+
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(collectionService.listForAdminUser()).containsExactly(c1, c2);
+
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        assertThat(collectionService.listForAdminUser()).containsExactly(c1);
+
+        setAuth(AreaAccessContext.ROLE_USER);
+        assertThat(collectionService.listForAdminUser()).isEmpty();
+    }
+
+    @Test
+    void findByIdForAdmin_and_findByNameForAdmin_enforceAdminScoping() {
+        UUID id = UUID.randomUUID();
+        Collection c1 =
+            new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
+        when(collectionRepository.findById(id)).thenReturn(Optional.of(c1));
+        when(collectionRepository.findByName("OIM-Docs")).thenReturn(Optional.of(c1));
+
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        assertThat(collectionService.findByIdForAdmin(id)).contains(c1);
+        assertThat(collectionService.findByNameForAdmin("OIM-Docs")).contains(c1);
+
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "PINGID");
+        assertThat(collectionService.findByIdForAdmin(id)).isEmpty();
+        assertThat(collectionService.findByNameForAdmin("OIM-Docs")).isEmpty();
+    }
+
+    @Test
+    void findById_and_findByName_basicAccessors() {
+        UUID id = UUID.randomUUID();
+        Collection c1 =
+            new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
+        when(collectionRepository.findById(id)).thenReturn(Optional.of(c1));
+        when(collectionRepository.findByName("OIM-Docs")).thenReturn(Optional.of(c1));
+
+        assertThat(collectionService.findById(id)).contains(c1);
+        assertThat(collectionService.findById(null)).isEmpty();
+        assertThat(collectionService.findByName("OIM-Docs")).contains(c1);
+        assertThat(collectionService.findByName(null)).isEmpty();
     }
 
     @Test

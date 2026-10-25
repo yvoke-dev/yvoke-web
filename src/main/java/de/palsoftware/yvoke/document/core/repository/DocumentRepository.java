@@ -100,12 +100,36 @@ public class DocumentRepository {
 
     /** Returns which of the given document ids exist, in a single query. */
     public Set<UUID> findExistingIds(Collection<UUID> ids) {
+        return findExistingIds(ids, null);
+    }
+
+    /**
+     * Returns which of the given document ids exist and belong to allowed areas, in a single query.
+     */
+    public Set<UUID> findExistingIds(Collection<UUID> ids,
+        @Nullable Set<String> allowedAreasLower) {
         if (ids == null || ids.isEmpty()) {
             return Set.of();
         }
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return Set.of();
+        }
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
-        return new HashSet<>(jdbcClient.sql("SELECT id FROM documents WHERE id = ANY(:ids::uuid[])")
-            .param("ids", idStrings).query(UUID.class).list());
+        if (allowedAreasLower == null || allowedAreasLower.contains("*")) {
+            return new HashSet<>(
+                jdbcClient.sql("SELECT id FROM documents WHERE id = ANY(:ids::uuid[])")
+                    .param("ids", idStrings).query(UUID.class).list());
+        }
+        String sql = """
+            SELECT d.id
+            FROM documents d
+            JOIN collections coll ON d.collection_id = coll.id
+            WHERE d.id = ANY(:ids::uuid[])
+              AND coll.area IS NOT NULL
+              AND LOWER(coll.area) IN (:allowedAreasLower)
+            """;
+        return new HashSet<>(jdbcClient.sql(sql).param("ids", idStrings)
+            .param("allowedAreasLower", allowedAreasLower).query(UUID.class).list());
     }
 
     public Optional<DocumentRow> findByManual(String manualSubstring) {
@@ -203,6 +227,18 @@ public class DocumentRepository {
     public List<DocumentDetails> listDocuments(@Nullable String collection, int limit, int offset,
         @Nullable String kind, @Nullable String tag, @Nullable String searchId,
         @Nullable String searchTitle, @Nullable String fuzzyTitle) {
+        return listDocuments(collection, limit, offset, kind, tag, searchId, searchTitle,
+            fuzzyTitle, null);
+    }
+
+    public List<DocumentDetails> listDocuments(@Nullable String collection, int limit, int offset,
+        @Nullable String kind, @Nullable String tag, @Nullable String searchId,
+        @Nullable String searchTitle, @Nullable String fuzzyTitle,
+        @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+
         String sql =
             """
                 SELECT d.id, d.collection_id, c.name AS collection, d.kind, d.title, d.metadata, d.ingestion_status, d.tags, d.created_at,
@@ -251,6 +287,10 @@ public class DocumentRepository {
                 " AND (d.title ILIKE '%' || :fuzzyTitle || '%' OR similarity(d.title, :fuzzyTitle) > 0.25) ";
             params.put("fuzzyTitle", fuzzyTitle.trim());
         }
+        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()) {
+            sql += " AND (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)) ";
+            params.put("allowedAreasLower", allowedAreasLower);
+        }
 
         if (hasFuzzy) {
             sql +=
@@ -285,6 +325,16 @@ public class DocumentRepository {
     public long countDocuments(@Nullable String collection, @Nullable String kind,
         @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle,
         @Nullable String fuzzyTitle) {
+        return countDocuments(collection, kind, tag, searchId, searchTitle, fuzzyTitle, null);
+    }
+
+    public long countDocuments(@Nullable String collection, @Nullable String kind,
+        @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle,
+        @Nullable String fuzzyTitle, @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return 0L;
+        }
+
         String sql = """
             SELECT count(*)
             FROM documents d
@@ -323,6 +373,10 @@ public class DocumentRepository {
             sql +=
                 " AND (d.title ILIKE '%' || :fuzzyTitle || '%' OR similarity(d.title, :fuzzyTitle) > 0.25) ";
             params.put("fuzzyTitle", fuzzyTitle.trim());
+        }
+        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()) {
+            sql += " AND (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)) ";
+            params.put("allowedAreasLower", allowedAreasLower);
         }
 
         return jdbcClient.sql(sql).params(params).query(Long.class).single();

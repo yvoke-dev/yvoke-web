@@ -18,8 +18,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * {@code list_playbooks} and {@code get_playbook} exist for Claude clients: the Yvoke plugin's mod
@@ -45,10 +49,18 @@ class PlaybookToolsTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         playbookService = mock(PlaybookService.class);
         playbookRepository = mock(PlaybookRepository.class);
         tools = new PlaybookTools(playbookService, playbookRepository,
             TestAreas.withAreas("OIM", "PingID"), json);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -201,6 +213,29 @@ class PlaybookToolsTest {
 
         assertThat(list.isArray()).isTrue();
         assertThat(list).isEmpty();
+    }
+
+    @Test
+    void listPlaybooksFiltersByAllowedUserAreas() throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(FULL, BARE));
+
+        JsonNode list = json.readTree(tools.listPlaybooks(null));
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).get("name").asText()).isEqualTo("oim-full");
+    }
+
+    @Test
+    void getPlaybookUnauthorizedAreaYieldsError() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+        when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL));
+
+        String res = tools.getPlaybook("oim-full");
+        assertThat(res).startsWith("ERROR:").contains("not found");
     }
 
     private static Set<String> keys(JsonNode node) {

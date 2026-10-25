@@ -23,10 +23,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -52,12 +55,19 @@ class DesktopOrchestratorRunServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         conversationRepository = mock(ConversationRepository.class);
         messageRepository = mock(MessageRepository.class);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
         service = new DesktopOrchestratorRunService(conversationRepository, messageRepository,
             agentRunRepository, agentStepRepository);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     private void ownsConversation(UUID id) {
@@ -133,6 +143,20 @@ class DesktopOrchestratorRunServiceTest {
 
         assertThatThrownBy(() -> service.record(currentUser, req))
             .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void recordOnConversationWithUnauthorizedAreaYields404() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Mine",
+                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "restricted-area")));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OTHER"));
+
+        assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
+            .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 

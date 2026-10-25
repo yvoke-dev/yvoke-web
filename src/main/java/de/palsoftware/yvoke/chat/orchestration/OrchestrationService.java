@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.orchestration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -88,6 +90,27 @@ public class OrchestrationService {
             || properties.profile(trimmed).isPresent();
     }
 
+    public Optional<String> getProfileArea(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = name.trim();
+        if (profileService != null) {
+            Optional<OrchestratorProfile> p = profileService.getProfile(trimmed);
+            if (p.isPresent() && p.get().area() != null) {
+                return Optional.of(p.get().area());
+            }
+        }
+        Optional<OrchestratorProperties.Profile> propOpt = properties.profile(trimmed);
+        if (propOpt.isPresent()) {
+            String orchPbName = propOpt.get().orchestratorPlaybook();
+            if (orchPbName != null && playbookService != null) {
+                return playbookService.getPlaybook(orchPbName).map(Playbook::area);
+            }
+        }
+        return Optional.empty();
+    }
+
     public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
         List<UUID> searchIds, int promptTokens, int completionTokens, int totalTokens,
         int cachedTokens, int thoughtTokens, String status) {}
@@ -95,6 +118,14 @@ public class OrchestrationService {
     /** Blocking; intended to run on a background (virtual) thread. */
     public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
         String question, List<LlmMessage> history, UUID agentRunId, String profileName) {
+        return runOrchestration(conversationId, messageId, question, history, agentRunId,
+            profileName, AgenticChatContext.ALL_AREAS);
+    }
+
+    /** Blocking; intended to run on a background (virtual) thread with area isolation. */
+    public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
+        String question, List<LlmMessage> history, UUID agentRunId, String profileName,
+        @Nullable Set<String> allowedAreasLower) {
 
         ResolvedProfile profile;
         Playbook orchestratorPlaybook;
@@ -120,12 +151,20 @@ public class OrchestrationService {
 
         runRepository.create(agentRunId, conversationId, profileName, configSnapshot(profile));
 
+        Set<String> effectiveAreas =
+            allowedAreasLower != null ? allowedAreasLower : AgenticChatContext.ALL_AREAS;
+        if (effectiveAreas.contains("*") && orchestratorPlaybook.area() != null
+            && !orchestratorPlaybook.area().isBlank()) {
+            effectiveAreas = Set.of(orchestratorPlaybook.area().trim().toLowerCase(Locale.ROOT));
+        }
+
         RunState st =
             new RunState(agentRunId, conversationId, messageId, profile,
                 conversationRepository != null
                     ? conversationRepository.findById(conversationId).map(Conversation::userId)
                         .orElse(null)
-                    : null);
+                    : null,
+                effectiveAreas);
         st.specialistCfg = profile.specialist();
         int round = 0;
         String answer = "";
@@ -444,16 +483,18 @@ public class OrchestrationService {
         try {
             LlmCallContextHolder.set(st.conversationId, st.messageId, st.runId, st.userId,
                 "orchestrator", role);
-            RagResult result = ragService.generateAgenticAnswer(
-                AgenticRequest.builder().query(query).modelOverride(cfg.model()).history(history)
-                    .priorMessages(priorMessages).systemPromptOverride(systemPromptOverride)
-                    .allowedTools(allowedTools).thinkingLevel(cfg.thinkingLevel())
-                    .codeExecution(codeExecution).extraTools(extraTools).build(),
-                token -> {
-                    if (token != null) {
-                        emitted.append(token);
-                    }
-                });
+            RagResult result =
+                ragService.generateAgenticAnswer(
+                    AgenticRequest.builder().query(query).modelOverride(cfg.model())
+                        .history(history).priorMessages(priorMessages)
+                        .systemPromptOverride(systemPromptOverride).allowedTools(allowedTools)
+                        .thinkingLevel(cfg.thinkingLevel()).codeExecution(codeExecution)
+                        .extraTools(extraTools).allowedAreasLower(st.allowedAreasLower).build(),
+                    token -> {
+                        if (token != null) {
+                            emitted.append(token);
+                        }
+                    });
 
             String answerText = extractAnswerText(result, emitted.toString());
             Verdict verdict = verdictHolder != null ? verdictHolder[0] : null;
@@ -953,6 +994,7 @@ public class OrchestrationService {
         final UUID messageId;
         final UUID userId;
         final ResolvedProfile profile;
+        final Set<String> allowedAreasLower;
         final AtomicInteger seq = new AtomicInteger(0);
         final Set<UUID> chunkIds = new LinkedHashSet<>();
         final Set<UUID> searchIds = new LinkedHashSet<>();
@@ -1019,20 +1061,14 @@ public class OrchestrationService {
         int evidenceSent;
 
         RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
-            UUID userId) {
+            UUID userId, Set<String> allowedAreasLower) {
             this.runId = runId;
             this.conversationId = conversationId;
             this.messageId = messageId;
             this.profile = profile;
             this.userId = userId;
-        }
-
-        RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile) {
-            this(runId, conversationId, messageId, profile, null);
-        }
-
-        RunState(UUID runId, ResolvedProfile profile) {
-            this(runId, null, null, profile, null);
+            this.allowedAreasLower = Set.copyOf(
+                Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null"));
         }
 
         void accumulate(RagResult r) {

@@ -1,12 +1,15 @@
 package de.palsoftware.yvoke.area.web.admin;
 
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 /**
@@ -26,7 +29,7 @@ public class AreaAdminController {
 
     @GetMapping("/areas")
     public String viewAreas(Model model) {
-        model.addAttribute("areas", areaService.listAreasWithMembers());
+        model.addAttribute("areas", areaService.listAdministeredAreasWithMembers());
         return "admin/areas";
     }
 
@@ -39,6 +42,20 @@ public class AreaAdminController {
         @RequestParam(required = false) String defaultPlaybook,
         @RequestParam(required = false) String defaultProfile,
         RedirectAttributes redirectAttributes) {
+        if (!AreaAccessContext.isSuperAdmin()) {
+            if (originalName == null || originalName.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only superadmins can create areas");
+            }
+            if (!originalName.trim().equalsIgnoreCase(name.trim())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Area admins cannot rename areas");
+            }
+            if (!AreaAccessContext.canAdministerArea(originalName)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Not authorized to administer area: " + originalName);
+            }
+        }
         areaService.saveArea(originalName, name, title, description, prototype, defaultSystemPrompt,
             defaultPlaybook, defaultProfile);
         redirectAttributes.addFlashAttribute("success", "Area '" + name.trim() + "' saved.");
@@ -47,6 +64,10 @@ public class AreaAdminController {
 
     @PostMapping("/areas/delete")
     public String deleteArea(@RequestParam String name, RedirectAttributes redirectAttributes) {
+        if (!AreaAccessContext.isSuperAdmin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only superadmins can delete areas");
+        }
         String deleted = areaService.deleteArea(name);
         redirectAttributes.addFlashAttribute("success", "Area '" + deleted + "' deleted.");
         return "redirect:/admin/areas";

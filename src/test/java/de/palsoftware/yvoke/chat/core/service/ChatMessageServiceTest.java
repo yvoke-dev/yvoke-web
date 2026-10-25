@@ -26,9 +26,15 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
+import java.util.Arrays;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -117,6 +123,20 @@ public class ChatMessageServiceTest {
             systemPromptService, transactionManager, taskExecutor, chatCancellationService,
             orchestrationService, messageToolCallRepository, toolCallTraceExtractor, chatProperties,
             agentRunRepository, agentStepRepository);
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void setAuthenticatedUser(String... authorities) {
+        var auths = Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList();
+        var auth = new UsernamePasswordAuthenticationToken("test-user", "n/a", auths);
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(auth);
+        SecurityContextHolder.setContext(context);
     }
 
     private ChatMessageService createService(OrchestrationService orchService, ChatProperties props,
@@ -932,7 +952,7 @@ public class ChatMessageServiceTest {
             chatMessageService.prepareAndSubmitAsync(conversationId, "Question", null);
         assertThat(assistantMessageId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
-            any());
+            any(), any());
     }
 
     @Test
@@ -1286,7 +1306,7 @@ public class ChatMessageServiceTest {
         UUID searchId = UUID.randomUUID();
         OrchestrationResult result = new OrchestrationResult("Orchestrated answer",
             List.of(UUID.randomUUID()), List.of(searchId), 11, 22, 33, 4, 5, "done");
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(result);
 
         UUID assistantMessageId =
@@ -1299,7 +1319,7 @@ public class ChatMessageServiceTest {
         // The orchestrator ran for this conversation's configured profile, on the user's raw
         // question with no playbook template prepended.
         verify(orchestrationService).runOrchestration(eq(conversationId), any(), eq("Async Query"),
-            any(), any(), eq("oim"));
+            any(), any(), eq("oim"), any());
         // Single-agent RAG was never reached. never() is sound here because taskExecutor is a mock
         // and the submitted task is run inline above — nothing is pending on a real executor.
         verify(ragService, never()).generateAgenticAnswer(any(), any());
@@ -1462,7 +1482,7 @@ public class ChatMessageServiceTest {
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
 
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenThrow(new CancellationException("stopped by user"));
 
         UUID assistantMessageId =
@@ -1534,7 +1554,7 @@ public class ChatMessageServiceTest {
         String flaggedContent = "The kit ships 9.3.1.\n\n> ⚠️ Delivered with reservations.";
         OrchestrationResult flagged = new OrchestrationResult(flaggedContent, List.of(), List.of(),
             11, 22, 33, 4, 5, "delivered_flagged");
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(flagged);
 
         UUID assistantMessageId =
@@ -1608,7 +1628,7 @@ public class ChatMessageServiceTest {
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
 
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenThrow(new RuntimeException("429 quota key=abc"));
 
         UUID assistantMessageId =
@@ -1816,7 +1836,7 @@ public class ChatMessageServiceTest {
 
         OrchestrationService orchestrationService = mock(OrchestrationService.class);
         ChatMessageService service = createService(orchestrationService, null, null, null);
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
 
@@ -1833,7 +1853,7 @@ public class ChatMessageServiceTest {
 
         ArgumentCaptor<UUID> delegatedMessageId = ArgumentCaptor.forClass(UUID.class);
         verify(orchestrationService).runOrchestration(eq(conversationId),
-            delegatedMessageId.capture(), eq("Async Query"), any(), any(), eq("oim"));
+            delegatedMessageId.capture(), eq("Async Query"), any(), any(), eq("oim"), any());
 
         assertThat(delegatedMessageId.getValue())
             .as("agent_runs.message_id and llm_call_logs.message_id point at the QUESTION")
@@ -1997,7 +2017,7 @@ public class ChatMessageServiceTest {
         AgentRunRepository agentRunRepositoryMock = mock(AgentRunRepository.class);
         ChatMessageService service =
             createService(orchestrationService, null, agentRunRepositoryMock, null);
-        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any()))
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new OrchestrationResult("Orchestrated answer", List.of(), List.of(), 11, 22,
                 33, 4, 5, "done"));
 
@@ -2445,7 +2465,7 @@ public class ChatMessageServiceTest {
 
         assertThat(asstId).isNotNull();
         verify(orchestrationService, never()).runOrchestration(any(), any(), any(), any(), any(),
-            any());
+            any(), any());
         verify(messageRepository, times(2)).findInitialPlaybook(convId);
         verify(messageRepository, times(1)).hasInDepthTurns(convId);
     }
@@ -2721,5 +2741,92 @@ public class ChatMessageServiceTest {
         Assertions.assertThrows(IllegalArgumentException.class,
             () -> new AgentStep(id, convId, 0, "specialist", 0, "   ", -1, "gpt-4o", "medium", "in",
                 "out", "[]", null, 1, 1, 2, 0, 0, now, "ok", null));
+    }
+
+    @Test
+    public void prepare_withAuthenticatedAreaUser_allowsPlaybookInSameArea() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_OIM");
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, null, "Chat",
+            Map.of(ConversationSetting.MODEL.getValue(), "model1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("oim-playbook", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 1);
+        when(playbookService.getPlaybook("oim-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "Hello", "oim-playbook");
+
+        assertThat(prepared).isNotNull();
+        assertThat(prepared.allowedAreasLower()).containsExactly("oim");
+        verify(conversationRepository).updateAreaIfAbsent(conversationId, "OIM");
+    }
+
+    @Test
+    public void prepare_withAuthenticatedAreaUser_rejectsPlaybookInDifferentArea() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_OIM");
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", Map.of(), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("pingid-playbook", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "PingID", null, 1);
+        when(playbookService.getPlaybook("pingid-playbook")).thenReturn(Optional.of(pb));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Hello", "pingid-playbook"));
+    }
+
+    @Test
+    public void prepare_withAuthenticatedGlobalUser_allowsPlaybookInAnyArea() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, null, "Chat",
+            Map.of(ConversationSetting.MODEL.getValue(), "model1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("pingid-playbook", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "PingID", null, 1);
+        when(playbookService.getPlaybook("pingid-playbook")).thenReturn(Optional.of(pb));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "Hello", "pingid-playbook");
+        assertThat(prepared).isNotNull();
+        assertThat(prepared.allowedAreasLower()).containsExactly("pingid");
+    }
+
+    @Test
+    public void submitOrchestratedAsync_withAuthenticatedAreaUser_rejectsProfileInDifferentArea() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_OIM");
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "pingid-profile");
+        Conversation conv =
+            new Conversation(conversationId, null, "Chat", settings, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("pingid-profile")).thenReturn(true);
+        when(orchestrationService.getProfileArea("pingid-profile"))
+            .thenReturn(Optional.of("PingID"));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", null));
+    }
+
+    @Test
+    public void prepare_whenUnauthenticated_deniesAccessFailClosed() {
+        SecurityContextHolder.clearContext();
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, null, "Chat",
+            Map.of(ConversationSetting.MODEL.getValue(), "model1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pb = new Playbook("oim-playbook", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "OIM", null, 1);
+        when(playbookService.getPlaybook("oim-playbook")).thenReturn(Optional.of(pb));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Hello", "oim-playbook"));
     }
 }

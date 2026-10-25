@@ -17,6 +17,8 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.jobengine.model.QueuedKindSummary;
+import jakarta.annotation.Nullable;
+import java.util.Set;
 
 @Repository
 public class JobRepository {
@@ -273,7 +275,15 @@ public class JobRepository {
     }
 
     public List<IngestionJob> listJobs(int limit, int offset) {
-        String sql =
+        return listJobs(limit, offset, null);
+    }
+
+    public List<IngestionJob> listJobs(int limit, int offset,
+        @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder sql = new StringBuilder(
             """
                 SELECT j.id, j.kind, j.source_ref, j.tags, j.collection_id, c.name AS collection, j.status, j.step, j.progress, j.attempts,
                        j.error, j.doc_count, j.chunk_count, j.entity_count, j.edge_count, j.json_object_count,
@@ -282,15 +292,38 @@ public class JobRepository {
                        j.summary
                 FROM ingestion_jobs j
                 JOIN collections c ON j.collection_id = c.id
-                ORDER BY j.created_at DESC, j.id ASC
-                LIMIT :limit OFFSET :offset
-                """;
-        return jdbcClient.sql(sql).param("limit", limit).param("offset", offset)
-            .query(new JobRowMapper(objectMapper)).list();
+                """);
+        if (allowedAreasLower != null) {
+            sql.append(" WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)");
+        }
+        sql.append("""
+            ORDER BY j.created_at DESC, j.id ASC
+            LIMIT :limit OFFSET :offset
+            """);
+        var client = jdbcClient.sql(sql.toString()).param("limit", limit).param("offset", offset);
+        if (allowedAreasLower != null) {
+            client = client.param("allowedAreas", allowedAreasLower);
+        }
+        return client.query(new JobRowMapper(objectMapper)).list();
     }
 
     public long countJobs() {
-        return jdbcClient.sql("SELECT count(*) FROM ingestion_jobs").query(Long.class).single();
+        return countJobs(null);
+    }
+
+    public long countJobs(@Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return 0;
+        }
+        if (allowedAreasLower == null) {
+            return jdbcClient.sql("SELECT count(*) FROM ingestion_jobs").query(Long.class).single();
+        }
+        return jdbcClient.sql("""
+            SELECT count(*)
+            FROM ingestion_jobs j
+            JOIN collections c ON j.collection_id = c.id
+            WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
+            """).param("allowedAreas", allowedAreasLower).query(Long.class).single();
     }
 
     public Optional<IngestionJob> findById(UUID id) {
@@ -340,23 +373,47 @@ public class JobRepository {
      * cannot widen the match.
      */
     public List<UUID> cancelQueued(String kind) {
+        return cancelQueued(kind, null);
+    }
+
+    public List<UUID> cancelQueued(String kind, @Nullable Set<String> allowedAreasLower) {
         if (kind == null || kind.isBlank()) {
             throw new IllegalArgumentException("Job kind cannot be null or blank");
         }
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
         String trimmed = kind.trim();
         boolean matchAllInstances = !trimmed.contains(":");
+        if (allowedAreasLower == null) {
+            return jdbcClient.sql("""
+                UPDATE ingestion_jobs
+                SET status = 'cancelled',
+                    error = 'Cancelled by administrator',
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'queued'
+                  AND (kind = :kind
+                       OR (:matchAllInstances::boolean AND split_part(kind, ':', 1) = :kind))
+                    RETURNING id
+                """).param("kind", trimmed).param("matchAllInstances", matchAllInstances)
+                .query(UUID.class).list();
+        }
         return jdbcClient.sql("""
-            UPDATE ingestion_jobs
+            UPDATE ingestion_jobs j
             SET status = 'cancelled',
                 error = 'Cancelled by administrator',
                 finished_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE status = 'queued'
-              AND (kind = :kind
-                   OR (:matchAllInstances::boolean AND split_part(kind, ':', 1) = :kind))
-                RETURNING id
+            FROM collections c
+            WHERE j.collection_id = c.id
+              AND j.status = 'queued'
+              AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
+              AND (j.kind = :kind
+                   OR (:matchAllInstances::boolean AND split_part(j.kind, ':', 1) = :kind))
+                RETURNING j.id
             """).param("kind", trimmed).param("matchAllInstances", matchAllInstances)
-            .query(UUID.class).list();
+            .param("allowedAreas", allowedAreasLower).query(UUID.class).list();
     }
 
     /**
@@ -410,15 +467,73 @@ public class JobRepository {
      * row.
      */
     public List<QueuedKindSummary> listQueuedKinds() {
+        return listQueuedKinds(null);
+    }
+
+    public List<QueuedKindSummary> listQueuedKinds(@Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        if (allowedAreasLower == null) {
+            return jdbcClient.sql("""
+                SELECT kind, count(*) AS queued_count
+                FROM ingestion_jobs
+                WHERE status = 'queued'
+                GROUP BY kind
+                ORDER BY count(*) DESC, kind ASC
+                """).query((rs, rowNum) -> new QueuedKindSummary(rs.getString("kind"),
+                rs.getLong("queued_count"))).list();
+        }
         return jdbcClient.sql("""
-            SELECT kind, count(*) AS queued_count
-            FROM ingestion_jobs
-            WHERE status = 'queued'
-            GROUP BY kind
-            ORDER BY count(*) DESC, kind ASC
-            """).query(
+            SELECT j.kind, count(*) AS queued_count
+            FROM ingestion_jobs j
+            JOIN collections c ON j.collection_id = c.id
+            WHERE j.status = 'queued'
+              AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
+            GROUP BY j.kind
+            ORDER BY count(*) DESC, j.kind ASC
+            """).param("allowedAreas", allowedAreasLower).query(
             (rs, rowNum) -> new QueuedKindSummary(rs.getString("kind"), rs.getLong("queued_count")))
             .list();
+    }
+
+    public Optional<String> findJobArea(UUID jobId) {
+        if (jobId == null) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT c.area
+            FROM ingestion_jobs j
+            JOIN collections c ON j.collection_id = c.id
+            WHERE j.id = :jobId
+            """;
+        return jdbcClient.sql(sql).param("jobId", jobId).query(String.class).optional();
+    }
+
+    public Optional<String> findCollectionArea(String collectionName) {
+        if (collectionName == null || collectionName.isBlank()) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT area
+            FROM collections
+            WHERE LOWER(name) = LOWER(:collectionName)
+            """;
+        return jdbcClient.sql(sql).param("collectionName", collectionName.trim())
+            .query(String.class).optional();
+    }
+
+    public Optional<String> findDocumentArea(UUID documentId) {
+        if (documentId == null) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT c.area
+            FROM documents d
+            JOIN collections c ON d.collection_id = c.id
+            WHERE d.id = :documentId
+            """;
+        return jdbcClient.sql(sql).param("documentId", documentId).query(String.class).optional();
     }
 
     private String serializeSettings(Map<String, Object> settings) {

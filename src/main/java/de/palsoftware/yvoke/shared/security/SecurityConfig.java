@@ -2,6 +2,9 @@ package de.palsoftware.yvoke.shared.security;
 
 
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,10 +14,16 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -85,6 +94,7 @@ public class SecurityConfig {
     private final UserService userService;
     private final boolean mockAuth;
     private final String apiKey;
+    private final Map<String, String> areaApiKeys;
     private final String adminClaim;
     private final String userClaim;
     private final String allowedAudience;
@@ -94,9 +104,11 @@ public class SecurityConfig {
     private final String issuerUri;
     private final String resourceUrl;
 
+    @Autowired
     public SecurityConfig(UserService userService, Environment environment,
         @Value("${app.security.mock}") boolean mockAuth,
         @Value("${app.security.api-key}") String apiKey,
+        @Value("${app.security.area-api-keys}") String areaApiKeysJson,
         @Value("${app.security.roles.admin-claim}") String adminClaim,
         @Value("${app.security.roles.user-claim}") String userClaim,
         @Value("${app.security.mcp.allowed-audience}") String allowedAudience,
@@ -107,6 +119,7 @@ public class SecurityConfig {
         this.userService = userService;
         this.mockAuth = mockAuth;
         this.apiKey = apiKey;
+        this.areaApiKeys = parseAreaApiKeys(new ObjectMapper(), areaApiKeysJson, apiKey);
         this.adminClaim = adminClaim;
         this.userClaim = userClaim;
         this.allowedAudience = allowedAudience;
@@ -137,6 +150,85 @@ public class SecurityConfig {
             log.warn("it in a deployed/production environment.");
             log.warn("====================================================================");
         }
+    }
+
+    public SecurityConfig(UserService userService, Environment environment, boolean mockAuth,
+        String apiKey, String adminClaim, String userClaim, String allowedAudience,
+        String requiredScope, String jwkSetUri, String issuerUri, String resourceUrl) {
+        this(userService, environment, mockAuth, apiKey, "", adminClaim, userClaim, allowedAudience,
+            requiredScope, jwkSetUri, issuerUri, resourceUrl);
+    }
+
+    static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json) {
+        return parseAreaApiKeys(mapper, json, null);
+    }
+
+    static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json,
+        String globalApiKey) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        JsonNode root;
+        try {
+            root = mapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                "app.security.area-api-keys is not valid JSON: " + e.getOriginalMessage(), e);
+        }
+        if (root == null || root.isNull()) {
+            return Map.of();
+        }
+        if (!root.isObject()) {
+            throw new IllegalStateException(
+                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"OIM\": \"...\"}; got "
+                    + root.getNodeType());
+        }
+        Map<String, String> parsed = new LinkedHashMap<>();
+        Set<String> seenLowerAreas = new HashSet<>();
+        Set<String> seenKeys = new HashSet<>();
+
+        var fields = root.properties();
+        for (Map.Entry<String, JsonNode> entry : fields) {
+            String area = entry.getKey().trim();
+            if (area.isEmpty()) {
+                throw new IllegalStateException(
+                    "app.security.area-api-keys contains a blank area name.");
+            }
+            if ("*".equals(area)) {
+                throw new IllegalStateException(
+                    "app.security.area-api-keys cannot use wildcard '*' as an area name; use app.security.api-key for the global key.");
+            }
+            JsonNode value = entry.getValue();
+            if (!value.isTextual()) {
+                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
+                    + "' to " + value.getNodeType() + " rather than a string API key.");
+            }
+            String key = value.textValue().trim();
+            if (key.isBlank()) {
+                throw new IllegalStateException(
+                    "app.security.area-api-keys maps area '" + area + "' to a blank API key.");
+            }
+            if (DEFAULT_DEV_API_KEY.equals(key)) {
+                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
+                    + "' to the placeholder default 'dev-key-12345'. Configure a real secret key.");
+            }
+            if (globalApiKey != null && !globalApiKey.isBlank()
+                && globalApiKey.trim().equals(key)) {
+                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
+                    + "' to the same key configured in app.security.api-key. Area keys must be distinct from the global API key.");
+            }
+            String lowerArea = area.toLowerCase(Locale.ROOT);
+            if (!seenLowerAreas.add(lowerArea)) {
+                throw new IllegalStateException("app.security.area-api-keys defines area '" + area
+                    + "' more than once (case-insensitive collision).");
+            }
+            if (!seenKeys.add(key)) {
+                throw new IllegalStateException(
+                    "app.security.area-api-keys maps the same API key to multiple areas. Each area must have a unique API key, or use app.security.api-key for a global key.");
+            }
+            parsed.put(area, key);
+        }
+        return Collections.unmodifiableMap(parsed);
     }
 
     @Order(0)
@@ -229,8 +321,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 // ROLE_INGEST is the scoped authority granted to the X-API-Key principal (see
                 // ApiKeyAuthenticationFilter); ROLE_ADMIN is how the admin UI's job-progress
-                // EventSource reaches this chain with its cookie session.
-                //
+                // EventSource reaches this chain with its cookie session; ROLE_AREA_ADMIN is how
+                // Area Admins connect to job progress EventSource.
                 // ROLE_USER is deliberately NOT admitted. This is the corpus WRITE surface: a plain
                 // signed-in person could otherwise upload files and queue import jobs into ANY
                 // knowledge area straight from their browser session — content that then becomes
@@ -238,7 +330,7 @@ public class SecurityConfig {
                 // summarisation and embedding, and that is never audited (only admin-screen imports
                 // are). No UI depends on the USER grant: /api/document/** has no browser caller and
                 // the only /api/jobs/** consumer is the admin-only job page.
-                .anyRequest().hasAnyRole("INGEST", "ADMIN"));
+                .anyRequest().hasAnyRole("INGEST", "ADMIN", "AREA_ADMIN"));
         // NOTE: this chain is intentionally NOT stateless — the admin UI reaches these endpoints
         // with its cookie session (e.g. the job-progress EventSource on /api/jobs/v1/**/progress).
         // CSRF is disabled here for the non-browser X-API-Key clients; the residual CSRF exposure
@@ -247,12 +339,14 @@ public class SecurityConfig {
         // browser from attaching the session to cross-site requests.
 
         if (apiKeyConfigured()) {
-            http.addFilterBefore(new ApiKeyAuthenticationFilter("X-API-Key", apiKey),
+            String globalKey = isGlobalApiKeyConfigured() ? apiKey : null;
+            http.addFilterBefore(
+                new ApiKeyAuthenticationFilter("X-API-Key", globalKey, areaApiKeys),
                 UsernamePasswordAuthenticationFilter.class);
         } else {
             log.warn(
-                "app.security.api-key is unset or left at the default placeholder; the X-API-Key "
-                    + "REST endpoints (/api/ingest, /api/document, /api/jobs) accept session auth only until a real key is configured.");
+                "Neither app.security.api-key nor any app.security.area-api-keys are configured; "
+                    + "the X-API-Key REST endpoints (/api/ingest, /api/document, /api/jobs) accept session auth only until a real key is configured.");
         }
 
         http.csrf(csrf -> csrf.disable());
@@ -272,8 +366,16 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private boolean apiKeyConfigured() {
+    private boolean isGlobalApiKeyConfigured() {
         return apiKey != null && !apiKey.isBlank() && !DEFAULT_DEV_API_KEY.equals(apiKey);
+    }
+
+    private boolean isAnyAreaApiKeyConfigured() {
+        return areaApiKeys != null && !areaApiKeys.isEmpty();
+    }
+
+    private boolean apiKeyConfigured() {
+        return isGlobalApiKeyConfigured() || isAnyAreaApiKeyConfigured();
     }
 
     @Bean
@@ -301,15 +403,25 @@ public class SecurityConfig {
                 .requestMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico").permitAll()
                 .requestMatchers("/actuator/**", "/actuator").permitAll()
                 .requestMatchers("/login", "/logged-out", "/error", "/.well-known/**").permitAll()
-                // Gated paths
-                .requestMatchers("/admin/**", "/admin").hasRole("ADMIN")
-                .requestMatchers("/chat/*/messages/*/trace").hasRole("ADMIN")
+                // Gated paths:
+                // 1. Superadmin-only paths (hasRole("ADMIN"))
+                .requestMatchers("/admin/costs/**", "/admin/costs", "/admin/pricing/**",
+                    "/admin/pricing", "/admin/audit/**", "/admin/audit", "/admin/areas/delete",
+                    "/admin/prompts/active")
+                .hasRole("ADMIN")
+                // 2. Admin & Trace paths (hasAnyRole("ADMIN", "AREA_ADMIN"))
+                // Note: trace endpoint must precede /chat/** so it cannot be matched by plain
+                // ROLE_USER
+                .requestMatchers("/chat/*/messages/*/trace").hasAnyRole("ADMIN", "AREA_ADMIN")
+                .requestMatchers("/admin/**", "/admin").hasAnyRole("ADMIN", "AREA_ADMIN")
+                // 3. User paths (hasRole("USER"))
                 .requestMatchers("/chat/**", "/chat").hasRole("USER")
                 .requestMatchers("/document/**", "/document").hasRole("USER").anyRequest()
                 .authenticated());
 
         if (mockAuth) {
-            http.authenticationProvider(new MockAuthenticationProvider(userService))
+            http.authenticationProvider(
+                new MockAuthenticationProvider(userService, adminClaim, userClaim))
                 .formLogin(form -> form.loginPage("/login").loginProcessingUrl("/login")
                     .successHandler(new CustomAuthenticationSuccessHandler()).permitAll());
         } else {
@@ -362,19 +474,11 @@ public class SecurityConfig {
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
             Collection<GrantedAuthority> authorities = new ArrayList<>(converter.convert(jwt));
 
-            // Map roles claim if present
+            // Map roles claim if present using shared AreaAccessContext
             Object rolesClaim = jwt.getClaim("roles");
             if (rolesClaim instanceof List<?> rolesList) {
-                for (Object roleObj : rolesList) {
-                    if (roleObj instanceof String roleStr) {
-                        if (adminClaim.equalsIgnoreCase(roleStr)) {
-                            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-                        } else if (userClaim.equalsIgnoreCase(roleStr)) {
-                            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-                        }
-                    }
-                }
+                authorities.addAll(
+                    AreaAccessContext.mapRoleClaimsToAuthorities(rolesList, adminClaim, userClaim));
             }
             return authorities;
         });
@@ -418,48 +522,6 @@ public class SecurityConfig {
         }
     }
 
-    private static class MockAuthenticationProvider implements AuthenticationProvider {
-        private final UserService userService;
-
-        public MockAuthenticationProvider(UserService userService) {
-            this.userService = userService;
-        }
-
-        @Override
-        public Authentication authenticate(Authentication authentication)
-            throws AuthenticationException {
-            String username = authentication.getName();
-            String password = authentication.getCredentials().toString();
-
-            boolean isAdmin = "admin".equals(username);
-            boolean isUser = "user".equals(username);
-
-            if (!isAdmin && !isUser) {
-                throw new BadCredentialsException("Invalid username or password");
-            }
-
-            List<GrantedAuthority> authorities = new ArrayList<>();
-            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-            if (isAdmin) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-            }
-
-            String entraOid = isAdmin ? "mock-admin-oid" : "mock-user-oid";
-            String email = isAdmin ? "mock-admin@palsoftware.local" : "mock-user@palsoftware.local";
-            String displayName = isAdmin ? "Mock Admin" : "Mock User";
-
-            MockOidcUser oidcUser = new MockOidcUser(entraOid, email, displayName, authorities);
-            userService.syncUser(oidcUser);
-
-            return new UsernamePasswordAuthenticationToken(oidcUser, password, authorities);
-        }
-
-        @Override
-        public boolean supports(Class<?> authentication) {
-            return UsernamePasswordAuthenticationToken.class.isAssignableFrom(authentication);
-        }
-    }
-
     public static class CustomAuthenticationSuccessHandler
         extends SavedRequestAwareAuthenticationSuccessHandler {
         @Override
@@ -472,10 +534,11 @@ public class SecurityConfig {
                 return;
             }
 
-            boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            boolean hasAdminAccess = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                    || "ROLE_AREA_ADMIN".equals(a.getAuthority()));
 
-            if (isAdmin) {
+            if (hasAdminAccess) {
                 getRedirectStrategy().sendRedirect(request, response, "/admin");
             } else {
                 getRedirectStrategy().sendRedirect(request, response, "/chat");

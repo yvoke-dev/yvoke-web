@@ -8,22 +8,28 @@ import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 
 
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import java.util.HashMap;
 
 @Service
 public class DesktopSyncService {
@@ -36,6 +42,7 @@ public class DesktopSyncService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final FeedbackRepository feedbackRepository;
+    private final PlaybookService playbookService;
 
     public record NewMessage(String role, String content, Integer promptTokens,
         Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
@@ -49,11 +56,19 @@ public class DesktopSyncService {
         }
     }
 
+    @Autowired
     public DesktopSyncService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository) {
+        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
+        @Nullable PlaybookService playbookService) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.feedbackRepository = feedbackRepository;
+        this.playbookService = playbookService;
+    }
+
+    public DesktopSyncService(ConversationRepository conversationRepository,
+        MessageRepository messageRepository, FeedbackRepository feedbackRepository) {
+        this(conversationRepository, messageRepository, feedbackRepository, null);
     }
 
     public Conversation createConversation(User user, String title, Map<String, Object> settings) {
@@ -66,7 +81,8 @@ public class DesktopSyncService {
     }
 
     public List<Conversation> listConversations(User user, int limit, int offset) {
-        return conversationRepository.listByUserAndSource(user.id(), SOURCE_DESKTOP, limit, offset);
+        return conversationRepository.listByUserAndSource(user.id(), SOURCE_DESKTOP, limit, offset,
+            AreaAccessContext.allowedUserAreasLower().orElse(null));
     }
 
     public List<Message> getMessages(UUID conversationId, User user, int limit, int offset) {
@@ -88,6 +104,8 @@ public class DesktopSyncService {
         }
 
         List<UUID> ids = new ArrayList<>(newMessages.size());
+        Map<String, Optional<Playbook>> playbooksByName = new HashMap<>();
+        boolean areaUpdated = false;
         for (NewMessage m : newMessages) {
             if (m.role() == null || !(m.role().equals("user") || m.role().equals("assistant"))) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -96,6 +114,21 @@ public class DesktopSyncService {
             if (m.content() == null || m.content().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "content must not be blank");
+            }
+            if (m.playbook() != null && !m.playbook().isBlank() && playbookService != null) {
+                Playbook pb = playbooksByName
+                    .computeIfAbsent(m.playbook().trim(), playbookService::getPlaybook)
+                    .orElse(null);
+                if (pb != null && pb.area() != null && !pb.area().isBlank()) {
+                    if (!AreaAccessContext.canAccessUserArea(pb.area())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Playbook not found: " + m.playbook());
+                    }
+                    if (!areaUpdated) {
+                        conversationRepository.updateAreaIfAbsent(conversationId, pb.area());
+                        areaUpdated = true;
+                    }
+                }
             }
             UUID id = UUID.randomUUID();
             final Message msgToSave;
@@ -172,6 +205,11 @@ public class DesktopSyncService {
         Conversation conversation = conversationRepository.findById(conversationId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + conversationId));
+        if (conversation.area() != null && !conversation.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + conversationId);
+        }
         if (!Objects.equals(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);
         }

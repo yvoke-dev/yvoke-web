@@ -132,8 +132,8 @@ public class RagAdminRenderingIT {
         RetrievalLogDetails logRow = new RetrievalLogDetails(UUID.randomUUID(), UUID.randomUUID(),
             COLLECTION, "9.3", "{}", "{}", "{}", Instant.now(), "the retrieval message content", 1,
             "great answer", List.of());
-        when(retrievalLogRepository.listLogs(anyInt(), anyInt())).thenReturn(List.of(logRow));
-        when(retrievalLogRepository.countLogs()).thenReturn(1L);
+        when(retrievalLogRepository.listLogs(anyInt(), anyInt(), any())).thenReturn(List.of(logRow));
+        when(retrievalLogRepository.countLogs(any())).thenReturn(1L);
 
         mockMvc.perform(get("/admin/logs").with(admin())).andExpect(status().isOk())
             .andExpect(content().string(

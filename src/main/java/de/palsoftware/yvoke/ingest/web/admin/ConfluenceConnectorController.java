@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.ingest.web.admin;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceClientService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceClientService.ConnectionTestResult;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceIngestService;
@@ -12,10 +14,12 @@ import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +27,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -32,6 +37,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.util.HtmlUtils;
 
@@ -53,15 +59,17 @@ public class ConfluenceConnectorController {
 
     private final ConfluenceClientService confluenceClientService;
     private final ConfluenceInstanceService instanceService;
+    private final CollectionService collectionService;
     private final AuditLogRepository auditLogRepository;
     private final JobService jobService;
     private final UserService userService;
 
     public ConfluenceConnectorController(ConfluenceClientService confluenceClientService,
-        ConfluenceInstanceService instanceService, AuditLogRepository auditLogRepository,
-        JobService jobService, UserService userService) {
+        ConfluenceInstanceService instanceService, CollectionService collectionService,
+        AuditLogRepository auditLogRepository, JobService jobService, UserService userService) {
         this.confluenceClientService = confluenceClientService;
         this.instanceService = instanceService;
+        this.collectionService = collectionService;
         this.auditLogRepository = auditLogRepository;
         this.jobService = jobService;
         this.userService = userService;
@@ -99,6 +107,50 @@ public class ConfluenceConnectorController {
                 "Could not save the Confluence instance: " + messagesOf(bindingResult));
             return CONNECTORS;
         }
+
+        Collection targetCol =
+            collectionService.getCollection(form.targetCollection()).orElse(null);
+        if (!AreaAccessContext.canAdministerArea(targetCol != null ? targetCol.area() : null)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Collection not found: " + form.targetCollection());
+        }
+
+        if (form.id() != null) {
+            ConfluenceInstance existing = instanceService.findInstance(form.id()).orElse(null);
+            if (existing != null) {
+                Collection existingCol =
+                    collectionService.getCollection(existing.targetCollection()).orElse(null);
+                if (existingCol == null
+                    || !AreaAccessContext.canAdministerArea(existingCol.area())) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Instance not found: " + form.id());
+                }
+            }
+        }
+
+        instanceService.findByName(form.name()).ifPresent(other -> {
+            if (form.id() == null || !other.id().equals(form.id())) {
+                Collection otherCol =
+                    collectionService.getCollection(other.targetCollection()).orElse(null);
+                if (otherCol == null || !AreaAccessContext.canAdministerArea(otherCol.area())) {
+                    throw new IllegalArgumentException(
+                        "Another Confluence instance in another area already uses the name '"
+                            + form.name() + "'.");
+                }
+            }
+        });
+
+        instanceService.findBySlug(form.slug()).ifPresent(other -> {
+            if (form.id() == null || !other.id().equals(form.id())) {
+                Collection otherCol =
+                    collectionService.getCollection(other.targetCollection()).orElse(null);
+                if (otherCol == null || !AreaAccessContext.canAdministerArea(otherCol.area())) {
+                    throw new IllegalArgumentException(
+                        "Another Confluence instance in another area already uses the slug '"
+                            + form.slug() + "'.");
+                }
+            }
+        });
 
         ConfluenceInstance saved = instanceService.save(form.toInstance(), apiToken);
 
@@ -149,6 +201,16 @@ public class ConfluenceConnectorController {
      */
     @PostMapping("/connectors/confluence/delete")
     public String deleteInstance(@RequestParam UUID id, RedirectAttributes redirectAttributes) {
+        ConfluenceInstance instance = instanceService.findInstance(id).orElse(null);
+        if (instance != null) {
+            Collection col =
+                collectionService.getCollection(instance.targetCollection()).orElse(null);
+            if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Instance not found: " + id);
+            }
+        }
+
         ConfluenceInstanceService.Deletion deletion = instanceService.delete(id);
 
         auditLogRepository.log(getCurrentAdminOid(), "DELETE_CONFLUENCE_INSTANCE", deletion.slug(),
@@ -179,6 +241,10 @@ public class ConfluenceConnectorController {
             return CONNECTORS;
         }
         ConfluenceInstanceView instance = found.get();
+        Collection col = collectionService.getCollection(instance.targetCollection()).orElse(null);
+        if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Instance not found: " + id);
+        }
         if (!instance.enabled()) {
             redirectAttributes.addFlashAttribute("error", "Confluence instance '" + instance.name()
                 + "' is disabled; enable it before syncing.");
@@ -212,8 +278,14 @@ public class ConfluenceConnectorController {
      */
     @PostMapping("/connectors/confluence/sync-all")
     public String syncAllInstances(RedirectAttributes redirectAttributes) {
+        Map<String, Optional<Collection>> collectionsByName = new HashMap<>();
         List<ConfluenceInstanceView> enabled = instanceService.listInstances().stream()
-            .filter(ConfluenceInstanceView::enabled).toList();
+            .filter(ConfluenceInstanceView::enabled).filter(inst -> {
+                Collection col = collectionsByName
+                    .computeIfAbsent(inst.targetCollection(), collectionService::getCollection)
+                    .orElse(null);
+                return col != null && AreaAccessContext.canAdministerArea(col.area());
+            }).toList();
         if (enabled.isEmpty()) {
             redirectAttributes.addFlashAttribute("error",
                 "No enabled Confluence instance to sync.");
@@ -302,6 +374,12 @@ public class ConfluenceConnectorController {
         if (id != null) {
             instance = instanceService.findInstance(id).orElse(null);
             if (instance == null) {
+                return failureHtml(
+                    "That Confluence instance no longer exists — reload the connectors page.");
+            }
+            Collection col =
+                collectionService.getCollection(instance.targetCollection()).orElse(null);
+            if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
                 return failureHtml(
                     "That Confluence instance no longer exists — reload the connectors page.");
             }

@@ -4,12 +4,14 @@ import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import java.io.IOException;
@@ -19,7 +21,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -65,7 +70,8 @@ public class IngestAdminController {
     @GetMapping("/ingest")
     public String ingestView(Model model, @RequestParam(required = false) String collection) {
         log.info("IngestAdminController: Accessing Ingest view");
-        List<Collection> collections = collectionService.listCollections();
+        List<Collection> collections = AreaAccessContext
+            .filterByAdminArea(collectionService.listCollections(), Collection::area);
         model.addAttribute("collections", collections);
 
         String targetCollection = collection;
@@ -78,9 +84,10 @@ public class IngestAdminController {
         model.addAttribute("tags", tags);
         model.addAttribute("versions", tags);
 
-        model.addAttribute("kgPrompts", systemPromptService.listPromptsByType(SystemPromptType.KG));
-        model.addAttribute("summarizePrompts",
-            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE));
+        model.addAttribute("kgPrompts", AreaAccessContext.filterByAdminArea(
+            systemPromptService.listPromptsByType(SystemPromptType.KG), SystemPrompt::area));
+        model.addAttribute("summarizePrompts", AreaAccessContext.filterByAdminArea(
+            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE), SystemPrompt::area));
         return "admin/ingest";
     }
 
@@ -103,6 +110,12 @@ public class IngestAdminController {
         if (file.isEmpty()) {
             redirectAttributes.addFlashAttribute("error", "Please select a file to upload.");
             return "redirect:/admin/ingest";
+        }
+
+        Optional<Collection> colOpt = collectionService.getCollection(collection);
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Collection not found: " + collection);
         }
 
         Path uploadPath = Path.of(uploadDir);

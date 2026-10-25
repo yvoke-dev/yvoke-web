@@ -2,6 +2,9 @@ package de.palsoftware.yvoke.chat.web.admin;
 
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViewService;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetailPage;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,13 +33,18 @@ public class AgentRunAdminController {
     @GetMapping("/agent-runs")
     public String listAgentRuns(@RequestParam(defaultValue = "100") int limit, Model model) {
         log.info("AgentRunAdminController: listing recent agent runs");
-        model.addAttribute("runs", agentRunAdminViewService.recentRuns(limit));
+        Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
+        model.addAttribute("runs", agentRunAdminViewService.recentRuns(limit, areas));
         model.addAttribute("activeTab", "agent-runs");
         return "admin/agent-runs";
     }
 
     @GetMapping("/agent-runs/{id}")
     public String viewAgentRun(@PathVariable UUID id, Model model) {
+        Optional<String> runArea = agentRunAdminViewService.findRunArea(id);
+        if (!AreaAccessContext.canAdministerArea(runArea.orElse(null))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent run not found: " + id);
+        }
         RunDetailPage page = agentRunAdminViewService.runDetail(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent run not found: " + id));
         model.addAttribute("run", page.run());

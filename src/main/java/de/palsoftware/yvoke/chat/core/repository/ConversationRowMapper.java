@@ -46,7 +46,8 @@ public class ConversationRowMapper implements RowMapper<Conversation> {
 
         return new Conversation(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
             rs.getString("title"), settings, createdTs != null ? createdTs.toInstant() : null,
-            updatedTs != null ? updatedTs.toInstant() : null, tags, rs.getString("source"));
+            updatedTs != null ? updatedTs.toInstant() : null, tags, rs.getString("source"),
+            rs.getString("area"));
     }
 }
 

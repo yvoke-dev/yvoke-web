@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,24 @@ public class RetrievalLogRepositoryTest {
 
         assertThat(count).isEqualTo(42L);
         verify(jdbcClient).sql("SELECT count(*) FROM retrieval_logs");
+    }
+
+    @Test
+    public void testCountLogs_withAllowedAreas() {
+        when(countQuerySpec.single()).thenReturn(7L);
+
+        long count = retrievalLogRepository.countLogs(Set.of("area1"));
+
+        assertThat(count).isEqualTo(7L);
+        verify(jdbcClient)
+            .sql(contains("WHERE (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower))"));
+        verify(statementSpec).param("allowedAreasLower", Set.of("area1"));
+    }
+
+    @Test
+    public void testCountLogs_emptyAreasReturnsZero() {
+        long count = retrievalLogRepository.countLogs(Set.of());
+        assertThat(count).isEqualTo(0L);
     }
 
     @Test

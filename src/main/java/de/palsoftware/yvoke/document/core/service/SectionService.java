@@ -185,11 +185,18 @@ public class SectionService {
      * different methods rather than a shared one with a flag.
      */
     public SectionChunks getSectionChunksByChunkId(String chunkIdPrefix) {
+        return getSectionChunksByChunkId(chunkIdPrefix, null);
+    }
+
+    public SectionChunks getSectionChunksByChunkId(String chunkIdPrefix,
+        @Nullable Set<String> allowedAreasLower) {
         if (chunkIdPrefix == null || chunkIdPrefix.isBlank()) {
             throw new IllegalArgumentException("Chunk ID prefix cannot be null or empty.");
         }
 
-        ChunkRow chunk = chunkRepository.findByIdPrefix(chunkIdPrefix)
+        ChunkRow chunk = (allowedAreasLower != null
+            ? chunkRepository.findByIdPrefix(chunkIdPrefix, allowedAreasLower)
+            : chunkRepository.findByIdPrefix(chunkIdPrefix))
             .orElseThrow(() -> new NoSuchElementException(
                 "(no chunk with id starting '" + chunkIdPrefix + "')"));
 

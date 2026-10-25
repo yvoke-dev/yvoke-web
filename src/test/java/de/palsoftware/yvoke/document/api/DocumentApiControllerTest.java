@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.document.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -11,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.api.model.DocumentDto;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import java.time.Instant;
@@ -18,14 +21,20 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Standalone-MockMvc slice test for {@link DocumentApiController}'s single GET endpoint
@@ -134,5 +143,39 @@ public class DocumentApiControllerTest {
             .andExpect(status().isOk());
 
         verify(documentRepository).listByCollectionAndTag("OIM", "9.3");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    public void listDocumentsUnauthorizedAreaYields404() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_INGEST_OTHER"))));
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(secCol));
+
+        assertThatThrownBy(() -> controller.listDocuments("sec-col", "1.0"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    public void listDocumentsAuthorizedAreaSucceeds() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_INGEST_SEC"))));
+        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(secCol));
+        when(documentRepository.listByCollectionAndTag("sec-col", "1.0")).thenReturn(List.of());
+
+        List<DocumentDto> res = controller.listDocuments("sec-col", "1.0");
+        assertThat(res).isEmpty();
     }
 }

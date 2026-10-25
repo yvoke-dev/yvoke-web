@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.api.model.DocumentDto;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -48,6 +49,13 @@ public class DocumentApiController {
             .filter(c -> c.name().equalsIgnoreCase(requested)).findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Collection '" + requested + "' does not exist."));
+
+        if (matched.area() != null && !matched.area().isBlank()
+            && !(AreaAccessContext.canIngestArea(matched.area())
+                || AreaAccessContext.canAdministerArea(matched.area()))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Collection '" + requested + "' does not exist.");
+        }
 
         return documentRepository.listByCollectionAndTag(matched.name(), tag.trim()).stream()
             .map(DocumentApiController::toDto).toList();

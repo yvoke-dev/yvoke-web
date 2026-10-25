@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.kg.core.model.KgEntityKindEdgeCount;
 import de.palsoftware.yvoke.kg.core.model.KgNeighborEdges;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -90,6 +91,10 @@ public class GetGraphNeighborsTool {
         Collection matchedCol =
             allCols.stream().filter(c -> c.name().equalsIgnoreCase(col)).findFirst().orElse(null);
         if (matchedCol == null) {
+            return "Error: Collection '" + col + "' does not exist.";
+        }
+        if (matchedCol.area() != null && !matchedCol.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
             return "Error: Collection '" + col + "' does not exist.";
         }
         // The stored spelling, not the caller's: the match above is case-insensitive but every

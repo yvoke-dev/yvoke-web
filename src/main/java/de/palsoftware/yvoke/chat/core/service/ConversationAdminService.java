@@ -40,8 +40,8 @@ public class ConversationAdminService {
 
         List<AdminConversation> conversations =
             chatAdminQueryRepository.listFilteredConversations(filter, clampedSize, offset);
-        List<ConversationUserOption> userOptions =
-            chatAdminQueryRepository.listConversationUserOptions(filter.userIds());
+        List<ConversationUserOption> userOptions = chatAdminQueryRepository
+            .listConversationUserOptions(filter.userIds(), filter.allowedAreasLower());
 
         return new ConversationAdminView(conversations, userOptions, stats, clampedPage, totalPages,
             totalCount, clampedSize);

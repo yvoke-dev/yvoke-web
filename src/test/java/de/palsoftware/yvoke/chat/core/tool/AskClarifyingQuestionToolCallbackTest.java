@@ -30,7 +30,7 @@ public class AskClarifyingQuestionToolCallbackTest {
 
     @Test
     public void testCallWithContextAndOptions() {
-        AgenticChatContext context = new AgenticChatContext();
+        AgenticChatContext context = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         String jsonArguments = """
             {
               "question": "Which collection would you like to search?",
@@ -51,7 +51,7 @@ public class AskClarifyingQuestionToolCallbackTest {
 
     @Test
     public void testCallWithContextWithoutOptions() {
-        AgenticChatContext context = new AgenticChatContext();
+        AgenticChatContext context = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         String jsonArguments = """
             {
               "question": "Please provide a timeframe."
@@ -104,7 +104,7 @@ public class AskClarifyingQuestionToolCallbackTest {
 
     @Test
     public void testCallWithInvalidArguments() {
-        AgenticChatContext context = new AgenticChatContext();
+        AgenticChatContext context = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         String jsonArguments = "{invalid json}";
 
         String response = toolCallback.callWithContext(jsonArguments, context);

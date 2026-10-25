@@ -25,6 +25,9 @@ import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.context.ApplicationContext;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
@@ -62,6 +65,10 @@ public class JsonObjectsToolsIT {
     @BeforeEach
     public void setUp() {
         cleanup();
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_OIM"))));
         collectionRepository.create(COLLECTION_NAME, "Test Collection", "OIM");
         collectionId =
             collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
@@ -74,6 +81,7 @@ public class JsonObjectsToolsIT {
 
     @AfterEach
     public void tearDown() {
+        SecurityContextHolder.clearContext();
         cleanup();
     }
 

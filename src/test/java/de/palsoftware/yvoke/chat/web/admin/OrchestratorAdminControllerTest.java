@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -19,15 +20,21 @@ import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
-import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -42,15 +49,28 @@ public class OrchestratorAdminControllerTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
         profileService = mock(OrchestratorProfileService.class);
         playbookService = mock(PlaybookService.class);
         chatConversationService = mock(ChatConversationService.class);
         // All-null: the record's own fallbacks, which application.yml is pinned to match.
         properties = new OrchestratorProperties(null, null, null, null);
 
+        when(playbookService.getPlaybook(any())).thenAnswer(inv -> Optional
+            .of(new Playbook(inv.getArgument(0), inv.getArgument(0), "", "", List.of(), false,
+                "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+
         controller = new OrchestratorAdminController(profileService, playbookService,
-            chatConversationService, properties, TestAreas.withAreas("OIM"));
+            chatConversationService, properties, TestAreas.withAreas("OIM", "Finance"),
+            new ObjectMapper().findAndRegisterModules());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     /**
@@ -68,6 +88,10 @@ public class OrchestratorAdminControllerTest {
     /** P1-12: the area chosen on the form reaches the saved profile. */
     @Test
     void thePostedAreaReachesTheSavedProfile() throws Exception {
+        when(playbookService.getPlaybook(any())).thenAnswer(inv -> Optional
+            .of(new Playbook(inv.getArgument(0), inv.getArgument(0), "", "", List.of(), false,
+                "specialist", false, Instant.now(), Instant.now(), false, "PingID")));
+
         mockMvc
             .perform(post("/admin/orchestrators").param("area", "PingID").param("name", "Ping")
                 .param("orchestratorPlaybook", "orch-pb").param("reviewerPlaybook", "rev-pb"))
@@ -183,6 +207,9 @@ public class OrchestratorAdminControllerTest {
 
     @Test
     void testExportProfile() throws Exception {
+        when(profileService.getProfile("TestProfile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
         when(profileService.exportProfileToJson("TestProfile"))
             .thenReturn("{\"name\":\"TestProfile\"}");
 
@@ -197,6 +224,9 @@ public class OrchestratorAdminControllerTest {
     @Test
     void testExportProfile_escapesFilenameAgainstHeaderInjection() throws Exception {
         String unsafeName = "malicious\"; dummy=\"";
+        when(profileService.getProfile(unsafeName))
+            .thenReturn(Optional.of(new OrchestratorProfile(unsafeName, 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
         when(profileService.exportProfileToJson(unsafeName)).thenReturn("{\"name\":\"malicious\"}");
 
         mockMvc.perform(get("/admin/orchestrators/export").param("name", unsafeName))
@@ -210,7 +240,7 @@ public class OrchestratorAdminControllerTest {
         MockMultipartFile file = new MockMultipartFile("file", "profile.json", "application/json",
             "{\"name\":\"TestProfile\"}".getBytes());
         OrchestratorProfile profile = new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
-            List.of(), null, null, null, null, null, null, false, null, null);
+            List.of(), null, null, null, null, null, null, false, null, null, "OIM");
         when(profileService.importProfileFromJson("{\"name\":\"TestProfile\"}", "OIM"))
             .thenReturn(profile);
 
@@ -223,10 +253,122 @@ public class OrchestratorAdminControllerTest {
 
     @Test
     void testDeleteProfile() throws Exception {
+        when(profileService.getProfile("TestProfile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
+
         mockMvc.perform(post("/admin/orchestrators/delete").param("name", "TestProfile"))
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("/admin/orchestrators"));
 
         verify(profileService).deleteProfile("TestProfile");
     }
+
+    @Test
+    void viewOrchestrators_filtersByAdministeredArea() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        OrchestratorProfile oimProfile = new OrchestratorProfile("OimProfile", 2, 8, "orch", "rev",
+            List.of(), null, null, null, null, null, null, false, null, null, "OIM");
+        OrchestratorProfile finProfile = new OrchestratorProfile("FinProfile", 2, 8, "orch", "rev",
+            List.of(), null, null, null, null, null, null, false, null, null, "Finance");
+        when(profileService.listAllProfiles()).thenReturn(List.of(oimProfile, finProfile));
+
+        Playbook oimPb = new Playbook("pb1", "pb1", "", "", List.of(), false, "orchestrator", false,
+            Instant.now(), Instant.now(), false, "OIM");
+        Playbook finPb = new Playbook("pb2", "pb2", "", "", List.of(), false, "orchestrator", false,
+            Instant.now(), Instant.now(), false, "Finance");
+        when(playbookService.listAllPlaybooks()).thenReturn(List.of(oimPb, finPb));
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of());
+        when(chatConversationService.getAllowedModels()).thenReturn(List.of("model"));
+
+        mockMvc.perform(get("/admin/orchestrators")).andExpect(status().isOk())
+            .andExpect(model().attribute("profiles", List.of(oimProfile)))
+            .andExpect(model().attribute("playbooks", List.of(oimPb)))
+            .andExpect(model().attribute("areas", List.of("OIM")));
+    }
+
+    @Test
+    void createProfile_unauthorizedArea_forbidden() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        mockMvc
+            .perform(
+                post("/admin/orchestrators").param("area", "Finance").param("name", "FinProfile")
+                    .param("orchestratorPlaybook", "orch").param("reviewerPlaybook", "rev"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createProfile_crossAreaHijack_forbidden() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        when(profileService.getProfile("FinProfile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("FinProfile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "Finance")));
+
+        mockMvc
+            .perform(post("/admin/orchestrators").param("area", "OIM").param("name", "FinProfile")
+                .param("orchestratorPlaybook", "orch").param("reviewerPlaybook", "rev"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createProfile_changeArea_redirectsWithError() throws Exception {
+        when(profileService.getProfile("Existing"))
+            .thenReturn(Optional.of(new OrchestratorProfile("Existing", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
+
+        mockMvc
+            .perform(post("/admin/orchestrators").param("area", "Finance").param("name", "Existing")
+                .param("orchestratorPlaybook", "orch").param("reviewerPlaybook", "rev"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/admin/orchestrators"));
+    }
+
+    @Test
+    void createProfile_playbookFromDifferentArea_redirectsWithError() throws Exception {
+        when(playbookService.getPlaybook("orch"))
+            .thenReturn(Optional.of(new Playbook("orch", "orch", "", "", List.of(), false,
+                "orchestrator", false, Instant.now(), Instant.now(), false, "OIM")));
+        when(playbookService.getPlaybook("rev-finance"))
+            .thenReturn(Optional.of(new Playbook("rev-finance", "rev-finance", "", "", List.of(),
+                false, "reviewer", false, Instant.now(), Instant.now(), false, "Finance")));
+
+        mockMvc
+            .perform(post("/admin/orchestrators").param("area", "OIM").param("name", "NewProfile")
+                .param("orchestratorPlaybook", "orch").param("reviewerPlaybook", "rev-finance"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/admin/orchestrators"));
+    }
+
+    @Test
+    void exportProfile_unauthorizedArea_notFound() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        when(profileService.getProfile("FinProfile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("FinProfile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "Finance")));
+
+        mockMvc.perform(get("/admin/orchestrators/export").param("name", "FinProfile"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteProfile_unauthorizedArea_notFound() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        when(profileService.getProfile("FinProfile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("FinProfile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "Finance")));
+
+        mockMvc.perform(post("/admin/orchestrators/delete").param("name", "FinProfile"))
+            .andExpect(status().isNotFound());
+    }
 }
+

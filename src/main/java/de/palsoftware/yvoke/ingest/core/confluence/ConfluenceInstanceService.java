@@ -71,6 +71,16 @@ public class ConfluenceInstanceService {
         return repository.findById(id);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<ConfluenceInstance> findByName(String name) {
+        return repository.findByName(name);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ConfluenceInstance> findBySlug(String slug) {
+        return repository.findBySlug(slug);
+    }
+
     /**
      * Creates or updates an instance from the edited fields, attaching the credential.
      *

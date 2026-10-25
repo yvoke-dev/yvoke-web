@@ -9,9 +9,15 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.kg.core.model.KgEntityKindEdgeCount;
 import de.palsoftware.yvoke.kg.core.model.KgNeighborEdges;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.OffsetDateTime;
 import java.util.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class GetGraphNeighborsToolTest {
 
@@ -530,6 +536,11 @@ public class GetGraphNeighborsToolTest {
             "a truncation notice with no way out leaves the agent nothing to do, got:\n" + header);
     }
 
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     public void testUntaggedCallOnATagScopedCollectionIsRejected() {
         String output = getGraphNeighborsTool.getGraphNeighbors("ADSAccount", "OIM - DB", null,
@@ -539,6 +550,24 @@ public class GetGraphNeighborsToolTest {
         assertTrue(output.contains("tag-scoped"));
         assertTrue(output.contains("9.3") && output.contains("10.0"));
         // The expensive lookup must not run at all.
+        verify(kgRepository, never()).getEntityRelationships(anyString(), any(), any(), anyString(),
+            any(), anyString(), anyInt());
+    }
+
+    @Test
+    public void testUnauthorizedCollectionAreaReturnsOpaqueNotFound() {
+        Collection pingCol = new Collection(UUID.randomUUID(), "Ping - KG", "Ping Graph", List.of(),
+            OffsetDateTime.now(), "PingID");
+        when(collectionService.listCollections()).thenReturn(List.of(pingCol));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        String output = getGraphNeighborsTool.getGraphNeighbors("PingNode", "Ping - KG", null, null,
+            "both", null);
+
+        assertEquals("Error: Collection 'Ping - KG' does not exist.", output);
         verify(kgRepository, never()).getEntityRelationships(anyString(), any(), any(), anyString(),
             any(), anyString(), anyInt());
     }

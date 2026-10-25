@@ -10,9 +10,13 @@ import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import jakarta.annotation.Nullable;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +52,29 @@ public class JobApiController {
     @PostMapping
     public ResponseEntity<Map<String, UUID>> enqueue(@Valid @RequestBody EnqueueRequest request) {
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(request.kind());
+        String requestedCollection =
+            request.collection() != null ? request.collection().trim() : null;
+        Optional<String> colArea = jobRepository.findCollectionArea(requestedCollection);
+        if (colArea.isPresent() && !colArea.get().isBlank()) {
+            String area = colArea.get().trim();
+            if (!AreaAccessContext.canIngestArea(area)
+                && !AreaAccessContext.canAdministerArea(area)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Collection not found: " + requestedCollection);
+            }
+        }
+        if (request.kind() != null
+            && request.kind().trim().toLowerCase(Locale.ROOT).startsWith("kg-extract")) {
+            UUID sourceDocId = parseUuidOrNull(request.sourceRef());
+            String docArea =
+                sourceDocId != null ? jobRepository.findDocumentArea(sourceDocId).orElse(null)
+                    : null;
+            if (!AreaAccessContext.canIngestArea(docArea)
+                && !AreaAccessContext.canAdministerArea(docArea)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Document not found: " + request.sourceRef());
+            }
+        }
         EnqueueResult result;
         try {
             result = jobService.enqueue(request);
@@ -60,14 +87,17 @@ public class JobApiController {
 
     @GetMapping("/{id}")
     public JobDto get(@PathVariable UUID id) {
-        return jobRepository.findById(id).map(JobDto::from).orElseThrow(
+        JobDto dto = jobRepository.findById(id).map(JobDto::from).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
+        assertJobAccess(id);
+        return dto;
     }
 
     @GetMapping("/{id}/progress")
     public SseEmitter progress(@PathVariable UUID id) {
         IngestionJob job = jobRepository.findById(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
+        assertJobAccess(id);
 
         SseEmitter emitter = progressBroker.subscribe(id);
         try {
@@ -79,5 +109,28 @@ public class JobApiController {
             emitter.completeWithError(e);
         }
         return emitter;
+    }
+
+    private void assertJobAccess(UUID id) {
+        Optional<String> jobArea = jobRepository.findJobArea(id);
+        if (jobArea.isPresent() && !jobArea.get().isBlank()) {
+            String area = jobArea.get().trim();
+            if (!AreaAccessContext.canAdministerArea(area)
+                && !AreaAccessContext.canIngestArea(area)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id);
+            }
+        }
+    }
+
+    @Nullable
+    private static UUID parseUuidOrNull(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 }

@@ -18,6 +18,7 @@ import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.Arrays;
 
@@ -118,6 +119,10 @@ public class QueryJsonObjectsTool {
             Collection matchedCol = allCols.stream().filter(c -> c.name().equalsIgnoreCase(col))
                 .findFirst().orElse(null);
             if (matchedCol == null) {
+                return "Error: Collection '" + col + "' does not exist.";
+            }
+            if (matchedCol.area() != null && !matchedCol.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
                 return "Error: Collection '" + col + "' does not exist.";
             }
 
