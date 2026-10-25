@@ -80,15 +80,10 @@ public class GetSectionTool {
                 String targetChunkId =
                     accessCheck.resolvedChunkId() != null ? accessCheck.resolvedChunkId().toString()
                         : trimmedChunkId;
-                if (context != null) {
-                    section = sectionService.getSectionChunksByChunkId(targetChunkId,
-                        context.getAllowedAreasLower());
-                    if (section == null) {
-                        section = sectionService.getSectionChunksByChunkId(targetChunkId);
-                    }
-                } else {
-                    section = sectionService.getSectionChunksByChunkId(targetChunkId);
-                }
+                section = context != null
+                    ? sectionService.getSectionChunksByChunkId(targetChunkId,
+                        context.getAllowedAreasLower())
+                    : sectionService.getSectionChunksByChunkId(targetChunkId);
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -151,9 +146,6 @@ public class GetSectionTool {
         Optional<ChunkRow> chunkOpt = Optional.empty();
         try {
             chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr, allowedAreas);
-            if (!areaRestricted && (chunkOpt == null || chunkOpt.isEmpty())) {
-                chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
-            }
         } catch (IllegalArgumentException e) {
             if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
                 && areaRestricted) {

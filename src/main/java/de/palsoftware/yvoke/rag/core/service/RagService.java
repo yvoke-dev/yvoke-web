@@ -834,9 +834,6 @@ public class RagService {
                 try {
                     chunkOpt =
                         chunkRepository.findByIdPrefix(trimmedChunkId, ctx.getAllowedAreasLower());
-                    if (!areaRestricted && (chunkOpt == null || chunkOpt.isEmpty())) {
-                        chunkOpt = chunkRepository.findByIdPrefix(trimmedChunkId);
-                    }
                 } catch (IllegalArgumentException e) {
                     if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
                         && areaRestricted) {
