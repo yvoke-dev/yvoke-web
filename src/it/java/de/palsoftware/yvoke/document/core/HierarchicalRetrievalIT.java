@@ -8,8 +8,7 @@ import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.document.core.service.TocService;
-
-
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.sql.PreparedStatement;
 import java.util.*;
@@ -53,6 +55,10 @@ public class HierarchicalRetrievalIT {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
         cleanup();
 
         UUID collectionId = UUID.randomUUID();
@@ -94,6 +100,7 @@ public class HierarchicalRetrievalIT {
 
     @AfterEach
     public void tearDown() {
+        SecurityContextHolder.clearContext();
         cleanup();
     }
 

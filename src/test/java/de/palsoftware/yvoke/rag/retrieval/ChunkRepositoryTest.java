@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -313,25 +314,34 @@ public class ChunkRepositoryTest {
      */
     @Test
     public void anAmbiguousChunkIdPrefixThrowsAndEnumeratesTheCandidatesInsteadOfPickingOne() {
-        // Two real chunks sharing the 8-hex-character prefix an agent typically cites.
-        UUID first = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
-        UUID second = UUID.fromString("a1b2c3d4-2222-4222-8222-000000000002");
-        ChunkRow one = new ChunkRow(first, UUID.randomUUID(), "german text",
-            Collections.emptyList(), "Vererbung", 1, 0, "9.3", "inheritance-de.md", "manual", "OIM",
-            Collections.emptyMap(), 0.0);
-        ChunkRow two = new ChunkRow(second, UUID.randomUUID(), "english text",
-            Collections.emptyList(), "Inheritance", 1, 0, "10.0", "inheritance-en.md", "manual",
-            "OIM", Collections.emptyMap(), 0.0);
-        when(querySpec.list()).thenReturn(List.of(one, two));
+        try {
+            SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                    List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                        new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
+            // Two real chunks sharing the 8-hex-character prefix an agent typically cites.
+            UUID first = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
+            UUID second = UUID.fromString("a1b2c3d4-2222-4222-8222-000000000002");
+            ChunkRow one = new ChunkRow(first, UUID.randomUUID(), "german text",
+                Collections.emptyList(), "Vererbung", 1, 0, "9.3", "inheritance-de.md", "manual",
+                "OIM", Collections.emptyMap(), 0.0);
+            ChunkRow two = new ChunkRow(second, UUID.randomUUID(), "english text",
+                Collections.emptyList(), "Inheritance", 1, 0, "10.0", "inheritance-en.md", "manual",
+                "OIM", Collections.emptyMap(), 0.0);
+            when(querySpec.list()).thenReturn(List.of(one, two));
 
-        assertThatThrownBy(() -> chunkRepository.findByIdPrefix("a1b2c3d4"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .as("an ambiguous prefix must fail loudly rather than resolve to one of the rows")
-            .hasMessageContaining("a1b2c3d4").hasMessageContaining("2 matches")
-            // Both candidates must be enumerated: the caller can only disambiguate by being told
-            // which documents/headings the prefix collided across.
-            .hasMessageContaining("inheritance-de.md").hasMessageContaining("Vererbung")
-            .hasMessageContaining("inheritance-en.md").hasMessageContaining("Inheritance");
+            assertThatThrownBy(() -> chunkRepository.findByIdPrefix("a1b2c3d4"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .as("an ambiguous prefix must fail loudly rather than resolve to one of the rows")
+                .hasMessageContaining("a1b2c3d4").hasMessageContaining("2 matches")
+                // Both candidates must be enumerated: the caller can only disambiguate by being
+                // told
+                // which documents/headings the prefix collided across.
+                .hasMessageContaining("inheritance-de.md").hasMessageContaining("Vererbung")
+                .hasMessageContaining("inheritance-en.md").hasMessageContaining("Inheritance");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test
@@ -446,6 +456,22 @@ public class ChunkRepositoryTest {
 
             assertThat(sqlCaptor.getValue())
                 .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    public void findByIdPrefixOneArgReturnsEmptyWhenNoAuthenticationOrAnonymous() {
+        try {
+            SecurityContextHolder.clearContext();
+            assertThat(chunkRepository.findByIdPrefix("a1b2c3d4")).isEmpty();
+            verify(jdbcClient, never()).sql(anyString());
+
+            SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken(
+                "key", "anon", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
+            assertThat(chunkRepository.findByIdPrefix("a1b2c3d4")).isEmpty();
+            verify(jdbcClient, never()).sql(anyString());
         } finally {
             SecurityContextHolder.clearContext();
         }

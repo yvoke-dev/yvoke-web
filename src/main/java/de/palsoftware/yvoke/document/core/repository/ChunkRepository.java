@@ -237,7 +237,7 @@ public class ChunkRepository {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()
             || auth instanceof AnonymousAuthenticationToken) {
-            return null;
+            return Set.of();
         }
         if (AreaAccessContext.hasAllUserAreas(auth) || AreaAccessContext.isSuperAdmin(auth)) {
             return null;

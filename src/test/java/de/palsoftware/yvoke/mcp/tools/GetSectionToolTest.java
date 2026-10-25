@@ -72,6 +72,10 @@ public class GetSectionToolTest {
         sectionService = mock(SectionService.class);
         getSectionTool = new GetSectionTool(sectionService, mock(DocumentRepository.class),
             mock(ChunkRepository.class), mock(CollectionService.class));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
     }
 
     private static SectionChunks section(SectionChunk... chunks) {
@@ -305,5 +309,15 @@ public class GetSectionToolTest {
             scopedTool.getSection(DOC.toString(), "Ch1", null, oimCtx));
         assertEquals("Error: Chunk not found: " + CHUNK_A,
             scopedTool.getSection(null, null, CHUNK_A.toString(), oimCtx));
+    }
+
+    @Test
+    public void noContextAndNoAuthenticationDeniesByDefault() {
+        SecurityContextHolder.clearContext();
+
+        assertEquals("Error: Document not found: " + DOC,
+            getSectionTool.getSection(DOC.toString(), "Ch1", null));
+        assertEquals("Error: Chunk not found: chunk-123",
+            getSectionTool.getSection(null, null, "chunk-123"));
     }
 }

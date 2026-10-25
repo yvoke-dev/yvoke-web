@@ -832,10 +832,9 @@ public class RagService {
                 String trimmedChunkId = chunkIdStr.trim();
                 boolean areaRestricted = !ctx.isAllAreas();
                 try {
-                    if (areaRestricted) {
-                        chunkOpt = chunkRepository.findByIdPrefix(trimmedChunkId,
-                            ctx.getAllowedAreasLower());
-                    } else {
+                    chunkOpt =
+                        chunkRepository.findByIdPrefix(trimmedChunkId, ctx.getAllowedAreasLower());
+                    if (!areaRestricted && (chunkOpt == null || chunkOpt.isEmpty())) {
                         chunkOpt = chunkRepository.findByIdPrefix(trimmedChunkId);
                     }
                 } catch (IllegalArgumentException e) {

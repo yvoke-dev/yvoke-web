@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -79,7 +80,15 @@ public class GetSectionTool {
                 String targetChunkId =
                     accessCheck.resolvedChunkId() != null ? accessCheck.resolvedChunkId().toString()
                         : trimmedChunkId;
-                section = sectionService.getSectionChunksByChunkId(targetChunkId);
+                if (context != null) {
+                    section = sectionService.getSectionChunksByChunkId(targetChunkId,
+                        context.getAllowedAreasLower());
+                    if (section == null) {
+                        section = sectionService.getSectionChunksByChunkId(targetChunkId);
+                    }
+                } else {
+                    section = sectionService.getSectionChunksByChunkId(targetChunkId);
+                }
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -90,6 +99,9 @@ public class GetSectionTool {
     }
 
     private boolean isDocumentAreaAllowed(String docIdStr, @Nullable AgenticChatContext context) {
+        if (context == null && !hasAuthenticatedCaller()) {
+            return false;
+        }
         UUID docUuid;
         try {
             docUuid = UUID.fromString(docIdStr);
@@ -107,6 +119,12 @@ public class GetSectionTool {
         return isAreaAllowed(colOpt.get().area(), context);
     }
 
+    private static boolean hasAuthenticatedCaller() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated()
+            && !(auth instanceof AnonymousAuthenticationToken);
+    }
+
     private record ChunkAccessCheck(@Nullable String error, @Nullable UUID resolvedChunkId) {}
 
     private ChunkAccessCheck checkChunkAreaAccess(String chunkIdStr,
@@ -115,23 +133,25 @@ public class GetSectionTool {
         Set<String> allowedAreas;
         if (context != null) {
             areaRestricted = !context.isAllAreas();
-            allowedAreas = areaRestricted ? context.getAllowedAreasLower() : null;
+            allowedAreas = context.getAllowedAreasLower();
         } else {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated()
-                && !AreaAccessContext.hasAllUserAreas(auth)) {
+            if (auth == null || !auth.isAuthenticated()
+                || auth instanceof AnonymousAuthenticationToken) {
                 areaRestricted = true;
-                allowedAreas = AreaAccessContext.allowedUserAreasLower(auth).orElse(null);
+                allowedAreas = Set.of();
+            } else if (!AreaAccessContext.hasAllUserAreas(auth)) {
+                areaRestricted = true;
+                allowedAreas = AreaAccessContext.allowedUserAreasLower(auth).orElse(Set.of());
             } else {
                 areaRestricted = false;
-                allowedAreas = null;
+                allowedAreas = AgenticChatContext.ALL_AREAS;
             }
         }
         Optional<ChunkRow> chunkOpt = Optional.empty();
         try {
-            if (areaRestricted && allowedAreas != null) {
-                chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr, allowedAreas);
-            } else {
+            chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr, allowedAreas);
+            if (!areaRestricted && (chunkOpt == null || chunkOpt.isEmpty())) {
                 chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr);
             }
         } catch (IllegalArgumentException e) {
@@ -142,8 +162,8 @@ public class GetSectionTool {
             }
             return new ChunkAccessCheck(null, null);
         }
-        if (chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
-            if (areaRestricted && allowedAreas != null) {
+        if (chunkOpt == null || chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
+            if (areaRestricted) {
                 return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
             }
             return new ChunkAccessCheck(null, null);
@@ -167,8 +187,11 @@ public class GetSectionTool {
         if (context != null) {
             return context.isAreaAllowed(area);
         }
+        if (!hasAuthenticatedCaller()) {
+            return false;
+        }
         if (area == null || area.isBlank()) {
-            return true;
+            return AreaAccessContext.hasAllUserAreas();
         }
         return AreaAccessContext.canAccessUserArea(area);
     }
