@@ -25,7 +25,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.lang.Nullable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,16 +58,11 @@ public class DesktopSyncService {
     @Autowired
     public DesktopSyncService(ConversationRepository conversationRepository,
         MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        @Nullable PlaybookService playbookService) {
-        this.conversationRepository = conversationRepository;
-        this.messageRepository = messageRepository;
-        this.feedbackRepository = feedbackRepository;
-        this.playbookService = playbookService;
-    }
-
-    public DesktopSyncService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository) {
-        this(conversationRepository, messageRepository, feedbackRepository, null);
+        PlaybookService playbookService) {
+        this.conversationRepository = Objects.requireNonNull(conversationRepository);
+        this.messageRepository = Objects.requireNonNull(messageRepository);
+        this.feedbackRepository = Objects.requireNonNull(feedbackRepository);
+        this.playbookService = Objects.requireNonNull(playbookService);
     }
 
     public Conversation createConversation(User user, String title, Map<String, Object> settings) {
@@ -105,7 +99,9 @@ public class DesktopSyncService {
 
         List<UUID> ids = new ArrayList<>(newMessages.size());
         Map<String, Optional<Playbook>> playbooksByName = new HashMap<>();
-        boolean areaUpdated = false;
+        String effectiveArea = (conversation.area() != null && !conversation.area().isBlank())
+            ? conversation.area().trim()
+            : null;
         for (NewMessage m : newMessages) {
             if (m.role() == null || !(m.role().equals("user") || m.role().equals("assistant"))) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -115,7 +111,7 @@ public class DesktopSyncService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "content must not be blank");
             }
-            if (m.playbook() != null && !m.playbook().isBlank() && playbookService != null) {
+            if (m.playbook() != null && !m.playbook().isBlank()) {
                 Playbook pb = playbooksByName
                     .computeIfAbsent(m.playbook().trim(), playbookService::getPlaybook)
                     .orElse(null);
@@ -124,9 +120,14 @@ public class DesktopSyncService {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "Playbook not found: " + m.playbook());
                     }
-                    if (!areaUpdated) {
+                    String pbArea = pb.area().trim();
+                    if (effectiveArea != null && !effectiveArea.equalsIgnoreCase(pbArea)) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Playbook area does not match conversation area");
+                    }
+                    if (effectiveArea == null) {
                         conversationRepository.updateAreaIfAbsent(conversationId, pb.area());
-                        areaUpdated = true;
+                        effectiveArea = pbArea;
                     }
                 }
             }

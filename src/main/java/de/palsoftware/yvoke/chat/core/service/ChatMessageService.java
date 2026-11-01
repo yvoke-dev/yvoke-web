@@ -221,10 +221,6 @@ public class ChatMessageService {
             ? Set.of(playbook.area().trim().toLowerCase(Locale.ROOT))
             : userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS);
 
-        if (playbook.area() != null && !playbook.area().isBlank()) {
-            conversationRepository.updateAreaIfAbsent(conversationId, playbook.area());
-        }
-
         List<String> allowedTools = playbook.tools();
         boolean codeExecution = playbook.codeExecution();
 
@@ -240,6 +236,16 @@ public class ChatMessageService {
                 && !currentInitial.get().trim().equals(effectivePlaybookName)) {
                 throw new IllegalArgumentException(
                     "Playbook cannot be changed once a conversation has started.");
+            }
+            if (playbook.area() != null && !playbook.area().isBlank()) {
+                Optional<Conversation> lockedConv = conversationRepository.findById(conversationId);
+                if (lockedConv.isPresent() && lockedConv.get().area() != null
+                    && !lockedConv.get().area().isBlank()
+                    && !lockedConv.get().area().trim().equalsIgnoreCase(playbook.area().trim())) {
+                    throw new IllegalArgumentException(
+                        "Playbook cannot be changed once a conversation has started.");
+                }
+                conversationRepository.updateAreaIfAbsent(conversationId, playbook.area());
             }
             saveUserMessage(conversationId, userMessageId, userContent, effectivePlaybookName,
                 playbook.version());
@@ -384,9 +390,6 @@ public class ChatMessageService {
             .map(a -> Set.of(a.trim().toLowerCase(Locale.ROOT)))
             .orElseGet(() -> userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS));
 
-        profileArea.filter(a -> !a.isBlank())
-            .ifPresent(a -> conversationRepository.updateAreaIfAbsent(conversationId, a));
-
         chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
@@ -396,6 +399,16 @@ public class ChatMessageService {
                 throw new IllegalArgumentException(
                     "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
             }
+            profileArea.filter(a -> !a.isBlank()).ifPresent(a -> {
+                Optional<Conversation> lockedConv = conversationRepository.findById(conversationId);
+                if (lockedConv.isPresent() && lockedConv.get().area() != null
+                    && !lockedConv.get().area().isBlank()
+                    && !lockedConv.get().area().trim().equalsIgnoreCase(a.trim())) {
+                    throw new IllegalArgumentException(
+                        "Orchestrator profile area does not match the conversation area.");
+                }
+                conversationRepository.updateAreaIfAbsent(conversationId, a);
+            });
             saveUserMessage(conversationId, userMessageId, content, null, null);
         });
         List<LlmMessage> history = getPriorHistory(conversationId, userMessageId);
@@ -625,13 +638,8 @@ public class ChatMessageService {
         String thinkingLevel, boolean codeExecution, String playbookName,
         Integer playbookVersion, Set<String> allowedAreasLower) {
 
-        public PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
-            String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
-            String thinkingLevel, boolean codeExecution, String playbookName,
-            Integer playbookVersion) {
-            this(conversationId, userMessageId, modelContent, modelToUse, systemPrompt, history,
-                allowedTools, thinkingLevel, codeExecution, playbookName, playbookVersion,
-                AgenticChatContext.ALL_AREAS);
+        public PreparedChat {
+            Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null");
         }
     }
 

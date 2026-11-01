@@ -103,8 +103,10 @@ preview behind a citation.
   record listing insists on a whole-record expression and reports an error, while a count of the very
   same filter quietly returns a plain-text match.
 
-- **An area that still has anything in it cannot be deleted.** Move or delete its members first; the
-  page says so.
+- **An area that still has knowledge areas, base instructions, playbooks or in-depth profiles in it
+  cannot be deleted.** Move or delete its members first; the page says so. Past conversations in a
+  deleted area are kept and unlinked from it, remaining visible only to their owner (or, when shared
+  publicly, to users with access to every area, and to superadmins in the admin screens).
 - **Everything that existed before areas were introduced was put into the area *OIM*.** Anything that
   belongs elsewhere has to be moved by hand.
 - **An imported playbook or base instruction file goes into the area it names**, or the one chosen on the

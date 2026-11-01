@@ -111,6 +111,23 @@ class ConfluenceConnectorControllerTest {
     }
 
     @Test
+    void saveInstance_unknownCollectionForSuperAdmin_delegatesToServiceForFlashRejection() {
+        when(collectionService.getCollection("Unknown - Docs")).thenReturn(Optional.empty());
+        when(collectionService.listCollections()).thenReturn(List.of());
+        when(instanceService.save(any(), any())).thenThrow(
+            new IllegalArgumentException("Target collection does not exist: Unknown - Docs"));
+
+        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Unknown Wiki",
+            "unknown-wiki", "https://acme.atlassian.net", "svc@example.com", "UNK", "12345",
+            "public", "draft", "Unknown - Docs", "1.0", false, true);
+
+        assertThatThrownBy(
+            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Target collection does not exist: Unknown - Docs");
+    }
+
+    @Test
     void saveInstance_duplicateNameInAnotherArea_throwsIllegalArgumentException() {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
@@ -208,6 +225,32 @@ class ConfluenceConnectorControllerTest {
             controller.testConfluenceConnection(orphanId, null, null, null, null, null, null, null);
         assertThat(testHtml).contains("no longer exists");
         verifyNoInteractions(confluenceClientService);
+    }
+
+    @Test
+    void superAdminCanDeleteOrReassignOrphanedInstanceWithDeletedTargetCollection() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
+        UUID orphanId = UUID.randomUUID();
+        ConfluenceInstance orphanInstance = new ConfluenceInstance(orphanId, "Orphan Wiki",
+            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "ORP", "1",
+            null, null, "Deleted - Docs", "1.0", false, true, null, null);
+        when(instanceService.findInstance(orphanId)).thenReturn(Optional.of(orphanInstance));
+        when(collectionService.getCollection("Deleted - Docs")).thenReturn(Optional.empty());
+        when(instanceService.delete(orphanId))
+            .thenReturn(new ConfluenceInstanceService.Deletion("Orphan Wiki", "orphan-wiki", 0));
+
+        assertThat(controller.deleteInstance(orphanId, redirectAttributes))
+            .isEqualTo("redirect:/admin/connectors");
+        verify(instanceService).delete(orphanId);
+
+        ConfluenceInstanceForm reassignForm = new ConfluenceInstanceForm(orphanId, "Reassigned",
+            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345",
+            "public", "draft", "OIM - Docs", "10.0", false, true);
+        assertThat(controller.saveInstance(reassignForm, noErrors(reassignForm), "tok",
+            redirectAttributes)).isEqualTo("redirect:/admin/connectors");
+        verify(instanceService).save(any(), eq("tok"));
     }
 
     @Test

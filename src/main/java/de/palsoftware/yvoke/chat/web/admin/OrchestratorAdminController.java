@@ -22,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -130,29 +131,11 @@ public class OrchestratorAdminController {
             }
         }
 
-        Optional<Playbook> orchPb = playbookService.getPlaybook(orchestratorPlaybook);
-        if (orchPb.isEmpty() || !orchPb.get().area().equalsIgnoreCase(area)) {
-            redirectAttributes.addFlashAttribute("error",
-                "Referenced orchestrator playbook not found in area: " + orchestratorPlaybook);
+        String playbookError = validateProfilePlaybooks(area, orchestratorPlaybook,
+            reviewerPlaybook, specialistPlaybooks);
+        if (playbookError != null) {
+            redirectAttributes.addFlashAttribute("error", playbookError);
             return "redirect:/admin/orchestrators";
-        }
-
-        Optional<Playbook> revPb = playbookService.getPlaybook(reviewerPlaybook);
-        if (revPb.isEmpty() || !revPb.get().area().equalsIgnoreCase(area)) {
-            redirectAttributes.addFlashAttribute("error",
-                "Referenced reviewer playbook not found in area: " + reviewerPlaybook);
-            return "redirect:/admin/orchestrators";
-        }
-
-        if (specialistPlaybooks != null) {
-            for (String specName : specialistPlaybooks) {
-                Optional<Playbook> specPb = playbookService.getPlaybook(specName);
-                if (specPb.isEmpty() || !specPb.get().area().equalsIgnoreCase(area)) {
-                    redirectAttributes.addFlashAttribute("error",
-                        "Referenced specialist playbook not found in area: " + specName);
-                    return "redirect:/admin/orchestrators";
-                }
-            }
         }
 
         int rounds =
@@ -221,38 +204,47 @@ public class OrchestratorAdminController {
                 return "redirect:/admin/orchestrators";
             }
         }
-        if (parsed.orchestratorPlaybook() != null) {
-            Optional<Playbook> op = playbookService.getPlaybook(parsed.orchestratorPlaybook());
-            if (op.isPresent() && !op.get().area().equalsIgnoreCase(targetArea)) {
-                redirectAttributes.addFlashAttribute("error",
-                    "Referenced orchestrator playbook belongs to a different area: "
-                        + parsed.orchestratorPlaybook());
-                return "redirect:/admin/orchestrators";
-            }
-        }
-        if (parsed.reviewerPlaybook() != null) {
-            Optional<Playbook> rp = playbookService.getPlaybook(parsed.reviewerPlaybook());
-            if (rp.isPresent() && !rp.get().area().equalsIgnoreCase(targetArea)) {
-                redirectAttributes.addFlashAttribute("error",
-                    "Referenced reviewer playbook belongs to a different area: "
-                        + parsed.reviewerPlaybook());
-                return "redirect:/admin/orchestrators";
-            }
-        }
-        if (parsed.specialistPlaybooks() != null) {
-            for (String spName : parsed.specialistPlaybooks()) {
-                Optional<Playbook> sp = playbookService.getPlaybook(spName);
-                if (sp.isPresent() && !sp.get().area().equalsIgnoreCase(targetArea)) {
-                    redirectAttributes.addFlashAttribute("error",
-                        "Referenced specialist playbook belongs to a different area: " + spName);
-                    return "redirect:/admin/orchestrators";
-                }
-            }
+        String playbookError = validateProfilePlaybooks(targetArea, parsed.orchestratorPlaybook(),
+            parsed.reviewerPlaybook(), parsed.specialistPlaybooks());
+        if (playbookError != null) {
+            redirectAttributes.addFlashAttribute("error", playbookError);
+            return "redirect:/admin/orchestrators";
         }
         OrchestratorProfile imported = profileService.importProfileFromJson(content, area);
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/orchestrators";
+    }
+
+    @Nullable
+    private String validateProfilePlaybooks(String area, String orchestratorPlaybook,
+        String reviewerPlaybook, @Nullable List<String> specialistPlaybooks) {
+        if (orchestratorPlaybook == null || orchestratorPlaybook.isBlank()) {
+            return "Referenced orchestrator playbook not found in area: " + orchestratorPlaybook;
+        }
+        Optional<Playbook> orchPb = playbookService.getPlaybook(orchestratorPlaybook.trim());
+        if (orchPb.isEmpty() || !orchPb.get().area().equalsIgnoreCase(area)) {
+            return "Referenced orchestrator playbook not found in area: " + orchestratorPlaybook;
+        }
+        if (reviewerPlaybook == null || reviewerPlaybook.isBlank()) {
+            return "Referenced reviewer playbook not found in area: " + reviewerPlaybook;
+        }
+        Optional<Playbook> revPb = playbookService.getPlaybook(reviewerPlaybook.trim());
+        if (revPb.isEmpty() || !revPb.get().area().equalsIgnoreCase(area)) {
+            return "Referenced reviewer playbook not found in area: " + reviewerPlaybook;
+        }
+        if (specialistPlaybooks != null) {
+            for (String specName : specialistPlaybooks) {
+                if (specName == null || specName.isBlank()) {
+                    return "Referenced specialist playbook not found in area: " + specName;
+                }
+                Optional<Playbook> specPb = playbookService.getPlaybook(specName.trim());
+                if (specPb.isEmpty() || !specPb.get().area().equalsIgnoreCase(area)) {
+                    return "Referenced specialist playbook not found in area: " + specName;
+                }
+            }
+        }
+        return null;
     }
 
     @PostMapping("/delete")

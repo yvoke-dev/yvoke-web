@@ -47,7 +47,7 @@ public class AreaAdminController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only superadmins can create areas");
             }
-            if (!originalName.trim().equalsIgnoreCase(name.trim())) {
+            if (!originalName.trim().equals(name.trim())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Area admins cannot rename areas");
             }

@@ -266,7 +266,7 @@ public class Milestone3AdversarialChallengeTest {
     }
 
     @Test
-    public void conversationWithNullArea_allowsOwnerAndPublicAccessAcrossUsers() {
+    public void conversationWithNullArea_deniesAreaRestrictedNonOwnerAndAllowsOwnerOrGlobalUser() {
         UUID convId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID viewerId = UUID.randomUUID();
@@ -277,13 +277,25 @@ public class Milestone3AdversarialChallengeTest {
             Collections.emptyMap(), Instant.now(), Instant.now(), List.of("public"), "web", null);
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(globalPublicConv));
 
-        // Caller has PingID authority only
+        // Caller has PingID authority only -> non-owner denied on null-area public conversation
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        assertThatThrownBy(() -> chatConversationService.getConversation(convId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
 
-        // Unscoped public conversation accessible
-        Optional<Conversation> conv = chatConversationService.getConversation(convId);
-        assertThat(conv).isPresent();
+        // Global user can access null-area public conversation
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_*"));
+        assertThat(chatConversationService.getConversation(convId)).isPresent();
+
+        // Owner with area-restricted authority can access their own null-area conversation
+        User owner = new User(ownerId, "owner", "owner@test.local", "O", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        assertThat(chatConversationService.getConversation(convId)).isPresent();
     }
 
     // =========================================================================

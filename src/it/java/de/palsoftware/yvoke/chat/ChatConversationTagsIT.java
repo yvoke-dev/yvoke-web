@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -35,8 +38,12 @@ public class ChatConversationTagsIT {
     private ChatConversationService chatConversationService;
 
     @Autowired
+    private ConversationRepository conversationRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     public void setUp() {
         // Synchronize a test user in DB
@@ -50,6 +57,9 @@ public class ChatConversationTagsIT {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
+        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
+            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(auth);
@@ -157,6 +167,7 @@ public class ChatConversationTagsIT {
         chatConversationService.deleteConversation(ownedByA.id());
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void testPublicSharingWorkflow() {
         // 1. User A creates a conversation, tags it "public" and "tutorial"
@@ -167,7 +178,7 @@ public class ChatConversationTagsIT {
         chatConversationService.addTag(convId, "public");
         chatConversationService.addTag(convId, "tutorial");
 
-        // 2. Switch mock authentication context to User B
+        // 2. Switch mock authentication context to User B (authorized for area OIM)
         userRepository.upsert("test-oid-userB", "userB@yvoke.com", "User B");
         OidcUser oidcUserB = mock(OidcUser.class);
         when(oidcUserB.getClaimAsString("oid")).thenReturn("test-oid-userB");
@@ -176,10 +187,19 @@ public class ChatConversationTagsIT {
         Authentication authB = mock(Authentication.class);
         when(authB.isAuthenticated()).thenReturn(true);
         when(authB.getPrincipal()).thenReturn(oidcUserB);
+        List<GrantedAuthority> authoritiesB = List.of(new SimpleGrantedAuthority("ROLE_USER"),
+            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        when(authB.getAuthorities()).thenAnswer(inv -> authoritiesB);
 
         SecurityContext contextB = SecurityContextHolder.createEmptyContext();
         contextB.setAuthentication(authB);
         SecurityContextHolder.setContext(contextB);
+
+        // Before the conversation is stamped with an area, an area-scoped user cannot see it
+        assertThat(chatConversationService.listAllConversations(100, 0))
+            .extracting(Conversation::id).doesNotContain(convId);
+
+        conversationRepository.updateAreaIfAbsent(convId, "OIM");
 
         // 3. User B lists conversations and sees User A's public conversation under the "Public Conversations" tag "tutorial"
         List<Conversation> bConversations = chatConversationService.listAllConversations(100, 0);

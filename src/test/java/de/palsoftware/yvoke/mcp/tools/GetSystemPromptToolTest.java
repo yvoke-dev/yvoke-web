@@ -165,4 +165,44 @@ class GetSystemPromptToolTest {
         assertThat(tool.getSystemPrompt("ping-chat", null))
             .isEqualTo("ERROR: system prompt 'ping-chat' does not exist.");
     }
+
+    @Test
+    void defaultChatFallbackIsAccessibleEvenWhenActivePromptBelongsToAnotherArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_MOVED"))));
+        when(systemPromptService.findChatPrompt("default-chat"))
+            .thenReturn(Optional.of(new SystemPrompt("active-chat", SystemPromptType.CHAT,
+                "Cite every claim.", "", null, null, true, "OIM")));
+
+        assertThat(tool.getSystemPrompt(null, null)).isEqualTo("Cite every claim.");
+        assertThat(tool.getSystemPrompt("default-chat", null)).isEqualTo("Cite every claim.");
+        assertThat(tool.getSystemPrompt(null, "Moved")).isEqualTo("Cite every claim.");
+    }
+
+    @Test
+    void unauthenticatedCallerCannotReadDefaultChat() {
+        SecurityContextHolder.clearContext();
+        when(systemPromptService.findChatPrompt("default-chat"))
+            .thenReturn(Optional.of(new SystemPrompt("active-chat", SystemPromptType.CHAT,
+                "Cite every claim.", "", null, null, true, "OIM")));
+
+        assertThat(tool.getSystemPrompt(null, null))
+            .isEqualTo("ERROR: system prompt 'default-chat' does not exist.");
+    }
+
+    @Test
+    void promptWhoseNameMatchesAnAreaNameIsReturnedDirectlyAndAreaNameWithoutDirectPromptResolvesAreaDefault() {
+        when(systemPromptService.findChatPrompt("PingID"))
+            .thenReturn(Optional.of(new SystemPrompt("PingID", SystemPromptType.CHAT,
+                "Direct PingID prompt.", "", null, null, false, "PingID")));
+        when(systemPromptService.findChatPrompt("ping-chat"))
+            .thenReturn(Optional.of(new SystemPrompt("ping-chat", SystemPromptType.CHAT,
+                "Ping area default rules.", "", null, null, false, "PingID")));
+
+        assertThat(tool.getSystemPrompt("PingID", null)).isEqualTo("Direct PingID prompt.");
+
+        when(systemPromptService.findChatPrompt("PingID")).thenReturn(Optional.empty());
+        assertThat(tool.getSystemPrompt("PingID", null)).isEqualTo("Ping area default rules.");
+    }
 }

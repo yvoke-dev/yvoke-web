@@ -9,6 +9,7 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Controller;
@@ -50,10 +51,17 @@ public class AdminConnectorController {
     public String getConnectors(Model model) {
         List<Collection> allowedCollections = AreaAccessContext
             .filterByAdminArea(collectionService.listCollections(), Collection::area);
-        Set<String> allowedCollectionNames =
-            allowedCollections.stream().map(Collection::name).collect(Collectors.toSet());
-        List<ConfluenceInstanceView> allowedInstances = instanceService.listInstances().stream()
-            .filter(i -> allowedCollectionNames.contains(i.targetCollection())).toList();
+        List<ConfluenceInstanceView> allowedInstances;
+        if (AreaAccessContext.isSuperAdmin()) {
+            allowedInstances = instanceService.listInstances();
+        } else {
+            Set<String> allowedCollectionsLower = allowedCollections.stream()
+                .map(c -> c.name().trim().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+            allowedInstances = instanceService.listInstances().stream()
+                .filter(i -> i.targetCollection() != null && allowedCollectionsLower
+                    .contains(i.targetCollection().trim().toLowerCase(Locale.ROOT)))
+                .toList();
+        }
 
         model.addAttribute("instances", allowedInstances);
         model.addAttribute("collections", allowedCollections);

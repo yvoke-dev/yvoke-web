@@ -3,7 +3,6 @@ package de.palsoftware.yvoke.chat.orchestration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
-import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -115,17 +114,11 @@ public class OrchestrationService {
         List<UUID> searchIds, int promptTokens, int completionTokens, int totalTokens,
         int cachedTokens, int thoughtTokens, String status) {}
 
-    /** Blocking; intended to run on a background (virtual) thread. */
-    public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
-        String question, List<LlmMessage> history, UUID agentRunId, String profileName) {
-        return runOrchestration(conversationId, messageId, question, history, agentRunId,
-            profileName, AgenticChatContext.ALL_AREAS);
-    }
-
     /** Blocking; intended to run on a background (virtual) thread with area isolation. */
     public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
         String question, List<LlmMessage> history, UUID agentRunId, String profileName,
-        @Nullable Set<String> allowedAreasLower) {
+        Set<String> allowedAreasLower) {
+        Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null");
 
         ResolvedProfile profile;
         Playbook orchestratorPlaybook;
@@ -151,8 +144,7 @@ public class OrchestrationService {
 
         runRepository.create(agentRunId, conversationId, profileName, configSnapshot(profile));
 
-        Set<String> effectiveAreas =
-            allowedAreasLower != null ? allowedAreasLower : AgenticChatContext.ALL_AREAS;
+        Set<String> effectiveAreas = allowedAreasLower;
         if (effectiveAreas.contains("*") && orchestratorPlaybook.area() != null
             && !orchestratorPlaybook.area().isBlank()) {
             effectiveAreas = Set.of(orchestratorPlaybook.area().trim().toLowerCase(Locale.ROOT));

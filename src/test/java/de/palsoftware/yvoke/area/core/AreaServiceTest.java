@@ -229,6 +229,21 @@ class AreaServiceTest {
     }
 
     @Test
+    void areaAdminCannotRenameOrRecaseAreaInService() {
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        AreaRepository repository =
+            repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
+        AreaService areas = new AreaService(repository);
+
+        assertThatThrownBy(
+            () -> areas.saveArea("OIM", "oim", "Oracle IAM", null, false, null, null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Area admins cannot rename areas.");
+        verify(repository, never()).rename(any(), any());
+        verify(repository, never()).upsert(any());
+    }
+
+    @Test
     void areaNamesWithSpacesDotsWildcardOrNonRoundtrippingCaseAreRejected() {
         AreaRepository repository = repoWith(List.of(), Map.of());
         AreaService areas = new AreaService(repository);
@@ -266,8 +281,8 @@ class AreaServiceTest {
 
         assertThatThrownBy(() -> new AreaService(repository).deleteArea("oim"))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks, profiles or "
-                + "conversations. Move or delete them first.");
+            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks or "
+                + "profiles. Move or delete them first.");
     }
 
     @Test

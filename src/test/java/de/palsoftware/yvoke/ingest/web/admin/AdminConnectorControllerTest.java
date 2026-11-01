@@ -143,4 +143,30 @@ class AdminConnectorControllerTest {
         assertThat(model.asMap().values())
             .noneMatch(v -> v != null && String.valueOf(v).contains("enc:"));
     }
+
+    @Test
+    void superAdminSeesOrphanedInstancesAndAreaAdminMatchesCollectionCaseInsensitively() {
+        ConfluenceInstanceView orphanView = new ConfluenceInstanceView(UUID.randomUUID(),
+            "Orphan Wiki", "orphan-wiki", "https://acme.atlassian.net/wiki", "svc@example.com",
+            "ORP", "1", "public", null, "Deleted - Docs", "1.0", true, true, TokenHealth.OK);
+        ConfluenceInstanceView caseView = new ConfluenceInstanceView(UUID.randomUUID(), "Case Wiki",
+            "case-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "2",
+            "public", null, "oim - docs", "9.3.1", true, true, TokenHealth.OK);
+        when(instanceService.listInstances()).thenReturn(List.of(orphanView, caseView));
+
+        controller.getConnectors(model);
+        @SuppressWarnings("unchecked")
+        List<ConfluenceInstanceView> superAdminInstances =
+            (List<ConfluenceInstanceView>) model.getAttribute("instances");
+        assertThat(superAdminInstances).containsExactly(orphanView, caseView);
+
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Model areaAdminModel = new ConcurrentModel();
+        controller.getConnectors(areaAdminModel);
+        @SuppressWarnings("unchecked")
+        List<ConfluenceInstanceView> areaAdminInstances =
+            (List<ConfluenceInstanceView>) areaAdminModel.getAttribute("instances");
+        assertThat(areaAdminInstances).containsExactly(caseView);
+    }
 }

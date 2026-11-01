@@ -48,6 +48,7 @@ import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageToolCallRepository;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.chat.orchestration.AgentRun;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
 import de.palsoftware.yvoke.chat.orchestration.AgentStep;
@@ -2672,9 +2673,9 @@ public class ChatMessageServiceTest {
     void stream_and_generateSync_stampPlaybookAndVersionOnAssistantMessage_inSuccessAndErrorPaths() {
         UUID convId = UUID.randomUUID();
         UUID userMsgId = UUID.randomUUID();
-        ChatMessageService.PreparedChat prepared =
-            new ChatMessageService.PreparedChat(convId, userMsgId, "Query", "gpt-4o", "sys",
-                List.of(), List.of(), "medium", false, "pb-stream", 4);
+        ChatMessageService.PreparedChat prepared = new ChatMessageService.PreparedChat(convId,
+            userMsgId, "Query", "gpt-4o", "sys", List.of(), List.of(), "medium", false, "pb-stream",
+            4, AgenticChatContext.ALL_AREAS);
 
         RagResult ragResult =
             new RagResult(List.of(), List.of(), null, List.of(), 10, 20, 30, 0, 0);
@@ -2828,5 +2829,56 @@ public class ChatMessageServiceTest {
 
         Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "Hello", "oim-playbook"));
+    }
+
+    @Test
+    public void prepare_doesNotStampAreaBeforeLockWhenConcurrentTurnAlreadyLockedAnotherPlaybook() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, null, "Chat",
+            Map.of(ConversationSetting.MODEL.getValue(), "model1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        Playbook pbPing = new Playbook("ping-pb", "Title", "Desc", "Template", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "PingID", null, 1);
+        when(playbookService.getPlaybook("ping-pb")).thenReturn(Optional.of(pbPing));
+
+        // First call (before lockForUpdate) sees empty; second call (after lockForUpdate) sees
+        // concurrent winner "oim-pb".
+        when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.empty(),
+            Optional.of("oim-pb"));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, "Hello", "ping-pb"));
+        verify(conversationRepository, never()).updateAreaIfAbsent(eq(conversationId), anyString());
+    }
+
+    @Test
+    public void submitOrchestratedAsync_whenConversationAreaDoesNotMatchProfileArea_throwsAreaMismatchException() {
+        setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
+        UUID conversationId = UUID.randomUUID();
+        Map<String, Object> settings = new HashMap<>();
+        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "pingid-profile");
+        Conversation conv = new Conversation(conversationId, null, "Chat", settings, null, null,
+            List.of(), "web", "OIM");
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("pingid-profile")).thenReturn(true);
+        when(orchestrationService.getProfileArea("pingid-profile"))
+            .thenReturn(Optional.of("PingID"));
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conv));
+
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", null));
+        assertThat(ex.getMessage())
+            .isEqualTo("Orchestrator profile area does not match the conversation area.");
+        verify(conversationRepository, never()).updateAreaIfAbsent(eq(conversationId), anyString());
+    }
+
+    @Test
+    public void preparedChat_compactConstructor_rejectsNullAllowedAreasLower() {
+        NullPointerException ex = Assertions.assertThrows(NullPointerException.class,
+            () -> new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "q",
+                "m", "s", List.of(), List.of(), null, false, "pb", 1, null));
+        assertThat(ex.getMessage()).isEqualTo("allowedAreasLower must not be null");
     }
 }

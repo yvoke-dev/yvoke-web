@@ -47,6 +47,7 @@ class DesktopOrchestratorRunServiceTest {
     private MessageRepository messageRepository;
     private AgentRunRepository agentRunRepository;
     private AgentStepRepository agentStepRepository;
+    private OrchestratorProfileService orchestratorProfileService;
     private DesktopOrchestratorRunService service;
 
     private final UUID currentUserId = UUID.randomUUID();
@@ -61,8 +62,12 @@ class DesktopOrchestratorRunServiceTest {
         messageRepository = mock(MessageRepository.class);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
+        orchestratorProfileService = mock(OrchestratorProfileService.class);
+        when(orchestratorProfileService.getProfile("oim-profile"))
+            .thenReturn(Optional.of(new OrchestratorProfile("oim-profile", 2, 8, "orch", "rev",
+                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
         service = new DesktopOrchestratorRunService(conversationRepository, messageRepository,
-            agentRunRepository, agentStepRepository);
+            agentRunRepository, agentStepRepository, orchestratorProfileService);
     }
 
     @AfterEach
@@ -158,6 +163,40 @@ class DesktopOrchestratorRunServiceTest {
         assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
             .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void recordWithUnauthorizedProfileAreaYields400() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+
+        assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void recordWithMismatchedConversationAndProfileAreaYields400() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Mine",
+                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "PingID")));
+
+        assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(agentRunRepository, agentStepRepository);
+    }
+
+    @Test
+    void recordStampsConversationAreaFromProfileIfAbsent() {
+        UUID conversationId = UUID.randomUUID();
+        ownsConversation(conversationId);
+
+        service.record(currentUser, requestFor(conversationId, List.of()));
+
+        verify(conversationRepository).updateAreaIfAbsent(conversationId, "OIM");
     }
 
     // --- happy path --------------------------------------------------------------

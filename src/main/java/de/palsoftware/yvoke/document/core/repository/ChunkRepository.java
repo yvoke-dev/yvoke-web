@@ -268,25 +268,49 @@ public class ChunkRepository {
             return Optional.empty();
         }
 
-        String sql =
-            """
-                SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
-                FROM chunks ch
-                JOIN collections coll ON ch.collection_id = coll.id
-                JOIN documents d ON ch.document_id = d.id
-                WHERE replace(CAST(ch.id AS TEXT), '-', '') LIKE :prefix
-                """;
+        String cleanPrefix = idPrefix.replace("-", "").toLowerCase(Locale.ROOT);
+        if (cleanPrefix.length() > 32) {
+            return Optional.empty();
+        }
 
-        String cleanPrefix = idPrefix.replace("-", "").toLowerCase();
         List<ChunkRow> matches;
-        if (filterByArea) {
-            sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
-            matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
-                .param("allowedAreasLower", allowedAreasLower)
-                .query(new ChunkRowMapper(objectMapper, null)).list();
+        if (cleanPrefix.length() == 32) {
+            UUID exactId = uuidFromCleanHex(cleanPrefix);
+            String sql =
+                """
+                    SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
+                    FROM chunks ch
+                    JOIN collections coll ON ch.collection_id = coll.id
+                    JOIN documents d ON ch.document_id = d.id
+                    WHERE ch.id = :id
+                    """;
+            if (filterByArea) {
+                sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
+                matches = jdbcClient.sql(sql).param("id", exactId)
+                    .param("allowedAreasLower", allowedAreasLower)
+                    .query(new ChunkRowMapper(objectMapper, null)).list();
+            } else {
+                matches = jdbcClient.sql(sql).param("id", exactId)
+                    .query(new ChunkRowMapper(objectMapper, null)).list();
+            }
         } else {
-            matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
-                .query(new ChunkRowMapper(objectMapper, null)).list();
+            String sql =
+                """
+                    SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
+                    FROM chunks ch
+                    JOIN collections coll ON ch.collection_id = coll.id
+                    JOIN documents d ON ch.document_id = d.id
+                    WHERE replace(CAST(ch.id AS TEXT), '-', '') LIKE :prefix
+                    """;
+            if (filterByArea) {
+                sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
+                matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
+                    .param("allowedAreasLower", allowedAreasLower)
+                    .query(new ChunkRowMapper(objectMapper, null)).list();
+            } else {
+                matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
+                    .query(new ChunkRowMapper(objectMapper, null)).list();
+            }
         }
 
         if (matches.isEmpty()) {
@@ -302,6 +326,12 @@ public class ChunkRepository {
             throw new IllegalArgumentException(sb.toString().trim());
         }
         return Optional.of(matches.get(0));
+    }
+
+    private static UUID uuidFromCleanHex(String cleanHex) {
+        return UUID.fromString(cleanHex.substring(0, 8) + "-" + cleanHex.substring(8, 12) + "-"
+            + cleanHex.substring(12, 16) + "-" + cleanHex.substring(16, 20) + "-"
+            + cleanHex.substring(20, 32));
     }
 
     /** Returns which of the given chunk ids exist, in a single query. */

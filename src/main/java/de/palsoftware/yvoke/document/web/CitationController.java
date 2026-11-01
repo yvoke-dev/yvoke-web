@@ -10,6 +10,7 @@ import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -40,14 +41,14 @@ public class CitationController {
     @Autowired
     public CitationController(SectionService sectionService, ChunkRepository chunkRepository,
         DocumentRepository documentRepository, CollectionService collectionService) {
-        this.sectionService = sectionService;
-        this.chunkRepository = chunkRepository;
-        this.documentRepository = documentRepository;
-        this.collectionService = collectionService;
-    }
-
-    public CitationController(SectionService sectionService) {
-        this(sectionService, null, null, null);
+        this.sectionService =
+            Objects.requireNonNull(sectionService, "sectionService must not be null");
+        this.chunkRepository =
+            Objects.requireNonNull(chunkRepository, "chunkRepository must not be null");
+        this.documentRepository =
+            Objects.requireNonNull(documentRepository, "documentRepository must not be null");
+        this.collectionService =
+            Objects.requireNonNull(collectionService, "collectionService must not be null");
     }
 
     @GetMapping("/citation")
@@ -101,9 +102,6 @@ public class CitationController {
     }
 
     private void verifyCitationAreaAccess(String chunkId, String documentId) {
-        if (chunkRepository == null || documentRepository == null || collectionService == null) {
-            return;
-        }
         String area = null;
         if (chunkId != null && !chunkId.isBlank()) {
             Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkId.trim());
@@ -120,7 +118,7 @@ public class CitationController {
             try {
                 docUuid = UUID.fromString(documentId.trim());
             } catch (IllegalArgumentException e) {
-                throw new NoSuchElementException("Invalid document UUID: " + documentId);
+                return;
             }
             Optional<DocumentRow> docOpt = documentRepository.findById(docUuid);
             if (docOpt.isEmpty()) {

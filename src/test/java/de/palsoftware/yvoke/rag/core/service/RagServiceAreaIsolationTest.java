@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -221,14 +222,16 @@ class RagServiceAreaIsolationTest {
         DocumentDetails dd = new DocumentDetails(docOimId, colOimId, "oim-col", "manual",
             "OIM Overview", null, "COMPLETED", 4L, true, Instant.now());
 
-        when(documentRepository.listDocuments(eq("oim-col"), anyInt(), anyInt(), any(), any(),
-            any(), any(), any())).thenReturn(List.of(dd));
+        when(documentRepository.listDocuments(isNull(), anyInt(), anyInt(), any(), any(), any(),
+            any(), any(), eq(Set.of("oim")))).thenReturn(List.of(dd));
+        when(documentRepository.countDocuments(isNull(), any(), any(), any(), any(), any(),
+            eq(Set.of("oim")))).thenReturn(1L);
 
         String response = runTurnWithToolCall("list_documents", "{}", Set.of("oim"));
 
         assertThat(response).contains("OIM Overview");
-        verify(documentRepository).listDocuments(eq("oim-col"), anyInt(), anyInt(), any(), any(),
-            any(), any(), any());
+        verify(documentRepository).listDocuments(isNull(), anyInt(), anyInt(), any(), any(), any(),
+            any(), any(), eq(Set.of("oim")));
         verify(documentRepository, never()).listDocuments(eq("pingid-col"), anyInt(), anyInt(),
             any(), any(), any(), any(), any());
     }
@@ -463,16 +466,18 @@ class RagServiceAreaIsolationTest {
     void listDocumentsOmitCollectionAdoptsStoredKindCasing() {
         DocumentDetails dd = new DocumentDetails(docOimId, colOimId, "oim-col", "table",
             "DialogTable", null, "COMPLETED", 2L, true, Instant.now());
-        when(documentRepository.findDistinctKindsInCollection("oim-col"))
+        when(documentRepository.findDistinctKinds(Set.of("oim")))
             .thenReturn(List.of("table", "manual"));
-        when(documentRepository.listDocuments(eq("oim-col"), anyInt(), anyInt(), eq("table"), any(),
-            any(), any(), any())).thenReturn(List.of(dd));
+        when(documentRepository.listDocuments(isNull(), anyInt(), anyInt(), eq("table"), any(),
+            any(), any(), any(), eq(Set.of("oim")))).thenReturn(List.of(dd));
+        when(documentRepository.countDocuments(isNull(), eq("table"), any(), any(), any(), any(),
+            eq(Set.of("oim")))).thenReturn(1L);
 
         String response =
             runTurnWithToolCall("list_documents", "{\"kind\": \"TABLE\"}", Set.of("oim"));
 
         assertThat(response).contains("DialogTable");
-        verify(documentRepository).listDocuments(eq("oim-col"), anyInt(), anyInt(), eq("table"),
-            any(), any(), any(), any());
+        verify(documentRepository).listDocuments(isNull(), anyInt(), anyInt(), eq("table"), any(),
+            any(), any(), any(), eq(Set.of("oim")));
     }
 }

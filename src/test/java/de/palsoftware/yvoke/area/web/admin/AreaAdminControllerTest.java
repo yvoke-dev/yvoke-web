@@ -112,6 +112,15 @@ class AreaAdminControllerTest {
     }
 
     @Test
+    void areaAdmin_changingAreaCapitalization_isBadRequest() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "oim"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void areaAdmin_modifyingUnauthorizedArea_isForbidden() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));

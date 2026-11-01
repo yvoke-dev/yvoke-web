@@ -40,6 +40,10 @@ public class CitationControllerTest {
         documentRepository = mock(DocumentRepository.class);
         collectionService = mock(CollectionService.class);
         model = new ConcurrentModel();
+
+        ChunkRow defaultChunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text",
+            List.of(), "heading", 1, 1, null, "docTitle", "md", "DefaultCol", null, 1.0);
+        when(chunkRepository.findByIdPrefix(anyString())).thenReturn(Optional.of(defaultChunk));
     }
 
     @AfterEach
@@ -49,7 +53,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithPositiveLimit() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
@@ -64,7 +69,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithDisabledLimitNegative() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
@@ -79,7 +85,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithDisabledLimitZero() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
@@ -94,7 +101,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationByDocumentId() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
         SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
             "heading only", "Sample text");
 
@@ -109,7 +117,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationMissingParams() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
 
         String view = controller.getCitation(null, null, model);
 
@@ -121,7 +130,8 @@ public class CitationControllerTest {
 
     @Test
     public void testAmbiguousLookupDoesNotLeakDocumentInventory() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
 
         // Any lookup that cannot be narrowed to one document enumerates every match with its
         // full id, kind, title and tags. That inventory must never reach the citation dialog.
@@ -146,7 +156,8 @@ public class CitationControllerTest {
 
     @Test
     public void testMissingDocumentIdYieldsNotFoundMessage() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
 
         // A re-ingested or deleted id is a stale reference, not an outage. SectionService signals
         // that with NoSuchElementException, which must not fall through to the generic handler.
@@ -167,7 +178,8 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationServiceExceptionIsNotLeaked() {
-        CitationController controller = new CitationController(sectionService);
+        CitationController controller = new CitationController(sectionService, chunkRepository,
+            documentRepository, collectionService);
 
         // An unexpected (e.g. data-access) failure must not surface its raw message — which can
         // carry SQL / provider / stack detail — into the rendered fragment (SEC-17 / ARC-10).

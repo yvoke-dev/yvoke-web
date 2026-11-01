@@ -3,7 +3,7 @@
 ALTER TABLE conversations
     ADD COLUMN area VARCHAR(255)
     CONSTRAINT fk_conversations_area REFERENCES areas(name)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
+    ON UPDATE CASCADE ON DELETE SET NULL;
 
 -- 1. Backfill from the most recent agent run's orchestrator profile area
 UPDATE conversations c
@@ -41,9 +41,9 @@ SET area = 'OIM'
 WHERE area IS NULL
   AND EXISTS (SELECT 1 FROM areas WHERE name = 'OIM');
 
-CREATE INDEX idx_conversations_area ON conversations(area);
+CREATE INDEX idx_conversations_area ON conversations (LOWER(area));
 
 -- Partial index for public conversations by area.
 -- Note: 'conversations' has no 'visibility' column; public conversations are tagged with 'public'.
-CREATE INDEX idx_conversations_visibility_area ON conversations(area, created_at DESC)
+CREATE INDEX idx_conversations_visibility_area ON conversations (LOWER(area), created_at DESC)
 WHERE 'public' = ANY(tags);

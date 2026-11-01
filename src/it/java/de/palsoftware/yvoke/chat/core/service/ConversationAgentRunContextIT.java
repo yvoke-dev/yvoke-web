@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.chat.ChatTestFixtures;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
@@ -273,7 +274,8 @@ public class ConversationAgentRunContextIT {
         UUID userMessageId = UUID.randomUUID();
         messageRepository.save(new Message(userMessageId, convId, "user", "Analyze system logs", null, Collections.emptyList(), Collections.emptyList(), Instant.now()));
 
-        orchestrationService.runOrchestration(convId, userMessageId, "Analyze system logs", Collections.emptyList(), agentRunId, "oim");
+        orchestrationService.runOrchestration(convId, userMessageId, "Analyze system logs",
+            Collections.emptyList(), agentRunId, "oim", AgenticChatContext.ALL_AREAS);
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
             SELECT conversation_id, message_id, agent_run_id, user_id, source, role, model

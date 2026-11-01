@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.rag.core.service;
 
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.text.MarkdownTableFormatter;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -532,16 +533,11 @@ public class CitationVerifier {
         "_Scope: this checks that each cited id exists in the corpus. It does not read the cited "
             + "text, so it does NOT confirm that the source supports the claim it is attached to._";
 
-    private static final int MAX_CELL_CHARS = 1000;
-
     public static String formatReport(List<CitationCheckResult> checkResults) {
         int nFab = 0;
         int nUnverified = 0;
-        StringBuilder table = new StringBuilder();
-        if (checkResults == null || checkResults.isEmpty()) {
-            table.append("(no rows)");
-        } else {
-            table.append("| citation | kind | status | detail |\n| --- | --- | --- | --- |\n");
+        List<Map<String, String>> rows = new ArrayList<>();
+        if (checkResults != null) {
             for (CitationCheckResult res : checkResults) {
                 String statusStr = switch (res.getStatus()) {
                     case REAL -> "REAL";
@@ -554,13 +550,16 @@ public class CitationVerifier {
                 } else if (res.getStatus() == CitationStatus.UNVERIFIED) {
                     nUnverified++;
                 }
-                table.append("| ").append(formatCell(res.getCitation()))
-                    .append(" | ").append(formatCell(res.getKind()))
-                    .append(" | ").append(formatCell(statusStr))
-                    .append(" | ").append(formatCell(res.getDetail()))
-                    .append(" |\n");
+                Map<String, String> row = new LinkedHashMap<>();
+                row.put("citation", res.getCitation() != null ? res.getCitation() : "");
+                row.put("kind", res.getKind() != null ? res.getKind() : "");
+                row.put("status", statusStr);
+                row.put("detail", res.getDetail() != null ? res.getDetail() : "");
+                rows.add(row);
             }
         }
+        String table = MarkdownTableFormatter.formatTableRows(rows,
+            List.of("citation", "kind", "status", "detail"));
 
         int count = checkResults != null ? checkResults.size() : 0;
         List<String> out = new ArrayList<>();
@@ -569,7 +568,7 @@ public class CitationVerifier {
             header += ", " + nUnverified + " UNVERIFIED";
         }
         out.add(header);
-        out.add(table.toString().trim());
+        out.add(table);
 
         if (nFab > 0) {
             out.add(
@@ -584,16 +583,5 @@ public class CitationVerifier {
         }
         out.add("\n" + SCOPE_NOTE);
         return String.join("\n", out);
-    }
-
-    private static String formatCell(@Nullable String raw) {
-        String val = raw != null ? raw : "";
-        val = val.replace("|", "\\|").replace("\n", " ").replace("\r", "");
-        if (val.length() > MAX_CELL_CHARS) {
-            String marker = " … [truncated, " + val.length() + " chars total]";
-            int keep = Math.max(0, MAX_CELL_CHARS - marker.length());
-            val = val.substring(0, keep) + marker;
-        }
-        return val;
     }
 }

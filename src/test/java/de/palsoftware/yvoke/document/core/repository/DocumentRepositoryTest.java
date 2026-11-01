@@ -10,6 +10,7 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -132,5 +133,18 @@ public class DocumentRepositoryTest {
 
         assertThat(count).isEqualTo(2L);
         verify(jdbcClient).sql(contains("AND d.title ILIKE :searchTitle"));
+    }
+
+    @Test
+    public void testFindDistinctKindsByAllowedAreas() {
+        assertThat(documentRepository.findDistinctKinds(Set.of())).isEmpty();
+        verify(jdbcClient, never()).sql(anyString());
+
+        when(stringQuerySpec.list()).thenReturn(List.of("manual", "table"));
+        List<String> kinds = documentRepository.findDistinctKinds(Set.of("oim"));
+        assertThat(kinds).containsExactly("manual", "table");
+        verify(jdbcClient)
+            .sql(contains("WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)"));
+        verify(statementSpec).param("allowedAreasLower", Set.of("oim"));
     }
 }
