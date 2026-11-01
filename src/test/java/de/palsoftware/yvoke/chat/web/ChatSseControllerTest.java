@@ -19,6 +19,7 @@ import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 
 import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.util.UUID;
@@ -149,7 +150,8 @@ class ChatSseControllerTest {
 
     private static ChatMessageService.PreparedChat dummyPreparedChat() {
         return new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "content",
-            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook", 1);
+            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook", 1,
+            AgenticChatContext.ALL_AREAS);
     }
 
     @Test

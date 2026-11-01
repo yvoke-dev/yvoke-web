@@ -419,6 +419,16 @@ public class SchemaPresenceIT {
             .withFailMessage("Index idx_conversations_area should exist (V16)").isTrue();
         assertThat(indexExists("conversations", "idx_conversations_visibility_area"))
             .withFailMessage("Index idx_conversations_visibility_area should exist (V16)").isTrue();
+
+        String areaIndexDef = jdbcTemplate.queryForObject(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
+            String.class, "idx_conversations_area");
+        assertThat(areaIndexDef).containsIgnoringCase("lower(");
+
+        String visibilityAreaIndexDef = jdbcTemplate.queryForObject(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
+            String.class, "idx_conversations_visibility_area");
+        assertThat(visibilityAreaIndexDef).containsIgnoringCase("lower(");
     }
 
     @Test
@@ -441,9 +451,11 @@ public class SchemaPresenceIT {
                 "SELECT area FROM conversations WHERE id = ?", String.class, convId);
             assertThat(updatedArea).isEqualTo(area2);
 
-            // 2. Verify RESTRICT on area delete
-            assertThatThrownBy(() -> jdbcTemplate.update("DELETE FROM areas WHERE name = ?", area2))
-                .isInstanceOf(DataIntegrityViolationException.class);
+            // 2. Verify SET NULL on area delete
+            jdbcTemplate.update("DELETE FROM areas WHERE name = ?", area2);
+            String nulledArea = jdbcTemplate.queryForObject(
+                "SELECT area FROM conversations WHERE id = ?", String.class, convId);
+            assertThat(nulledArea).isNull();
         } finally {
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
             jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);

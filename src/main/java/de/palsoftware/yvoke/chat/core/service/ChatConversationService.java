@@ -295,6 +295,11 @@ public class ChatConversationService {
         }
         if (readOnlyAllowed) {
             if (conversation.tags() != null && conversation.tags().contains("public")) {
+                if ((conversation.area() == null || conversation.area().isBlank())
+                    && !AreaAccessContext.hasAllUserAreas()) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation not found: " + conversation.id());
+                }
                 return;
             }
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();

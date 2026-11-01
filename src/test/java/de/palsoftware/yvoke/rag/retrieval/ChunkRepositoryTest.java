@@ -476,4 +476,28 @@ public class ChunkRepositoryTest {
             SecurityContextHolder.clearContext();
         }
     }
+
+    @Test
+    public void findByIdAndFullUuidPrefixUseExactIdEqualityInsteadOfLikeScan() {
+        UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
+        ChunkRow one = new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
+            "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
+        when(querySpec.list()).thenReturn(List.of(one));
+
+        Optional<ChunkRow> result =
+            chunkRepository.findByIdPrefix(matchId.toString(), Set.of("hr"));
+        assertThat(result).contains(one);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcClient).sql(sqlCaptor.capture());
+        verify(statementSpec).param("id", matchId);
+        verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
+        assertThat(sqlCaptor.getValue()).contains("WHERE ch.id = :id")
+            .doesNotContain("LIKE :prefix")
+            .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+
+        assertThat(
+            chunkRepository.findByIdPrefix("a1b2c3d4111141118111000000000001aa", Set.of("hr")))
+            .isEmpty();
+    }
 }

@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -133,6 +134,10 @@ public class AreaService implements AvailableAreasProvider {
         checkDefaults(newName, members, blankToNull(defaultSystemPrompt),
             blankToNull(defaultPlaybook), blankToNull(defaultProfile));
         if (stored != null && !stored.equals(newName)) {
+            if (SecurityContextHolder.getContext().getAuthentication() != null
+                && !AreaAccessContext.isSuperAdmin()) {
+                throw new IllegalArgumentException("Area admins cannot rename areas.");
+            }
             areaRepository.rename(stored, newName);
         }
         String storedTitle = blankToNull(title);
@@ -151,9 +156,9 @@ public class AreaService implements AvailableAreasProvider {
         try {
             areaRepository.delete(stored);
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalArgumentException("Area '" + stored
-                + "' still has system prompts, collections, playbooks, profiles or conversations. "
-                + "Move or delete them first.");
+            throw new IllegalArgumentException(
+                "Area '" + stored + "' still has system prompts, collections, playbooks or "
+                    + "profiles. Move or delete them first.");
         }
         return stored;
     }

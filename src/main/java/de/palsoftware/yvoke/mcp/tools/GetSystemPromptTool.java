@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -66,7 +67,38 @@ public class GetSystemPromptTool {
         try {
             String requested;
             if (name != null && !name.isBlank()) {
-                requested = name.trim();
+                String trimmed = name.trim();
+                if (SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(trimmed)) {
+                    requested = SystemPromptService.DEFAULT_CHAT;
+                } else {
+                    log.info("GetSystemPromptTool: fetching system prompt '{}'", trimmed);
+                    Optional<SystemPrompt> directPrompt =
+                        systemPromptService.findChatPrompt(trimmed);
+                    if (directPrompt.isPresent()) {
+                        SystemPrompt sp = directPrompt.get();
+                        if (sp.area() != null && !sp.area().isBlank()
+                            && !AreaAccessContext.canAccessUserArea(sp.area())) {
+                            return "ERROR: system prompt '" + trimmed + "' does not exist.";
+                        }
+                        String text = sp.systemPrompt();
+                        if (text == null || text.isBlank()) {
+                            return "ERROR: system prompt '" + trimmed + "' does not exist.";
+                        }
+                        return text;
+                    }
+                    if (AreaAccessContext.canAccessUserArea(trimmed)) {
+                        Optional<AreaWithMembers> found = areaService.findAreaWithMembers(trimmed);
+                        if (found.isPresent()) {
+                            String preferred = found.get().defaultSystemPrompt();
+                            requested = preferred != null && !preferred.isBlank() ? preferred
+                                : SystemPromptService.DEFAULT_CHAT;
+                        } else {
+                            return "ERROR: system prompt '" + trimmed + "' does not exist.";
+                        }
+                    } else {
+                        return "ERROR: system prompt '" + trimmed + "' does not exist.";
+                    }
+                }
             } else if (area != null && !area.isBlank()) {
                 String trimmedArea = area.trim();
                 if (!AreaAccessContext.canAccessUserArea(trimmedArea)) {
@@ -88,7 +120,11 @@ public class GetSystemPromptTool {
                 return "ERROR: system prompt '" + requested + "' does not exist.";
             }
             SystemPrompt sp = prompt.get();
-            if (sp.area() != null && !sp.area().isBlank()
+            if (SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(requested)) {
+                if (!hasAnyAreaAccess()) {
+                    return "ERROR: system prompt '" + requested + "' does not exist.";
+                }
+            } else if (sp.area() != null && !sp.area().isBlank()
                 && !AreaAccessContext.canAccessUserArea(sp.area())) {
                 return "ERROR: system prompt '" + requested + "' does not exist.";
             }
@@ -100,6 +136,11 @@ public class GetSystemPromptTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("get_system_prompt", e);
         }
+    }
+
+    private static boolean hasAnyAreaAccess() {
+        return AreaAccessContext.hasAllUserAreas()
+            || !AreaAccessContext.allowedUserAreasLower().orElse(Set.of()).isEmpty();
     }
 
 }

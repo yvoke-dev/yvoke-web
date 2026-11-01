@@ -539,20 +539,31 @@ public class ChatConversationServiceTest {
     }
 
     @Test
-    public void verifyConversationOwnership_withNullArea_allowsOwnerAndPublicViewer() {
+    public void verifyConversationOwnership_withNullArea_allowsOwnerAndAllAreasPublicViewerButDeniesRestrictedPublicViewer() {
         UUID convId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID viewerId = UUID.randomUUID();
+        User owner = new User(ownerId, "entra-owner", "owner@test.local", "O", null);
         User viewer = new User(viewerId, "entra-viewer", "viewer@test.local", "V", null);
-        when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
         Conversation conv = new Conversation(convId, ownerId, "Title", Collections.emptyMap(),
             Instant.now(), Instant.now(), List.of("public"), "web", null);
 
         SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
+        chatConversationService.verifyConversationOwnership(conv, false);
 
-        // Public read allowed when area is null
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
+        assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, true))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_*"));
         chatConversationService.verifyConversationOwnership(conv, true);
     }
 

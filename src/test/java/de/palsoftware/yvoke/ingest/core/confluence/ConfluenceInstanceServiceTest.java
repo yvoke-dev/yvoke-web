@@ -215,6 +215,20 @@ class ConfluenceInstanceServiceTest {
     }
 
     @Test
+    void targetCollectionIsResolvedCaseInsensitivelyToCanonicalName() {
+        when(collectionRepository.findByName("oim - docs")).thenReturn(Optional.empty());
+        when(collectionRepository.findAll()).thenReturn(List
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", List.of("10.0"), null)));
+
+        ConfluenceInstance lowerDraft = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
+            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
+            "public", "draft", "oim - docs", "10.0", false, true, null, null);
+        service.save(lowerDraft, null);
+
+        assertThat(captureUpsert().targetCollection()).isEqualTo("OIM - Docs");
+    }
+
+    @Test
     void aMalformedDomainIsRefusedByTheRepositoryAndReachesTheCallerAsAFieldError() {
         when(repository.upsert(any())).thenThrow(
             new IllegalArgumentException("Confluence base URL must use http(s): acme.example.com"));

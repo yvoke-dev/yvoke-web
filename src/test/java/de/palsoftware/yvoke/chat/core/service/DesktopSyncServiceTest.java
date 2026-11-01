@@ -158,6 +158,40 @@ public class DesktopSyncServiceTest {
         verify(conversationRepository).updateAreaIfAbsent(conversationId, "security");
     }
 
+    @Test
+    public void appendMessagesRejectsPlaybookWhoseAreaDisagreesWithConversationArea() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Title",
+                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "OIM")));
+        when(playbookService.getPlaybook("ping-pb"))
+            .thenReturn(Optional.of(new Playbook("ping-pb", "Ping", "desc", "tmpl", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "PingID")));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Hello", null, null, null, null, null, "ping-pb", 1))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    public void appendMessagesRejectsMixedAreaPlaybooksInSameBatch() {
+        UUID conversationId = UUID.randomUUID();
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(ownConversation(conversationId, "Title")));
+        when(playbookService.getPlaybook("oim-pb"))
+            .thenReturn(Optional.of(new Playbook("oim-pb", "OIM", "desc", "tmpl", List.of(), false,
+                "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+        when(playbookService.getPlaybook("ping-pb"))
+            .thenReturn(Optional.of(new Playbook("ping-pb", "Ping", "desc", "tmpl", List.of(),
+                false, "specialist", false, Instant.now(), Instant.now(), false, "PingID")));
+
+        assertThatThrownBy(() -> service.appendMessages(conversationId, currentUser,
+            List.of(new NewMessage("user", "Q1", null, null, null, null, null, "oim-pb", 1),
+                new NewMessage("user", "Q2", null, null, null, null, null, "ping-pb", 1))))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+    }
+
     // --- appendMessages -------------------------------------------------------
 
     @Test

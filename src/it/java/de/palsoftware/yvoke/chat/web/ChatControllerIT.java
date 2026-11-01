@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.util.List;
@@ -50,6 +51,9 @@ public class ChatControllerIT {
     @Autowired
     private ChatConversationService chatConversationService;
 
+    @Autowired
+    private ConversationRepository conversationRepository;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -73,7 +77,8 @@ public class ChatControllerIT {
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
         
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
+            new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext secContext = SecurityContextHolder.createEmptyContext();
@@ -84,7 +89,8 @@ public class ChatControllerIT {
     private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
     @Test
@@ -124,6 +130,9 @@ public class ChatControllerIT {
         UUID otherPublicId = otherPublic.id();
         chatConversationService.addTag(otherPublicId, "public");
         chatConversationService.addTag(otherPublicId, "shared-tag");
+        conversationRepository.updateAreaIfAbsent(publicTaggedId, "OIM");
+        conversationRepository.updateAreaIfAbsent(publicUntaggedId, "OIM");
+        conversationRepository.updateAreaIfAbsent(otherPublicId, "OIM");
 
         // 3. Request the /chat index as User A and verify grouping
         setSecurityContext(userAOid, "user-a-test@local", "User A");

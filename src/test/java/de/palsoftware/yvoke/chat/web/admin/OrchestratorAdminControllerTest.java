@@ -5,11 +5,13 @@ import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
@@ -237,18 +239,75 @@ public class OrchestratorAdminControllerTest {
 
     @Test
     void testImportProfile() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "profile.json", "application/json",
-            "{\"name\":\"TestProfile\"}".getBytes());
+        String json =
+            "{\"name\":\"TestProfile\",\"orchestratorPlaybook\":\"orch\",\"reviewerPlaybook\":\"rev\"}";
+        MockMultipartFile file =
+            new MockMultipartFile("file", "profile.json", "application/json", json.getBytes());
         OrchestratorProfile profile = new OrchestratorProfile("TestProfile", 2, 8, "orch", "rev",
             List.of(), null, null, null, null, null, null, false, null, null, "OIM");
-        when(profileService.importProfileFromJson("{\"name\":\"TestProfile\"}", "OIM"))
-            .thenReturn(profile);
+        when(profileService.importProfileFromJson(json, "OIM")).thenReturn(profile);
 
         mockMvc.perform(multipart("/admin/orchestrators/import").file(file).param("area", "OIM"))
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("/admin/orchestrators"));
 
-        verify(profileService).importProfileFromJson("{\"name\":\"TestProfile\"}", "OIM");
+        verify(profileService).importProfileFromJson(json, "OIM");
+    }
+
+    @Test
+    void importProfile_nonExistentOrCrossAreaOrMissingPlaybook_redirectsWithError()
+        throws Exception {
+        when(playbookService.getPlaybook("missing-orch")).thenReturn(Optional.empty());
+        String missingOrchJson =
+            "{\"name\":\"TestProfile\",\"orchestratorPlaybook\":\"missing-orch\",\"reviewerPlaybook\":\"rev\"}";
+        MockMultipartFile missingOrchFile = new MockMultipartFile("file", "profile.json",
+            "application/json", missingOrchJson.getBytes());
+        mockMvc
+            .perform(
+                multipart("/admin/orchestrators/import").file(missingOrchFile).param("area", "OIM"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/orchestrators"))
+            .andExpect(flash().attribute("error",
+                "Referenced orchestrator playbook not found in area: missing-orch"));
+
+        when(playbookService.getPlaybook("fin-rev"))
+            .thenReturn(Optional.of(new Playbook("fin-rev", "fin-rev", "", "", List.of(), false,
+                "reviewer", false, Instant.now(), Instant.now(), false, "Finance")));
+        String crossAreaRevJson =
+            "{\"name\":\"TestProfile\",\"orchestratorPlaybook\":\"orch\",\"reviewerPlaybook\":\"fin-rev\"}";
+        MockMultipartFile crossAreaRevFile = new MockMultipartFile("file", "profile.json",
+            "application/json", crossAreaRevJson.getBytes());
+        mockMvc
+            .perform(multipart("/admin/orchestrators/import").file(crossAreaRevFile).param("area",
+                "OIM"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/orchestrators"))
+            .andExpect(flash().attribute("error",
+                "Referenced reviewer playbook not found in area: fin-rev"));
+
+        when(playbookService.getPlaybook("fin-spec"))
+            .thenReturn(Optional.of(new Playbook("fin-spec", "fin-spec", "", "", List.of(), false,
+                "specialist", false, Instant.now(), Instant.now(), false, "Finance")));
+        String crossAreaSpecJson =
+            "{\"name\":\"TestProfile\",\"orchestratorPlaybook\":\"orch\",\"reviewerPlaybook\":\"rev\",\"specialistPlaybooks\":[\"fin-spec\"]}";
+        MockMultipartFile crossAreaSpecFile = new MockMultipartFile("file", "profile.json",
+            "application/json", crossAreaSpecJson.getBytes());
+        mockMvc
+            .perform(multipart("/admin/orchestrators/import").file(crossAreaSpecFile).param("area",
+                "OIM"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/orchestrators"))
+            .andExpect(flash().attribute("error",
+                "Referenced specialist playbook not found in area: fin-spec"));
+
+        String noPlaybookJson = "{\"name\":\"TestProfile\"}";
+        MockMultipartFile noPlaybookFile = new MockMultipartFile("file", "profile.json",
+            "application/json", noPlaybookJson.getBytes());
+        mockMvc
+            .perform(
+                multipart("/admin/orchestrators/import").file(noPlaybookFile).param("area", "OIM"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/orchestrators"))
+            .andExpect(flash().attribute("error",
+                "Referenced orchestrator playbook not found in area: null"));
+
+        verify(profileService, never()).importProfileFromJson(any(), any());
     }
 
     @Test

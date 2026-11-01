@@ -95,6 +95,7 @@ class Wave3AdversarialSecurityTest {
         private SystemPromptService systemPromptService;
         private PlaybookService playbookService;
         private OrchestratorProperties orchestratorProperties;
+        private OrchestratorProfileService orchestratorProfileService;
         private DesktopOrchestratorRunService orchestratorRunService;
         private AreaService areaService;
         private DesktopSyncController controller;
@@ -112,11 +113,13 @@ class Wave3AdversarialSecurityTest {
             systemPromptService = mock(SystemPromptService.class);
             playbookService = mock(PlaybookService.class);
             orchestratorProperties = new OrchestratorProperties(2, 8, null, List.of());
+            orchestratorProfileService = mock(OrchestratorProfileService.class);
             orchestratorRunService = mock(DesktopOrchestratorRunService.class);
             areaService = mock(AreaService.class);
 
             controller = new DesktopSyncController(syncService, systemPromptService,
-                playbookService, orchestratorProperties, null, orchestratorRunService, areaService);
+                playbookService, orchestratorProperties, orchestratorProfileService,
+                orchestratorRunService, areaService);
         }
 
         @Test
@@ -178,13 +181,11 @@ class Wave3AdversarialSecurityTest {
         }
 
         @Test
-        @DisplayName("GET /api/chat/v1/areas: null areaService returns empty list gracefully")
+        @DisplayName("DesktopSyncController constructor rejects null areaService")
         void listAreasNullAreaService() {
-            DesktopSyncController noAreaController =
-                new DesktopSyncController(syncService, systemPromptService, playbookService,
-                    orchestratorProperties, null, orchestratorRunService, null);
-            List<AreaDto> result = noAreaController.listAreas();
-            assertThat(result).isEmpty();
+            assertThatThrownBy(() -> new DesktopSyncController(syncService, systemPromptService,
+                playbookService, orchestratorProperties, orchestratorProfileService,
+                orchestratorRunService, null)).isInstanceOf(NullPointerException.class);
         }
 
         @Test
@@ -230,15 +231,11 @@ class Wave3AdversarialSecurityTest {
         }
 
         @Test
-        @DisplayName("GET /api/chat/v1/areas/{area}/package: null areaService throws 404")
+        @DisplayName("DesktopSyncController constructor rejects null orchestratorProfileService")
         void getAreaPackageNullAreaServiceThrows404() {
-            DesktopSyncController noAreaController =
-                new DesktopSyncController(syncService, systemPromptService, playbookService,
-                    orchestratorProperties, null, orchestratorRunService, null);
-            assertThatThrownBy(() -> noAreaController.getAreaPackage("OIM"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.NOT_FOUND));
+            assertThatThrownBy(() -> new DesktopSyncController(syncService, systemPromptService,
+                playbookService, orchestratorProperties, null, orchestratorRunService, areaService))
+                .isInstanceOf(NullPointerException.class);
         }
     }
 

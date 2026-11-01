@@ -17,10 +17,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -51,6 +54,19 @@ public class DesktopSyncServiceIT {
     private JdbcTemplate jdbcTemplate;
 
     private UUID conversationId;
+
+    @BeforeEach
+    public void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
+        jdbcTemplate.update("""
+            INSERT INTO orchestrator_profiles (
+                name, max_review_rounds, max_specialist_calls,
+                orchestrator_playbook, reviewer_playbook, specialist_playbooks, area
+            ) VALUES ('OIM', 2, 8, 'oim-orch', 'oim-rev', '{}', 'OIM')
+            ON CONFLICT (name) DO NOTHING
+            """);
+    }
 
     /**
      * PATCH {@code /api/chat/v1/conversations/{id}} is partial in ONE direction and total in the
@@ -120,6 +136,7 @@ public class DesktopSyncServiceIT {
 
     @AfterEach
     public void tearDown() {
+        SecurityContextHolder.clearContext();
         if (conversationId != null) {
             jdbcTemplate.update("DELETE FROM messages WHERE conversation_id = ?", conversationId);
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", conversationId);

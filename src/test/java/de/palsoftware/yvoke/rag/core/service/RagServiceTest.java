@@ -6,11 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,5 +55,36 @@ public class RagServiceTest {
 
         assertThat(autowired).hasSize(1);
         assertThat(ragService.getToolRegistry()).containsKey("WebSearch");
+    }
+
+    @Test
+    void guardToolExecutionFailsClosedWhenContextOrRepositoriesMissingForAreaRestrictedCall() {
+        LlmToolCall searchCall =
+            new LlmToolCall("call-1", "function", "search_corpus", "{\"collection\":\"OIM\"}");
+        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
+            searchCall, null))
+            .isEqualTo("Error: Tool execution requires an authorized area context.");
+
+        AgenticChatContext restrictedCtx = new AgenticChatContext(Set.of("oim"));
+        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
+            searchCall, restrictedCtx))
+            .isEqualTo("Error: Tool execution blocked: area verification unavailable.");
+
+        LlmToolCall tocCall = new LlmToolCall("call-2", "function", "get_toc",
+            "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
+        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
+            tocCall, restrictedCtx))
+            .isEqualTo("Error: Document with ID '11111111-1111-1111-1111-111111111111' not found.");
+
+        LlmToolCall sectionDocCall = new LlmToolCall("call-3", "function", "get_section",
+            "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
+        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
+            sectionDocCall, restrictedCtx))
+            .isEqualTo("Error: Document not found: 11111111-1111-1111-1111-111111111111");
+
+        LlmToolCall sectionChunkCall =
+            new LlmToolCall("call-4", "function", "get_section", "{\"chunk_id\":\"a1b2c3d4\"}");
+        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
+            sectionChunkCall, restrictedCtx)).isEqualTo("Error: Chunk not found: a1b2c3d4");
     }
 }

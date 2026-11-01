@@ -102,36 +102,31 @@ public class ListDocumentsTool {
                 return tagError;
             }
             try {
-                List<DocumentDetails> allDocs = new ArrayList<>();
-                for (Collection c : allowed) {
-                    String effectiveKind = knd;
-                    if (knd != null) {
-                        List<String> validKinds =
-                            documentRepository.findDistinctKindsInCollection(c.name());
-                        if (validKinds != null && !validKinds.isEmpty()) {
-                            effectiveKind = validKinds.stream().filter(knd::equalsIgnoreCase)
-                                .findFirst().orElse(null);
-                            if (effectiveKind == null) {
-                                continue;
-                            }
-                        }
-                    }
-                    List<DocumentDetails> docs = documentRepository.listDocuments(c.name(),
-                        Integer.MAX_VALUE, 0, effectiveKind, parsedTag, null, null, fuzzyQuery);
-                    if (docs != null) {
-                        allDocs.addAll(docs);
-                    }
-                }
+                Set<String> allowedAreasLower =
+                    context.isAllAreas() ? null : context.getAllowedAreasLower();
                 String colLabel =
                     String.join(", ", allowed.stream().map(Collection::name).toList());
-                if (allDocs.isEmpty()) {
+                String effectiveKind = knd;
+                if (knd != null) {
+                    List<String> validKinds =
+                        documentRepository.findDistinctKinds(allowedAreasLower);
+                    if (validKinds != null && !validKinds.isEmpty()) {
+                        effectiveKind = validKinds.stream().filter(knd::equalsIgnoreCase)
+                            .findFirst().orElse(null);
+                        if (effectiveKind == null) {
+                            return "(no documents in **" + colLabel + "** of kind '" + knd + "')";
+                        }
+                    }
+                }
+                List<DocumentDetails> page = documentRepository.listDocuments(null, lim, off,
+                    effectiveKind, parsedTag, null, null, fuzzyQuery, allowedAreasLower);
+                long total = documentRepository.countDocuments(null, effectiveKind, parsedTag, null,
+                    null, fuzzyQuery, allowedAreasLower);
+                if (page == null || page.isEmpty()) {
                     return "(no documents in **" + colLabel + "**"
                         + (knd != null ? " of kind '" + knd + "'" : "") + ")";
                 }
-                int fromIndex = Math.min(off, allDocs.size());
-                int toIndex = Math.min(off + lim, allDocs.size());
-                List<DocumentDetails> page = allDocs.subList(fromIndex, toIndex);
-                return formatDocumentPage(colLabel, knd, parsedTag, off, page, allDocs.size());
+                return formatDocumentPage(colLabel, knd, parsedTag, off, page, total);
             } catch (Exception e) {
                 return McpToolUtils.toolError("list_documents", e);
             }

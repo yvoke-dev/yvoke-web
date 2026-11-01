@@ -287,7 +287,8 @@ public class DocumentRepository {
                 " AND (d.title ILIKE '%' || :fuzzyTitle || '%' OR similarity(d.title, :fuzzyTitle) > 0.25) ";
             params.put("fuzzyTitle", fuzzyTitle.trim());
         }
-        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()) {
+        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()
+            && !allowedAreasLower.contains("*")) {
             sql += " AND (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)) ";
             params.put("allowedAreasLower", allowedAreasLower);
         }
@@ -374,7 +375,8 @@ public class DocumentRepository {
                 " AND (d.title ILIKE '%' || :fuzzyTitle || '%' OR similarity(d.title, :fuzzyTitle) > 0.25) ";
             params.put("fuzzyTitle", fuzzyTitle.trim());
         }
-        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()) {
+        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()
+            && !allowedAreasLower.contains("*")) {
             sql += " AND (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)) ";
             params.put("allowedAreasLower", allowedAreasLower);
         }
@@ -390,6 +392,22 @@ public class DocumentRepository {
     public List<String> findDistinctKinds() {
         return jdbcClient.sql("SELECT DISTINCT kind FROM documents ORDER BY kind ASC")
             .query(String.class).list();
+    }
+
+    public List<String> findDistinctKinds(@Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        if (allowedAreasLower == null || allowedAreasLower.contains("*")) {
+            return findDistinctKinds();
+        }
+        return jdbcClient.sql("""
+            SELECT DISTINCT d.kind
+            FROM documents d
+            JOIN collections c ON d.collection_id = c.id
+            WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)
+            ORDER BY d.kind ASC
+            """).param("allowedAreasLower", allowedAreasLower).query(String.class).list();
     }
 
     public List<String> findDistinctKindsInCollection(String collection) {

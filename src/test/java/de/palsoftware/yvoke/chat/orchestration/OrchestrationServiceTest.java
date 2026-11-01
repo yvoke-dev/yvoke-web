@@ -31,6 +31,7 @@ import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
 import java.util.Map;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
@@ -221,8 +222,8 @@ public class OrchestrationServiceTest {
         OrchestrationService budgeted = new OrchestrationService(ragService, playbookService,
             oneCall, null, runRepository, stepRepository, objectMapper, null, sysPromptService);
 
-        OrchestrationService.OrchestrationResult r =
-            budgeted.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = budgeted.runOrchestration(CONV, MSG,
+            "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r).as("exhausting the budget must not abort the run").isNotNull();
         assertThat(specialistToolResults).as("the model must be TOLD, not thrown at")
@@ -247,7 +248,8 @@ public class OrchestrationServiceTest {
     public void nestedSpecialistRestoresTheOrchestratorsCallContext() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         LlmCallContextHolder.Context before = contextInsideOrchestratorBeforeDelegation.get();
         LlmCallContextHolder.Context after = contextInsideOrchestratorAfterDelegation.get();
@@ -278,7 +280,8 @@ public class OrchestrationServiceTest {
     public void theSpecialistReceivesItsPlaybookTemplateWhileTheTraceKeepsTheBareSubQuestion() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
@@ -323,7 +326,8 @@ public class OrchestrationServiceTest {
         List<LlmMessage> history = List.of(new LlmMessage("user", "an earlier turn",
             List.of(new LlmPart("text", "an earlier turn", null, null)), null, null, null));
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
@@ -372,7 +376,8 @@ public class OrchestrationServiceTest {
     public void theOrchestratorSystemPromptCarriesTheSpecialistRoster() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
@@ -426,7 +431,8 @@ public class OrchestrationServiceTest {
             return result("an answer nobody was asked to ground", null, null);
         }).when(ragService).generateAgenticAnswer(any(), any());
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         // Orchestrator + reviewer only: the absence of a third call IS the "delegated to nobody".
@@ -446,8 +452,8 @@ public class OrchestrationServiceTest {
     public void happyPath_approvedFirstTime() {
         rejectFirstNReviews = 0;
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
         assertThat(r.content()).contains("final orchestrated answer");
@@ -510,8 +516,8 @@ public class OrchestrationServiceTest {
             return result("candidate answer", null, null);
         }).when(ragService).generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         // maxReviewRounds=2, never approved: rounds 0, 1 and 2 each run an orchestrator and a
@@ -574,7 +580,8 @@ public class OrchestrationServiceTest {
     public void aRevisionContinuesTheConversationThatProducedTheDraft() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).as("one rejection, so two orchestrator turns").hasSize(2);
@@ -608,7 +615,8 @@ public class OrchestrationServiceTest {
     public void theReviewerNeverInheritsTheOrchestratorsConversation() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
         assertThat(reviews).hasSize(2)
@@ -643,7 +651,8 @@ public class OrchestrationServiceTest {
     public void theReviewerContinuesItsOwnConversationAcrossRounds() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
         assertThat(reviews).hasSize(2);
@@ -672,7 +681,8 @@ public class OrchestrationServiceTest {
         orchestratorRevisedAnswer = "revised answer [chunk_id=" + CITED_CHUNK + "] and now also "
             + "[chunk_id=" + UNCITED_CHUNK + "]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
         assertThat(reviews.get(0).query()).as("round 1 shows the body of the source it cites")
@@ -700,7 +710,8 @@ public class OrchestrationServiceTest {
     public void theTraceIsNumberedInTheOrderStepsStartedNotFinished() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<Integer> seqs = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> roles = ArgumentCaptor.forClass(String.class);
@@ -791,7 +802,8 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 1; // forces a second orchestrator turn, hence a second specialist
                                  // call
 
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -831,7 +843,8 @@ public class OrchestrationServiceTest {
         specialistOnlyOnFirstTurn = true;
         rejectionExtras = ",\"citation_fixes\":[\"the claim should cite " + UNCITED_CHUNK + "\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -866,7 +879,8 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 2;
         specialistOnlyOnFirstTurn = true;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -897,7 +911,8 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theOrchestratorCanVerifyItsOwnCitationsBeforeSubmitting() {
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -931,8 +946,8 @@ public class OrchestrationServiceTest {
     public void aReviewerThatFailsStillDeliversTheAnswerItNeverJudged() {
         reviewerFailure = new IllegalStateException("Azure produced no content and no tool calls");
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.content()).as("the answer existed; a broken check must not delete it")
             .contains("final orchestrated answer");
@@ -958,8 +973,8 @@ public class OrchestrationServiceTest {
         reviewerFailure = new IllegalStateException("reviewer died");
         orchestratorRawAnswer = "";
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM"))
-            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class);
     }
 
     /**
@@ -978,7 +993,8 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void everyOrchestratorTurnIncludingTheFirstDraftIsGivenTheMarkerContract() {
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -1003,7 +1019,8 @@ public class OrchestrationServiceTest {
     public void theMarkerContractIsNotRepeatedInTheRevisionTask() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -1031,8 +1048,8 @@ public class OrchestrationServiceTest {
             + "evidence.\n\n" + OrchestrationService.ANSWER_MARKER
             + "\n\n## The real answer [chunk_id=" + CITED_CHUNK + "]";
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.content()).as("the model's own commentary must not be delivered as the answer")
             .doesNotContain("I need to fix the unsupported claims")
@@ -1053,8 +1070,8 @@ public class OrchestrationServiceTest {
             "A legitimate opening sentence before any heading.\n\n## Body [chunk_id=" + CITED_CHUNK
                 + "]";
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.content()).as("no marker means no judgement call — nothing may be removed")
             .startsWith("A legitimate opening sentence before any heading.");
@@ -1070,8 +1087,8 @@ public class OrchestrationServiceTest {
         orchestratorRawAnswer = "## Everything worth saying [chunk_id=" + CITED_CHUNK + "]\n\n"
             + OrchestrationService.ANSWER_MARKER + "\n  ";
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.content()).as("an empty tail must never win over a real answer")
             .contains("## Everything worth saying")
@@ -1082,7 +1099,8 @@ public class OrchestrationServiceTest {
     public void aRevisionIsToldItsWholeResponseIsTheAnswerNotAReplyAboutIt() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
@@ -1100,7 +1118,8 @@ public class OrchestrationServiceTest {
     public void aRevisionCarriesTheEvidenceSoItNeedNotDelegateAgain() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).hasSize(2);
@@ -1150,8 +1169,8 @@ public class OrchestrationServiceTest {
     public void evidenceAccumulatesAcrossReviewRoundsWithPerSpecialistAttribution() {
         rejectFirstNReviews = 1; // reject once, approve the revision
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(1), any(), anyInt(), anyInt(),
@@ -1210,7 +1229,8 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theReviewerGetsTheCitedSourcesAndNothingElse() {
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         String review = capturedTurns("submit_review").get(0).query();
 
@@ -1234,7 +1254,8 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theReviewerIsToldUncitedSourcesExistWithoutBeingShownThem() {
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         String review = capturedTurns("submit_review").get(0).query();
 
@@ -1262,7 +1283,8 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 1;
         rejectionExtras = ",\"citation_fixes\":[\"swap [5] to [4] on the SAP HCM claim\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         String revision = capturedTurns("call_specialist").get(1).query();
 
@@ -1281,7 +1303,8 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 1;
         rejectionExtras = ",\"unsupported_claims\":[\"SAP BW versions are not covered anywhere\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         String revision = capturedTurns("call_specialist").get(1).query();
 
@@ -1302,7 +1325,8 @@ public class OrchestrationServiceTest {
     public void theReviserIsNeverCiteScoped() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).hasSize(2);
@@ -1326,7 +1350,8 @@ public class OrchestrationServiceTest {
     public void noReferenceInTheReviewersPromptPointsAtAMissingBody() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         for (AgenticRequest review : capturedTurns("submit_review")) {
             String text = review.query();
@@ -1373,7 +1398,8 @@ public class OrchestrationServiceTest {
             return Optional.of(playbook(name));
         }).when(playbookService).getPlaybook(any());
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
@@ -1431,7 +1457,8 @@ public class OrchestrationServiceTest {
         List<LlmMessage> history = List.of(new LlmMessage("user", "an earlier question"),
             new LlmMessage("assistant", "an earlier answer"));
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
@@ -1504,8 +1531,8 @@ public class OrchestrationServiceTest {
                 null, null);
         }).when(ragService).generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(specialistToolResults).as("exactly one delegation happened").hasSize(1);
         assertThat(specialistToolResults.get(0))
@@ -1518,8 +1545,8 @@ public class OrchestrationServiceTest {
     public void rejectedTwice_deliversFlagged() {
         rejectFirstNReviews = 99; // always reject
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "question",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("delivered_flagged");
         assertThat(r.content()).contains("did not pass automated review");
@@ -1551,8 +1578,8 @@ public class OrchestrationServiceTest {
         specialistClarifyingQuestion = "Which OneIM version do you mean?";
         rejectFirstNReviews = 0;
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(specialistToolResults).as("exactly one delegation happened").hasSize(1);
         assertThat(specialistToolResults.get(0))
@@ -1587,7 +1614,8 @@ public class OrchestrationServiceTest {
     public void stepSeqIsOnePerRunCounterStartingAtOneAcrossAllRoles() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<Integer> seq = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> role = ArgumentCaptor.forClass(String.class);
@@ -1629,8 +1657,8 @@ public class OrchestrationServiceTest {
     public void theFlaggedAnswerNoteCountsAttemptsNotTheZeroBasedRoundIndex() {
         rejectFirstNReviews = 99; // never approved: with maxReviewRounds=2, rounds 0, 1 and 2 run
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "question",
+            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("delivered_flagged");
         assertThat(r.content())
@@ -1652,8 +1680,8 @@ public class OrchestrationServiceTest {
     public void specialistOrOrchestratorClarify_skipsReview() {
         orchestratorClarifies = true;
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "what's new", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "what's new", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("clarify");
         assertThat(r.content()).contains("clarifying-question");
@@ -1713,8 +1741,8 @@ public class OrchestrationServiceTest {
             return specialistResult();
         }).when(ragService).generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
         assertThat(r.content())
@@ -1734,9 +1762,8 @@ public class OrchestrationServiceTest {
         doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
             any());
 
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(ClientException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
 
         ArgumentCaptor<String> error = ArgumentCaptor.forClass(String.class);
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("error"), anyInt(), any(), anyInt(),
@@ -1758,9 +1785,8 @@ public class OrchestrationServiceTest {
         doThrow(new CancellationException("stopped")).when(ragService).generateAgenticAnswer(any(),
             any());
 
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(CancellationException.class);
 
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("cancelled"), anyInt(), any(), anyInt(),
             anyInt(), anyInt(), anyInt(), anyInt(), isNull());
@@ -1771,9 +1797,8 @@ public class OrchestrationServiceTest {
         doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
             any());
 
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(ClientException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
 
         ArgumentCaptor<String> stepError = ArgumentCaptor.forClass(String.class);
         verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), anyInt(),
@@ -1787,9 +1812,8 @@ public class OrchestrationServiceTest {
         doThrow(new CancellationException("stopped")).when(ragService).generateAgenticAnswer(any(),
             any());
 
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(CancellationException.class);
 
         verify(stepRepository, never()).insertFailed(any(), any(), anyInt(), any(), anyInt(), any(),
             any(), any(), any(), any(), any(), any());
@@ -1803,9 +1827,8 @@ public class OrchestrationServiceTest {
     public void failureBeforeTheRunStarts_stillLeavesAVisibleRun() {
         when(playbookService.getPlaybook(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class);
 
         verify(runRepository).create(eq(RUN), eq(CONV), eq("OIM"), any());
         ArgumentCaptor<String> error = ArgumentCaptor.forClass(String.class);
@@ -1871,8 +1894,8 @@ public class OrchestrationServiceTest {
             return new RagResult(List.of(), List.of(specialistMsg), null, List.of(), 1, 2, 3, 4, 5);
         }).when(ragService).generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r =
-            service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM");
+        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
+            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(0), any(), eq(111), eq(222),
             eq(333), eq(444), eq(555), isNull());
@@ -1943,8 +1966,8 @@ public class OrchestrationServiceTest {
             anyInt(), anyInt(), anyInt(), any());
 
         try {
-            assertThatThrownBy(
-                () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
+            assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+                "OIM", AgenticChatContext.ALL_AREAS))
                 .as("a failed trace write must never replace the exception that ended the run")
                 .isInstanceOf(CancellationException.class).hasMessage("stopped");
 
@@ -2033,7 +2056,7 @@ public class OrchestrationServiceTest {
         }).when(ragService).generateAgenticAnswer(any(), any());
 
         promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
-            UUID.randomUUID(), "OIM");
+            UUID.randomUUID(), "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(requests).hasSize(3);
 
@@ -2103,7 +2126,7 @@ public class OrchestrationServiceTest {
         }).when(ragService).generateAgenticAnswer(any(), any());
 
         promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
-            UUID.randomUUID(), "OIM");
+            UUID.randomUUID(), "OIM", AgenticChatContext.ALL_AREAS);
 
         AgenticRequest specReq = requests.stream()
             .filter(r -> r.allowedTools().contains("search_corpus")).findFirst().orElseThrow();
@@ -2129,7 +2152,8 @@ public class OrchestrationServiceTest {
             .thenReturn(Optional.of(revPb));
         when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
 
-        service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM");
+        service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM",
+            AgenticChatContext.ALL_AREAS);
 
         verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
             eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any(), any(), anyInt(),
@@ -2143,10 +2167,17 @@ public class OrchestrationServiceTest {
 
         doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
             any());
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM"))
-            .isInstanceOf(ClientException.class);
+        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
+            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
         verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
             eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void runOrchestration_rejectsNullAllowedAreasLower() {
+        assertThatThrownBy(
+            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM", null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessage("allowedAreasLower must not be null");
     }
 }

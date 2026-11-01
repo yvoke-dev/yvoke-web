@@ -98,9 +98,10 @@ public class ConversationRepository {
 
         if (allowedAreasLower != null) {
             if (allowedAreasLower.isEmpty()) {
-                sql.append(" AND area IS NULL");
+                sql.append(" AND (user_id = :userId AND area IS NULL)");
             } else {
-                sql.append(" AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))");
+                sql.append(
+                    " AND ((user_id = :userId AND area IS NULL) OR (area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)))");
             }
         }
 

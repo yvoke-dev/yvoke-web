@@ -233,8 +233,8 @@ public class ConversationRepositoryTest {
 
         conversationRepository.listAll(userId, 10, 0, allowedAreas);
 
-        verify(jdbcClient)
-            .sql(contains("AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))"));
+        verify(jdbcClient).sql(contains(
+            "AND ((user_id = :userId AND area IS NULL) OR (area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)))"));
         verify(statementSpec).param("userId", userId);
         verify(statementSpec).param("limit", 10);
         verify(statementSpec).param("offset", 0);
@@ -250,7 +250,7 @@ public class ConversationRepositoryTest {
 
         conversationRepository.listAll(userId, 10, 0, allowedAreas);
 
-        verify(jdbcClient).sql(contains("AND area IS NULL"));
+        verify(jdbcClient).sql(contains("AND (user_id = :userId AND area IS NULL)"));
         verify(jdbcClient).sql(not(contains("LOWER(area) IN")));
         verify(statementSpec).param("userId", userId);
         verify(statementSpec).param("limit", 10);

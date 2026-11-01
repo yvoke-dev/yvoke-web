@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.api;
 
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.chat.api.model.*;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -20,11 +21,13 @@ import de.palsoftware.yvoke.shared.user.model.User;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -53,47 +56,24 @@ public class DesktopSyncController {
     public DesktopSyncController(DesktopSyncService syncService,
         SystemPromptService systemPromptService, PlaybookService playbookService,
         OrchestratorProperties orchestratorProperties,
-        @Nullable OrchestratorProfileService orchestratorProfileService,
-        DesktopOrchestratorRunService orchestratorRunService, @Nullable AreaService areaService) {
-        this.syncService = syncService;
-        this.systemPromptService = systemPromptService;
-        this.playbookService = playbookService;
-        this.orchestratorProperties = orchestratorProperties;
-        this.orchestratorProfileService = orchestratorProfileService;
-        this.orchestratorRunService = orchestratorRunService;
-        this.areaService = areaService;
-    }
-
-    public DesktopSyncController(DesktopSyncService syncService,
-        SystemPromptService systemPromptService, PlaybookService playbookService,
-        OrchestratorProperties orchestratorProperties,
-        DesktopOrchestratorRunService orchestratorRunService) {
-        this(syncService, systemPromptService, playbookService, orchestratorProperties, null,
-            orchestratorRunService, null);
-    }
-
-    public DesktopSyncController(DesktopSyncService syncService,
-        SystemPromptService systemPromptService, PlaybookService playbookService,
-        OrchestratorProperties orchestratorProperties,
         OrchestratorProfileService orchestratorProfileService,
-        DesktopOrchestratorRunService orchestratorRunService) {
-        this(syncService, systemPromptService, playbookService, orchestratorProperties,
-            orchestratorProfileService, orchestratorRunService, null);
+        DesktopOrchestratorRunService orchestratorRunService, AreaService areaService) {
+        this.syncService = Objects.requireNonNull(syncService);
+        this.systemPromptService = Objects.requireNonNull(systemPromptService);
+        this.playbookService = Objects.requireNonNull(playbookService);
+        this.orchestratorProperties = Objects.requireNonNull(orchestratorProperties);
+        this.orchestratorProfileService = Objects.requireNonNull(orchestratorProfileService);
+        this.orchestratorRunService = Objects.requireNonNull(orchestratorRunService);
+        this.areaService = Objects.requireNonNull(areaService);
     }
 
     @GetMapping("/areas")
     public List<AreaDto> listAreas() {
-        if (areaService == null) {
-            return List.of();
-        }
         return areaService.listAccessibleForCurrentUser().stream().map(AreaDto::from).toList();
     }
 
     @GetMapping("/areas/{area}/package")
     public AreaPackageDto getAreaPackage(@PathVariable String area) {
-        if (areaService == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Area not found: " + area);
-        }
         return areaService.findByNameForUser(area)
             .flatMap(a -> areaService.findAreaWithMembers(a.name())).map(AreaPackageDto::from)
             .orElseThrow(
@@ -114,12 +94,10 @@ public class DesktopSyncController {
      */
     @GetMapping("/orchestrator/profiles")
     public List<OrchestratorProfileDto> listOrchestratorProfiles() {
-        if (orchestratorProfileService != null) {
-            List<OrchestratorProfile> profiles = orchestratorProfileService.listAllProfiles();
-            if (!profiles.isEmpty()) {
-                return AreaAccessContext.filterByUserArea(profiles, OrchestratorProfile::area)
-                    .stream().map(OrchestratorProfileDto::fromDbProfile).toList();
-            }
+        List<OrchestratorProfile> dbProfiles = orchestratorProfileService.listAllProfiles();
+        if (!dbProfiles.isEmpty()) {
+            return AreaAccessContext.filterByUserArea(dbProfiles, OrchestratorProfile::area)
+                .stream().map(OrchestratorProfileDto::fromDbProfile).toList();
         }
         List<OrchestratorProperties.Profile> profiles = orchestratorProperties.profiles();
         if (profiles == null) {
@@ -144,11 +122,45 @@ public class DesktopSyncController {
 
     @GetMapping("/prompts/system/{name}")
     public ResponseEntity<Map<String, String>> getSystemPrompt(@PathVariable String name) {
-        String systemPromptText = systemPromptService.findChatPrompt(name)
-            .filter(p -> p.area() == null || p.area().isBlank()
-                || AreaAccessContext.canAccessUserArea(p.area()))
-            .map(SystemPrompt::systemPrompt).orElse("");
-        return ResponseEntity.ok(Map.of("systemPrompt", systemPromptText));
+        String trimmed = name != null ? name.trim() : "";
+        if (SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(trimmed)) {
+            String text =
+                hasAnyAreaAccess()
+                    ? systemPromptService.findChatPrompt(SystemPromptService.DEFAULT_CHAT)
+                        .map(SystemPrompt::systemPrompt).orElse("")
+                    : "";
+            return ResponseEntity.ok(Map.of("systemPrompt", text));
+        }
+        Optional<SystemPrompt> directPrompt = systemPromptService.findChatPrompt(trimmed);
+        if (directPrompt.isPresent()) {
+            String text = directPrompt
+                .filter(p -> p.area() == null || p.area().isBlank()
+                    || AreaAccessContext.canAccessUserArea(p.area()))
+                .map(SystemPrompt::systemPrompt).orElse("");
+            return ResponseEntity.ok(Map.of("systemPrompt", text));
+        }
+        if (!trimmed.isEmpty() && AreaAccessContext.canAccessUserArea(trimmed)) {
+            Optional<AreaWithMembers> areaOpt = areaService.findAreaWithMembers(trimmed);
+            if (areaOpt.isPresent()) {
+                String preferred = areaOpt.get().defaultSystemPrompt();
+                String requested = preferred != null && !preferred.isBlank() ? preferred
+                    : SystemPromptService.DEFAULT_CHAT;
+                boolean isDefaultChat =
+                    SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(requested);
+                String text = systemPromptService.findChatPrompt(requested)
+                    .filter(p -> isDefaultChat ? hasAnyAreaAccess()
+                        : (p.area() == null || p.area().isBlank()
+                            || AreaAccessContext.canAccessUserArea(p.area())))
+                    .map(SystemPrompt::systemPrompt).orElse("");
+                return ResponseEntity.ok(Map.of("systemPrompt", text));
+            }
+        }
+        return ResponseEntity.ok(Map.of("systemPrompt", ""));
+    }
+
+    private static boolean hasAnyAreaAccess() {
+        return AreaAccessContext.hasAllUserAreas()
+            || !AreaAccessContext.allowedUserAreasLower().orElse(Set.of()).isEmpty();
     }
 
     @GetMapping("/conversations")

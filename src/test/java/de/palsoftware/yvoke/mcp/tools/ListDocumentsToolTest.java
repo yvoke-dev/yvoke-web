@@ -8,9 +8,11 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -228,5 +230,34 @@ public class ListDocumentsToolTest {
 
         String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null);
         assertTrue(result.contains("(no documents in **SEC**)"));
+    }
+
+    @Test
+    public void testOmitCollectionQueriesSinglePaginatedAreaScopedQueryInsteadOfPerCollectionLoop() {
+        Collection col1 =
+            new Collection(UUID.randomUUID(), "OIM-1", "OIM 1", List.of(), null, "oim");
+        Collection col2 =
+            new Collection(UUID.randomUUID(), "OIM-2", "OIM 2", List.of(), null, "oim");
+        when(collectionService.listCollections()).thenReturn(List.of(col1, col2));
+        when(documentRepository.findDistinctKinds(Set.of("oim"))).thenReturn(List.of("manual"));
+
+        UUID docId = UUID.randomUUID();
+        DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM-1", "manual",
+            "OIM Guide", null, "completed", 10L, true, Instant.now());
+        when(documentRepository.listDocuments(isNull(), eq(25), eq(50), eq("manual"), isNull(),
+            isNull(), isNull(), eq("Guide"), eq(Set.of("oim")))).thenReturn(List.of(doc));
+        when(documentRepository.countDocuments(isNull(), eq("manual"), isNull(), isNull(), isNull(),
+            eq("Guide"), eq(Set.of("oim")))).thenReturn(51L);
+
+        String result = listDocumentsTool.listDocuments(null, "MANUAL", null, 25, 50, "Guide",
+            new AgenticChatContext(Set.of("oim")));
+
+        assertTrue(result.contains("showing 51–51 of 51"));
+        assertTrue(result.contains("OIM Guide"));
+        verify(documentRepository).listDocuments(isNull(), eq(25), eq(50), eq("manual"), isNull(),
+            isNull(), isNull(), eq("Guide"), eq(Set.of("oim")));
+        verify(documentRepository).countDocuments(isNull(), eq("manual"), isNull(), isNull(),
+            isNull(), eq("Guide"), eq(Set.of("oim")));
+        verify(documentRepository, never()).findDistinctKindsInCollection(anyString());
     }
 }

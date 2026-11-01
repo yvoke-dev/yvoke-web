@@ -731,8 +731,8 @@ public class RagService {
 
     @Nullable
     private String guardToolExecution(LlmToolCall tc, @Nullable AgenticChatContext ctx) {
-        if (ctx == null || collectionService == null) {
-            return null;
+        if (ctx == null) {
+            return "Error: Tool execution requires an authorized area context.";
         }
 
         String name = tc.name();
@@ -762,8 +762,14 @@ public class RagService {
     @Nullable
     private String guardCollectionParamTool(String toolName, Map<String, Object> args,
         AgenticChatContext ctx) {
+        if (!ctx.isAllAreas() && collectionService == null) {
+            return "Error: Tool execution blocked: area verification unavailable.";
+        }
         String colName = (String) args.get("collection");
         if (colName != null && !colName.isBlank()) {
+            if (collectionService == null) {
+                return null;
+            }
             Collection col = resolveCollection(colName, ctx);
             if (col == null) {
                 return "Error: Collection '" + colName.trim() + "' does not exist.";
@@ -787,8 +793,11 @@ public class RagService {
         if (docIdStr == null || docIdStr.isBlank()) {
             return null;
         }
+        if (!ctx.isAllAreas() && (documentRepository == null || collectionService == null)) {
+            return "Error: Document with ID '" + docIdStr.trim() + "' not found.";
+        }
         UUID docId = parseUuid(docIdStr);
-        if (docId != null && documentRepository != null) {
+        if (docId != null && documentRepository != null && collectionService != null) {
             Optional<DocumentRow> docOpt = documentRepository.findById(docId);
             if (docOpt.isPresent()) {
                 Optional<Collection> colOpt =
@@ -813,8 +822,11 @@ public class RagService {
         }
 
         if (docIdStr != null && !docIdStr.isBlank()) {
+            if (!ctx.isAllAreas() && (documentRepository == null || collectionService == null)) {
+                return "Error: Document not found: " + docIdStr.trim();
+            }
             UUID docId = parseUuid(docIdStr);
-            if (docId != null && documentRepository != null) {
+            if (docId != null && documentRepository != null && collectionService != null) {
                 Optional<DocumentRow> docOpt = documentRepository.findById(docId);
                 if (docOpt.isPresent()) {
                     Optional<Collection> colOpt =
@@ -827,26 +839,30 @@ public class RagService {
         }
 
         if (chunkIdStr != null && !chunkIdStr.isBlank()) {
-            if (chunkRepository != null && documentRepository != null) {
+            String trimmedChunkId = chunkIdStr.trim();
+            boolean areaRestricted = !ctx.isAllAreas();
+            if (chunkRepository == null || documentRepository == null
+                || collectionService == null) {
+                if (areaRestricted) {
+                    return "Error: Chunk not found: " + trimmedChunkId;
+                }
+            } else {
                 Optional<ChunkRow> chunkOpt = Optional.empty();
-                String trimmedChunkId = chunkIdStr.trim();
-                boolean areaRestricted = !ctx.isAllAreas();
+                boolean validPrefix = true;
                 try {
                     chunkOpt =
                         chunkRepository.findByIdPrefix(trimmedChunkId, ctx.getAllowedAreasLower());
                 } catch (IllegalArgumentException e) {
+                    validPrefix = false;
                     if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
                         && areaRestricted) {
                         return "Error: Ambiguous chunk ID prefix '" + trimmedChunkId
                             + "'. Please provide the full chunk UUID.";
                     }
-                    // Short or non-hex prefix; let the tool or UUID fallback handle it
+                    // Short or non-hex prefix; let the tool handle it
                 }
-                if (chunkOpt.isEmpty()) {
-                    UUID chunkId = parseUuid(chunkIdStr);
-                    if (chunkId != null) {
-                        chunkOpt = chunkRepository.findById(chunkId);
-                    }
+                if (validPrefix && chunkOpt.isEmpty() && areaRestricted) {
+                    return "Error: Chunk not found: " + trimmedChunkId;
                 }
                 if (chunkOpt.isPresent()) {
                     Optional<DocumentRow> docOpt =

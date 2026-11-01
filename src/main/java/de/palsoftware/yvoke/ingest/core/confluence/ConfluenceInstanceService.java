@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.ingest.core.confluence;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
@@ -133,7 +134,13 @@ public class ConfluenceInstanceService {
                 "The edited instance must not carry a credential; the API token is supplied "
                     + "separately and encrypted here.");
         }
-        if (collectionRepository.findByName(draft.targetCollection()).isEmpty()) {
+        String wantedCol = draft.targetCollection() == null ? "" : draft.targetCollection().trim();
+        Optional<Collection> colOpt = collectionRepository.findByName(wantedCol);
+        if (colOpt.isEmpty()) {
+            colOpt = collectionRepository.findAll().stream()
+                .filter(c -> c.name().equalsIgnoreCase(wantedCol)).findFirst();
+        }
+        if (colOpt.isEmpty()) {
             throw new IllegalArgumentException("Collection '" + draft.targetCollection()
                 + "' does not exist; create it on the collections page first.");
         }
@@ -149,11 +156,10 @@ public class ConfluenceInstanceService {
         String apiTokenEnc = token == null ? null : secretCipher.encrypt(token);
         String tokenKeyId = token == null ? null : secretCipher.keyId();
 
-        ConfluenceInstance toSave =
-            new ConfluenceInstance(draft.id(), draft.name(), draft.slug(), draft.domain(),
-                draft.email(), apiTokenEnc, tokenKeyId, draft.space(), draft.rootPageId(),
-                draft.includeLabels(), draft.excludeLabels(), draft.targetCollection(),
-                resolveTargetTag(draft), draft.processAttachments(), draft.enabled(), null, null);
+        ConfluenceInstance toSave = new ConfluenceInstance(draft.id(), draft.name(), draft.slug(),
+            draft.domain(), draft.email(), apiTokenEnc, tokenKeyId, draft.space(),
+            draft.rootPageId(), draft.includeLabels(), draft.excludeLabels(), colOpt.get().name(),
+            resolveTargetTag(draft), draft.processAttachments(), draft.enabled(), null, null);
         try {
             return repository.upsert(toSave);
         } catch (DataIntegrityViolationException e) {
