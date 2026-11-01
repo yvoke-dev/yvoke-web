@@ -29,8 +29,10 @@ preview behind a citation.
 
 ## How it behaves
 
-- **Only administrators reach these screens.** Any signed-in user can open a source preview, and any
-  authorised user can retrieve from **every** knowledge area — there is no per-area read restriction.
+- **Only administrators reach these screens.** Superadmins see all knowledge areas; Area
+  Administrators see and manage only the knowledge areas belonging to the areas they administer. Any
+  signed-in user can open a source preview for a document or passage in an area they are authorized
+  to access.
 - **The assistant never mixes two versions in one answer.** The admin screens are looser: the corpus
   browser and the structured-records browser both offer *All Tags*, which lists content from every
   version side by side. The graph is always browsed one version at a time.
@@ -107,8 +109,9 @@ preview behind a citation.
   belongs elsewhere has to be moved by hand.
 - **An imported playbook or base instruction file goes into the area it names**, or the one chosen on the
   form when it names none. A file naming an area that does not exist is refused, naming it.
-- **An area does not yet restrict anything.** A playbook in one area can still search knowledge areas of
-  another; areas only group and list.
+- **Areas enforce strict read and administration boundaries.** Users and playbooks only retrieve from
+  knowledge areas they are authorized to access, and Area Administrators can only create, edit, move
+  or delete items within the areas they administer.
 
 ## Not supported
 

@@ -3,6 +3,8 @@ package de.palsoftware.yvoke.rag.core.model;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import jakarta.annotation.Nullable;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import org.springframework.ai.tool.ToolCallback;
 
 public record AgenticRequest(
@@ -22,8 +24,16 @@ public record AgenticRequest(
      * {@code query} is appended to it as the next user turn.
      */
     @Nullable List<LlmMessage> priorMessages,
-    boolean traceToolCalls) {
+    boolean traceToolCalls,
+    Set<String> allowedAreasLower) {
 
+  public AgenticRequest {
+    allowedAreasLower =
+        Set.copyOf(
+            Objects.requireNonNull(
+                allowedAreasLower,
+                "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access"));
+  }
 
   public static Builder builder() {
     return new Builder();
@@ -40,6 +50,7 @@ public record AgenticRequest(
     private List<ToolCallback> extraTools;
     private List<LlmMessage> priorMessages;
     private boolean traceToolCalls;
+    private Set<String> allowedAreasLower = Set.of();
 
     public Builder query(String query) {
       this.query = query;
@@ -91,6 +102,14 @@ public record AgenticRequest(
       return this;
     }
 
+    public Builder allowedAreasLower(Set<String> allowedAreasLower) {
+      this.allowedAreasLower =
+          Objects.requireNonNull(
+              allowedAreasLower,
+              "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access");
+      return this;
+    }
+
     public AgenticRequest build() {
       return new AgenticRequest(
           query,
@@ -102,6 +121,7 @@ public record AgenticRequest(
           codeExecution,
           extraTools,
           priorMessages,
-          traceToolCalls);
+          traceToolCalls,
+          allowedAreasLower);
     }
   }}

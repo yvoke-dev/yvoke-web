@@ -41,7 +41,7 @@ public class OrchestratorProfileService {
      */
     public List<OrchestratorProfileOption> listProfileOptions() {
         return repository.findAll().stream()
-            .map(p -> new OrchestratorProfileOption(p.name(), p.prototype())).toList();
+            .map(p -> new OrchestratorProfileOption(p.name(), p.prototype(), p.area())).toList();
     }
 
     public Optional<OrchestratorProfile> getProfile(String name) {

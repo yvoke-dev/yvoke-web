@@ -54,6 +54,49 @@ public class McpToolUtils {
             + "of them. Valid tags: " + String.join(", ", tags);
     }
 
+    /**
+     * Enforces version/tag scoping on omit-collection {@code search_corpus} and
+     * {@code list_documents} calls across an area's allowed collections.
+     *
+     * <p>
+     * Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections in
+     * the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
+     * schema only has {@code 10.0}), omitting {@code collection} would either silently drop the
+     * other collection or mix versions, so the caller is prompted to name {@code collection}
+     * explicitly.
+     */
+    @Nullable
+    public static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
+        List<Collection> taggedCols =
+            allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
+        if (taggedCols.isEmpty()) {
+            return null;
+        }
+        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+        if (parsedTag == null) {
+            if (allowed.size() == 1 && taggedCols.size() == 1) {
+                Collection single = taggedCols.get(0);
+                return "Error: Collection '" + single.name()
+                    + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                    + String.join(", ", single.tags())
+                    + ") so results come from a single version/dataset.";
+            }
+            String taggedSummary = taggedCols.stream()
+                .map(c -> c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
+                .collect(Collectors.joining("; "));
+            return "Error: Area contains version/tag-scoped collections (" + taggedSummary
+                + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
+        }
+        for (Collection tc : taggedCols) {
+            if (!tc.tags().contains(parsedTag)) {
+                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + tc.name()
+                    + "' (valid tags: " + String.join(", ", tc.tags())
+                    + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
+            }
+        }
+        return null;
+    }
+
     public static String formatTableRows(List<Map<String, String>> rows, List<String> cols) {
         if (rows == null || rows.isEmpty()) {
             return "(no rows)";

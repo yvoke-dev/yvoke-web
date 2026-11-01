@@ -3,31 +3,49 @@
 **What it is for.** Everything that puts content into Yvoke: knowledge areas and versions, document and
 archive imports, the Confluence connector, knowledge-graph extraction and structured-record imports.
 
-**Who uses it.** Administrators onboard and curate content, in the screens or through the integration
-interface. Automation scripts import with a machine key. Everyone else sees only the result.
+**Who uses it.** Superadmins and Area Admins onboard and curate content, in the screens or through the
+integration interface. Automation scripts import with a global or per-area machine key. Everyone else sees
+only the result.
 
 ## What you can do
 
 | Capability | What happens |
 | --- | --- |
-| **Create knowledge areas** | An administrator registers a knowledge area with a name, a description and the area it belongs to; it then appears wherever content can be targeted. It can be moved to another area later without touching its content. Names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
+| **Create top-level areas and collections** | A Superadmin creates, renames, or deletes top-level areas (e.g. *OIM*, *PingID*). Within an area, an administrator registers collections (knowledge areas) with a name, a description, and the area they belong to. A collection can be moved to another area later without touching its content, provided the administrator has rights in both areas. Collection names are unique regardless of capitalisation, and *All* and *Both* are reserved. |
 | **Declare the versions an area holds** | Versions are declared on the area first, then chosen at import. One area holds several side by side; content, graph and records never mix between them. |
 | **Import documents and archives** | Upload a document or a zipped tree, pick the area, version and pipeline, and start. The upload returns immediately and the work runs in the background. Oversized sections are split into numbered parts automatically. |
 | **Ask the searchable pipeline for section summaries too** | *Standard* imports offer **Generate section summaries**, off by default. Switching it on requires choosing the summarisation instructions to use. It writes the same per-section summaries the *Hierarchical* pipeline produces, so a searchable document can also be browsed by its table of contents. Summaries are reused across imports whenever a section's text is unchanged, so a manual already imported for browsing usually costs nothing to summarise again. |
 | **Import a manual for browsing** | The *Hierarchical* pipeline keeps a manual's heading structure intact and writes an AI summary for every section, built bottom-up so a parent's summary reflects its children. It always summarises, so it always needs summarisation instructions named. A section that cannot be summarised reads *Section summary unavailable* rather than failing the import. |
 | **Import a prepared export** | The *Custom* pipeline takes a zipped export of already-prepared documents plus optional entity and relationship files, so an install-kit extract arrives as documents and a knowledge graph in one job. Code-heavy sources are summarised during import, so this pipeline needs summarisation instructions named too. |
 | **Import structured records** | The *JSON Import* pipeline loads record-shaped data so the assistant can query facts directly instead of searching prose. Name a unique field to update matching records in place; leave it blank and every import adds new copies. |
-| **Connect a Confluence site** | Register any number of sites: address, account e-mail, API token, space, root page, include/exclude label filters, target area and version, whether attachments are read, and whether section summaries are built — with the summarisation instructions to use when they are. **Test Connection** verifies credentials and lists sample pages. |
+| **Connect a Confluence site** | Register any number of sites: address, account e-mail, API token, space, root page, include/exclude label filters, target collection and version, whether attachments are read, and whether section summaries are built — with the summarisation instructions to use when they are. Area Admins configure connectors for collections within their administered areas. **Test Connection** verifies credentials and lists sample pages. |
 | **Edit or switch off a connector** | A saved site can be edited, and can be disabled so it is skipped by *Sync All* and cannot crawl, without deleting it. Deleting is separate and also cancels its queued work. |
-| **Sync a Confluence space** | Sync one site or every enabled one. The crawl walks the page tree under the root, applies the label filters, and queues one import per changed page. It reports pages queued, pages already queued, and how many carry none of the required labels. |
+| **Sync a Confluence space** | Sync one site or every enabled one. *Sync All* enqueues sync jobs for enabled sites within the administrator's authorized areas. The crawl walks the page tree under the root, applies the label filters, and queues one import per changed page. It reports pages queued, pages already queued, and how many carry none of the required labels. |
 | **Extract a knowledge graph** | Run extraction on a document, choosing the extraction prompt. A model reads each passage and produces the named things and their connections for that area and version, then duplicates are merged. The prompt is required: it is what tells the model to answer in the strict shape the reader expects, so an extraction without one produces nothing usable rather than a smaller graph. |
-| **Import through the integration interface** | Upload documents, prepared exports and record files without using the screen, then poll a job or subscribe to its live progress. Confluence imports are refused to anyone but an administrator. |
+| **Import through the integration interface** | Upload documents, prepared exports and record files without using the screen, then poll a job or subscribe to its live progress. Calls use either the global machine key or a per-area machine key. Confluence imports are refused to anyone but an administrator. |
 
 ## How it behaves
 
 - **Importing requires an administrator or a machine key.** An ordinary user account cannot write to the
   corpus, in the screens or through the integration interface. Confluence imports require an administrator
-  specifically, because they use stored credentials.
+  specifically, because they use stored credentials. Area Admins and per-area machine keys can import only
+  into collections belonging to their authorized areas.
+- **Area Admins are scoped to their assigned areas.** An Area Admin can view, create, edit, and delete
+  collections, documents, chunks, KG entities, JSON records, and Confluence connectors only within their
+  administered area(s). Creating, renaming, or deleting top-level areas, and deleting collections across
+  unauthorized areas, is refused.
+- **Cross-area primary key and slug hijack is prevented.** When an Area Admin creates or imports a
+  collection, playbook, prompt, orchestrator profile, or Confluence connector, the system verifies that
+  no existing resource in an unauthorized area shares that identifier (`name`, `key`, or `slug`),
+  preventing cross-area overwrites.
+- **Moving a collection requires permissions in both areas.** Moving a collection from Area A to Area B
+  requires that the administrator possesses admin rights for both Area A and Area B (or is a Superadmin).
+- **Per-area machine API keys (`APP_SECURITY_AREA_API_KEYS`).** External automation can use a per-area
+  key configured in a JSON map of area names to secret keys. A per-area key grants ingestion access
+  (`ROLE_INGEST` and `AREA_INGEST_<AREA>`) exclusively to its designated area. Ingesting into, deleting
+  documents from, or checking job progress for an unauthorized collection returns an opaque *not found* (`404`).
+- **Bulk actions respect area boundaries.** Triggering *Sync All* on Confluence connectors or *Cancel Queued*
+  on jobs processes only connectors and jobs belonging to collections in the administrator's authorized areas.
 - **Declare an area's versions before its first import.** If the area declares none, the version chosen at
   import is dropped silently, the content lands unversioned, and a second version's import then replaces
   the first.
@@ -131,6 +149,10 @@ interface. Automation scripts import with a machine key. Everyone else sees only
   mints an empty knowledge area instead of failing. Such an import must name the area the new knowledge
   area goes into; without one it is refused, saying so. An import into an existing knowledge area needs
   no area.
+- **Per-area machine keys cannot view or manage other areas.** A script authenticating with an area key
+  cannot inspect jobs or documents in another area, even if jobs run on the same shared engine.
+- **Top-level area deletion is Superadmin-only.** An Area Admin cannot delete an area even if they are the
+  only administrator assigned to it.
 
 ## Not supported
 
@@ -142,5 +164,7 @@ interface. Automation scripts import with a machine key. Everyone else sees only
 - Any check that a declared data shape matches the stored records.
 - Confluence Data Center served under a context path.
 - Editing document text inside the product. Content is corrected at source and re-imported.
+- Moving a collection to another area without having administrative permissions in both source and target areas.
+- Granular permissions below the area boundary (such as restricting an administrator to a specific collection or document within an area).
 
 ---

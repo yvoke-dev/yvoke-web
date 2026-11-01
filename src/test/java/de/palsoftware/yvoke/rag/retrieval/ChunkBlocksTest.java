@@ -54,7 +54,7 @@ public class ChunkBlocksTest {
 
     @Test
     public void aRepeatedChunkKeepsItsRankedSlotAndHeaderButLosesItsBody() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         String body = "Install the kit first.";
 
         String first = ChunkBlocks.format(List.of(chunkA(body)), conversation);
@@ -74,7 +74,7 @@ public class ChunkBlocksTest {
         // Two lanes can surface one chunk, and the ledger is consulted per rendered slot rather
         // than per call, so this needs no special case — but only if the check and the recording
         // are the same step. Snapshotting the batch's ids up front would elide both copies.
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         String body = "Install the kit first.";
 
         String out = ChunkBlocks.format(List.of(chunkA(body), chunkA(body)), conversation);
@@ -88,7 +88,7 @@ public class ChunkBlocksTest {
     public void aChunkWithNoIdIsAlwaysRenderedInFull() {
         // A null id cannot identify anything, so it can never be "the same chunk again". Recording
         // it would make every id-less chunk collapse into the first one, silently.
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
 
         String out =
             ChunkBlocks.format(List.of(chunk(null, null, "First body.", List.of(), "?", "?", 0.1),
@@ -105,8 +105,10 @@ public class ChunkBlocksTest {
         // lie — and the reviewer, which cannot search, would be left holding the pointer.
         String body = "Install the kit first.";
 
-        String inOne = ChunkBlocks.format(List.of(chunkA(body)), new AgenticChatContext());
-        String inAnother = ChunkBlocks.format(List.of(chunkA(body)), new AgenticChatContext());
+        String inOne = ChunkBlocks.format(List.of(chunkA(body)),
+            new AgenticChatContext(AgenticChatContext.ALL_AREAS));
+        String inAnother = ChunkBlocks.format(List.of(chunkA(body)),
+            new AgenticChatContext(AgenticChatContext.ALL_AREAS));
 
         assertThat(inOne).contains(body);
         assertThat(inAnother).as("a fresh conversation has seen nothing").contains(body);
@@ -132,7 +134,7 @@ public class ChunkBlocksTest {
     public void aMarkedRepeatIsRecognisableWhenTheRenderIsReadBack() {
         // EvidenceDigest has to tell a reference apart from a body to avoid re-pointing at a body
         // it has itself removed, so the marker must survive the round trip as a flag, not prose.
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         ChunkBlocks.format(List.of(chunkA("Install the kit first.")), conversation);
 
         String repeat = ChunkBlocks.format(List.of(chunkA("Install the kit first.")), conversation);

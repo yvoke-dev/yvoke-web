@@ -298,4 +298,10 @@ class SystemPromptServiceTest {
             new SystemPrompt("p", SystemPromptType.CHAT, "text", "", null, null, false, "PingID")));
         assertTrue(service.exportPromptToMarkdown("p").contains("area: PingID"));
     }
+
+    @Test
+    void parseMarkdownRejectsMalformedYamlFrontmatter() {
+        assertThrows(IllegalArgumentException.class,
+            () -> SystemPromptService.parseMarkdown("---\nname: [unclosed\n---\ntext", "p", "OIM"));
+    }
 }

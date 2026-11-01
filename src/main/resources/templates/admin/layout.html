@@ -147,14 +147,14 @@
                         Conversations
                     </a>
                 </li>
-                <li class="sidebar-item" th:classappend="${activeTab == 'costs' ? 'active' : ''}">
+                <li sec:authorize="hasRole('ADMIN')" class="sidebar-item" th:classappend="${activeTab == 'costs' ? 'active' : ''}">
                     <a th:href="@{/admin/costs}">
                         <!-- Dollar Sign Icon -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                         Cost Monitoring
                     </a>
                 </li>
-                <li class="sidebar-item" th:classappend="${activeTab == 'pricing' ? 'active' : ''}">
+                <li sec:authorize="hasRole('ADMIN')" class="sidebar-item" th:classappend="${activeTab == 'pricing' ? 'active' : ''}">
                     <a th:href="@{/admin/pricing}">
                         <!-- Tag / Pricing Icon -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
@@ -175,7 +175,7 @@
                         Retrieval Logs
                     </a>
                 </li>
-                <li class="sidebar-item" th:classappend="${activeTab == 'audit' ? 'active' : ''}">
+                <li sec:authorize="hasRole('ADMIN')" class="sidebar-item" th:classappend="${activeTab == 'audit' ? 'active' : ''}">
                     <a th:href="@{/admin/audit}">
                         <!-- Shield Icon -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -206,7 +206,8 @@
                     <span class="user-name" th:text="${@userService.getCurrentUserDisplayName()}">User Name</span>
                     <span class="user-role-badge">
                         <span sec:authorize="hasRole('ADMIN')">Admin</span>
-                        <span sec:authorize="!hasRole('ADMIN') and hasRole('USER')">User</span>
+                        <span sec:authorize="!hasRole('ADMIN') and hasRole('AREA_ADMIN')">Area Admin</span>
+                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and hasRole('USER')">User</span>
                     </span>
                     <!-- Which build is running. Admin console only: the audience is the operator
                          and the support person. A non-release build renders a long git-describe

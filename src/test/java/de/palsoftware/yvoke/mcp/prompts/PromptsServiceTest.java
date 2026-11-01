@@ -11,8 +11,12 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import io.modelcontextprotocol.server.McpSyncServer;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class PromptsServiceTest {
 
@@ -21,9 +25,17 @@ public class PromptsServiceTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         playbookRepository = mock(PlaybookRepository.class);
         prompts = new PromptsService(new PlaybookService(playbookRepository, (McpSyncServer) null,
             TestAreas.withAreas("OIM"), mock(SystemPromptService.class)));
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -45,6 +57,22 @@ public class PromptsServiceTest {
     }
 
     @Test
+    public void testGetPromptsMetadataFiltersByArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+        Playbook playbook1 = new Playbook("name-1", "Title 1", "Desc 1", "Template 1", List.of(),
+            false, null, false, null, null, false, "OIM", null, 1);
+        Playbook playbook2 = new Playbook("name-2", "Title 2", "Desc 2", "Template 2", List.of(),
+            false, null, false, null, null, false, "PingID", null, 1);
+        when(playbookRepository.findAll()).thenReturn(List.of(playbook1, playbook2));
+
+        List<PromptsService.PromptMetadata> metadataList = prompts.getPromptsMetadata();
+        assertEquals(1, metadataList.size());
+        assertEquals("name-1", metadataList.get(0).name());
+    }
+
+    @Test
     public void testGetPromptText() {
         Playbook playbook =
             new Playbook("name-1", "Title 1", "Desc 1", "Template 1", List.of(), false, null, null);
@@ -56,5 +84,17 @@ public class PromptsServiceTest {
         assertNull(prompts.getPromptText("unknown"));
         assertNull(prompts.getPromptText(null));
         assertNull(prompts.getPromptText(""));
+    }
+
+    @Test
+    public void testGetPromptTextUnauthorizedAreaReturnsNull() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+        Playbook playbook = new Playbook("name-1", "Title 1", "Desc 1", "Template 1", List.of(),
+            false, null, false, null, null, false, "OIM", null, 1);
+        when(playbookRepository.findByName("name-1")).thenReturn(Optional.of(playbook));
+
+        assertNull(prompts.getPromptText("name-1"));
     }
 }

@@ -9,6 +9,7 @@ import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -89,8 +90,10 @@ public class PlaybookTools {
                 Optional<String> stored = areaService.findArea(area).map(Area::name);
                 inArea = playbook -> stored.isPresent() && stored.get().equals(playbook.area());
             }
-            return objectMapper.writeValueAsString(playbookService.listSpecializedPlaybooks()
-                .stream().filter(inArea).map(PlaybookDto::from).toList());
+            List<Playbook> list = AreaAccessContext
+                .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
+            return objectMapper
+                .writeValueAsString(list.stream().filter(inArea).map(PlaybookDto::from).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_playbooks", e);
         }
@@ -111,7 +114,12 @@ public class PlaybookTools {
             if (playbook.isEmpty()) {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
-            return objectMapper.writeValueAsString(PlaybookWithText.from(playbook.get()));
+            Playbook pb = playbook.get();
+            if (pb.area() != null && !pb.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(pb.area())) {
+                return "ERROR: playbook '" + trimmed + "' not found.";
+            }
+            return objectMapper.writeValueAsString(PlaybookWithText.from(pb));
         } catch (Exception e) {
             return McpToolUtils.toolError("get_playbook", e);
         }

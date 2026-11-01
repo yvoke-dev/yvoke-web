@@ -16,9 +16,13 @@ import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class SearchCorpusToolTest {
 
@@ -34,6 +38,10 @@ public class SearchCorpusToolTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
+
         hybridSearch = mock(HybridSearch.class);
         collectionService = mock(CollectionService.class);
         searchCorpusTool =
@@ -45,6 +53,11 @@ public class SearchCorpusToolTest {
         Collection colOimDb = new Collection(UUID.randomUUID(), "OIM-DB", "OIM-DB Collection",
             List.of("9.3"), OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(colOim, colOimDb));
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -351,7 +364,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theFirstSearchOfAConversationRendersEveryBodyInFull() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -366,7 +379,7 @@ public class SearchCorpusToolTest {
 
     @Test
     public void aSecondSearchInTheSameConversationMarksTheRepeatInsteadOfResendingIt() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -389,7 +402,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theTelemetryListStillRecordsEverySightingIncludingSuppressedOnes() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         UUID chunkId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
             new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "This is chunk text.")),
@@ -422,9 +435,13 @@ public class SearchCorpusToolTest {
             .contains("This is chunk text."));
 
         // Two different conversations on the one shared tool instance.
-        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+        assertTrue(searchCorpusTool
+            .searchCorpus("q", "OIM", "9.3", null,
+                new AgenticChatContext(AgenticChatContext.ALL_AREAS))
             .contains("This is chunk text."));
-        assertTrue(searchCorpusTool.searchCorpus("q", "OIM", "9.3", null, new AgenticChatContext())
+        assertTrue(searchCorpusTool
+            .searchCorpus("q", "OIM", "9.3", null,
+                new AgenticChatContext(AgenticChatContext.ALL_AREAS))
             .contains("This is chunk text."));
     }
 
@@ -436,7 +453,7 @@ public class SearchCorpusToolTest {
      */
     @Test
     public void theCappedNoticeCountsRankedSlotsNotFullyRenderedBodies() {
-        AgenticChatContext conversation = new AgenticChatContext();
+        AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         HybridSearchResult repeated = hit(UUID.randomUUID(), UUID.randomUUID(), "text");
         when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class)))
             .thenReturn(new SearchWithId(List.of(repeated, repeated), UUID.randomUUID()));
@@ -445,5 +462,38 @@ public class SearchCorpusToolTest {
 
         assertTrue(output.contains("already shown above"), "the repeat should be suppressed");
         assertTrue(output.contains("the result is capped"), output);
+    }
+
+    @Test
+    public void testSearchCorpusUnauthorizedAreaReturnsError() {
+        Collection colSec = new Collection(UUID.randomUUID(), "SEC", "SEC Collection",
+            List.of("1.0"), OffsetDateTime.now(), "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(colSec));
+
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+
+        String result = searchCorpusTool.searchCorpus("q", "SEC", "1.0", null, null);
+        assertEquals("Error: Collection 'SEC' does not exist.", result);
+    }
+
+    @Test
+    public void testSearchCorpusAuthorizedAreaSucceeds() {
+        Collection colSec = new Collection(UUID.randomUUID(), "SEC", "SEC Collection",
+            List.of("1.0"), OffsetDateTime.now(), "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(colSec));
+
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_SEC"))));
+
+        UUID chunkId = UUID.randomUUID();
+        when(hybridSearch.searchWithId(anyString(), any(SearchOptions.class))).thenReturn(
+            new SearchWithId(List.of(hit(chunkId, UUID.randomUUID(), "Sec chunk text.")),
+                UUID.randomUUID()));
+
+        String result = searchCorpusTool.searchCorpus("q", "SEC", "1.0", null, null);
+        assertTrue(result.contains("Sec chunk text."));
     }
 }

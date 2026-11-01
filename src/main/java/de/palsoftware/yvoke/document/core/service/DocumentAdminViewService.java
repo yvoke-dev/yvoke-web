@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,15 +57,30 @@ public class DocumentAdminViewService {
     public List<DocumentSummary> listDocuments(@Nullable String collection, int limit, int offset,
         @Nullable String kind, @Nullable String tag, @Nullable String searchId,
         @Nullable String searchTitle) {
-        return documentRepository
-            .listDocuments(collection, limit, offset, kind, tag, searchId, searchTitle).stream()
-            .map(DocumentAdminViewService::toSummary).toList();
+        return listDocuments(collection, limit, offset, kind, tag, searchId, searchTitle, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DocumentSummary> listDocuments(@Nullable String collection, int limit, int offset,
+        @Nullable String kind, @Nullable String tag, @Nullable String searchId,
+        @Nullable String searchTitle, @Nullable Set<String> allowedAreasLower) {
+        return documentRepository.listDocuments(collection, limit, offset, kind, tag, searchId,
+            searchTitle, null, allowedAreasLower).stream().map(DocumentAdminViewService::toSummary)
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public long countDocuments(@Nullable String collection, @Nullable String kind,
         @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle) {
-        return documentRepository.countDocuments(collection, kind, tag, searchId, searchTitle);
+        return countDocuments(collection, kind, tag, searchId, searchTitle, null);
+    }
+
+    @Transactional(readOnly = true)
+    public long countDocuments(@Nullable String collection, @Nullable String kind,
+        @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle,
+        @Nullable Set<String> allowedAreasLower) {
+        return documentRepository.countDocuments(collection, kind, tag, searchId, searchTitle, null,
+            allowedAreasLower);
     }
 
     public List<String> distinctKinds() {

@@ -21,6 +21,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 
@@ -58,7 +64,17 @@ public class KgAdminController {
     @GetMapping("/kg")
     public String kgOverview(Model model) {
         log.info("KgAdminController: Accessing KG Overview view");
-        model.addAttribute("scopes", kgAdminViewService.listScopes());
+        var scopes = kgAdminViewService.listScopes();
+        if (!AreaAccessContext.isSuperAdmin()) {
+            Set<String> administeredCollectionNames = collectionService.listForAdminUser().stream()
+                .map(c -> c.name().toLowerCase()).collect(Collectors.toSet());
+            scopes =
+                scopes.stream()
+                    .filter(s -> s.collection() != null
+                        && administeredCollectionNames.contains(s.collection().toLowerCase()))
+                    .toList();
+        }
+        model.addAttribute("scopes", scopes);
         return "admin/kg";
     }
 
@@ -71,6 +87,12 @@ public class KgAdminController {
         Model model) {
 
         log.info("KgAdminController: Accessing KG Graph view for collection '{}'", collection);
+
+        Optional<Collection> colOpt = collectionService.getCollection(collection);
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Collection not found: " + collection);
+        }
 
         String queryParam = (query != null && !query.isBlank()) ? query : null;
         String tagParam = (tag != null && !tag.isBlank()) ? tag : null;
@@ -151,6 +173,12 @@ public class KgAdminController {
     public String clearGraph(@RequestParam String collection,
         @RequestParam(required = false) String tag, RedirectAttributes redirectAttributes) {
 
+        Optional<Collection> colOpt = collectionService.getCollection(collection);
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Collection not found: " + collection);
+        }
+
         String tagParam = (tag != null && !tag.isBlank()) ? tag : null;
         if (tagParam == null) {
             redirectAttributes.addFlashAttribute("error",
@@ -189,13 +217,13 @@ public class KgAdminController {
             return "redirect:/admin/kg";
         }
 
-        Optional<String> resolved = collectionService.getCollection(collection).map(c -> c.name());
-        if (resolved.isEmpty()) {
+        Optional<Collection> colOpt = collectionService.getCollection(collection);
+        if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             redirectAttributes.addFlashAttribute("error",
                 "Unknown collection: '" + collection + "'. Nothing was consolidated.");
             return "redirect:/admin/kg";
         }
-        String collectionName = resolved.get();
+        String collectionName = colOpt.get().name();
 
         auditLogRepository.log(getCurrentAdminOid(), "CONSOLIDATE_KG",
             collectionName + " " + tagParam, Map.of("collection", collectionName, "tag", tagParam));

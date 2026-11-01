@@ -12,8 +12,12 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class ListDocumentsToolTest {
 
@@ -23,6 +27,10 @@ public class ListDocumentsToolTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
+
         documentRepository = mock(DocumentRepository.class);
         collectionService = mock(CollectionService.class);
         listDocumentsTool = new ListDocumentsTool(documentRepository, collectionService);
@@ -34,6 +42,11 @@ public class ListDocumentsToolTest {
         Collection codeCol =
             new Collection(UUID.randomUUID(), "OIM - Code", "Code", List.of("9.3"), null);
         when(collectionService.listCollections()).thenReturn(List.of(dbCol, manualsCol, codeCol));
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -184,4 +197,36 @@ public class ListDocumentsToolTest {
         assertTrue(output.contains("9.3"));
     }
 
+    @Test
+    public void testListDocumentsUnauthorizedAreaReturnsError() {
+        Collection colSec =
+            new Collection(UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(colSec));
+
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+
+        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null);
+        assertEquals("Error: Collection 'SEC' does not exist.", result);
+    }
+
+    @Test
+    public void testListDocumentsAuthorizedAreaSucceeds() {
+        Collection colSec =
+            new Collection(UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
+        when(collectionService.listCollections()).thenReturn(List.of(colSec));
+
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_SEC"))));
+
+        when(documentRepository.listDocuments(eq("SEC"), anyInt(), anyInt(), any(), any(), any(),
+            any(), any())).thenReturn(Collections.emptyList());
+        when(documentRepository.countDocuments(eq("SEC"), any(), any(), any(), any(), any()))
+            .thenReturn(0L);
+
+        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null);
+        assertTrue(result.contains("(no documents in **SEC**)"));
+    }
 }

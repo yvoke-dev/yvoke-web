@@ -73,9 +73,9 @@ public class EvidenceDigestTest {
         // cross-specialist duplication that only ever meets here, in one message, where collapsing
         // it is truthful.
         List<String> ev = List.of(
-            evidence("spec-a", new AgenticChatContext(),
+            evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
                 List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))),
-            evidence("spec-b", new AgenticChatContext(),
+            evidence("spec-b", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
                 List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
         String out = citeScoped(ev, citedBy(CITED));
@@ -98,9 +98,10 @@ public class EvidenceDigestTest {
      */
     @Test
     public void aSourceTheAnswerDoesNotCiteLeavesNoTraceAtAll() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
 
         String out = citeScoped(ev, citedBy(CITED));
 
@@ -118,8 +119,9 @@ public class EvidenceDigestTest {
      */
     @Test
     public void aTruncatedCitationStillCountsAsACitation() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
         String out = citeScoped(ev, "As described in [chunk_id=8f7c1a2b].");
 
@@ -149,8 +151,9 @@ public class EvidenceDigestTest {
      */
     @Test
     public void aChunkCitedOnlyByItsDocumentIdIsShownInFull() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
         String out = citeScoped(ev, "See [document_id=" + DOC_CITED + "].");
 
@@ -164,7 +167,7 @@ public class EvidenceDigestTest {
      */
     @Test
     public void aBodyElidedUpstreamIsNeverLeftAsADanglingReference() {
-        AgenticChatContext oneSpecialist = new AgenticChatContext();
+        AgenticChatContext oneSpecialist = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         List<String> ev = List.of(
             evidence("spec-a", oneSpecialist,
                 List.of(hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "k"))),
@@ -186,7 +189,7 @@ public class EvidenceDigestTest {
      */
     @Test
     public void aCitedReferenceWithNoBodyAnywhereIsDroppedRatherThanPointedAt() {
-        AgenticChatContext ledger = new AgenticChatContext();
+        AgenticChatContext ledger = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         // Burn the first sighting somewhere this evidence list will never see, so the only entry
         // carrying this chunk is already a reference.
         ChunkBlocks.format(List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person")), ledger);
@@ -206,9 +209,10 @@ public class EvidenceDigestTest {
      */
     @Test
     public void anAnswerWithNoResolvableCitationsFallsBackToDedupeRatherThanWithholdingEverything() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
 
         String out = citeScoped(ev, "An answer citing only [1].");
 
@@ -222,9 +226,10 @@ public class EvidenceDigestTest {
      */
     @Test
     public void dedupeForTheReviserKeepsUncitedBodies() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
 
         String out = EvidenceDigest.deduped(ev);
 
@@ -234,9 +239,9 @@ public class EvidenceDigestTest {
     @Test
     public void dedupeCollapsesOneChunkAcrossTwoSpecialists() {
         List<String> ev = List.of(
-            evidence("spec-a", new AgenticChatContext(),
+            evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
                 List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))),
-            evidence("spec-b", new AgenticChatContext(),
+            evidence("spec-b", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
                 List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"))));
 
         String out = EvidenceDigest.deduped(ev);
@@ -290,9 +295,10 @@ public class EvidenceDigestTest {
      */
     @Test
     void aFollowUpCarriesTheNewlyCitedBodyAndNotTheOneAlreadySent() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
         EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
 
         String first = EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
@@ -313,9 +319,10 @@ public class EvidenceDigestTest {
     /** A second follow-up citing nothing new renders nothing — the caller says "(none)". */
     @Test
     void aFollowUpThatCitesOnlySourcesAlreadySentRendersEmpty() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
         EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
 
         EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
@@ -331,9 +338,10 @@ public class EvidenceDigestTest {
      */
     @Test
     void theReviserIsUnaffectedByWhateverTheReviewerHasBeenSent() {
-        List<String> ev = List.of(evidence("spec-a", new AgenticChatContext(),
-            List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
-                hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
+        List<String> ev =
+            List.of(evidence("spec-a", new AgenticChatContext(AgenticChatContext.ALL_AREAS),
+                List.of(hit(CITED, DOC_CITED, CITED_BODY, "Person"),
+                    hit(UNCITED, DOC_UNCITED, UNCITED_BODY, "install-kit.md"))));
         EvidenceDigest.SentLedger sent = new EvidenceDigest.SentLedger();
         EvidenceDigest.citeScoped(ev, citedBy(CITED), sent);
 

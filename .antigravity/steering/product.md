@@ -29,17 +29,24 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 
 ## User Personas & Permissions
 
-- **Administrators**: Have full access to the Admin UI to trigger ingestion jobs, manage dynamic collections/corpora, view audit logs, and inspect raw database summaries.
-- **Standard Users**: Interact primarily via the Chat UI or external API clients. They can run searches, provide feedback, and utilize the RAG engine without altering the underlying data.
-- **Machine Clients**: External scripts, desktop apps (via REST API), and agentic IDEs (via MCP Server) acting programmatically.
+Permissions are managed via Microsoft Entra ID app role assignments, parsed into four logical role levels with multi-role union semantics:
+
+- **Superadmin** (`Admin`): Unrestricted access to the entire Admin Console (including cost monitoring, model pricing, audit trail, area creation/deletion, and global prompt activation) and unrestricted user access across all knowledge areas in Web Chat, Desktop API, and MCP tools.
+- **Area Admin** (`<Area>.Admin`, e.g. `OIM.Admin`): Access to the Admin Console scoped strictly to their assigned area(s) (managing collections, documents, chunks, KG, JSON records, playbooks, prompts, profiles, and Confluence connectors within those areas) plus user access to those areas. Excluded from Superadmin-only sections (`/admin/costs`, `/admin/pricing`, `/admin/audit`, `/admin/areas/delete`, `/admin/prompts/active`).
+- **Global User** (`User`): User access to all knowledge areas across Web Chat, Desktop Sync API, and MCP Server. No access to the Admin Console.
+- **Area User** (`<Area>.User`, e.g. `OIM.User`): User access strictly scoped to their assigned knowledge area(s) across Web Chat, Desktop Sync API, and MCP Server. No access to the Admin Console.
+- **Multi-Role Union**: A user may hold any combination of roles (e.g. `OIM.Admin` + `PingID.User`); effective user and admin areas are the union of all corresponding role grants. Users with no valid role claims are denied by default.
+- **Machine Clients**: Automated external scripts authenticate via `X-API-Key` using either the global machine key (`APP_SECURITY_API_KEY`) for unrestricted ingestion or per-area machine keys (`APP_SECURITY_AREA_API_KEYS`) scoped to designated areas on `/api/ingest/v1/**`, `/api/document/v1/**`, and `/api/jobs/v1/**`.
 
 ## Core Domain Entities
 
-- **Document**: The top-level knowledge container (e.g., a Confluence page, a Markdown file, or a database SQL script).
+- **Area**: The top-level administrative and security boundary (`areas` table). Groups collections, playbooks, orchestrator profiles, and system prompts. Every resource belongs to an area. Conversations lock onto an area on the first turn (`conversations.area`).
+- **Corpora / Collections**: Collections belong to an Area (`collections.area`). Administrators can create and manage collections representing different corpora, products, or versions within their authorized areas. Moving a collection between areas requires admin access to both source and target areas.
+- **Document**: The top-level knowledge container (e.g., a Confluence page, a Markdown file, or a database SQL script) belonging to a collection.
 - **Chunk**: A smaller, semantically partitioned segment of a Document. Vector embeddings and BM25 indexing are applied at this level for granular retrieval.
-- **Entity & Relationship (KG)**: Nodes and edges extracted from text or database structures. They form the Knowledge Graph, providing structured conceptual context alongside unstructured text.
-- **Conversation & Message**: A **conversation** is one chat thread — owner, title, settings, source (`web` or `desktop`) and tags; its **messages** are the individual questions and answers, each carrying its role, status, model, token counts, citations and retrieved chunk ids. There is no `sessions` table and no session concept in the domain: the vocabulary is `conversations` + `messages` throughout the schema, the repositories and the UI.
-- **Feedback**: A user-submitted rating (`1` or `-1`) with an optional comment, at most one per `Message` (`message_feedback` is unique on `message_id`; a new thumb replaces the previous one). It exists for **human** review only — the feedback dashboard, the reviewed flag and reviewer notes. Nothing is trained on it: a rating changes neither retrieval ranking nor future answers, which [`spec/` ch. 2](../../spec/02_how_answers_are_produced.md) records under *Not supported*.
+- **Entity & Relationship (KG)**: Nodes and edges extracted from text or database structures. They form the Knowledge Graph, scoped by collection and canonical tags, providing structured conceptual context alongside unstructured text.
+- **Conversation & Message**: A **conversation** is one chat thread — owner, title, settings, source (`web` or `desktop`), tags, and `area` (`conversations.area` column, V16 migration). A conversation is locked to an area upon the first turn, and shared (`public`) conversations are visible only to users authorized for that conversation's area. Its **messages** are the individual questions and answers, each carrying its role, status, model, token counts, citations and retrieved chunk ids. There is no `sessions` table and no session concept in the domain: the vocabulary is `conversations` + `messages` throughout the schema, the repositories and the UI.
+- **Feedback**: A user-submitted rating (`1` or `-1`) with an optional comment, at most one per `Message` (`message_feedback` is unique on `message_id`; a new thumb replaces the previous one). It exists for **human** review only — the feedback dashboard (scoped by conversation area in the Admin Console), the reviewed flag and reviewer notes. Nothing is trained on it: a rating changes neither retrieval ranking nor future answers, which [`spec/` ch. 2](../../spec/02_how_answers_are_produced.md) records under *Not supported*.
 - **JSON Object & Schema**: Structured JSON data ingested into collections, stored in a GIN-indexed JSONB column. Schemas are inferred automatically or managed manually.
 
 ## Product Tenets & Guardrails
@@ -47,3 +54,4 @@ Yvoke is an internal system that makes One Identity Manager (OIM) knowledge—bo
 - **Verifiable Grounding**: The LLM must cite its sources from the chunks/graph. Hallucinated answers without corpus grounding are treated as failures.
 - **High-Performance Q&A**: User-facing queries must feel responsive. Chat responses are either streamed (SSE) or managed via non-blocking async submission and status polling to avoid proxy timeouts (e.g. Cloudflare 524).
 - **Data Centralization**: All unstructured text, vectors, BM25 indices, and graph relations live in a single PostgreSQL instance. No external vector databases are permitted.
+- **Per-Area Boundary Isolation**: Multi-tenant authorization is enforced at the Area boundary across Web Chat, Desktop Sync API, MCP Server, In-App RAG Tools, Machine APIs, and the Admin Console. Opaque refusal (`404 Not Found` / filtered lists) ensures no unauthorized resource existence is disclosed.

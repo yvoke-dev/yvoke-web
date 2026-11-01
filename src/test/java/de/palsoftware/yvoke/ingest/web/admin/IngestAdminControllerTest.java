@@ -27,13 +27,24 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class IngestAdminControllerTest {
 
@@ -52,6 +63,9 @@ public class IngestAdminControllerTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
         collectionService = mock(CollectionService.class);
         systemPromptService = mock(SystemPromptService.class);
         jobService = mock(JobService.class);
@@ -60,11 +74,20 @@ public class IngestAdminControllerTest {
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
+        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
+            OffsetDateTime.now(), "OIM");
+        when(collectionService.getCollection("OIM")).thenReturn(Optional.of(oimCol));
+
         controller = new IngestAdminController(collectionService, systemPromptService, jobService,
             auditLogRepository, userService, tempDir.toString());
 
         model = new ConcurrentModel();
         redirectAttributes = mock(RedirectAttributes.class);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -73,6 +96,54 @@ public class IngestAdminControllerTest {
         String view = controller.ingestView(model, null);
         assertThat(view).isEqualTo("admin/ingest");
         assertThat(model.getAttribute("collections")).isNotNull();
+    }
+
+    @Test
+    public void ingestView_filtersCollectionsAndPromptsByAdministeredArea() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
+            OffsetDateTime.now(), "OIM");
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.listCollections()).thenReturn(List.of(oimCol, finCol));
+
+        SystemPrompt oimKg = new SystemPrompt("kg-oim", SystemPromptType.KG, "KG OIM", "",
+            Instant.now(), Instant.now(), false, "OIM");
+        SystemPrompt finKg = new SystemPrompt("kg-fin", SystemPromptType.KG, "KG Fin", "",
+            Instant.now(), Instant.now(), false, "Finance");
+        when(systemPromptService.listPromptsByType(SystemPromptType.KG))
+            .thenReturn(List.of(oimKg, finKg));
+        when(systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE))
+            .thenReturn(List.of());
+
+        String view = controller.ingestView(model, null);
+        assertThat(view).isEqualTo("admin/ingest");
+        @SuppressWarnings("unchecked")
+        List<Collection> cols = (List<Collection>) model.getAttribute("collections");
+        assertThat(cols).containsExactly(oimCol);
+        @SuppressWarnings("unchecked")
+        List<SystemPrompt> prompts = (List<SystemPrompt>) model.getAttribute("kgPrompts");
+        assertThat(prompts).containsExactly(oimKg);
+    }
+
+    @Test
+    public void uploadIngest_unauthorizedArea_throwsNotFound() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+
+        assertThatThrownBy(
+            () -> controller.uploadIngest(file, "Finance", null, IngestJobKind.STANDARD.getValue(),
+                null, null, null, null, null, false, null, null, redirectAttributes))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
     }
 
     @Test

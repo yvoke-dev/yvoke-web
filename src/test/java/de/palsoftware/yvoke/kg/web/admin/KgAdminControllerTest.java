@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.kg.web.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.kg.core.model.KgAdminViews.KgScopeView;
 import de.palsoftware.yvoke.kg.core.service.KgAdminViewService;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
@@ -22,8 +24,14 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.ui.ConcurrentModel;
+import org.springframework.ui.Model;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 public class KgAdminControllerTest {
@@ -49,11 +57,20 @@ public class KgAdminControllerTest {
         userService = mock(UserService.class);
         collectionService = mock(CollectionService.class);
 
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
+        when(collectionService.getCollection("OIM")).thenReturn(Optional.of(collection("OIM")));
 
         controller = new KgAdminController(kgAdminViewService, kgReadRepository, kgWriteRepository,
             kgConsolidator, auditLogRepository, userService, collectionService);
         redirectAttributes = mock(RedirectAttributes.class);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     /**
@@ -132,8 +149,68 @@ public class KgAdminControllerTest {
             anyMap());
     }
 
+    @Test
+    public void kgOverview_areaAdmin_filtersScopesToAdministeredCollections() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
+            OffsetDateTime.now(), "OIM");
+        when(collectionService.listForAdminUser()).thenReturn(List.of(oimCol));
+        when(kgAdminViewService.listScopes()).thenReturn(List
+            .of(new KgScopeView("OIM", "9.3", 10, 20), new KgScopeView("Finance", "1.0", 50, 60)));
+
+        Model model = new ConcurrentModel();
+        String view = controller.kgOverview(model);
+
+        assertThat(view).isEqualTo("admin/kg");
+        @SuppressWarnings("unchecked")
+        List<KgScopeView> scopes = (List<KgScopeView>) model.getAttribute("scopes");
+        assertThat(scopes).hasSize(1);
+        assertThat(scopes.get(0).collection()).isEqualTo("OIM");
+    }
+
+    @Test
+    public void viewKg_unauthorizedArea_throws404() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
+
+        Model model = new ConcurrentModel();
+        assertThrows(ResponseStatusException.class,
+            () -> controller.viewKg("Finance", null, null, null, null, 2, 0, model));
+    }
+
+    @Test
+    public void clearGraph_unauthorizedArea_throws404() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
+
+        assertThrows(ResponseStatusException.class,
+            () -> controller.clearGraph("Finance", "1.0", redirectAttributes));
+    }
+
+    @Test
+    public void consolidateKg_unauthorizedArea_refused() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
+            OffsetDateTime.now(), "Finance");
+        when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
+
+        String view = controller.consolidateKg("Finance", "1.0", redirectAttributes);
+
+        assertThat(view).isEqualTo("redirect:/admin/kg");
+        verify(redirectAttributes).addFlashAttribute(eq("error"), anyString());
+        verify(kgConsolidator, never()).consolidate(anyString(), anyString());
+    }
+
     private static Collection collection(String storedName) {
         return new Collection(UUID.randomUUID(), storedName, "desc", List.of("9.3"),
-            OffsetDateTime.now());
+            OffsetDateTime.now(), "OIM");
     }
 }

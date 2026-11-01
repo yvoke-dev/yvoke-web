@@ -14,8 +14,12 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * {@code get_system_prompt} is how the Claude plugin (and its Chat/Cowork stubs) receive the base
@@ -31,6 +35,9 @@ class GetSystemPromptToolTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         systemPromptService = mock(SystemPromptService.class);
         areaRepository = mock(AreaRepository.class);
         when(areaRepository.findAll())
@@ -41,6 +48,11 @@ class GetSystemPromptToolTest {
             Map.of("OIM", new AreaMembers(List.of("oim-chat"), List.of(), List.of(), List.of()),
                 "PingID", new AreaMembers(List.of("ping-chat"), List.of(), List.of(), List.of())));
         tool = new GetSystemPromptTool(systemPromptService, new AreaService(areaRepository));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -129,5 +141,28 @@ class GetSystemPromptToolTest {
             Optional.of(new SystemPrompt("custom-chat", SystemPromptType.CHAT, "Custom.", "")));
 
         assertThat(tool.getSystemPrompt("custom-chat", "PingID")).isEqualTo("Custom.");
+    }
+
+    @Test
+    void unauthorizedAreaReturnsError() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+
+        assertThat(tool.getSystemPrompt(null, "PingID"))
+            .isEqualTo("ERROR: area 'PingID' does not exist.");
+    }
+
+    @Test
+    void unauthorizedPromptAreaReturnsError() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+        when(systemPromptService.findChatPrompt("ping-chat"))
+            .thenReturn(Optional.of(new SystemPrompt("ping-chat", SystemPromptType.CHAT,
+                "Ping rules.", "", null, null, false, "PingID")));
+
+        assertThat(tool.getSystemPrompt("ping-chat", null))
+            .isEqualTo("ERROR: system prompt 'ping-chat' does not exist.");
     }
 }

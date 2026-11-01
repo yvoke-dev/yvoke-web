@@ -3,9 +3,13 @@ package de.palsoftware.yvoke;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -404,6 +408,146 @@ public class SchemaPresenceIT {
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
             jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
             jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?)", playbookOk, playbookBad);
+        }
+    }
+
+    @Test
+    public void testMigrationV16ConversationAreaColumnAndIndexes() {
+        assertThat(columnExists("conversations", "area"))
+            .withFailMessage("Column conversations.area should exist (V16)").isTrue();
+        assertThat(indexExists("conversations", "idx_conversations_area"))
+            .withFailMessage("Index idx_conversations_area should exist (V16)").isTrue();
+        assertThat(indexExists("conversations", "idx_conversations_visibility_area"))
+            .withFailMessage("Index idx_conversations_visibility_area should exist (V16)").isTrue();
+    }
+
+    @Test
+    public void testMigrationV16ConversationAreaForeignKeyBehavior() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        String area1 = "v16-area-" + UUID.randomUUID();
+        String area2 = "v16-area-renamed-" + UUID.randomUUID();
+
+        jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", area1, area1);
+        jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)",
+            userId, "oid-" + userId, userId + "@test.com");
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, ?, ?)",
+            convId, userId, "Title", area1);
+
+        try {
+            // 1. Verify CASCADE on area rename
+            jdbcTemplate.update("UPDATE areas SET name = ? WHERE name = ?", area2, area1);
+            String updatedArea = jdbcTemplate.queryForObject(
+                "SELECT area FROM conversations WHERE id = ?", String.class, convId);
+            assertThat(updatedArea).isEqualTo(area2);
+
+            // 2. Verify RESTRICT on area delete
+            assertThatThrownBy(() -> jdbcTemplate.update("DELETE FROM areas WHERE name = ?", area2))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        } finally {
+            jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+            jdbcTemplate.update("DELETE FROM areas WHERE name IN (?, ?)", area1, area2);
+        }
+    }
+
+    @Test
+    public void testMigrationV16ConversationAreaBackfill() throws IOException {
+        UUID userId = UUID.randomUUID();
+        UUID convProfileId = UUID.randomUUID();
+        UUID convPlaybookId = UUID.randomUUID();
+        UUID convUnlinkedId = UUID.randomUUID();
+        UUID olderRunId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID msgId = UUID.randomUUID();
+        String customArea = "v16-backfill-area-" + UUID.randomUUID();
+        String oimProfileName = "v16-oim-profile-" + UUID.randomUUID();
+        String profileName = "v16-profile-" + UUID.randomUUID();
+        String oimPlaybookName = "v16-oim-playbook-" + UUID.randomUUID();
+        String playbookName = "v16-playbook-" + UUID.randomUUID();
+        String oimPromptName = "v16-oim-prompt-" + UUID.randomUUID();
+        String promptName = "v16-prompt-" + UUID.randomUUID();
+
+        try {
+            jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", customArea,
+                customArea);
+            jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'ORCHESTRATOR', 'sys', 'desc', 'OIM')",
+                oimPromptName);
+            jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'ORCHESTRATOR', 'sys', 'desc', ?)",
+                promptName, customArea);
+            jdbcTemplate.update(
+                "INSERT INTO playbooks (name, title, description, template_text, area) VALUES (?, 'Title', 'Desc', 'Text', 'OIM')",
+                oimPlaybookName);
+            jdbcTemplate.update(
+                "INSERT INTO playbooks (name, title, description, template_text, area) VALUES (?, 'Title', 'Desc', 'Text', ?)",
+                playbookName, customArea);
+            jdbcTemplate.update("""
+                INSERT INTO orchestrator_profiles
+                    (name, orchestrator_playbook, reviewer_playbook, specialist_playbooks, area)
+                VALUES (?, ?, ?, ARRAY[?], 'OIM')
+                """, oimProfileName, oimPlaybookName, oimPlaybookName, oimPlaybookName);
+            jdbcTemplate.update("""
+                INSERT INTO orchestrator_profiles
+                    (name, orchestrator_playbook, reviewer_playbook, specialist_playbooks, area)
+                VALUES (?, ?, ?, ARRAY[?], ?)
+                """, profileName, playbookName, playbookName, playbookName, customArea);
+            jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)", userId,
+                "oid-" + userId, userId + "@test.com");
+
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Conv Profile', NULL)",
+                convProfileId, userId);
+            jdbcTemplate.update(
+                "INSERT INTO agent_runs (id, conversation_id, profile_name, status, started_at) VALUES (?, ?, ?, 'done', CURRENT_TIMESTAMP - INTERVAL '1 hour')",
+                olderRunId, convProfileId, oimProfileName);
+            jdbcTemplate.update(
+                "INSERT INTO agent_runs (id, conversation_id, profile_name, status, started_at) VALUES (?, ?, ?, 'done', CURRENT_TIMESTAMP)",
+                runId, convProfileId, profileName);
+
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Conv Playbook', NULL)",
+                convPlaybookId, userId);
+            jdbcTemplate.update(
+                "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'hi', ?, 1)",
+                msgId, convPlaybookId, playbookName);
+
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, 'Conv Unlinked', NULL)",
+                convUnlinkedId, userId);
+
+            String v16Sql =
+                Files.readString(Path.of("docker/db/migration/V16__conversation_area.sql"));
+            List<String> backfillStatements = Arrays.stream(v16Sql.split(";"))
+                .map(stmt -> stmt.replaceAll("(?m)^--.*$", "").trim())
+                .filter(stmt -> stmt.startsWith("UPDATE conversations")).toList();
+            assertThat(backfillStatements).as(
+                "V16 must define 3 UPDATE statements (agent_runs profile area, messages playbook area, guarded OIM fallback)")
+                .hasSize(3);
+            for (String stmt : backfillStatements) {
+                jdbcTemplate.update(stmt);
+            }
+
+            assertThat(jdbcTemplate.queryForObject("SELECT area FROM conversations WHERE id = ?",
+                String.class, convProfileId)).isEqualTo(customArea);
+            assertThat(jdbcTemplate.queryForObject("SELECT area FROM conversations WHERE id = ?",
+                String.class, convPlaybookId)).isEqualTo(customArea);
+            assertThat(jdbcTemplate.queryForObject("SELECT area FROM conversations WHERE id = ?",
+                String.class, convUnlinkedId)).isEqualTo("OIM");
+        } finally {
+            jdbcTemplate.update("DELETE FROM agent_runs WHERE id IN (?, ?)", olderRunId, runId);
+            jdbcTemplate.update("DELETE FROM messages WHERE id = ?", msgId);
+            jdbcTemplate.update("DELETE FROM conversations WHERE id IN (?, ?, ?)", convProfileId,
+                convPlaybookId, convUnlinkedId);
+            jdbcTemplate.update("DELETE FROM orchestrator_profiles WHERE name IN (?, ?)",
+                oimProfileName, profileName);
+            jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?)", oimPlaybookName,
+                playbookName);
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?)", oimPromptName,
+                promptName);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+            jdbcTemplate.update("DELETE FROM areas WHERE name = ?", customArea);
         }
     }
 

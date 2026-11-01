@@ -12,7 +12,7 @@ running corpus scripts and the evaluation harness.
 
 | Capability | What happens |
 | --- | --- |
-| **Connect an AI client** | A user signs in with their company account from a client such as Claude Code, Claude Desktop or Cursor. The client discovers the available knowledge tools by itself. First-time users are created automatically, with no separate invitation. |
+| **Connect an AI client** | A user signs in with their company account from a client such as Claude Code, Claude Desktop or Cursor. The client authenticates via Bearer JWT and discovers knowledge tools scoped strictly to the user's authorized areas. First-time users are created automatically, with no separate invitation. |
 | **Search the knowledge base** | Ask in plain language against one knowledge area and get the most relevant passages back, each with a relevance score, its document, and the heading path it sits under. Every passage carries an id the client can cite. |
 | **Browse the document catalogue** | List the documents in an area, optionally filtered by kind or approximate title. Each row shows id, kind, title and passage count, and the response states how many more exist. |
 | **Read a table of contents** | For structured documents, an indented outline with a one-line summary per section and its size in both passages and characters, so the client can navigate top-down instead of guessing search terms. Two levels are shown at a time, and naming a section shows the two levels **below** it — so a client can walk down to the part it wants instead of reading a whole chapter to find it. Each entry states whether it is small enough to read whole. |
@@ -23,12 +23,12 @@ running corpus scripts and the evaluation harness.
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
 | **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
 | **Fetch the base instructions** | A client asks for the base instructions by name, or for the active default when it names none. The active default is the chat prompt an administrator has made active, the same one a single-agent answer in the web app runs under, so switching it changes both. This is how the Claude plugin gets them. A client can instead ask for an area's base instructions: it gets the ones the area names as its default, or the active default when the area names none. They are deliberately **not** sent to a client when it connects, so a connected coding session that is not using the knowledge base never receives them. |
-| **Fetch playbooks as tools** | Two tools hand a client the playbook library directly, for clients that cannot read prompts (the Yvoke plugin for Claude) or whose playbook skills tell the model to fetch the playbook first (Claude Chat and Cowork). One lists the playbooks a user can pick, with each one's version number, tools, code execution, target agent and prototype flag, leaving out the orchestrator and reviewer ones as the chat picker does. The list can be narrowed to one area, and every playbook says which area it belongs to. The other returns one playbook's full text and the same details, by name, for any playbook. Both read the library on every call, so a new, edited or deleted playbook shows at once. An unknown name is refused, naming it. |
+| **Fetch playbooks as tools** | Two tools hand a client the playbook library directly, for clients that cannot read prompts (the Yvoke plugin for Claude) or whose playbook skills tell the model to fetch the playbook first (Claude Chat and Cowork). One lists the playbooks a user can pick, with each one's version number, tools, code execution, target agent and prototype flag, leaving out the orchestrator and reviewer ones as the chat picker does. The list is strictly filtered to the user's authorized areas. The other returns one playbook's full text and details by name; requesting a playbook from an unauthorized area returns *not found*. Both read the library on every call, so a new, edited or deleted playbook shows at once. |
 | **Keep desktop conversations in the account** | The desktop app creates conversations, appends each turn (including the playbook name and version the client ran when a playbook was used), retitles, changes settings and deletes. They appear in the web sidebar marked *Desktop*. Ratings are stored too and appear in the same feedback screens. |
-| **List the areas** | A tool lists every area with its title, description, prototype flag, its default base instructions, playbook and in-depth profile, and the names of its knowledge areas, chat base instructions, pickable playbooks and in-depth profiles. The Yvoke plugin builds its setup choices from it. It reads the tables on every call. |
+| **List the areas** | A tool (`list_areas`) lists every area the user is authorized to access, with its title, description, prototype flag, its default base instructions, playbook and in-depth profile, and the names of its knowledge areas, chat base instructions, pickable playbooks and in-depth profiles. `get_area_overview` returns details for an authorized area; an unauthorized area returns *not found*. |
 | **Same behaviour across surfaces** | The desktop app reads the same playbook library, the same in-depth profiles and the same base instructions the web chat uses, so a change made once reaches both. |
 | **Record in-depth runs the desktop app performed** | The desktop app reports the steps it ran locally (including the playbook name and version for each step), and those runs appear in the admin trace screens alongside web runs. |
-| **Drive imports from automation** | Scripts with a machine key can list documents, upload files, start graph extraction, queue any import, check a job's state and watch its progress. Confluence imports still require an administrator. |
+| **Drive imports from automation** | Scripts with a global machine key (`APP_SECURITY_API_KEY`) or a per-area machine key (`APP_SECURITY_AREA_API_KEYS`) can list documents, upload files, start graph extraction, queue any import, check a job's state and watch its progress. Per-area keys are confined to their designated area. Confluence imports still require an administrator. |
 
 ## How it behaves
 
@@ -45,7 +45,20 @@ running corpus scripts and the evaluation harness.
   the areas, and listing or fetching playbooks as tools are offered on the client connection and never to
   the in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
   one gets nothing for it.
-- **Anyone who can connect reads every knowledge area.** Access control is the sign-in, not the content.
+- **Access control is enforced per area on every request.** When an AI client or desktop app authenticates
+  with a Bearer JWT, Yvoke parses the user's Entra app roles (`AreaAccessContext`). The client is granted
+  access only to areas where the user holds `<Area>.User`, `<Area>.Admin`, or global `User`/`Admin`. A
+  token carrying only the OAuth scope (`SCOPE_mcp.read` / `desktop`) with no recognized Entra app role
+  clears transport authentication so the MCP handshake and tool discovery succeed, but holds access to
+  zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). All
+  tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
+  `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
+  `list_playbooks`, `get_playbook`, `get_system_prompt`) enforce this boundary.
+- **Unauthorized access returns opaque refusal.** Requesting an area, document, chunk, or playbook
+  outside the caller's authorized areas returns an opaque *not found* error, never confirming whether the
+  resource exists in another area.
+- **Desktop sync endpoint filtering.** `/api/chat/v1/areas` returns only authorized areas, and
+  `/api/chat/v1/areas/{area}/package` returns `404 Not Found` if the caller lacks user access to `{area}`.
 - **When a name matches several different things, the client is handed the candidates** to choose between
   instead of a merged answer.
 - **Any result that hit its ceiling says so**, so a client never mistakes a capped list for a complete one.
@@ -107,11 +120,14 @@ running corpus scripts and the evaluation harness.
   still hands back its old text, until the service is restarted. The playbook tools do not have this
   limit.
 - **Progress streams stop after 30 minutes**; clients must ask again.
+- **Per-area API key callers cannot query other areas.** Scripts using a per-area key receive `404 Not Found`
+  if attempting to access collections, documents, or jobs belonging to a different area.
 
 ## Not supported
 
 - Writing to the knowledge base from an AI client. No upload, edit or delete.
-- Restricting an AI client to certain knowledge areas.
+- Restricting an AI client to specific collections or documents within an authorized area (access is granted at the area level).
+- Cross-area multi-search in a single MCP tool call.
 - Asking the user a clarifying question on an AI client's behalf. The question tool is offered to AI
   clients, but each client is expected to put the question to its user itself (the desktop app and the
   Claude plugin do). If the question reaches this service instead, the reply says plainly that nobody was

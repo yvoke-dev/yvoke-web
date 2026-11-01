@@ -10,9 +10,11 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -59,9 +61,18 @@ public class PlaybookValidationController {
 
         try {
             Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
-            if (promptName != null && !promptName.isBlank() && defaultPlaybooks.stream()
-                .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
-                return new ValidationResponse(true, "", null);
+            if (promptName != null && !promptName.isBlank()) {
+                if (defaultPlaybooks.stream()
+                    .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
+                    return new ValidationResponse(true, "", null);
+                }
+                Optional<Playbook> requestedPlaybook =
+                    playbookService.getPlaybook(promptName.trim());
+                if (requestedPlaybook.isPresent() && requestedPlaybook.get().area() != null
+                    && !requestedPlaybook.get().area().isBlank()
+                    && !AreaAccessContext.canAccessUserArea(requestedPlaybook.get().area())) {
+                    return new ValidationResponse(false, "Playbook not found: " + promptName, null);
+                }
             }
 
             LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
@@ -77,7 +88,9 @@ public class PlaybookValidationController {
                 }
             }
             boolean finalShowPrototypes = showPrototypes;
-            List<Playbook> playbooks = playbookService.listSpecializedPlaybooks().stream()
+            List<Playbook> candidatePlaybooks = AreaAccessContext
+                .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
+            List<Playbook> playbooks = candidatePlaybooks.stream()
                 .filter(p -> finalShowPrototypes || !p.prototype())
                 .filter(
                     p -> defaultPlaybooks.stream().noneMatch(dp -> dp.equalsIgnoreCase(p.name())))

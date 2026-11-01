@@ -1,7 +1,10 @@
 package de.palsoftware.yvoke.shared.web.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
@@ -16,11 +19,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 import java.util.stream.IntStream;
@@ -37,6 +46,8 @@ public class AdminControllerTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         jobRepository = mock(JobRepository.class);
         jobService = mock(JobService.class);
         auditLogRepository = mock(AuditLogRepository.class);
@@ -48,6 +59,11 @@ public class AdminControllerTest {
         model = new ConcurrentModel();
     }
 
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     public void testIndexRedirects() {
         assertThat(adminController.index()).isEqualTo("redirect:/admin/documents");
@@ -55,8 +71,9 @@ public class AdminControllerTest {
 
     @Test
     public void testListJobs() {
-        when(jobRepository.listJobs(anyInt(), anyInt())).thenReturn(Collections.emptyList());
-        when(jobRepository.countJobs()).thenReturn(5L);
+        when(jobRepository.listJobs(anyInt(), anyInt(), isNull()))
+            .thenReturn(Collections.emptyList());
+        when(jobRepository.countJobs(isNull())).thenReturn(5L);
 
         String view = adminController.listJobs(0, 20, model);
 
@@ -72,6 +89,7 @@ public class AdminControllerTest {
             UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
             null, Map.of(), null);
         when(jobRepository.findById(id)).thenReturn(Optional.of(mockJob));
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("finance"));
 
         String view = adminController.getJobDetails(id, model);
 
@@ -85,21 +103,22 @@ public class AdminControllerTest {
      */
     @Test
     public void testListJobsExposesQueuedWorkPerKind() {
-        when(jobRepository.listJobs(anyInt(), anyInt())).thenReturn(Collections.emptyList());
-        when(jobRepository.countJobs()).thenReturn(0L);
-        when(jobRepository.listQueuedKinds())
+        when(jobRepository.listJobs(anyInt(), anyInt(), isNull()))
+            .thenReturn(Collections.emptyList());
+        when(jobRepository.countJobs(isNull())).thenReturn(0L);
+        when(jobRepository.listQueuedKinds(isNull()))
             .thenReturn(List.of(new QueuedKindSummary("confluence-page-import:icc-wiki", 616L)));
 
         adminController.listJobs(0, 20, model);
 
         assertThat(model.getAttribute("queuedKinds"))
             .isEqualTo(List.of(new QueuedKindSummary("confluence-page-import:icc-wiki", 616L)));
-        verify(jobRepository).listQueuedKinds();
+        verify(jobRepository).listQueuedKinds(isNull());
     }
 
     @Test
     public void testCancelQueuedJobsReportsTheCountAndAuditsIt() {
-        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+        when(jobRepository.cancelQueued(eq("confluence-page-import:icc-wiki"), isNull()))
             .thenReturn(IntStream.range(0, 616).mapToObj(i -> UUID.randomUUID()).toList());
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
@@ -143,7 +162,7 @@ public class AdminControllerTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         UUID third = UUID.randomUUID();
-        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
+        when(jobRepository.cancelQueued(eq("confluence-page-import:icc-wiki"), isNull()))
             .thenReturn(List.of(first, second, third));
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
@@ -158,7 +177,7 @@ public class AdminControllerTest {
 
     @Test
     public void testCancelQueuedJobsSaysSoWhenNothingWasQueued() {
-        when(jobRepository.cancelQueued("kg-extract")).thenReturn(List.of());
+        when(jobRepository.cancelQueued(eq("kg-extract"), isNull())).thenReturn(List.of());
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
         adminController.cancelQueuedJobs("kg-extract", redirect);
@@ -171,7 +190,8 @@ public class AdminControllerTest {
     public void testCancelQueuedJobsRejectsABlankKindWithoutAuditing() {
         // A blank kind would otherwise mean "every queued job of every kind" — never what the
         // button meant. The repository refuses it; the page must show that, not a 500.
-        when(jobRepository.cancelQueued(" ")).thenThrow(new IllegalArgumentException("blank"));
+        when(jobRepository.cancelQueued(eq(" "), isNull()))
+            .thenThrow(new IllegalArgumentException("blank"));
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
         String view = adminController.cancelQueuedJobs(" ", redirect);
@@ -184,6 +204,7 @@ public class AdminControllerTest {
     @Test
     public void testStopJobPublishesTheNewStatusAndAudits() {
         UUID id = UUID.randomUUID();
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("finance"));
         when(jobRepository.stopJob(id)).thenReturn(1);
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
@@ -198,6 +219,7 @@ public class AdminControllerTest {
     @Test
     public void testStopJobOnATerminalJobIsReportedAsAnError() {
         UUID id = UUID.randomUUID();
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("finance"));
         when(jobRepository.stopJob(id)).thenReturn(0);
         RedirectAttributes redirect = new RedirectAttributesModelMap();
 
@@ -206,6 +228,93 @@ public class AdminControllerTest {
         assertThat(redirect.getFlashAttributes()).containsKey("error");
         verify(jobService, never()).publishSnapshot(id);
         verifyNoInteractions(auditLogRepository);
+    }
+
+    @Test
+    public void testAreaAdminCannotViewJobInUnadministeredArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        UUID id = UUID.randomUUID();
+        IngestionJob mockJob = new IngestionJob(id, ItTestJobHandler.KIND, "sourceRef", List.of(),
+            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
+            null, Map.of(), null);
+        when(jobRepository.findById(id)).thenReturn(Optional.of(mockJob));
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("hr"));
+
+        assertThatThrownBy(() -> adminController.getJobDetails(id, model))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+    }
+
+    @Test
+    public void testAreaAdminCanViewJobInAdministeredArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        UUID id = UUID.randomUUID();
+        IngestionJob mockJob = new IngestionJob(id, ItTestJobHandler.KIND, "sourceRef", List.of(),
+            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
+            null, Map.of(), null);
+        when(jobRepository.findById(id)).thenReturn(Optional.of(mockJob));
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("finance"));
+
+        String view = adminController.getJobDetails(id, model);
+
+        assertThat(view).isEqualTo("admin/job-detail");
+        assertThat(model.getAttribute("job")).isEqualTo(mockJob);
+    }
+
+    @Test
+    public void testAreaAdminCannotStopJobInUnadministeredArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        UUID id = UUID.randomUUID();
+        when(jobRepository.findJobArea(id)).thenReturn(Optional.of("hr"));
+        RedirectAttributes redirect = new RedirectAttributesModelMap();
+
+        assertThatThrownBy(() -> adminController.stopJob(id, redirect))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+        verify(jobRepository, never()).stopJob(any());
+    }
+
+    @Test
+    public void testAreaAdminListJobsScopesToAdministeredArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        when(jobRepository.listJobs(20, 0, Set.of("finance"))).thenReturn(Collections.emptyList());
+        when(jobRepository.countJobs(Set.of("finance"))).thenReturn(1L);
+        when(jobRepository.listQueuedKinds(Set.of("finance"))).thenReturn(Collections.emptyList());
+
+        String view = adminController.listJobs(0, 20, model);
+
+        assertThat(view).isEqualTo("admin/jobs");
+        verify(jobRepository).listJobs(20, 0, Set.of("finance"));
+        verify(jobRepository).countJobs(Set.of("finance"));
+        verify(jobRepository).listQueuedKinds(Set.of("finance"));
+    }
+
+    @Test
+    public void testAreaAdminCancelQueuedJobsScopesToAdministeredArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
+                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+        UUID cancelledId = UUID.randomUUID();
+        when(jobRepository.cancelQueued("confluence-page-import:icc-wiki", Set.of("finance")))
+            .thenReturn(List.of(cancelledId));
+        RedirectAttributes redirect = new RedirectAttributesModelMap();
+
+        String view = adminController.cancelQueuedJobs("confluence-page-import:icc-wiki", redirect);
+
+        assertThat(view).isEqualTo("redirect:/admin/jobs");
+        verify(jobRepository).cancelQueued("confluence-page-import:icc-wiki", Set.of("finance"));
+        verify(jobService).publishSnapshot(cancelledId);
     }
 
     @Test

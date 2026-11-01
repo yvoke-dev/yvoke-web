@@ -2,10 +2,12 @@ package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
+import jakarta.annotation.Nullable;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,8 +112,46 @@ public class AgentRunRepository {
 
     /** Most recent runs first, for the admin trace viewer. */
     public List<AgentRun> findRecent(int limit) {
-        return jdbcClient.sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
-            .param("limit", limit).query(AgentRunRepository::mapRow).list();
+        return findRecent(limit, null);
+    }
+
+    public List<AgentRun> findRecent(int limit, @Nullable Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        if (allowedAreasLower == null) {
+            return jdbcClient.sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
+                .param("limit", limit).query(AgentRunRepository::mapRow).list();
+        }
+        String sql =
+            """
+                SELECT r.id, r.conversation_id, r.message_id, r.assistant_message_id, r.profile_name, r.status,
+                       r.config::text AS config, r.review_rounds, r.final_verdict::text AS final_verdict,
+                       r.prompt_tokens, r.completion_tokens, r.total_tokens, r.cached_tokens, r.thought_tokens,
+                       r.error, r.started_at, r.finished_at
+                FROM agent_runs r
+                LEFT JOIN conversations c ON r.conversation_id = c.id
+                LEFT JOIN orchestrator_profiles op ON r.profile_name = op.name
+                WHERE COALESCE(c.area, op.area) IS NOT NULL
+                  AND LOWER(COALESCE(c.area, op.area)) IN (:allowedAreas)
+                ORDER BY r.started_at DESC LIMIT :limit
+                """;
+        return jdbcClient.sql(sql).param("limit", limit).param("allowedAreas", allowedAreasLower)
+            .query(AgentRunRepository::mapRow).list();
+    }
+
+    public Optional<String> findRunArea(UUID id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT COALESCE(c.area, op.area)
+            FROM agent_runs r
+            LEFT JOIN conversations c ON r.conversation_id = c.id
+            LEFT JOIN orchestrator_profiles op ON r.profile_name = op.name
+            WHERE r.id = :id
+            """;
+        return jdbcClient.sql(sql).param("id", id).query(String.class).optional();
     }
 
     private String toJson(Object value) {

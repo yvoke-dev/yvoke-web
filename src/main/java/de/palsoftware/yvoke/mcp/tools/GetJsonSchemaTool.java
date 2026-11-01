@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -65,6 +66,10 @@ public class GetJsonSchemaTool {
                 .findFirst().orElse(null);
 
             if (matchedCol == null) {
+                return "Error: Collection '" + col + "' does not exist.";
+            }
+            if (matchedCol.area() != null && !matchedCol.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
                 return "Error: Collection '" + col + "' does not exist.";
             }
 

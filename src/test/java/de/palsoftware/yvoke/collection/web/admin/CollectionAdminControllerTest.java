@@ -17,8 +17,15 @@ import static org.mockito.ArgumentMatchers.any;
 
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
@@ -26,10 +33,16 @@ import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The tag-options fragment endpoint, which three admin pages share.
@@ -48,16 +61,26 @@ class CollectionAdminControllerTest {
     private static final List<String> TAGS = List.of("9.3.1", "10.0");
 
     private CollectionService collectionService;
+    private TagService tagService;
     private CollectionAdminController controller;
 
     @BeforeEach
     void setUp() {
         collectionService = mock(CollectionService.class);
-        controller = new CollectionAdminController(collectionService, mock(TagService.class),
+        tagService = mock(TagService.class);
+        controller = new CollectionAdminController(collectionService, tagService,
             TestAreas.withAreas("OIM"));
 
-        when(collectionService.getCollection("OIM - Docs")).thenReturn(
-            Optional.of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null)));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
+        when(collectionService.getCollection("OIM - Docs")).thenReturn(Optional
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null, "OIM")));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     private Model optionsFor(String collectionParam, String targetCollectionParam, String url) {
@@ -114,6 +137,32 @@ class CollectionAdminControllerTest {
         assertThat(model.getAttribute("tags")).isEqualTo(TAGS);
     }
 
+    @Test
+    void getVersionOptions_asAreaAdmin_returnsEmptyForCollectionInUnadministeredArea() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_PINGID"));
+
+        Model model = optionsFor("OIM - Docs", null, "http://localhost:8080/admin/ingest");
+
+        assertThat(model.getAttribute("tags")).isEqualTo(List.of());
+        assertThat(model.getAttribute("versions")).isEqualTo(List.of());
+    }
+
+    @Test
+    void viewCollections_asAreaAdmin_scopesSuggestedTagsToAdministeredCollections() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        when(collectionService.listForAdminUser()).thenReturn(
+            List.of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null, "OIM")));
+        when(collectionService.listAllTags())
+            .thenReturn(List.of("10.0", "9.3.1", "pingid-secret-tag"));
+
+        Model model = new ConcurrentModel();
+        controller.viewCollections(model);
+
+        assertThat(model.getAttribute("allTags")).isEqualTo(List.of("10.0", "9.3.1"));
+    }
+
     /**
      * The add-tag datalist offers the vocabulary already declared across collections, derived from
      * {@code collections.tags}. It used to come from a {@code tags} registry table that only the
@@ -123,6 +172,7 @@ class CollectionAdminControllerTest {
     @Test
     void theCollectionsPageSuggestsEveryTagDeclaredAcrossCollections() {
         when(collectionService.listCollections()).thenReturn(List.of());
+        when(collectionService.listForAdminUser()).thenReturn(List.of());
         when(collectionService.listAllTags()).thenReturn(List.of("10.0", "9.3.1", "content"));
         Model model = new ConcurrentModel();
 
@@ -134,6 +184,9 @@ class CollectionAdminControllerTest {
     /** P1-12: the area chosen on the create form and on a card's move form reaches the service. */
     @Test
     void thePostedAreaReachesCreateAndMove() throws Exception {
+        when(collectionService.findByName("OIM - Docs")).thenReturn(Optional
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null, "OIM")));
+
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mvc.perform(post("/admin/collections").param("name", "Ping - Docs").param("area", "PingID"))
@@ -149,10 +202,13 @@ class CollectionAdminControllerTest {
     /** The messages name the collection and area as stored, not as typed. */
     @Test
     void theMessagesNameTheStoredNames() throws Exception {
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        when(collectionService.findByName("OIM - Docs")).thenReturn(Optional
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", TAGS, null, "OIM")));
         when(collectionService.createCollection(" Ping - Docs ", null, "pingid")).thenReturn(
             new Collection(UUID.randomUUID(), "Ping - Docs", null, List.of(), null, "PingID"));
         when(collectionService.moveCollection("OIM - Docs", "pingid")).thenReturn("PingID");
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mvc.perform(
             post("/admin/collections").param("name", " Ping - Docs ").param("area", "pingid"))
@@ -162,5 +218,104 @@ class CollectionAdminControllerTest {
             post("/admin/collections/area").param("name", "OIM - Docs").param("area", "pingid"))
             .andExpect(
                 flash().attribute("success", "Collection 'OIM - Docs' moved to area 'PingID'."));
+    }
+
+    @Test
+    void createCollection_asAreaAdmin_failsWhenAreaNotAdministered() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(
+            post("/admin/collections").param("name", "Finance - Docs").param("area", "Finance"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createCollection_asAreaAdmin_failsWhenCollectionNameAlreadyExistsInAnotherArea()
+        throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        when(collectionService.findByName("ExistingColl")).thenReturn(Optional.of(
+            new Collection(UUID.randomUUID(), "ExistingColl", null, List.of(), null, "Finance")));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        assertThrows(Exception.class, () -> mvc.perform(
+            post("/admin/collections").param("name", "ExistingColl").param("area", "OIM")));
+    }
+
+    @Test
+    void moveCollection_failsWhenSourceAreaNotAdministered() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        when(collectionService.findByName("Finance - Docs")).thenReturn(Optional.of(
+            new Collection(UUID.randomUUID(), "Finance - Docs", null, List.of(), null, "Finance")));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(
+            post("/admin/collections/area").param("name", "Finance - Docs").param("area", "OIM"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void moveCollection_failsWhenTargetAreaNotAdministered() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        when(collectionService.findByName("OIM - Docs")).thenReturn(Optional
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of(), null, "OIM")));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "Finance"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void moveCollection_succeedsWhenBothAreasAdministered() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("user",
+            "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM", "AREA_ADMIN_SECURITY"));
+        when(collectionService.findByName("OIM - Docs")).thenReturn(Optional
+            .of(new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of(), null, "OIM")));
+        when(collectionService.moveCollection("OIM - Docs", "Security")).thenReturn("Security");
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(
+            post("/admin/collections/area").param("name", "OIM - Docs").param("area", "Security"))
+            .andExpect(status().is3xxRedirection()).andExpect(
+                flash().attribute("success", "Collection 'OIM - Docs' moved to area 'Security'."));
+    }
+
+    @Test
+    void addCollectionTag_failsWhenCollectionNotAdministered() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        UUID colId = UUID.randomUUID();
+        when(collectionService.findByIdForAdmin(colId)).thenReturn(Optional.empty());
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        assertThrows(Exception.class, () -> mvc.perform(post("/admin/collections/add-tag")
+            .param("collectionId", colId.toString()).param("tag", "v1")));
+    }
+
+    @Test
+    void addCollectionTag_succeedsWhenCollectionAdministered() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        UUID colId = UUID.randomUUID();
+        when(collectionService.findByIdForAdmin(colId)).thenReturn(
+            Optional.of(new Collection(colId, "OIM - Docs", null, List.of(), null, "OIM")));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/admin/collections/add-tag").param("collectionId", colId.toString())
+            .param("tag", "v1")).andExpect(status().is3xxRedirection())
+            .andExpect(flash().attribute("success", "Tag added successfully."));
+
+        verify(tagService).addTagToCollection(colId, "v1");
     }
 }

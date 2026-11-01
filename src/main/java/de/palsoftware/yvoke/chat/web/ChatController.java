@@ -10,11 +10,13 @@ import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -111,7 +113,8 @@ public class ChatController {
         boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
 
         List<OrchestratorProfileOption> orchestratorProfiles =
-            new ArrayList<>(orchestratorProfileService.listProfileOptions());
+            new ArrayList<>(AreaAccessContext.filterByUserArea(
+                orchestratorProfileService.listProfileOptions(), OrchestratorProfileOption::area));
         String currentProfile = (String) conversation.settings()
             .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
         if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
@@ -154,7 +157,8 @@ public class ChatController {
             (String) conversation.settings().get(ConversationSetting.MODEL.getValue())));
         model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
-        model.addAttribute("prompts", playbookService.listSpecializedPlaybooks());
+        model.addAttribute("prompts", AreaAccessContext
+            .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area));
         model.addAttribute("defaultPlaybooks", playbookService.listDefaultPlaybookNames());
         model.addAttribute("isReadOnly", isReadOnly);
         model.addAttribute("playbookValidationEnabled",
@@ -244,9 +248,23 @@ public class ChatController {
                 "Orchestrator profile cannot be changed once a conversation has started.");
         }
         if (!selected.isEmpty()) {
-            boolean exists = (orchestratorProfileService != null
-                && orchestratorProfileService.getProfile(selected).isPresent())
-                || orchestratorProperties.profile(selected).isPresent();
+            boolean exists = false;
+            if (orchestratorProfileService != null) {
+                Optional<OrchestratorProfile> profileOpt =
+                    orchestratorProfileService.getProfile(selected);
+                if (profileOpt.isPresent()) {
+                    OrchestratorProfile profile = profileOpt.get();
+                    if (profile.area() != null && !profile.area().isBlank()
+                        && !AreaAccessContext.canAccessUserArea(profile.area())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Unknown orchestrator profile: " + selected);
+                    }
+                    exists = true;
+                }
+            }
+            if (!exists && orchestratorProperties.profile(selected).isPresent()) {
+                exists = true;
+            }
             if (!exists) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Unknown orchestrator profile: " + selected);

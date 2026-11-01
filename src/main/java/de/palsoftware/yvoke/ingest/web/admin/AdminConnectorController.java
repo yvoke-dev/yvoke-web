@@ -1,10 +1,16 @@
 package de.palsoftware.yvoke.ingest.web.admin;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceService;
+import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceView;
+import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,15 +48,22 @@ public class AdminConnectorController {
      */
     @GetMapping("/connectors")
     public String getConnectors(Model model) {
-        model.addAttribute("instances", instanceService.listInstances());
-        model.addAttribute("collections", collectionService.listCollections());
+        List<Collection> allowedCollections = AreaAccessContext
+            .filterByAdminArea(collectionService.listCollections(), Collection::area);
+        Set<String> allowedCollectionNames =
+            allowedCollections.stream().map(Collection::name).collect(Collectors.toSet());
+        List<ConfluenceInstanceView> allowedInstances = instanceService.listInstances().stream()
+            .filter(i -> allowedCollectionNames.contains(i.targetCollection())).toList();
+
+        model.addAttribute("instances", allowedInstances);
+        model.addAttribute("collections", allowedCollections);
         model.addAttribute("tags", List.of());
         model.addAttribute("versions", List.of());
         // A Confluence crawl has no per-run form, so the summarize prompt is per-instance config.
         // Offered as a list rather than free text: the enqueue validator rejects a name that does
         // not resolve, and typing one by hand is the only way to hit that.
-        model.addAttribute("summarizePrompts",
-            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE));
+        model.addAttribute("summarizePrompts", AreaAccessContext.filterByAdminArea(
+            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE), SystemPrompt::area));
         return "admin/connectors";
     }
 }

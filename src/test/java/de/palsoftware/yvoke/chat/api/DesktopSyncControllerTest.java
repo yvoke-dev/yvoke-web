@@ -31,11 +31,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaMembers;
+import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.area.core.AreaWithMembers;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
 import de.palsoftware.yvoke.shared.user.service.UserService;
@@ -53,6 +60,7 @@ class DesktopSyncControllerTest {
     private PlaybookService playbookService;
     private OrchestratorProperties orchestratorProperties;
     private DesktopOrchestratorRunService orchestratorRunService;
+    private AreaService areaService;
     private DesktopSyncController controller;
 
     private final User testUser =
@@ -60,15 +68,23 @@ class DesktopSyncControllerTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         syncService = mock(DesktopSyncService.class);
         systemPromptService = mock(SystemPromptService.class);
         playbookService = mock(PlaybookService.class);
+        areaService = mock(AreaService.class);
         orchestratorProperties = new OrchestratorProperties(2, 8, null,
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
                 List.of("oim-access-governance", "oim-developer-api"), null, null, null)));
         orchestratorRunService = mock(DesktopOrchestratorRunService.class);
         controller = new DesktopSyncController(syncService, systemPromptService, playbookService,
-            orchestratorProperties, orchestratorRunService);
+            orchestratorProperties, null, orchestratorRunService, areaService);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -517,5 +533,91 @@ class DesktopSyncControllerTest {
         assertThat(dtos).hasSize(1);
         assertThat(dtos.get(0).playbook()).isEqualTo("oim-specialist");
         assertThat(dtos.get(0).playbookVersion()).isEqualTo(2);
+    }
+
+    @Test
+    void listAreasReturnsAccessibleAreas() {
+        when(areaService.listAccessibleForCurrentUser()).thenReturn(List.of(new Area("security",
+            "Security", "Security area", false, null, null, null, null, null)));
+
+        List<AreaDto> result = controller.listAreas();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).name()).isEqualTo("security");
+    }
+
+    @Test
+    void getAreaPackageReturnsMembersForAccessibleArea() {
+        Area area = new Area("security", "Security", "Security area", false, "prompt1", "pb1",
+            "prof1", null, null);
+        AreaMembers members =
+            new AreaMembers(List.of("prompt1"), List.of("col1"), List.of("pb1"), List.of("prof1"));
+        when(areaService.findByNameForUser("security")).thenReturn(Optional.of(area));
+        when(areaService.findAreaWithMembers("security"))
+            .thenReturn(Optional.of(new AreaWithMembers(area, members)));
+
+        AreaPackageDto pkg = controller.getAreaPackage("security");
+
+        assertThat(pkg.name()).isEqualTo("security");
+        assertThat(pkg.playbooks()).containsExactly("pb1");
+        assertThat(pkg.collections()).containsExactly("col1");
+    }
+
+    @Test
+    void getAreaPackageThrows404ForUnauthorizedOrMissingArea() {
+        when(areaService.findByNameForUser("finance")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> controller.getAreaPackage("finance"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void listPlaybooksFiltersByAreaWhenRestricted() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+        Playbook pbSec = new Playbook("sec-pb", "Sec", "desc", "tmpl", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "security");
+        Playbook pbFin = new Playbook("fin-pb", "Fin", "desc", "tmpl", List.of(), false,
+            "specialist", false, Instant.now(), Instant.now(), false, "finance");
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(pbSec, pbFin));
+
+        List<PlaybookDto> playbooks = controller.listPlaybooks();
+
+        assertThat(playbooks).extracting(PlaybookDto::name).containsExactly("sec-pb");
+    }
+
+    @Test
+    void listOrchestratorProfilesFiltersByAreaWhenRestricted() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+        OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
+        DesktopSyncController dbBacked =
+            new DesktopSyncController(syncService, systemPromptService, playbookService,
+                orchestratorProperties, profileService, orchestratorRunService, areaService);
+        OrchestratorProfile profSec = new OrchestratorProfile("sec-prof", 2, 8, "o", "r", List.of(),
+            null, null, null, null, null, null, false, null, null, "security");
+        OrchestratorProfile profFin = new OrchestratorProfile("fin-prof", 2, 8, "o", "r", List.of(),
+            null, null, null, null, null, null, false, null, null, "finance");
+        when(profileService.listAllProfiles()).thenReturn(List.of(profSec, profFin));
+
+        List<OrchestratorProfileDto> profiles = dbBacked.listOrchestratorProfiles();
+
+        assertThat(profiles).extracting(OrchestratorProfileDto::name).containsExactly("sec-prof");
+    }
+
+    @Test
+    void getSystemPromptDegradesToEmptyForUnauthorizedArea() {
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+        SystemPrompt prompt = new SystemPrompt("finance-chat", SystemPromptType.CHAT,
+            "Finance instructions", "desc", Instant.now(), Instant.now(), false, "finance");
+        when(systemPromptService.findChatPrompt("finance-chat")).thenReturn(Optional.of(prompt));
+
+        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("finance-chat");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("systemPrompt", "");
     }
 }

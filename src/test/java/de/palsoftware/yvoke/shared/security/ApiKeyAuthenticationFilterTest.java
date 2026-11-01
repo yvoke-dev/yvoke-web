@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.List;
+import java.util.Map;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import java.io.IOException;
@@ -137,7 +138,9 @@ class ApiKeyAuthenticationFilterTest {
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
-        assertThat(auth.getAuthorities()).extracting("authority").containsExactly("ROLE_INGEST");
+        assertThat(auth.getName()).isEqualTo("api-key-client");
+        assertThat(auth.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_*");
         verify(chain).doFilter(request, response);
         verify(response, never()).setStatus(anyInt());
     }
@@ -183,11 +186,136 @@ class ApiKeyAuthenticationFilterTest {
         assertThat(auth).isNotNull();
         assertThat(auth.getName())
             .as("the key must authenticate as its own principal, not adopt the browser session's")
-            .isEqualTo("api-user");
+            .isEqualTo("api-key-client");
         assertThat(auth.getAuthorities()).extracting("authority")
             .as("the ambient ROLE_ADMIN must not survive an API-key request")
-            .containsExactly("ROLE_INGEST");
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_*");
         verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void validAreaApiKeyAuthenticatesWithScopedAreaAuthority() throws Exception {
+        ApiKeyAuthenticationFilter areaFilter =
+            new ApiKeyAuthenticationFilter("X-API-Key", null, Map.of("OIM", "oim-secret"));
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(request.getHeader("X-API-Key")).thenReturn("oim-secret");
+
+        areaFilter.doFilter(request, response, chain);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getName()).isEqualTo("api-key-client:OIM");
+        assertThat(auth.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_OIM");
+        verify(chain).doFilter(request, response);
+        verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void areaNameInAuthorityIsNormalizedToUpperCase() throws Exception {
+        ApiKeyAuthenticationFilter areaFilter = new ApiKeyAuthenticationFilter("X-API-Key", null,
+            Map.of("oim_finance", "finance-secret"));
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(request.getHeader("X-API-Key")).thenReturn("finance-secret");
+
+        areaFilter.doFilter(request, response, chain);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getName()).isEqualTo("api-key-client:oim_finance");
+        assertThat(auth.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_OIM_FINANCE");
+        verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void validAreaApiKeyDowngradesAmbientAdminSession() throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("ambient-admin", "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        ApiKeyAuthenticationFilter areaFilter =
+            new ApiKeyAuthenticationFilter("X-API-Key", null, Map.of("OIM", "oim-secret"));
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(request.getHeader("X-API-Key")).thenReturn("oim-secret");
+
+        areaFilter.doFilter(request, response, chain);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getName()).isEqualTo("api-key-client:OIM");
+        assertThat(auth.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_OIM");
+        verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void bothGlobalAndAreaKeysActiveTogether() throws Exception {
+        ApiKeyAuthenticationFilter dualFilter = new ApiKeyAuthenticationFilter("X-API-Key",
+            "global-secret", Map.of("OIM", "oim-secret"));
+
+        // 1. Global key
+        HttpServletRequest reqGlobal = mock(HttpServletRequest.class);
+        HttpServletResponse resGlobal = mock(HttpServletResponse.class);
+        FilterChain chainGlobal = mock(FilterChain.class);
+        when(reqGlobal.getHeader("X-API-Key")).thenReturn("global-secret");
+        dualFilter.doFilter(reqGlobal, resGlobal, chainGlobal);
+        Authentication authGlobal = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authGlobal.getName()).isEqualTo("api-key-client");
+        assertThat(authGlobal.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_*");
+
+        SecurityContextHolder.clearContext();
+
+        // 2. Area key
+        HttpServletRequest reqArea = mock(HttpServletRequest.class);
+        HttpServletResponse resArea = mock(HttpServletResponse.class);
+        FilterChain chainArea = mock(FilterChain.class);
+        when(reqArea.getHeader("X-API-Key")).thenReturn("oim-secret");
+        dualFilter.doFilter(reqArea, resArea, chainArea);
+        Authentication authArea = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authArea.getName()).isEqualTo("api-key-client:OIM");
+        assertThat(authArea.getAuthorities()).extracting("authority")
+            .containsExactlyInAnyOrder("ROLE_INGEST", "AREA_INGEST_OIM");
+
+        SecurityContextHolder.clearContext();
+
+        // 3. Wrong key
+        HttpServletRequest reqWrong = mock(HttpServletRequest.class);
+        HttpServletResponse resWrong = mock(HttpServletResponse.class);
+        FilterChain chainWrong = mock(FilterChain.class);
+        when(reqWrong.getHeader("X-API-Key")).thenReturn("wrong");
+        StringWriter sw = new StringWriter();
+        when(resWrong.getWriter()).thenReturn(new PrintWriter(sw));
+        dualFilter.doFilter(reqWrong, resWrong, chainWrong);
+        verify(resWrong).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(sw.toString()).isEqualTo("Invalid API Key");
+        verify(chainWrong, never()).doFilter(any(), any());
+    }
+
+    @Test
+    void invalidKeyAgainstAreaKeysRejected() throws Exception {
+        ApiKeyAuthenticationFilter areaFilter =
+            new ApiKeyAuthenticationFilter("X-API-Key", null, Map.of("OIM", "oim-secret"));
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(request.getHeader("X-API-Key")).thenReturn("wrong-key");
+        StringWriter sw = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(sw));
+
+        areaFilter.doFilter(request, response, chain);
+
+        verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(sw.toString()).isEqualTo("Invalid API Key");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     @Test

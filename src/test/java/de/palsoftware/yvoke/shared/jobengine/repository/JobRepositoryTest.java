@@ -287,4 +287,35 @@ public class JobRepositoryTest {
         when(statementSpec.query(UUID.class)).thenReturn(mappedQuerySpec);
         when(mappedQuerySpec.optional()).thenReturn(insertReturns, lookupReturns);
     }
+
+    @Test
+    void testFindJobArea() {
+        UUID jobId = UUID.randomUUID();
+        JdbcClient.StatementSpec statementSpec = mock(JdbcClient.StatementSpec.class);
+        @SuppressWarnings("unchecked")
+        JdbcClient.MappedQuerySpec<String> querySpec = mock(JdbcClient.MappedQuerySpec.class);
+        when(jdbcClient.sql(contains("FROM ingestion_jobs j"))).thenReturn(statementSpec);
+        when(statementSpec.param("jobId", jobId)).thenReturn(statementSpec);
+        when(statementSpec.query(String.class)).thenReturn(querySpec);
+        when(querySpec.optional()).thenReturn(Optional.of("security"));
+
+        Optional<String> area = jobRepository.findJobArea(jobId);
+
+        assertThat(area).contains("security");
+    }
+
+    @Test
+    void testFindCollectionArea() {
+        JdbcClient.StatementSpec statementSpec = mock(JdbcClient.StatementSpec.class);
+        @SuppressWarnings("unchecked")
+        JdbcClient.MappedQuerySpec<String> querySpec = mock(JdbcClient.MappedQuerySpec.class);
+        when(jdbcClient.sql(contains("FROM collections"))).thenReturn(statementSpec);
+        when(statementSpec.param("collectionName", "OIM")).thenReturn(statementSpec);
+        when(statementSpec.query(String.class)).thenReturn(querySpec);
+        when(querySpec.optional()).thenReturn(Optional.of("OIM"));
+
+        Optional<String> area = jobRepository.findCollectionArea("OIM");
+
+        assertThat(area).contains("OIM");
+    }
 }

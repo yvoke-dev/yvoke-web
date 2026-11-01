@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.util.List;
 import java.util.Objects;
@@ -96,6 +97,11 @@ public class DesktopOrchestratorRunService {
         Conversation conversation = conversationRepository.findById(conversationId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + conversationId));
+        if (conversation.area() != null && !conversation.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + conversationId);
+        }
         if (!Objects.equals(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);
         }

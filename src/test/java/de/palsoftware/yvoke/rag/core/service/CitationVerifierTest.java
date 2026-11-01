@@ -393,4 +393,43 @@ public class CitationVerifierTest {
         assertThat(cited.covers(REAL_CHUNK_ID)).isTrue();
         assertThat(cited.covers(REAL_DOCUMENT_ID)).isTrue();
     }
+
+    @Test
+    void testCheckCitationsNullAllowedAreasDelegatesToSingleArgRepositoryMethod() {
+        List<CitationVerifier.CitationCheckResult> results =
+            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), null);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
+        verify(chunkRepository).findExistingIds(Set.of(REAL_CHUNK_ID));
+        verify(chunkRepository, never()).findExistingIds(anyCollection(), any());
+    }
+
+    @Test
+    void testCheckCitationsWithAllowedAreasDelegatesToTwoArgRepositoryMethods() {
+        Set<String> allowedAreas = Set.of("finance");
+        when(chunkRepository.findExistingIds(eq(Set.of(REAL_CHUNK_ID)), eq(allowedAreas)))
+            .thenReturn(Set.of(REAL_CHUNK_ID));
+
+        List<CitationVerifier.CitationCheckResult> results =
+            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), allowedAreas);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
+        verify(chunkRepository).findExistingIds(Set.of(REAL_CHUNK_ID), allowedAreas);
+    }
+
+    @Test
+    void testCheckCitationsCrossAreaIsReportedAsFabricated() {
+        Set<String> userAreas = Set.of("finance");
+        when(chunkRepository.findExistingIds(eq(Set.of(REAL_CHUNK_ID)), eq(userAreas)))
+            .thenReturn(Set.of());
+
+        List<CitationVerifier.CitationCheckResult> results =
+            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), userAreas);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getStatus())
+            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+    }
 }

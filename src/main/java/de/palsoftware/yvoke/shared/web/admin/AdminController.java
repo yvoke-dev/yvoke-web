@@ -7,8 +7,11 @@ import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
@@ -60,12 +63,13 @@ public class AdminController {
     public String listJobs(@RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size, Model model) {
         log.info("AdminController: Accessing Jobs view");
-        List<IngestionJob> jobs = jobRepository.listJobs(size, page * size);
-        long totalCount = jobRepository.countJobs();
+        Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
+        List<IngestionJob> jobs = jobRepository.listJobs(size, page * size, areas);
+        long totalCount = jobRepository.countJobs(areas);
         int totalPages = (int) Math.ceil((double) totalCount / size);
 
         model.addAttribute("jobs", jobs);
-        model.addAttribute("queuedKinds", jobRepository.listQueuedKinds());
+        model.addAttribute("queuedKinds", jobRepository.listQueuedKinds(areas));
         model.addAttribute("currentPage", page);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
@@ -77,6 +81,10 @@ public class AdminController {
     public String getJobDetails(@PathVariable UUID id, Model model) {
         IngestionJob job = jobRepository.findById(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found: " + id));
+        Optional<String> area = jobRepository.findJobArea(id);
+        if (!AreaAccessContext.canAdministerArea(area.orElse(null))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found: " + id);
+        }
         model.addAttribute("job", job);
         List<JobStep> steps = jobService.getStepsForKind(job.kind());
         model.addAttribute("steps", steps);
@@ -86,6 +94,10 @@ public class AdminController {
 
     @PostMapping("/jobs/{id}/stop")
     public String stopJob(@PathVariable UUID id, RedirectAttributes redirectAttributes) {
+        Optional<String> area = jobRepository.findJobArea(id);
+        if (!AreaAccessContext.canAdministerArea(area.orElse(null))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found: " + id);
+        }
         int rows = jobRepository.stopJob(id);
 
         if (rows > 0) {
@@ -105,15 +117,17 @@ public class AdminController {
      * left alone (stop those individually).
      *
      * <p>
-     * {@code /admin/**} is already {@code hasRole("ADMIN")} in the filter chain, which is where
-     * authorization for this endpoint lives.
+     * {@code /admin/**} admits {@code ROLE_ADMIN} and {@code ROLE_AREA_ADMIN} in the filter chain,
+     * and {@link AreaAccessContext#allowedAdminAreasLower()} scopes cancellation to the caller's
+     * administered areas (all areas for Superadmin).
      */
     @PostMapping("/jobs/cancel-queued")
     public String cancelQueuedJobs(@RequestParam String kind,
         RedirectAttributes redirectAttributes) {
         List<UUID> cancelledIds;
         try {
-            cancelledIds = jobRepository.cancelQueued(kind);
+            Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
+            cancelledIds = jobRepository.cancelQueued(kind, areas);
         } catch (IllegalArgumentException e) {
             redirectAttributes.addFlashAttribute("error", "Choose a job kind to cancel.");
             return "redirect:/admin/jobs";

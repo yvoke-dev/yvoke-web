@@ -19,6 +19,11 @@ public class MockOidcUser implements OidcUser {
 
     public MockOidcUser(String entraOid, String email, String displayName,
         List<GrantedAuthority> authorities) {
+        this(entraOid, email, displayName, authorities, List.of());
+    }
+
+    public MockOidcUser(String entraOid, String email, String displayName,
+        List<GrantedAuthority> authorities, List<String> roles) {
         this.displayName = displayName;
         this.authorities = authorities;
 
@@ -26,7 +31,9 @@ public class MockOidcUser implements OidcUser {
         claims.put("sub", entraOid);
         claims.put("oid", entraOid);
         claims.put("preferred_username", email);
+        claims.put("email", email);
         claims.put("name", displayName);
+        claims.put("roles", roles != null ? List.copyOf(roles) : List.of());
         this.idToken = new OidcIdToken("mock-token-value", Instant.now(),
             Instant.now().plusSeconds(3600), claims);
     }

@@ -15,6 +15,8 @@ metadata:
 #   kubectl exec deploy/yvoke-app -- printenv AI_MODEL_ROUTES
 data:
   # ── Authentication ─────────────────────────────────────────────────────────────────────────
+  # Machine-to-machine API keys (APP_SECURITY_API_KEY and optional APP_SECURITY_AREA_API_KEYS)
+  # live in secrets/secret.sops.yaml.
   APP_SECURITY_MOCK: "false"
   ENTRA_TENANT_ID: "b0b1499f-1764-4eb8-855b-a5658b219405"
   ENTRA_CLIENT_ID: "a1824d0a-79eb-4dde-8c0b-242dde321967"

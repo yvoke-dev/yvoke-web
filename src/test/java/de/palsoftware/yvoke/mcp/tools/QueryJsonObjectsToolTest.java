@@ -10,10 +10,15 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.time.OffsetDateTime;
 import java.util.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class QueryJsonObjectsToolTest {
 
@@ -420,6 +425,11 @@ public class QueryJsonObjectsToolTest {
             "the extra probe row leaked into the table");
     }
 
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     public void testGroupedCountsBelowTheCapAreNotLabelledAsTruncated() {
         when(jsonObjectService.countGroupedObjects(any(), any(), eq("op"), any()))
@@ -431,6 +441,23 @@ public class QueryJsonObjectsToolTest {
         assertFalse(output.contains("more groups exist"),
             "a complete grouping was labelled truncated:\n" + output);
         assertTrue(output.contains("g0"));
+    }
+
+    @Test
+    public void testUnauthorizedCollectionAreaReturnsOpaqueNotFound() {
+        Collection pingCol = new Collection(UUID.randomUUID(), "Ping - JSON", "Ping JSON",
+            List.of(), OffsetDateTime.now(), "PingID");
+        when(collectionService.listCollections()).thenReturn(List.of(pingCol));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        String output = queryJsonObjectsTool.queryJsonObjects("Ping - JSON", null, null, "role",
+            null, null, null, null);
+
+        assertEquals("Error: Collection 'Ping - JSON' does not exist.", output);
+        verifyNoInteractions(jsonObjectService);
     }
 
 }

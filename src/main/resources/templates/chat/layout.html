@@ -244,7 +244,7 @@
                 </details>
             </div>
             
-            <div sec:authorize="hasRole('ADMIN')" class="admin-switch-container">
+            <div sec:authorize="hasAnyRole('ADMIN', 'AREA_ADMIN')" class="admin-switch-container">
                 <a th:href="@{/admin/documents}" class="btn btn-primary admin-switch-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -260,7 +260,8 @@
                     <span class="user-name" th:text="${@userService.getCurrentUserDisplayName()}">User Name</span>
                     <span class="user-role-badge">
                         <span sec:authorize="hasRole('ADMIN')">Admin</span>
-                        <span sec:authorize="!hasRole('ADMIN') and hasRole('USER')">User</span>
+                        <span sec:authorize="!hasRole('ADMIN') and hasRole('AREA_ADMIN')">Area Admin</span>
+                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and hasRole('USER')">User</span>
                     </span>
                     <!-- Which build is running. Shown to every signed-in user, so a report about an
                          answer can name the build that produced it. Not on the login page: that is

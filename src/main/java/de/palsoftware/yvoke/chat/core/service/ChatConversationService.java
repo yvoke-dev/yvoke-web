@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -134,7 +136,8 @@ public class ChatConversationService {
     public List<Conversation> listAllConversations(int limit, int offset) {
         checkChatEnabled();
         UUID userId = userService.getCurrentUser().map(User::id).orElse(null);
-        return conversationRepository.listAll(userId, limit, offset);
+        Set<String> allowedAreasLower = AreaAccessContext.allowedUserAreasLower().orElse(null);
+        return conversationRepository.listAll(userId, limit, offset, allowedAreasLower);
     }
 
     public Optional<Conversation> getConversation(UUID id) {
@@ -281,6 +284,11 @@ public class ChatConversationService {
     }
 
     public void verifyConversationOwnership(Conversation conversation, boolean readOnlyAllowed) {
+        if (conversation.area() != null && !conversation.area().isBlank()
+            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + conversation.id());
+        }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         if (Objects.equals(conversation.userId(), currentUserId)) {
             return;
@@ -290,8 +298,9 @@ public class ChatConversationService {
                 return;
             }
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean isAdmin = auth != null && auth.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            boolean isAdmin = auth != null
+                && (AreaAccessContext.isSuperAdmin(auth) || (conversation.area() != null
+                    && AreaAccessContext.canAdministerArea(auth, conversation.area())));
             if (isAdmin) {
                 return;
             }

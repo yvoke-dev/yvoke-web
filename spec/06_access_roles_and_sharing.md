@@ -3,8 +3,8 @@
 **What it is for.** Who can sign in, what each role unlocks, who may read a given conversation, and how a
 conversation is shared. Every other part of the product sits behind it.
 
-**Who uses it.** Everyone: staff asking questions, administrators running the knowledge base, and
-automation or AI coding tools connecting on a company account or a machine key.
+**Who uses it.** Everyone: staff asking questions within authorized areas, administrators running knowledge
+areas, and automation or AI coding tools connecting on a company account or a machine key.
 
 ## What you can do
 
@@ -12,39 +12,45 @@ automation or AI coding tools connecting on a company account or a machine key.
 | --- | --- |
 | **Sign in with the company account** | People reach Yvoke through the company's Microsoft sign-in; there is no separate Yvoke password. Administrators land on the admin console, everyone else on chat, and a deep link takes you where you originally asked for. |
 | **Sign out** | Ends the session for good and shows a confirmation page. Returning requires signing in again — closing the browser alone is not the same as signing out. |
-| **Simulated sign-in for demos** | Test and demo installations can offer a simulated sign-in with ready-made user and administrator profiles. It cannot be switched on for the live service. |
-| **Roles come from the company directory** | Whether someone is a user or an administrator is decided centrally, not inside Yvoke. An administrator automatically has full user access too. |
+| **Simulated sign-in for demos and local testing** | Test and demo installations can offer simulated sign-in supporting Global User, Superadmin, dynamic per-area roles (`<Area>.User`, `<Area>.Admin`), and multi-role selection. It cannot be switched on for the live service. |
+| **Roles come from the company directory** | Four logical role levels are derived from Microsoft Entra ID `roles` claims: Superadmin (`Admin`), Global User (`User`), Area Admin (`<Area>.Admin`), and Area User (`<Area>.User`). Multi-role union allows combining roles, while users without recognized role claims are denied by default. |
 | **Conversations are private by default** | A conversation belongs to whoever started it. Nobody else sees it, and nobody else can open it — unless the owner shares it, or an administrator deliberately opens it through the admin console. |
-| **Share with everyone** | Adding the folder tag `public` publishes it to every signed-in user, in a *Public Conversations* folder. Removing the tag un-shares it immediately. |
+| **Share with colleagues in an area** | Adding the folder tag `public` publishes the conversation to users authorized for that conversation's knowledge area, in a *Public Conversations* folder. Removing the tag un-shares it immediately. |
 | **Read-only view of a shared conversation** | A viewer sees the whole history with a *Shared* badge and a banner saying it is read-only. The message box, tag controls and delete button are hidden. |
 | **Viewers can reveal reasoning for themselves** | Someone reading a shared conversation can toggle *Show thinking & tools*. The choice applies only to them and never changes the owner's settings. |
-| **Administrators can read any conversation** | A *User Conversations* page lists every conversation with owner name and email, title, source and timestamps, each linking to the full thread. |
-| **Administrators unlock the admin console** | Knowledge areas, documents, records, the graph, playbooks, profiles, prompts, imports, connectors, agent runs, jobs, user conversations, cost monitoring, model pricing, search testing, logs, the audit trail and feedback. Regular users see none of it. |
-| **Access from AI coding tools** | An agentic IDE connects on the same company account and reads the same knowledge base, as that person. Setup is the server address plus a sign-in. |
-| **Machine access for automation** | Scripts authenticate with a shared machine key. It unlocks importing content, running jobs and reading documents — and nothing else: no chat, no admin console. It is one shared key, so every script has the same identity. |
+| **Administrators inspect area conversations** | Superadmins can inspect all conversations; Area Admins can review user conversations, message feedback, and execution traces strictly within their administered areas. |
+| **Administrators unlock the admin console** | Knowledge areas, documents, records, the graph, playbooks, profiles, prompts, imports, connectors, agent runs, jobs, user conversations, search testing, logs, and feedback. Superadmins also access cost monitoring, model pricing, audit trail, area creation/deletion, and global prompt activation. Regular users see none of it. |
+| **Access from AI coding tools** | An agentic IDE connects on the same company account and reads knowledge areas authorized for that user. Setup is the server address plus a sign-in. |
+| **Machine access for automation** | Scripts authenticate with a global machine key (`APP_SECURITY_API_KEY`) or per-area machine keys (`APP_SECURITY_AREA_API_KEYS`). Keys unlock importing content, running jobs, and deleting documents within their authorized area. |
 | **Chat can be switched off** | When web chat is off, chat pages say so while the admin console, the AI-client connection and the automation interfaces keep working. Useful during incidents or cost freezes. |
 
 ## How it behaves
 
 - **Administrators may read, never write.** An administrator opening someone else's conversation cannot
   post, rate, stop, retag or delete. Nothing an administrator does can alter another person's history.
-- **Sharing is all-or-nothing.** No per-person, per-team or external-link sharing. Private, or visible to
-  every signed-in user — with no confirmation step and no notification to anyone.
+- **Sharing is scoped to the conversation's area.** Adding `public` publishes the conversation only to
+  users authorized for that area. Unscoped conversations (`area IS NULL`) are visible to any authenticated
+  user until locked to an area on turn 1.
 - **⚠ `public` is a reserved folder name.** Folder names are free text, so typing "public" as an ordinary
-  folder name **silently shares that conversation with everyone in the company**. Nothing warns the user.
+  folder name **silently shares that conversation with users authorized for that area**. Nothing warns the user.
 - **A shared conversation publishes its other folder names.** Once shared, its remaining folder names
-  appear in every user's folder-name suggestions — so a folder named after a customer becomes visible to
-  all.
+  appear in folder-name suggestions for users with access to that area.
 - **Automation credentials always win.** If an administrator uses a tool that carries the machine key,
   that work runs as the machine and loses administrator rights — which looks like a permissions bug.
 - **Connector imports are administrator-only.** A regular user or machine-key caller is refused.
 - **⚠ Conversation access is not audited.** The audit trail records content actions such as imports and
   deletions. **Opening or reading another person's conversation leaves no record anywhere.**
-- **Refusals are honest about existence.** A link to a conversation that does not exist reports *not
-  found*; a private one that does exist is refused as *access denied* — which confirms to the link holder
-  that it exists.
-- **Desktop app access is owner-only.** It lists and opens only conversations you own; sharing and
-  administrator reading are web-only.
+- **Refusals are opaque ("Not Found").** Attempting to open, export, or trace a conversation, citation,
+  document, playbook, or prompt belonging to an unauthorized area returns an opaque *not found* (`404`),
+  never disclosing whether the target resource exists. List endpoints silently filter out unauthorized items.
+- **Desktop app access is owner-only and area-scoped.** It lists and opens only conversations you own.
+  Area synchronization (`/api/chat/v1/areas`) lists only areas the user is authorized to access, and
+  downloading an area package for an unauthorized area returns `404 Not Found`.
+- **Machine keys are partitioned per area.** External automation scripts can use area-specific API keys
+  configured in `APP_SECURITY_AREA_API_KEYS`. A per-area key cannot write to, inspect jobs in, or delete
+  documents from any other area. Constant-time key comparison prevents timing leaks.
+- **Playbooks, profiles, and prompts are area-scoped.** Users and connected AI clients can discover and
+  read only playbooks and profiles belonging to areas they are authorized to access.
 
 ## Limits
 
@@ -69,6 +75,11 @@ automation or AI coding tools connecting on a company account or a machine key.
   and the widget silently keeps its previous state.
 - **Sharing has no expiry and no viewer list.** It stays visible until the owner removes the tag, and the
   owner cannot see who has read it.
+- **Authorization is enforced at the Area boundary.** Permissions are granted per area. A user authorized
+  for an area has access to all collections, documents, and playbooks within that area; there are no
+  per-collection or per-document ACLs within an area.
+- **Automation keys cannot access chat or admin consoles.** Machine keys grant ingestion and job status
+  access only; they cannot initiate chat sessions or access web admin interfaces.
 
 ## Not supported
 
@@ -78,8 +89,9 @@ automation or AI coding tools connecting on a company account or a machine key.
   stored — but only as something to filter a report by; there is nothing there to act on.
 - Signing in with anything but the company account. No local password, self-registration or reset.
 - Read receipts, share notifications, or a "who viewed this" list.
-- **Restricting a knowledge area to a team.** Every signed-in user can query the whole corpus; there are
-  no per-area permissions.
+- Restricting access to individual collections or documents within an authorized area (permissions apply to the whole area).
+- User self-service role requests or managing user roles inside Yvoke. Roles are managed centrally in Microsoft Entra ID.
+- Cross-area user conversations or sharing a conversation across area boundaries.
 - An administrator editing or moderating content inside another person's conversation.
 - Transferring ownership of a conversation, or keeping a leaver's conversations accessible after their
   account goes.

@@ -1,10 +1,20 @@
 package de.palsoftware.yvoke.document.web;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.SectionService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +33,21 @@ public class CitationController {
     static final String UNAVAILABLE_ERROR = "Citation details are currently unavailable.";
 
     private final SectionService sectionService;
+    private final ChunkRepository chunkRepository;
+    private final DocumentRepository documentRepository;
+    private final CollectionService collectionService;
+
+    @Autowired
+    public CitationController(SectionService sectionService, ChunkRepository chunkRepository,
+        DocumentRepository documentRepository, CollectionService collectionService) {
+        this.sectionService = sectionService;
+        this.chunkRepository = chunkRepository;
+        this.documentRepository = documentRepository;
+        this.collectionService = collectionService;
+    }
 
     public CitationController(SectionService sectionService) {
-        this.sectionService = sectionService;
+        this(sectionService, null, null, null);
     }
 
     @GetMapping("/citation")
@@ -46,16 +68,17 @@ public class CitationController {
         try {
             // A chunk id names one passage and returns exactly that; a document id has no passage
             // to name, so it still returns the document.
+            verifyCitationAreaAccess(chunkId, documentId);
             SectionResponse section = hasChunkId ? sectionService.getChunkContent(chunkId)
                 : sectionService.getSectionByDocumentId(documentId, null);
 
             model.addAttribute("section", section);
             model.addAttribute("error", null);
         } catch (IllegalArgumentException e) {
-            // The lookup could not be narrowed to one document. The message is NOT developer-
-            // authored: DocumentRepository.findByManual enumerates every match with its full id,
-            // kind, title and tags (a [file=…] citation has been seen matching 131 rows), so
-            // surfacing it would dump a document inventory into the dialog. Log it, show a fixed
+            // The lookup could not be narrowed to one document. The message is NOT
+            // developer-authored: DocumentRepository.findByManual enumerates every match with its
+            // full id, kind, title and tags (a [file=…] citation has been seen matching 131 rows),
+            // so surfacing it would dump a document inventory into the dialog. Log it, show a fixed
             // string (SEC-17 / ARC-10).
             log.warn("Ambiguous or invalid citation request: {}", e.getMessage());
             model.addAttribute("section", null);
@@ -75,5 +98,42 @@ public class CitationController {
         }
 
         return "document/fragments/citation-expander";
+    }
+
+    private void verifyCitationAreaAccess(String chunkId, String documentId) {
+        if (chunkRepository == null || documentRepository == null || collectionService == null) {
+            return;
+        }
+        String area = null;
+        if (chunkId != null && !chunkId.isBlank()) {
+            Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkId.trim());
+            if (chunkOpt.isEmpty()) {
+                throw new NoSuchElementException("Chunk not found: " + chunkId);
+            }
+            ChunkRow chunk = chunkOpt.get();
+            Optional<Collection> collOpt = collectionService.getCollection(chunk.collection());
+            if (collOpt.isPresent()) {
+                area = collOpt.get().area();
+            }
+        } else if (documentId != null && !documentId.isBlank()) {
+            UUID docUuid;
+            try {
+                docUuid = UUID.fromString(documentId.trim());
+            } catch (IllegalArgumentException e) {
+                throw new NoSuchElementException("Invalid document UUID: " + documentId);
+            }
+            Optional<DocumentRow> docOpt = documentRepository.findById(docUuid);
+            if (docOpt.isEmpty()) {
+                throw new NoSuchElementException("Document not found: " + documentId);
+            }
+            DocumentRow doc = docOpt.get();
+            Optional<Collection> collOpt = collectionService.findById(doc.collectionId());
+            if (collOpt.isPresent()) {
+                area = collOpt.get().area();
+            }
+        }
+        if (area != null && !area.isBlank() && !AreaAccessContext.canAccessUserArea(area)) {
+            throw new NoSuchElementException("Citation not found");
+        }
     }
 }

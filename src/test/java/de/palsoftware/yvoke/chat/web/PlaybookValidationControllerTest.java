@@ -12,9 +12,12 @@ import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import java.util.Collections;
 import java.util.List;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,6 +30,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class PlaybookValidationControllerTest {
 
@@ -53,6 +58,14 @@ class PlaybookValidationControllerTest {
 
         controller = new PlaybookValidationController(chatConversationService, playbookService,
             llmClient, objectMapper);
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -171,5 +184,48 @@ class PlaybookValidationControllerTest {
         assertThat(response.plausible()).isFalse();
         assertThat(response.reason()).isEqualTo("Bad selection.");
         assertThat(response.suggestedPlaybookName()).isNull();
+    }
+
+    @Test
+    void candidatePlaybooksExcludePlaybooksFromUnauthorizedAreas() {
+        when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of("default-pb"));
+
+        Playbook oimPlaybook = new Playbook("oim-pb", "OIM Playbook", "desc", "tmpl", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook finPlaybook = new Playbook("fin-pb", "Finance Playbook", "desc", "tmpl", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "Finance");
+        when(playbookService.listSpecializedPlaybooks())
+            .thenReturn(List.of(oimPlaybook, finPlaybook));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(0, 0, 0, 0, 0)));
+
+        controller.validatePlaybook(convId, "How to sync?", "oim-pb");
+
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(captor.capture());
+
+        String prompt = captor.getValue().messages().get(0).content();
+        assertThat(prompt).contains("oim-pb");
+        assertThat(prompt).doesNotContain("fin-pb");
+    }
+
+    @Test
+    void validatePlaybook_withUnauthorizedPromptName_rejectsWithoutDelegatingToLlm() {
+        Playbook finPlaybook = new Playbook("fin-pb", "Finance Playbook", "desc", "tmpl", List.of(),
+            false, "specialist", false, Instant.now(), Instant.now(), false, "Finance");
+        when(playbookService.getPlaybook("fin-pb")).thenReturn(Optional.of(finPlaybook));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        ValidationResponse response = controller.validatePlaybook(convId, "Question", "fin-pb");
+
+        assertThat(response.plausible()).isFalse();
+        verify(llmClient, never()).generate(any());
     }
 }

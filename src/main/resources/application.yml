@@ -120,6 +120,10 @@ app:
   security:
     mock: ${APP_SECURITY_MOCK:false}
     api-key: ${APP_SECURITY_API_KEY:dev-key-12345}
+    # Per-area machine API keys as a JSON object, e.g. {"OIM":"...","PingID":"..."}.
+    # Each key grants ROLE_INGEST scoped to its named area on /api/ingest/**, /api/document/**, and /api/jobs/**.
+    # Blank or {} configures no per-area keys.
+    area-api-keys: ${APP_SECURITY_AREA_API_KEYS:}
     # Key for at-rest encryption of stored secrets (e.g. the Confluence API token). When unset,
     # secrets are stored in plaintext (a warning is logged at startup). Set in all real environments.
     secret-key: ${APP_SECRET_KEY:}

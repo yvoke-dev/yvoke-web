@@ -26,11 +26,74 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.palsoftware.yvoke.area.TestAreas;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.util.Arrays;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class AreaServiceTest {
 
     private final AreaService service = TestAreas.withAreas("OIM", "PingID");
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void setAuth(String... authorities) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "n/a",
+            Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
+        SecurityContextHolder.setContext(context);
+    }
+
+    @Test
+    void listAccessibleForCurrentUser_returnsAllForGlobalUserOrSuperadmin() {
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+    }
+
+    @Test
+    void listAccessibleForCurrentUser_filtersByAreaUserAuthority() {
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "OIM");
+        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
+            .containsExactly("OIM");
+
+        setAuth(AreaAccessContext.ROLE_USER);
+        assertThat(service.listAccessibleForCurrentUser()).isEmpty();
+    }
+
+    @Test
+    void listAdministeredForCurrentUser_returnsAllForSuperadminAndFilteredForAreaAdmin() {
+        setAuth(AreaAccessContext.ROLE_ADMIN);
+        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
+            .containsExactlyInAnyOrder("OIM", "PingID");
+
+        setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
+        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
+            .containsExactly("OIM");
+
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
+        assertThat(service.listAdministeredForCurrentUser()).isEmpty();
+    }
+
+    @Test
+    void findByNameForUser_returnsAreaWhenAuthorizedAndEmptyWhenUnauthorized() {
+        setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "OIM");
+        assertThat(service.findByNameForUser("oim")).isPresent();
+        assertThat(service.findByNameForUser("pingid")).isEmpty();
+        assertThat(service.findByNameForUser("unknown")).isEmpty();
+        assertThat(service.findByNameForUser("   ")).isEmpty();
+    }
 
     /**
      * Validate leniently, query strictly: the caller's spelling is matched loosely, but what comes
@@ -156,13 +219,27 @@ class AreaServiceTest {
         AreaRepository repository =
             repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
 
-        new AreaService(repository).saveArea("OIM", "Oracle IAM", "Oracle IAM", null, false,
+        new AreaService(repository).saveArea("OIM", "Oracle-IAM", "Oracle IAM", null, false,
             "oim-chat", null, null);
 
         InOrder order = inOrder(repository);
-        order.verify(repository).rename("OIM", "Oracle IAM");
+        order.verify(repository).rename("OIM", "Oracle-IAM");
         order.verify(repository).upsert(
-            new Area("Oracle IAM", "Oracle IAM", null, false, "oim-chat", null, null, null, null));
+            new Area("Oracle-IAM", "Oracle IAM", null, false, "oim-chat", null, null, null, null));
+    }
+
+    @Test
+    void areaNamesWithSpacesDotsWildcardOrNonRoundtrippingCaseAreRejected() {
+        AreaRepository repository = repoWith(List.of(), Map.of());
+        AreaService areas = new AreaService(repository);
+
+        for (String invalid : List.of("Ping ID", "OIM.v2", "*", "OIM*", "straße")) {
+            assertThatThrownBy(
+                () -> areas.saveArea(null, invalid, "Title", null, false, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
+                    "is invalid: area names must not contain spaces, dots, or '*'");
+        }
+        verify(repository, never()).upsert(any());
     }
 
     @Test
@@ -189,8 +266,8 @@ class AreaServiceTest {
 
         assertThatThrownBy(() -> new AreaService(repository).deleteArea("oim"))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks or profiles. "
-                + "Move or delete them first.");
+            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks, profiles or "
+                + "conversations. Move or delete them first.");
     }
 
     @Test

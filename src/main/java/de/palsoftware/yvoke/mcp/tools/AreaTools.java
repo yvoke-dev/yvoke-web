@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.Tool;
@@ -56,8 +57,9 @@ public class AreaTools {
     @Tool(name = "list_areas", description = DESCRIPTION)
     public String listAreas() {
         try {
-            return objectMapper.writeValueAsString(
-                areaService.listAreasWithMembers().stream().map(AreaDto::from).toList());
+            List<AreaWithMembers> accessible = AreaAccessContext
+                .filterByUserArea(areaService.listAreasWithMembers(), a -> a.area().name());
+            return objectMapper.writeValueAsString(accessible.stream().map(AreaDto::from).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_areas", e);
         }

@@ -1,15 +1,28 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionChunks;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 
@@ -19,9 +32,16 @@ public class GetSectionTool {
     private static final Logger log = LoggerFactory.getLogger(GetSectionTool.class);
 
     private final SectionService sectionService;
+    private final DocumentRepository documentRepository;
+    private final ChunkRepository chunkRepository;
+    private final CollectionService collectionService;
 
-    public GetSectionTool(SectionService sectionService) {
+    public GetSectionTool(SectionService sectionService, DocumentRepository documentRepository,
+        ChunkRepository chunkRepository, CollectionService collectionService) {
         this.sectionService = sectionService;
+        this.documentRepository = documentRepository;
+        this.chunkRepository = chunkRepository;
+        this.collectionService = collectionService;
     }
 
     /** No conversation: an external MCP client, which is never told text is "shown above". */
@@ -46,10 +66,24 @@ public class GetSectionTool {
         try {
             SectionChunks section;
             if (document_id != null && !document_id.isBlank()) {
-                section =
-                    sectionService.getSectionChunksByDocumentId(document_id.trim(), heading_path);
+                String trimmedDocId = document_id.trim();
+                if (!isDocumentAreaAllowed(trimmedDocId, context)) {
+                    return "Error: Document not found: " + trimmedDocId;
+                }
+                section = sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
             } else if (chunk_id != null && !chunk_id.isBlank()) {
-                section = sectionService.getSectionChunksByChunkId(chunk_id.trim());
+                String trimmedChunkId = chunk_id.trim();
+                ChunkAccessCheck accessCheck = checkChunkAreaAccess(trimmedChunkId, context);
+                if (accessCheck.error() != null) {
+                    return accessCheck.error();
+                }
+                String targetChunkId =
+                    accessCheck.resolvedChunkId() != null ? accessCheck.resolvedChunkId().toString()
+                        : trimmedChunkId;
+                section = context != null
+                    ? sectionService.getSectionChunksByChunkId(targetChunkId,
+                        context.getAllowedAreasLower())
+                    : sectionService.getSectionChunksByChunkId(targetChunkId);
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -57,6 +91,101 @@ public class GetSectionTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("get_section", e);
         }
+    }
+
+    private boolean isDocumentAreaAllowed(String docIdStr, @Nullable AgenticChatContext context) {
+        if (context == null && !hasAuthenticatedCaller()) {
+            return false;
+        }
+        UUID docUuid;
+        try {
+            docUuid = UUID.fromString(docIdStr);
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+        Optional<DocumentRow> docOpt = documentRepository.findById(docUuid);
+        if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
+            return true;
+        }
+        Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
+        if (colOpt.isEmpty()) {
+            return true;
+        }
+        return isAreaAllowed(colOpt.get().area(), context);
+    }
+
+    private static boolean hasAuthenticatedCaller() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated()
+            && !(auth instanceof AnonymousAuthenticationToken);
+    }
+
+    private record ChunkAccessCheck(@Nullable String error, @Nullable UUID resolvedChunkId) {}
+
+    private ChunkAccessCheck checkChunkAreaAccess(String chunkIdStr,
+        @Nullable AgenticChatContext context) {
+        boolean areaRestricted;
+        Set<String> allowedAreas;
+        if (context != null) {
+            areaRestricted = !context.isAllAreas();
+            allowedAreas = context.getAllowedAreasLower();
+        } else {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()
+                || auth instanceof AnonymousAuthenticationToken) {
+                areaRestricted = true;
+                allowedAreas = Set.of();
+            } else if (!AreaAccessContext.hasAllUserAreas(auth)) {
+                areaRestricted = true;
+                allowedAreas = AreaAccessContext.allowedUserAreasLower(auth).orElse(Set.of());
+            } else {
+                areaRestricted = false;
+                allowedAreas = AgenticChatContext.ALL_AREAS;
+            }
+        }
+        Optional<ChunkRow> chunkOpt = Optional.empty();
+        try {
+            chunkOpt = chunkRepository.findByIdPrefix(chunkIdStr, allowedAreas);
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith("Ambiguous")
+                && areaRestricted) {
+                return new ChunkAccessCheck("Error: Ambiguous chunk ID prefix '" + chunkIdStr
+                    + "'. Please provide the full chunk UUID.", null);
+            }
+            return new ChunkAccessCheck(null, null);
+        }
+        if (chunkOpt == null || chunkOpt.isEmpty() || chunkOpt.get().documentId() == null) {
+            if (areaRestricted) {
+                return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
+            }
+            return new ChunkAccessCheck(null, null);
+        }
+        Optional<DocumentRow> docOpt = documentRepository.findById(chunkOpt.get().documentId());
+        if (docOpt.isEmpty() || docOpt.get().collectionId() == null) {
+            return new ChunkAccessCheck(null, chunkOpt.get().id());
+        }
+        Optional<Collection> colOpt = collectionService.findById(docOpt.get().collectionId());
+        if (colOpt.isEmpty()) {
+            return new ChunkAccessCheck(null, chunkOpt.get().id());
+        }
+        if (!isAreaAllowed(colOpt.get().area(), context)) {
+            return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
+        }
+        return new ChunkAccessCheck(null, chunkOpt.get().id());
+    }
+
+    private static boolean isAreaAllowed(@Nullable String area,
+        @Nullable AgenticChatContext context) {
+        if (context != null) {
+            return context.isAreaAllowed(area);
+        }
+        if (!hasAuthenticatedCaller()) {
+            return false;
+        }
+        if (area == null || area.isBlank()) {
+            return AreaAccessContext.hasAllUserAreas();
+        }
+        return AreaAccessContext.canAccessUserArea(area);
     }
 
     /**

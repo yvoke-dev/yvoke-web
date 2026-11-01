@@ -14,8 +14,11 @@ import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
 
@@ -28,6 +31,9 @@ class AdminConnectorControllerTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+
         collectionService = mock(CollectionService.class);
         instanceService = mock(ConfluenceInstanceService.class);
         controller = new AdminConnectorController(collectionService, instanceService,
@@ -36,9 +42,44 @@ class AdminConnectorControllerTest {
 
         when(collectionService.listCollections()).thenReturn(List.of(
             new Collection(UUID.randomUUID(), "A - Archive", null, List.of("1.0", "2.0"),
-                OffsetDateTime.now()),
+                OffsetDateTime.now(), "OIM"),
             new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of("9.3.1", "10.0"),
-                OffsetDateTime.now())));
+                OffsetDateTime.now(), "OIM")));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void getConnectors_filtersByAdministeredArea() {
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+
+        Collection oimCol = new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of("9.3.1"),
+            OffsetDateTime.now(), "OIM");
+        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", null,
+            List.of("1.0"), OffsetDateTime.now(), "Finance");
+        when(collectionService.listCollections()).thenReturn(List.of(oimCol, finCol));
+
+        ConfluenceInstanceView oimView = new ConfluenceInstanceView(UUID.randomUUID(), "OIM Wiki",
+            "oim-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345",
+            "public", null, "OIM - Docs", "9.3.1", true, true, TokenHealth.OK);
+        ConfluenceInstanceView finView = new ConfluenceInstanceView(UUID.randomUUID(), "Fin Wiki",
+            "fin-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "54321",
+            "public", null, "Finance - Docs", "1.0", true, true, TokenHealth.OK);
+        when(instanceService.listInstances()).thenReturn(List.of(oimView, finView));
+
+        controller.getConnectors(model);
+
+        @SuppressWarnings("unchecked")
+        List<ConfluenceInstanceView> instances =
+            (List<ConfluenceInstanceView>) model.getAttribute("instances");
+        assertThat(instances).containsExactly(oimView);
+        @SuppressWarnings("unchecked")
+        List<Collection> collections = (List<Collection>) model.getAttribute("collections");
+        assertThat(collections).containsExactly(oimCol);
     }
 
     private static ConfluenceInstanceView view(String name, String slug, TokenHealth health) {

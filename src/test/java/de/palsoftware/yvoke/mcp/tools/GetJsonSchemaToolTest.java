@@ -11,10 +11,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 public class GetJsonSchemaToolTest {
 
@@ -83,5 +89,26 @@ public class GetJsonSchemaToolTest {
         assertThat(untagged)
             .as("a collection with no tags must still be readable, got:%n%s", untagged)
             .doesNotStartWith("Error:");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    public void testUnauthorizedCollectionAreaReturnsOpaqueNotFound() {
+        Collection pingCol = new Collection(UUID.randomUUID(), "Ping - JSON", "Ping JSON",
+            List.of(), OffsetDateTime.now(), "PingID");
+        when(collectionService.listCollections()).thenReturn(List.of(pingCol));
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        String output = getJsonSchemaTool.getJsonSchema("Ping - JSON", null);
+
+        assertThat(output).isEqualTo("Error: Collection 'Ping - JSON' does not exist.");
+        verify(jsonObjectService, never()).getSchema(any(), any());
     }
 }
