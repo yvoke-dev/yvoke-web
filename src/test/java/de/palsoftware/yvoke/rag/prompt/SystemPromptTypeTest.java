@@ -25,7 +25,6 @@ public class SystemPromptTypeTest {
     public void dbValueIsTheCanonicalUpperCaseSpelling() {
         assertThat(SystemPromptType.KG.dbValue()).isEqualTo("KG");
         assertThat(SystemPromptType.SUMMARIZE.dbValue()).isEqualTo("SUMMARIZE");
-        assertThat(SystemPromptType.CHAT.dbValue()).isEqualTo("CHAT");
     }
 
     /**
@@ -51,8 +50,7 @@ public class SystemPromptTypeTest {
 
     /**
      * The alias set is deliberate history: {@code DB}/{@code DATABASE} predate the rename to
-     * SUMMARIZE, and {@code agentic} predates CHAT. Losing one silently re-breaks whatever still
-     * writes it.
+     * SUMMARIZE. Losing one silently re-breaks whatever still writes it.
      */
     @Test
     public void theLegacyAliasesStillResolve() {
@@ -61,7 +59,15 @@ public class SystemPromptTypeTest {
         assertThat(SystemPromptType.fromString("summary")).isEqualTo(SystemPromptType.SUMMARIZE);
         assertThat(SystemPromptType.fromString("knowledge_graph")).isEqualTo(SystemPromptType.KG);
         assertThat(SystemPromptType.fromString("knowledge-graph")).isEqualTo(SystemPromptType.KG);
-        assertThat(SystemPromptType.fromString("agentic")).isEqualTo(SystemPromptType.CHAT);
+    }
+
+    @Test
+    public void chatAndAgenticTypesAreRejected() {
+        for (String retired : new String[] {"CHAT", "chat", "AGENTIC", "agentic", "Chat",
+            "Agentic"}) {
+            assertThatThrownBy(() -> SystemPromptType.fromString(retired))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(retired);
+        }
     }
 
     /**

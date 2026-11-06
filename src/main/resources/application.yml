@@ -192,7 +192,6 @@ app:
       max-iterations: ${APP_AI_RAG_MAX_ITERATIONS:20}
       max-tokens: 16384
       temperature: 0.0
-      default-prompt-name: ${RAG_DEFAULT_PROMPT_NAME:default-chat}
       thinking-level: ${RAG_THINKING_LEVEL:medium}
     kg:
       model: ${KG_MODEL:gemini-3.1-flash-lite}

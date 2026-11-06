@@ -148,13 +148,16 @@ public class ConversationRepositoryTest {
         // to reject it with.
         verifyNoInteractions(untouched);
 
-        // The other half of the contract: exactly WEB and DESKTOP must still get through. Without
-        // this the assertions above would also pass against a guard that refuses everything.
+        // The other half of the contract: WEB, DESKTOP, and CLAUDE_PLUGIN must still get through.
+        // Without this the assertions above would also pass against a guard that refuses
+        // everything.
         conversationRepository.create(id, userId, "t", Map.of(), "web");
         conversationRepository.create(id, userId, "t", Map.of(), "desktop");
+        conversationRepository.create(id, userId, "t", Map.of(), "claude-plugin");
         conversationRepository.listByUserAndSource(userId, "desktop", 10, 0);
-        verify(jdbcClient, times(2)).sql(contains("INSERT INTO conversations"));
-        verify(jdbcClient).sql(contains("AND source = :source"));
+        conversationRepository.listByUserAndSource(userId, "claude-plugin", 10, 0);
+        verify(jdbcClient, times(3)).sql(contains("INSERT INTO conversations"));
+        verify(jdbcClient, times(2)).sql(contains("AND source = :source"));
     }
 
     @Test

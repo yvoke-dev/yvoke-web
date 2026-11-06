@@ -228,7 +228,6 @@
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${playbook.title}">Playbook Title</h3>
                                     <span th:if="${playbook.targetAgent != null}" style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--color-accent); font-weight: 500;" th:text="${playbook.targetAgent}">specialist</span>
                                     <span th:if="${playbook.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${playbook.area}">OIM</span>
-                                    <span th:if="${playbook.systemPrompt != null}" title="Base System Prompt" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${'Prompt: ' + playbook.systemPrompt}">default-chat</span>
                                     <span th:if="${playbook.codeExecution}" title="Gemini server-side code execution is enabled for this playbook" style="font-size: 0.75rem; background-color: var(--color-accent-dim, rgba(59,130,246,0.15)); color: var(--color-accent); border: 1px solid var(--color-accent); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">⚙ Code Execution</span>
                                     <span th:if="${playbook.prototype}" title="Marked as prototype — hidden from normal chat users" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
@@ -275,7 +274,7 @@
 
                                 <!-- Edit Button -->
                                 <button type="button" class="btn btn-secondary edit-playbook-btn" 
-                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-version=${playbook.version}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}, data-system-prompt=${playbook.systemPrompt}"
+                                        th:attr="data-name=${playbook.name}, data-title=${playbook.title}, data-description=${playbook.description}, data-version=${playbook.version}, data-template-text=${playbook.templateText}, data-readonly=${playbook.readOnly}, data-tools=${#strings.listJoin(playbook.tools, ',')}, data-code-execution=${playbook.codeExecution}, data-target-agent=${playbook.targetAgent}, data-prototype=${playbook.prototype}, data-area=${playbook.area}"
                                         onclick="editPlaybook(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
                                         th:text="${playbook.readOnly ? 'View Code' : 'Edit'}">
                                     Edit
@@ -332,7 +331,7 @@
                             <div class="form-group">
                                 <label for="version" class="form-label">Version</label>
                                 <input type="number" id="version" name="version" class="form-input" min="1" step="1" value="1" required />
-                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Positive integer stamped onto answers and agent steps for performance comparisons. Increment whenever you change this playbook's instructions, tools, or its active CHAT system prompt.</span>
+                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Positive integer stamped onto answers and agent steps for performance comparisons. Increment whenever you change this playbook's instructions or tools.</span>
                             </div>
                             <div class="form-group">
                                 <label for="area" class="form-label">Area</label>
@@ -349,14 +348,6 @@
                                     <option value="orchestrator">Orchestrator</option>
                                 </select>
                                 <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Specify the agent role for this playbook.</span>
-                            </div>
-                            <div class="form-group">
-                                <label for="systemPrompt" class="form-label">System Prompt</label>
-                                <select id="systemPrompt" name="systemPrompt" class="form-input">
-                                    <option value="">(Default / None)</option>
-                                    <option th:each="sp : ${systemPrompts}" th:value="${sp.name}" th:attr="data-area=${sp.area}" th:text="${sp.name + (sp.description != null ? ' - ' + sp.description : '')}"></option>
-                                </select>
-                                <span class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Optional base system prompt for this playbook. If not set, the default chat system prompt is used. Reviewer and Orchestrator playbooks ignore this field entirely; they run under self-contained instructions.</span>
                             </div>
                             <div class="form-group">
                                 <label for="tools" class="form-label">Allowed Tools</label>
@@ -462,36 +453,7 @@
                 }
             });
 
-            const areaSelect = document.getElementById('area');
-            if (areaSelect) {
-                areaSelect.addEventListener('change', function() {
-                    filterSystemPromptsForArea(this.value);
-                });
-                filterSystemPromptsForArea(areaSelect.value);
-            }
-
-            const targetAgentSelect = document.getElementById('targetAgent');
-            if (targetAgentSelect) {
-                targetAgentSelect.addEventListener('change', function() {
-                    updateRoleState();
-                });
-                updateRoleState();
-            }
         });
-
-        function updateRoleState() {
-            const select = document.getElementById('systemPrompt');
-            const role = document.getElementById('targetAgent')?.value || 'specialist';
-            const isReadOnly = select?.dataset.readOnly === 'true';
-            window.PlaybookPrompt?.updateRoleState(select, role, isReadOnly);
-        }
-
-        function filterSystemPromptsForArea(selectedArea, preserveValue) {
-            const select = document.getElementById('systemPrompt');
-            if (!select) return;
-            const area = selectedArea || document.getElementById('area')?.value || '';
-            window.PlaybookPrompt?.filterSystemPromptsForArea(select, area, preserveValue);
-        }
 
         // Selects the area a loaded file or an edited item names. A file naming an area that does
         // not exist yet keeps the current choice and says so; the save would be refused anyway.
@@ -504,17 +466,9 @@
             const match = window.AreaSelect.matchArea(options, value);
             if (match) {
                 select.value = match;
-                filterSystemPromptsForArea(match);
             } else {
                 alert('Area "' + value + '" does not exist. Create it on the Areas page first.');
             }
-        }
-
-        function applySystemPrompt(value, isReadOnly) {
-            const select = document.getElementById('systemPrompt');
-            if (!select) return;
-            const area = document.getElementById('area')?.value || '';
-            window.PlaybookPrompt?.applySystemPrompt(select, value, area, isReadOnly);
         }
 
         function loadTemplateFile() {
@@ -541,7 +495,6 @@
                 let codeExecution = false;
                 let prototype = false;
                 let area = null;
-                let systemPrompt = '';
                 let templateText = content;
 
                 // Parse frontmatter
@@ -591,10 +544,6 @@
                             } else if (trimmed.startsWith('area:')) {
                                 area = trimmed.substring(5).trim();
                                 inTools = false;
-                            } else if (trimmed.startsWith('system_prompt:') || trimmed.startsWith('systemPrompt:')) {
-                                const colonIdx = trimmed.indexOf(':');
-                                systemPrompt = trimmed.substring(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '');
-                                inTools = false;
                             } else if (trimmed.startsWith('tools:')) {
                                 const valStr = trimmed.substring(6).trim();
                                 if (valStr === '[]') {
@@ -634,9 +583,6 @@
 
                 document.getElementById('area').disabled = false;
                 applyArea(area);
-
-                applySystemPrompt(systemPrompt, false);
-                updateRoleState();
 
                 // Reset tools selection
                 const toolsSelect = document.getElementById('tools');
@@ -705,14 +651,6 @@
             applyArea(button.getAttribute('data-area'));
             document.getElementById('area').disabled = isReadOnly;
 
-            const systemPrompt = button.getAttribute('data-system-prompt') || '';
-            const sysPromptSelect = document.getElementById('systemPrompt');
-            if (sysPromptSelect) {
-                sysPromptSelect.dataset.readOnly = isReadOnly ? 'true' : 'false';
-            }
-            applySystemPrompt(systemPrompt, isReadOnly);
-            updateRoleState();
-
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
                 toolsSelect.options[i].selected = toolsList.includes(toolsSelect.options[i].value);
@@ -766,19 +704,12 @@
             document.getElementById('version').value = '1';
             document.getElementById('version').readOnly = false;
             
-            const sysPromptSelect = document.getElementById('systemPrompt');
-            if (sysPromptSelect) {
-                delete sysPromptSelect.dataset.readOnly;
-            }
             const targetAgentSelect = document.getElementById('targetAgent');
             targetAgentSelect.value = 'specialist';
             targetAgentSelect.disabled = false;
-            updateRoleState();
 
             document.getElementById('area').disabled = false;
             applyArea(document.getElementById('area')?.options[0]?.value);
-
-            applySystemPrompt('', false);
 
             const toolsSelect = document.getElementById('tools');
             for (let i = 0; i < toolsSelect.options.length; i++) {
@@ -840,6 +771,5 @@
         }
     </script>
     <script type="module" th:src="@{/js/admin/area-select-bootstrap.js}"></script>
-    <script type="module" th:src="@{/js/admin/playbook-prompt-bootstrap.js}"></script>
 </body>
 </html>

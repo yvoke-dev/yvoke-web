@@ -288,12 +288,6 @@
       "defaultValue": 0.0
     },
     {
-      "name": "app.ai.rag.default-prompt-name",
-      "type": "java.lang.String",
-      "description": "Database key of default playbook or instructions to retrieve.",
-      "defaultValue": "default-chat"
-    },
-    {
       "name": "app.ai.rag.thinking-level",
       "type": "java.lang.String",
       "description": "Thinking level for reasoning effort of Gemini models in RAG (low, medium, high).",

@@ -103,8 +103,7 @@ public class AreaService implements AvailableAreasProvider {
      */
     @Transactional
     public void saveArea(String originalName, String name, String title, String description,
-        boolean prototype, String defaultSystemPrompt, String defaultPlaybook,
-        String defaultProfile) {
+        boolean prototype, String defaultPlaybook, String defaultProfile) {
         String newName = blankToNull(name);
         if (newName == null) {
             throw new IllegalArgumentException("An area name is required.");
@@ -131,8 +130,7 @@ public class AreaService implements AvailableAreasProvider {
         AreaMembers members = stored == null ? AreaMembers.NONE
             : areaRepository.findAllMembers().getOrDefault(stored, AreaMembers.NONE);
         // Before any rename, so a refused default leaves the area as it was.
-        checkDefaults(newName, members, blankToNull(defaultSystemPrompt),
-            blankToNull(defaultPlaybook), blankToNull(defaultProfile));
+        checkDefaults(newName, members, blankToNull(defaultPlaybook), blankToNull(defaultProfile));
         if (stored != null && !stored.equals(newName)) {
             if (SecurityContextHolder.getContext().getAuthentication() != null
                 && !AreaAccessContext.isSuperAdmin()) {
@@ -141,9 +139,9 @@ public class AreaService implements AvailableAreasProvider {
             areaRepository.rename(stored, newName);
         }
         String storedTitle = blankToNull(title);
-        areaRepository.upsert(new Area(newName, storedTitle != null ? storedTitle : newName,
-            blankToNull(description), prototype, blankToNull(defaultSystemPrompt),
-            blankToNull(defaultPlaybook), blankToNull(defaultProfile), null, null));
+        areaRepository.upsert(
+            new Area(newName, storedTitle != null ? storedTitle : newName, blankToNull(description),
+                prototype, blankToNull(defaultPlaybook), blankToNull(defaultProfile), null, null));
     }
 
     /**
@@ -163,12 +161,8 @@ public class AreaService implements AvailableAreasProvider {
         return stored;
     }
 
-    private static void checkDefaults(String area, AreaMembers members, String systemPrompt,
-        String playbook, String profile) {
-        if (systemPrompt != null && !members.systemPrompts().contains(systemPrompt)) {
-            throw new IllegalArgumentException("System prompt '" + systemPrompt
-                + "' is not a chat prompt of area '" + area + "'.");
-        }
+    private static void checkDefaults(String area, AreaMembers members, String playbook,
+        String profile) {
         if (playbook != null && !members.playbooks().contains(playbook)) {
             throw new IllegalArgumentException(
                 "Playbook '" + playbook + "' is not a pickable playbook of area '" + area + "'.");

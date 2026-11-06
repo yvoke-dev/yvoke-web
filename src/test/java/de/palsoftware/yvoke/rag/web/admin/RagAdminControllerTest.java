@@ -246,7 +246,7 @@ class RagAdminControllerTest {
     @Test
     void testExportPrompt() {
         when(systemPromptService.getPrompt("test-prompt"))
-            .thenReturn(Optional.of(new SystemPrompt("test-prompt", SystemPromptType.CHAT, "Hello",
+            .thenReturn(Optional.of(new SystemPrompt("test-prompt", SystemPromptType.KG, "Hello",
                 "desc", Instant.now(), Instant.now(), false, "OIM")));
         when(systemPromptService.exportPromptToMarkdown("test-prompt"))
             .thenReturn("---\nname: test-prompt\n---\nHello");
@@ -270,41 +270,13 @@ class RagAdminControllerTest {
             .param("templateText", "text").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
         verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("PingID"), isNull(), eq(1));
+            anyBoolean(), any(), anyBoolean(), eq("PingID"), eq(1));
 
-        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "CHAT")
+        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "KG")
             .param("systemPrompt", "text").param("area", "PingID"))
             .andExpect(status().is3xxRedirection());
-        verify(systemPromptService).savePrompt(eq("p"), eq(SystemPromptType.CHAT), eq("text"),
-            any(), eq("PingID"));
-    }
-
-    @Test
-    void thePostedSystemPromptReachesTheSavedPlaybook() throws Exception {
-        when(systemPromptService.getPrompt("custom-sys-prompt"))
-            .thenReturn(Optional.of(new SystemPrompt("custom-sys-prompt", SystemPromptType.CHAT,
-                "Hello", "desc", Instant.now(), Instant.now(), false, "OIM")));
-
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
-            .param("templateText", "text").param("area", "OIM")
-            .param("systemPrompt", "custom-sys-prompt").param("version", "3"))
-            .andExpect(status().is3xxRedirection());
-        verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("OIM"), eq("custom-sys-prompt"), eq(3));
-    }
-
-    @Test
-    void viewPlaybooksAddsChatSystemPromptsToModel() {
-        SystemPrompt prompt =
-            new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "body", "desc");
-        when(systemPromptService.listPromptsByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(prompt));
-
-        controller.viewPlaybooks(model);
-
-        verify(model).addAttribute("systemPrompts", List.of(prompt));
+        verify(systemPromptService).savePrompt(eq("p"), eq(SystemPromptType.KG), eq("text"), any(),
+            eq("PingID"));
     }
 
     @Test
@@ -313,24 +285,31 @@ class RagAdminControllerTest {
         when(playbookService.importPlaybookFromMarkdown(any(), any(), any())).thenReturn(
             new Playbook("pb", "PB", "", "text", List.of(), false, null, false, null, null));
         when(systemPromptService.importPromptFromMarkdown(any(), any(), any()))
-            .thenReturn(new SystemPrompt("p", SystemPromptType.CHAT, "text", ""));
+            .thenReturn(new SystemPrompt("p", SystemPromptType.KG, "text", ""));
 
         mvc.perform(multipart("/admin/playbooks/import")
             .file(new MockMultipartFile("file", "pb.md", "text/markdown", "text".getBytes()))
             .param("area", "PingID")).andExpect(status().is3xxRedirection());
         verify(playbookService).importPlaybookFromMarkdown("text", "pb", "PingID");
 
-        mvc.perform(multipart("/admin/prompts/import")
-            .file(new MockMultipartFile("file", "p.md", "text/markdown", "text".getBytes()))
-            .param("area", "PingID")).andExpect(status().is3xxRedirection());
-        verify(systemPromptService).importPromptFromMarkdown("text", "p", "PingID");
+        String promptMd = """
+            ---
+            name: p
+            type: KG
+            ---
+            text
+            """;
+        mvc.perform(multipart("/admin/prompts/import").file(new MockMultipartFile("file", "p.md",
+            "text/markdown", promptMd.getBytes(StandardCharsets.UTF_8))).param("area", "PingID"))
+            .andExpect(status().is3xxRedirection());
+        verify(systemPromptService).importPromptFromMarkdown(promptMd, "p", "PingID");
     }
 
     @Test
     void testExportPrompt_escapesFilenameAgainstHeaderInjection() {
         String unsafeName = "malicious\"; dummy=\"";
         when(systemPromptService.getPrompt(unsafeName))
-            .thenReturn(Optional.of(new SystemPrompt(unsafeName, SystemPromptType.CHAT, "Hello",
+            .thenReturn(Optional.of(new SystemPrompt(unsafeName, SystemPromptType.KG, "Hello",
                 "desc", Instant.now(), Instant.now(), false, "OIM")));
         when(systemPromptService.exportPromptToMarkdown(unsafeName))
             .thenReturn("---\nname: malicious\n---\nHello");
@@ -361,7 +340,7 @@ class RagAdminControllerTest {
     }
 
     @Test
-    void viewPlaybooks_filtersPlaybooksPromptsAreasToAdministeredArea() {
+    void viewPlaybooks_filtersPlaybooksAndAreasToAdministeredArea() {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
@@ -371,19 +350,11 @@ class RagAdminControllerTest {
             "specialist", false, Instant.now(), Instant.now(), false, "OIM");
         when(playbookService.listAllPlaybooks()).thenReturn(List.of(finPb, oimPb));
 
-        SystemPrompt finPrompt = new SystemPrompt("fin-prompt", SystemPromptType.CHAT, "body",
-            "desc", Instant.now(), Instant.now(), false, "Finance");
-        SystemPrompt oimPrompt = new SystemPrompt("oim-prompt", SystemPromptType.CHAT, "body",
-            "desc", Instant.now(), Instant.now(), false, "OIM");
-        when(systemPromptService.listPromptsByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(finPrompt, oimPrompt));
-
         String view = controller.viewPlaybooks(model);
 
         assertThat(view).isEqualTo("admin/playbooks");
         verify(model).addAttribute("playbooks", List.of(finPb));
         verify(model).addAttribute("areas", List.of("Finance"));
-        verify(model).addAttribute("systemPrompts", List.of(finPrompt));
     }
 
     @Test
@@ -424,48 +395,6 @@ class RagAdminControllerTest {
         mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
             .param("templateText", "text").param("area", "Finance"))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"));
-    }
-
-    @Test
-    void createPlaybook_systemPromptFromDifferentArea_redirectsWithError() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "dualAreaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE", "AREA_ADMIN_OIM"));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        when(systemPromptService.getPrompt("oim-sys-prompt"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-sys-prompt", SystemPromptType.CHAT,
-                "Hello", "desc", Instant.now(), Instant.now(), false, "OIM")));
-
-        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
-            .param("templateText", "text").param("area", "Finance")
-            .param("systemPrompt", "oim-sys-prompt")).andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/admin/playbooks"))
-            .andExpect(flash().attributeExists("error"));
-
-        verify(playbookService, never()).savePlaybook(any(), any(), any(), any(), any(),
-            anyBoolean(), any(), anyBoolean(), any(), any(), anyInt());
-    }
-
-    @Test
-    void importPlaybook_systemPromptFromDifferentArea_redirectsWithError() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "dualAreaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE", "AREA_ADMIN_OIM"));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        when(systemPromptService.getPrompt("oim-sys-prompt"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-sys-prompt", SystemPromptType.CHAT,
-                "Hello", "desc", Instant.now(), Instant.now(), false, "OIM")));
-
-        String md =
-            "---\nname: imported-pb\ntitle: Imported PB\narea: Finance\nsystem_prompt: oim-sys-prompt\n---\nBody";
-        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
-            md.getBytes(StandardCharsets.UTF_8));
-
-        mvc.perform(multipart("/admin/playbooks/import").file(file).param("area", "Finance"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"))
-            .andExpect(flash().attributeExists("error"));
-
-        verify(playbookService, never()).importPlaybookFromMarkdown(any(), any(), any());
     }
 
     @Test
@@ -533,19 +462,16 @@ class RagAdminControllerTest {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        SystemPrompt finPrompt = new SystemPrompt("fin-prompt", SystemPromptType.CHAT, "body",
-            "desc", Instant.now(), Instant.now(), false, "Finance");
-        SystemPrompt oimPrompt = new SystemPrompt("oim-prompt", SystemPromptType.CHAT, "body",
-            "desc", Instant.now(), Instant.now(), false, "OIM");
+        SystemPrompt finPrompt = new SystemPrompt("fin-prompt", SystemPromptType.KG, "body", "desc",
+            Instant.now(), Instant.now(), false, "Finance");
+        SystemPrompt oimPrompt = new SystemPrompt("oim-prompt", SystemPromptType.KG, "body", "desc",
+            Instant.now(), Instant.now(), false, "OIM");
         when(systemPromptService.listAllPrompts()).thenReturn(List.of(finPrompt, oimPrompt));
-        when(systemPromptService.listPromptsByType(SystemPromptType.CHAT))
-            .thenReturn(List.of(finPrompt, oimPrompt));
 
         String view = controller.viewPrompts(model);
 
         assertThat(view).isEqualTo("admin/prompts");
         verify(model).addAttribute("prompts", List.of(finPrompt));
-        verify(model).addAttribute("chatPrompts", List.of(finPrompt));
         verify(model).addAttribute("areas", List.of("Finance"));
     }
 
@@ -573,7 +499,7 @@ class RagAdminControllerTest {
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        mvc.perform(post("/admin/prompts").param("name", "new-p").param("type", "CHAT")
+        mvc.perform(post("/admin/prompts").param("name", "new-p").param("type", "KG")
             .param("systemPrompt", "text").param("area", "OIM")).andExpect(status().isForbidden());
     }
 
@@ -584,10 +510,10 @@ class RagAdminControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("existing-oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.CHAT,
-                "text", "desc", Instant.now(), Instant.now(), false, "OIM")));
+            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.KG, "text",
+                "desc", Instant.now(), Instant.now(), false, "OIM")));
 
-        mvc.perform(post("/admin/prompts").param("name", "existing-oim-p").param("type", "CHAT")
+        mvc.perform(post("/admin/prompts").param("name", "existing-oim-p").param("type", "KG")
             .param("systemPrompt", "text").param("area", "Finance"))
             .andExpect(status().isForbidden());
     }
@@ -599,9 +525,9 @@ class RagAdminControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("p")).thenReturn(Optional.of(new SystemPrompt("p",
-            SystemPromptType.CHAT, "text", "desc", Instant.now(), Instant.now(), false, "OIM")));
+            SystemPromptType.KG, "text", "desc", Instant.now(), Instant.now(), false, "OIM")));
 
-        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "CHAT")
+        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "KG")
             .param("systemPrompt", "text").param("area", "Finance"))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
     }
@@ -613,7 +539,7 @@ class RagAdminControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.CHAT, "text", "desc",
+            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.KG, "text", "desc",
                 Instant.now(), Instant.now(), false, "OIM")));
 
         mvc.perform(get("/admin/prompts/export").param("name", "oim-p"))
@@ -627,7 +553,7 @@ class RagAdminControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.CHAT, "text", "desc",
+            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.KG, "text", "desc",
                 Instant.now(), Instant.now(), false, "OIM")));
 
         mvc.perform(post("/admin/prompts/delete").param("name", "oim-p"))
@@ -640,7 +566,7 @@ class RagAdminControllerTest {
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        String md = "---\nname: imported-p\narea: OIM\n---\nBody";
+        String md = "---\nname: imported-p\ntype: KG\narea: OIM\n---\nBody";
         MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
             md.getBytes(StandardCharsets.UTF_8));
 
@@ -655,38 +581,14 @@ class RagAdminControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("existing-oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.CHAT,
-                "text", "desc", Instant.now(), Instant.now(), false, "OIM")));
+            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.KG, "text",
+                "desc", Instant.now(), Instant.now(), false, "OIM")));
 
-        String md = "---\nname: existing-oim-p\narea: Finance\n---\nBody";
+        String md = "---\nname: existing-oim-p\ntype: KG\narea: Finance\n---\nBody";
         MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
             md.getBytes(StandardCharsets.UTF_8));
 
         mvc.perform(multipart("/admin/prompts/import").file(file).param("area", "Finance"))
             .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void updateActiveChatPrompt_areaAdmin_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        mvc.perform(post("/admin/prompts/active").param("activeChatPrompt", "custom-prompt"))
-            .andExpect(status().isForbidden());
-
-        verify(systemPromptService, times(0)).setDefaultChatPromptName(any());
-    }
-
-    @Test
-    void updateActiveChatPrompt_superAdmin_success() throws Exception {
-        SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        mvc.perform(post("/admin/prompts/active").param("activeChatPrompt", "custom-prompt"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
-
-        verify(systemPromptService).setDefaultChatPromptName("custom-prompt");
     }
 }

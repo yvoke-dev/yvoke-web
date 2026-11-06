@@ -27,11 +27,8 @@ import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
-import de.palsoftware.yvoke.chat.ChatTestFixtures;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -91,9 +88,6 @@ public class ChatAsyncControllerIT {
     private PlaybookService playbookService;
 
     @Autowired
-    private SystemPromptService systemPromptService;
-
-    @Autowired
     private ObjectMapper objectMapper;
 
     @MockitoBean(name = "llmProviderClient")
@@ -107,7 +101,6 @@ public class ChatAsyncControllerIT {
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         conversationsToDelete = new ArrayList<>();
-        ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
     }
 
     @AfterEach
@@ -167,7 +160,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", 1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch releaseCall = new CountDownLatch(1);
@@ -395,7 +388,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", 1);
 
         String userBOid = "user-b-async-test-oid";
         userRepository.upsert(userBOid, "user-b-async@local", "User B");
@@ -441,7 +434,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
         playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
@@ -556,7 +549,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", 1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch cancellationHandled = new CountDownLatch(1);
@@ -637,7 +630,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("failure-playbook", "Failure Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
 
         doAnswer(inv -> {
             throw new IllegalStateException("simulated provider fault");
@@ -794,7 +787,7 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         // 1. Insert a user message
         UUID userMsgId = UUID.randomUUID();
@@ -881,7 +874,7 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template", List.of(), false, "specialist", false, "OIM", 1);
 
         doAnswer(inv -> {
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
@@ -931,9 +924,9 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-1", "Playbook 1", "Desc", "Template 1", List.of(),
-            false, "specialist", false, "OIM", null, 1);
+            false, "specialist", false, "OIM", 1);
         playbookService.savePlaybook("pb-lock-2", "Playbook 2", "Desc", "Template 2", List.of(),
-            false, "specialist", false, "OIM", null, 1);
+            false, "specialist", false, "OIM", 1);
 
         try {
             doAnswer(inv -> {
@@ -996,9 +989,9 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-past100", "Lock Past 100", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
         playbookService.savePlaybook("pb-lock-other", "Lock Other", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
 
         try {
             // Populate 100 messages without playbook (e.g. desktop synced)
@@ -1055,7 +1048,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-to-delete", "To Delete", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
 
         try {
             doAnswer(inv -> {
@@ -1103,14 +1096,9 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        String previousDefault = systemPromptService.getDefaultChatPromptName();
-        systemPromptService.savePrompt("default-chat", SystemPromptType.CHAT,
-            "Default Base Instructions", "Desc", "OIM");
-        systemPromptService.setDefaultChatPromptName("default-chat");
-
         try {
             playbookService.savePlaybook("pb-assemble", "Assemble Playbook", "Desc",
-                "Special Playbook Instructions", List.of(), false, "specialist", false, "OIM", null, 1);
+                "Special Playbook Instructions", List.of(), false, "specialist", false, "OIM", 1);
 
             ArgumentCaptor<LlmRequest> reqCaptor = ArgumentCaptor.forClass(LlmRequest.class);
             doAnswer(inv -> {
@@ -1140,12 +1128,12 @@ public class ChatAsyncControllerIT {
             }
             assertThat(captured).isNotNull();
 
-            // 1. LLM system prompt has the playbook text combined with base prompt via \n\n---\n\n
+            // 1. LLM system prompt has ONLY the playbook templateText
             LlmMessage sysMsg = captured.messages().stream()
                 .filter(m -> "system".equalsIgnoreCase(m.role()))
                 .findFirst().orElseThrow();
             assertThat(sysMsg.content())
-                .isEqualTo("Default Base Instructions\n\n---\n\nSpecial Playbook Instructions");
+                .isEqualTo("Special Playbook Instructions");
 
             // 2. LLM user message has ONLY the user query
             LlmMessage userMsg = captured.messages().stream()
@@ -1161,9 +1149,6 @@ public class ChatAsyncControllerIT {
             assertThat(dbUserMsg.content()).isEqualTo("My clean user query");
             assertThat(dbUserMsg.playbook()).isEqualTo("pb-assemble");
         } finally {
-            if (previousDefault != null && !previousDefault.isBlank()) {
-                systemPromptService.setDefaultChatPromptName(previousDefault);
-            }
             try {
                 playbookService.deletePlaybook("pb-assemble");
             } catch (Exception ignored) {}
@@ -1180,7 +1165,7 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         playbookService.savePlaybook("pb-lock-orch", "Lock Orch PB", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", null, 1);
+            List.of(), false, "specialist", false, "OIM", 1);
 
         try {
             doAnswer(inv -> {

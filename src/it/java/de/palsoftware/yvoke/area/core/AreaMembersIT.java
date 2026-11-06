@@ -50,7 +50,7 @@ class AreaMembersIT {
 
     @BeforeEach
     void createOtherArea() {
-        areaRepository.upsert(new Area(OTHER, "Other", null, false, null, null, null, null, null));
+        areaRepository.upsert(new Area(OTHER, "Other", null, false, null, null, null, null));
     }
 
     @AfterEach
@@ -65,12 +65,12 @@ class AreaMembersIT {
     @Test
     void aPlaybooksAreaRoundTripsAndCanBeMoved() {
         playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, "OIM", null, 1);
+            "specialist", false, "OIM", 1);
         assertThat(playbookRepository.findByName("it-members-pb")).get()
             .extracting(Playbook::area).isEqualTo("OIM");
 
         playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, OTHER, null, 1);
+            "specialist", false, OTHER, 1);
         assertThat(playbookRepository.findByName("it-members-pb")).get()
             .extracting(Playbook::area).isEqualTo(OTHER);
         assertThat(playbookRepository.findAll()).filteredOn(p -> p.name().equals("it-members-pb"))
@@ -79,15 +79,15 @@ class AreaMembersIT {
 
     @Test
     void aSystemPromptsAreaRoundTripsAndCanBeMoved() {
-        systemPromptRepository.upsert("it-members-sp", SystemPromptType.CHAT, "text", null, "OIM");
-        systemPromptRepository.upsert("it-members-sp", SystemPromptType.CHAT, "text", null, OTHER);
+        systemPromptRepository.upsert("it-members-sp", SystemPromptType.KG, "text", null, "OIM");
+        systemPromptRepository.upsert("it-members-sp", SystemPromptType.KG, "text", null, OTHER);
 
         assertThat(systemPromptRepository.findByName("it-members-sp")).get()
             .extracting(SystemPrompt::area).isEqualTo(OTHER);
         assertThat(systemPromptRepository.findAll())
             .filteredOn(p -> p.name().equals("it-members-sp")).extracting(SystemPrompt::area)
             .containsExactly(OTHER);
-        assertThat(systemPromptRepository.findByType(SystemPromptType.CHAT))
+        assertThat(systemPromptRepository.findByType(SystemPromptType.KG))
             .filteredOn(p -> p.name().equals("it-members-sp")).extracting(SystemPrompt::area)
             .containsExactly(OTHER);
     }
@@ -132,15 +132,15 @@ class AreaMembersIT {
      */
     @Test
     void membersAreListedPerAreaWithOnlyChatPromptsAndPickablePlaybooks() {
-        systemPromptRepository.upsert("it-members-chat", SystemPromptType.CHAT, "t", null, OTHER);
         systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
+        systemPromptRepository.upsert("it-members-sum", SystemPromptType.SUMMARIZE, "t", null, OTHER);
         collectionRepository.create("it-members-col", "", OTHER);
         playbookRepository.upsert("it-members-spec", "S", "", "t", List.of(), false, "specialist",
-            false, OTHER, null, 1);
+            false, OTHER, 1);
         playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false,
-            "Orchestrator", false, OTHER, null, 1);
+            "Orchestrator", false, OTHER, 1);
         playbookRepository.upsert("it-members-rev", "R", "", "t", List.of(), false, "reviewer",
-            false, OTHER, null, 1);
+            false, OTHER, 1);
         jdbcClient.sql("""
             INSERT INTO playbooks (name, title, template_text, target_agent, area)
             VALUES ('it-members-none', 'N', 't', '', :area)""").param("area", OTHER).update();
@@ -148,7 +148,7 @@ class AreaMembersIT {
 
         AreaMembers members = areaRepository.findAllMembers().get(OTHER);
 
-        assertThat(members.systemPrompts()).containsExactly("it-members-chat");
+        assertThat(members.systemPrompts()).containsExactly("it-members-kg", "it-members-sum");
         assertThat(members.collections()).containsExactly("it-members-col");
         assertThat(members.playbooks()).containsExactly("it-members-none", "it-members-spec");
         assertThat(members.profiles()).containsExactly("it-members-prof");

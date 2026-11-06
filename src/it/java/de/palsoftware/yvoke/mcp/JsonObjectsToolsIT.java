@@ -217,8 +217,8 @@ public class JsonObjectsToolsIT {
         List<String> clientOnlyNames = Arrays.stream(clientOnly.getToolCallbacks())
             .map(c -> c.getToolDefinition().name()).toList();
 
-        assertThat(clientOnlyNames).containsExactlyInAnyOrder("get_system_prompt",
-            "list_playbooks", "get_playbook", "list_areas");
+        assertThat(clientOnlyNames).containsExactlyInAnyOrder("list_playbooks", "get_playbook",
+            "list_areas", "submit_feedback");
     }
 
     @Test

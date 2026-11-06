@@ -38,7 +38,6 @@ public class AreaAdminController {
         @RequestParam String name, @RequestParam(required = false) String title,
         @RequestParam(required = false) String description,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam(required = false) String defaultSystemPrompt,
         @RequestParam(required = false) String defaultPlaybook,
         @RequestParam(required = false) String defaultProfile,
         RedirectAttributes redirectAttributes) {
@@ -56,8 +55,8 @@ public class AreaAdminController {
                     "Not authorized to administer area: " + originalName);
             }
         }
-        areaService.saveArea(originalName, name, title, description, prototype, defaultSystemPrompt,
-            defaultPlaybook, defaultProfile);
+        areaService.saveArea(originalName, name, title, description, prototype, defaultPlaybook,
+            defaultProfile);
         redirectAttributes.addFlashAttribute("success", "Area '" + name.trim() + "' saved.");
         return "redirect:/admin/areas";
     }

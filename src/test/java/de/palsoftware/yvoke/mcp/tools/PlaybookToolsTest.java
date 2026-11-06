@@ -37,11 +37,11 @@ class PlaybookToolsTest {
     private PlaybookTools tools;
 
     private static final Set<String> META_KEYS = Set.of("name", "title", "description", "tools",
-        "codeExecution", "targetAgent", "prototype", "area", "systemPrompt", "version");
+        "codeExecution", "targetAgent", "prototype", "area", "version");
 
     private static final Playbook FULL = new Playbook("oim-full", "OIM full", "Everything OIM",
         "You are the OIM assistant.", List.of("search_corpus", "get_section"), true, "specialist",
-        true, null, null, false, "OIM", "custom-sys-prompt", 2);
+        true, null, null, false, "OIM", 2);
     private static final Playbook BARE = new Playbook("bare", "Bare", null, "Bare text", null,
         false, null, false, null, null, false, "PingID");
     private static final Playbook ORCHESTRATOR = new Playbook("oim-orchestrator", "Lead", "Leads",
@@ -83,7 +83,6 @@ class PlaybookToolsTest {
         assertThat(full.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(full.get("prototype").asBoolean()).isTrue();
         assertThat(full.get("area").asText()).isEqualTo("OIM");
-        assertThat(full.get("systemPrompt").asText()).isEqualTo("custom-sys-prompt");
         assertThat(full.get("version").asInt()).isEqualTo(2);
         // The list is metadata only; the text costs a get_playbook call.
         assertThat(full.has("text")).isFalse();
@@ -94,7 +93,6 @@ class PlaybookToolsTest {
         assertThat(bare.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(bare.get("codeExecution").asBoolean()).isFalse();
         assertThat(bare.get("prototype").asBoolean()).isFalse();
-        assertThat(bare.get("systemPrompt").isNull()).isTrue();
         assertThat(bare.get("version").asInt()).isEqualTo(1);
     }
 
@@ -126,7 +124,6 @@ class PlaybookToolsTest {
         assertThat(pb.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(pb.get("prototype").asBoolean()).isTrue();
         assertThat(pb.get("area").asText()).isEqualTo("OIM");
-        assertThat(pb.get("systemPrompt").asText()).isEqualTo("custom-sys-prompt");
         assertThat(pb.get("version").asInt()).isEqualTo(2);
     }
 
@@ -153,14 +150,12 @@ class PlaybookToolsTest {
 
     @Test
     void anyPlaybookCanBeFetchedByNameNotOnlyListedOnes() throws Exception {
-        Playbook orchWithPrompt = new Playbook("oim-orchestrator", "Lead", "Leads", "You lead.",
-            List.of(), false, "orchestrator", false, null, null, false, "OIM", "ignored-prompt");
-        when(playbookRepository.findByName("oim-orchestrator"))
-            .thenReturn(Optional.of(orchWithPrompt));
+        Playbook orch = new Playbook("oim-orchestrator", "Lead", "Leads", "You lead.", List.of(),
+            false, "orchestrator", false, null, null, false, "OIM");
+        when(playbookRepository.findByName("oim-orchestrator")).thenReturn(Optional.of(orch));
 
         JsonNode tree = json.readTree(tools.getPlaybook("oim-orchestrator"));
         assertThat(tree.get("targetAgent").asText()).isEqualTo("orchestrator");
-        assertThat(tree.get("systemPrompt").isNull()).isTrue();
     }
 
     @Test

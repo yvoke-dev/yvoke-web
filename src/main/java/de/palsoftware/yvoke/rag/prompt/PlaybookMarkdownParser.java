@@ -40,7 +40,6 @@ public class PlaybookMarkdownParser {
         boolean codeExecution = false;
         boolean prototype = false;
         String area = null;
-        String systemPrompt = null;
         boolean hasVersion = false;
         Object rawVersion = null;
 
@@ -75,14 +74,6 @@ public class PlaybookMarkdownParser {
 
                     if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
                         area = String.valueOf(map.get("area")).trim();
-                    }
-
-                    Object sysPromptObj = map.get("system_prompt");
-                    if (sysPromptObj == null) {
-                        sysPromptObj = map.get("systemPrompt");
-                    }
-                    if (sysPromptObj != null && !String.valueOf(sysPromptObj).isBlank()) {
-                        systemPrompt = String.valueOf(sysPromptObj).trim();
                     }
 
                     Object protoObj = map.get("prototype");
@@ -123,10 +114,8 @@ public class PlaybookMarkdownParser {
             title = name;
         }
 
-        if (!Playbook.isSpecialist(targetAgent) && systemPrompt != null
-            && !systemPrompt.isBlank()) {
-            throw new IllegalArgumentException(
-                "Playbooks for role '" + targetAgent + "' cannot have a designated system prompt.");
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Playbook body template text cannot be empty.");
         }
 
         int version = !hasVersion
@@ -134,7 +123,7 @@ public class PlaybookMarkdownParser {
             : parseVersionValue(rawVersion);
 
         return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
-            prototype, null, null, false, area, systemPrompt, version);
+            prototype, null, null, false, area, version);
     }
 
     private static int parseVersionValue(Object rawVersion) {
@@ -189,9 +178,6 @@ public class PlaybookMarkdownParser {
         sb.append("prototype: ").append(playbook.prototype()).append("\n");
         if (playbook.area() != null) {
             sb.append("area: ").append(playbook.area()).append("\n");
-        }
-        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
-            sb.append("system_prompt: ").append(playbook.systemPrompt().trim()).append("\n");
         }
         if (playbook.tools() != null && !playbook.tools().isEmpty()) {
             sb.append("tools:\n");

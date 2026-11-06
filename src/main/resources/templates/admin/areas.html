@@ -42,8 +42,6 @@
                                 <p th:if="${a.area.description != null}" style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.5rem;" th:text="${a.area.description}">Description</p>
 
                                 <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-secondary); display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem;">
-                                    <span style="color: var(--text-muted);">Default system prompt</span>
-                                    <span th:text="${a.defaultSystemPrompt() != null ? a.defaultSystemPrompt() : 'Active default chat prompt'}"></span>
                                     <span style="color: var(--text-muted);">Default playbook</span>
                                     <span th:text="${a.defaultPlaybook() != null ? a.defaultPlaybook() : 'None'}"></span>
                                     <span style="color: var(--text-muted);">Default profile</span>
@@ -52,9 +50,9 @@
 
                                 <details style="margin-top: 0.75rem; font-size: 0.85rem;">
                                     <summary style="cursor: pointer; color: var(--text-muted);"
-                                             th:text="|Members: ${#lists.size(a.members.systemPrompts)} chat prompts, ${#lists.size(a.members.collections)} collections, ${#lists.size(a.members.playbooks)} playbooks, ${#lists.size(a.members.profiles)} profiles|">Members</summary>
+                                             th:text="|Members: ${#lists.size(a.members.systemPrompts)} system prompts, ${#lists.size(a.members.collections)} collections, ${#lists.size(a.members.playbooks)} playbooks, ${#lists.size(a.members.profiles)} profiles|">Members</summary>
                                     <div style="margin-top: 0.5rem; display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; color: var(--text-secondary);">
-                                        <span style="color: var(--text-muted);">Chat prompts</span><span th:text="${#strings.listJoin(a.members.systemPrompts, ', ')}"></span>
+                                        <span style="color: var(--text-muted);">System prompts</span><span th:text="${#strings.listJoin(a.members.systemPrompts, ', ')}"></span>
                                         <span style="color: var(--text-muted);">Collections</span><span th:text="${#strings.listJoin(a.members.collections, ', ')}"></span>
                                         <span style="color: var(--text-muted);">Playbooks</span><span th:text="${#strings.listJoin(a.members.playbooks, ', ')}"></span>
                                         <span style="color: var(--text-muted);">Profiles</span><span th:text="${#strings.listJoin(a.members.profiles, ', ')}"></span>
@@ -64,7 +62,7 @@
 
                             <div style="display: flex; gap: 0.5rem; align-items: center;">
                                 <button type="button" class="btn btn-secondary" onclick="editArea(this)" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;"
-                                        th:attr="data-name=${a.area.name}, data-title=${a.area.title}, data-description=${a.area.description}, data-prototype=${a.area.prototype}, data-default-system-prompt=${a.area.defaultSystemPrompt}, data-default-playbook=${a.area.defaultPlaybook}, data-default-profile=${a.area.defaultProfile}, data-prompts=${#strings.listJoin(a.members.systemPrompts, '|')}, data-playbooks=${#strings.listJoin(a.members.playbooks, '|')}, data-profiles=${#strings.listJoin(a.members.profiles, '|')}">
+                                        th:attr="data-name=${a.area.name}, data-title=${a.area.title}, data-description=${a.area.description}, data-prototype=${a.area.prototype}, data-default-playbook=${a.area.defaultPlaybook}, data-default-profile=${a.area.defaultProfile}, data-playbooks=${#strings.listJoin(a.members.playbooks, '|')}, data-profiles=${#strings.listJoin(a.members.profiles, '|')}">
                                     Edit
                                 </button>
                                 <form sec:authorize="hasRole('ADMIN')" th:action="@{/admin/areas/delete}" method="post" onsubmit="return confirm('Delete this area? Only an area with no members can be deleted.');" style="display: inline;">
@@ -115,10 +113,6 @@
                                 </label>
                             </div>
                             <div class="form-group">
-                                <label for="defaultSystemPrompt" class="form-label">Default system prompt</label>
-                                <select id="defaultSystemPrompt" name="defaultSystemPrompt" class="form-input"><option value="">Active default chat prompt</option></select>
-                            </div>
-                            <div class="form-group">
                                 <label for="defaultPlaybook" class="form-label">Default playbook</label>
                                 <select id="defaultPlaybook" name="defaultPlaybook" class="form-input"><option value="">None</option></select>
                             </div>
@@ -158,7 +152,6 @@
             document.getElementById('title').value = d.title || '';
             document.getElementById('description').value = d.description || '';
             document.getElementById('prototype').checked = d.prototype === 'true';
-            fillDefaults(document.getElementById('defaultSystemPrompt'), d.prompts, d.defaultSystemPrompt);
             fillDefaults(document.getElementById('defaultPlaybook'), d.playbooks, d.defaultPlaybook);
             fillDefaults(document.getElementById('defaultProfile'), d.profiles, d.defaultProfile);
             document.getElementById('form-title').textContent = 'Edit Area';
@@ -172,7 +165,7 @@
         function resetAreaForm() {
             document.getElementById('area-form').reset();
             document.getElementById('originalName').value = '';
-            for (const id of ['defaultSystemPrompt', 'defaultPlaybook', 'defaultProfile']) {
+            for (const id of ['defaultPlaybook', 'defaultProfile']) {
                 fillDefaults(document.getElementById(id), '', '');
             }
             document.getElementById('form-title').textContent = 'Create Area';

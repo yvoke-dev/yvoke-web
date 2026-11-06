@@ -2,72 +2,39 @@ package de.palsoftware.yvoke.rag.prompt;
 
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
-import de.palsoftware.yvoke.shared.config.repository.AppConfigRepository;
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import org.yaml.snakeyaml.Yaml;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.Yaml;
 
 @Service
 public class SystemPromptService {
 
-    /** The name clients ask for to mean "the admin's active chat prompt". */
-    public static final String DEFAULT_CHAT = "default-chat";
-
     private final SystemPromptRepository systemPromptRepository;
-    private final String defaultPromptName;
-    private final AppConfigRepository appConfigRepository;
     private final AreaService areaService;
     private final CacheManager cacheManager;
 
     @Autowired
     public SystemPromptService(SystemPromptRepository systemPromptRepository,
-        @Value("${app.ai.rag.default-prompt-name}") String defaultPromptName,
-        AppConfigRepository appConfigRepository, AreaService areaService,
-        CacheManager cacheManager) {
+        AreaService areaService, CacheManager cacheManager) {
         this.areaService = Objects.requireNonNull(areaService, "areaService must not be null");
         this.systemPromptRepository = Objects.requireNonNull(systemPromptRepository,
             "systemPromptRepository must not be null");
-        this.defaultPromptName =
-            Objects.requireNonNull(defaultPromptName, "defaultPromptName must not be null");
-        this.appConfigRepository =
-            Objects.requireNonNull(appConfigRepository, "appConfigRepository must not be null");
         this.cacheManager = Objects.requireNonNull(cacheManager, "cacheManager must not be null");
     }
 
     /** For callers outside the container; creates a concurrent map cache manager. */
-    SystemPromptService(SystemPromptRepository systemPromptRepository, String defaultPromptName,
-        AppConfigRepository appConfigRepository, AreaService areaService) {
-        this(systemPromptRepository, defaultPromptName, appConfigRepository, areaService,
-            new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS, CacheConfig.APP_CONFIG));
-    }
-
-    public String getDefaultChatPromptName() {
-        Cache cache = cacheManager.getCache(CacheConfig.APP_CONFIG);
-        if (cache != null) {
-            return cache.get("default-chat-prompt",
-                () -> appConfigRepository.get("default-chat-prompt", defaultPromptName));
-        }
-        return appConfigRepository.get("default-chat-prompt", defaultPromptName);
-    }
-
-    @Caching(
-        evict = {@CacheEvict(cacheNames = CacheConfig.APP_CONFIG, key = "'default-chat-prompt'"),
-            @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)})
-    public void setDefaultChatPromptName(String name) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Default prompt name cannot be empty.");
-        }
-        appConfigRepository.set("default-chat-prompt", name.trim());
+    SystemPromptService(SystemPromptRepository systemPromptRepository, AreaService areaService) {
+        this(systemPromptRepository, areaService,
+            new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS));
     }
 
     public List<SystemPrompt> listAllPrompts() {
@@ -135,30 +102,7 @@ public class SystemPromptService {
         return systemPromptRepository.findByName(trimmed);
     }
 
-    /**
-     * Resolves the base instructions for chat requested by name, or empty.
-     *
-     * <p>
-     * {@code default-chat}, or a blank name, means the prompt an admin made active, resolved
-     * exactly as the web chat resolves it ({@code RagService.loadAgenticSystemPrompt}), so that web
-     * chat, MCP tools ({@code GetSystemPromptTool}), and desktop sync
-     * ({@code DesktopSyncController.getSystemPrompt}) all answer under the same instructions. Any
-     * other name is looked up as given. A stored row literally named {@code default-chat} is
-     * ignored in favor of the active default prompt; since that row ships in every deployment,
-     * following it literally would leave clients on the generic prompt after an admin switched.
-     *
-     * <p>
-     * Only CHAT prompts are returned: KG and SUMMARIZE prompts share the namespace but are not base
-     * instructions, and nothing a client does needs them.
-     */
-    public Optional<SystemPrompt> findChatPrompt(String name) {
-        String requested = (name == null || name.isBlank()) ? DEFAULT_CHAT : name.trim();
-        String resolved = DEFAULT_CHAT.equals(requested) ? getDefaultChatPromptName() : requested;
-        return getPrompt(resolved).filter(p -> p.type() == SystemPromptType.CHAT);
-    }
-
-    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
-        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
     public void savePrompt(String name, SystemPromptType type, String systemPrompt,
         String description, String area) {
         if (name == null || name.isBlank()) {
@@ -175,8 +119,7 @@ public class SystemPromptService {
             description != null ? description.trim() : "", storedArea);
     }
 
-    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
-        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
     public void deletePrompt(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Prompt name cannot be empty.");
@@ -208,8 +151,8 @@ public class SystemPromptService {
      */
     public static SystemPrompt parseMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
-        if (mdContent == null) {
-            mdContent = "";
+        if (mdContent == null || mdContent.isBlank()) {
+            throw new IllegalArgumentException("System prompt content cannot be empty.");
         }
         String yamlFrontmatter = "";
         String body = mdContent;
@@ -222,41 +165,41 @@ public class SystemPromptService {
             }
         }
 
-        String name = fallbackName != null ? fallbackName : "";
-        SystemPromptType type = SystemPromptType.CHAT;
-        String description = "";
-        String area = fallbackArea;
-
-        if (!yamlFrontmatter.isBlank()) {
-            Object loaded;
-            try {
-                loaded = new Yaml().load(yamlFrontmatter);
-            } catch (Exception e) {
-                throw new IllegalArgumentException("Malformed YAML frontmatter in system prompt.",
-                    e);
-            }
-            if (!(loaded instanceof Map<?, ?> map)) {
-                throw new IllegalArgumentException(
-                    "YAML frontmatter in system prompt must be a mapping.");
-            }
-            if (map.get("name") != null) {
-                name = String.valueOf(map.get("name")).trim();
-            }
-            if (map.get("description") != null) {
-                description = String.valueOf(map.get("description")).trim();
-            }
-            if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
-                area = String.valueOf(map.get("area")).trim();
-            }
-            Object typeObj = map.get("type");
-            if (typeObj != null) {
-                String tStr = String.valueOf(typeObj).trim().toUpperCase();
-                try {
-                    type = SystemPromptType.valueOf(tStr);
-                } catch (Exception ignored) {
-                }
-            }
+        if (yamlFrontmatter.isBlank()) {
+            throw new IllegalArgumentException(
+                "YAML frontmatter in system prompt cannot be empty.");
         }
+
+        Object loaded;
+        try {
+            loaded = new Yaml().load(yamlFrontmatter);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Malformed YAML frontmatter in system prompt.", e);
+        }
+        if (!(loaded instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException(
+                "YAML frontmatter in system prompt must be a mapping.");
+        }
+
+        String name = fallbackName != null ? fallbackName : "";
+        if (map.get("name") != null) {
+            name = String.valueOf(map.get("name")).trim();
+        }
+        String description = "";
+        if (map.get("description") != null) {
+            description = String.valueOf(map.get("description")).trim();
+        }
+        String area = fallbackArea;
+        if (map.get("area") != null && !String.valueOf(map.get("area")).isBlank()) {
+            area = String.valueOf(map.get("area")).trim();
+        }
+
+        Object typeObj = map.get("type");
+        if (typeObj == null || String.valueOf(typeObj).isBlank()) {
+            throw new IllegalArgumentException(
+                "System prompt type cannot be empty in YAML frontmatter.");
+        }
+        SystemPromptType type = SystemPromptType.fromString(String.valueOf(typeObj).trim());
 
         return new SystemPrompt(name, type, body, description, Instant.now(), Instant.now(), false,
             area);
@@ -266,8 +209,7 @@ public class SystemPromptService {
      * Imports a prompt file. The area named in its frontmatter wins; a file that names none goes
      * into {@code fallbackArea}, the area picked on the import form.
      */
-    @Caching(evict = {@CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true),
-        @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, allEntries = true)})
+    @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
     public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
         String fallbackArea) {
         SystemPrompt parsed = parseMarkdown(mdContent, fallbackName, fallbackArea);

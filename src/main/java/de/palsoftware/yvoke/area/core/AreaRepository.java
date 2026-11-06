@@ -24,7 +24,7 @@ import org.springframework.stereotype.Repository;
 public class AreaRepository {
 
     private static final String COLUMNS = """
-        name, title, description, prototype, default_system_prompt, default_playbook,
+        name, title, description, prototype, default_playbook,
         default_profile, created_at, updated_at""";
 
     private final JdbcClient jdbcClient;
@@ -56,12 +56,11 @@ public class AreaRepository {
      * <p>
      * The playbook rule must stay the one {@code PlaybookService.listSpecializedPlaybooks} applies
      * for {@code list_playbooks}: orchestrator and reviewer playbooks are left out, any other role
-     * (or a blank one, read as specialist) is pickable. {@code upper(type)} because the type column
-     * has producers that disagree on case (see {@code SystemPromptRepository.findByType}).
+     * (or a blank one, read as specialist) is pickable.
      */
     public Map<String, AreaMembers> findAllMembers() {
-        Map<String, List<String>> prompts = namesByArea(
-            "SELECT area, name FROM system_prompts WHERE upper(type) = 'CHAT' ORDER BY name");
+        Map<String, List<String>> prompts =
+            namesByArea("SELECT area, name FROM system_prompts ORDER BY name");
         Map<String, List<String>> collections =
             namesByArea("SELECT area, name FROM collections ORDER BY name");
         Map<String, List<String>> playbooks = namesByArea("""
@@ -96,21 +95,19 @@ public class AreaRepository {
 
     public void upsert(Area area) {
         jdbcClient.sql("""
-            INSERT INTO areas (name, title, description, prototype, default_system_prompt,
+            INSERT INTO areas (name, title, description, prototype,
                                default_playbook, default_profile)
-            VALUES (:name, :title, :description, :prototype, :defaultSystemPrompt,
+            VALUES (:name, :title, :description, :prototype,
                     :defaultPlaybook, :defaultProfile)
             ON CONFLICT (name) DO UPDATE SET
                 title = EXCLUDED.title,
                 description = EXCLUDED.description,
                 prototype = EXCLUDED.prototype,
-                default_system_prompt = EXCLUDED.default_system_prompt,
                 default_playbook = EXCLUDED.default_playbook,
                 default_profile = EXCLUDED.default_profile,
                 updated_at = CURRENT_TIMESTAMP
             """).param("name", area.name()).param("title", area.title())
             .param("description", area.description()).param("prototype", area.prototype())
-            .param("defaultSystemPrompt", area.defaultSystemPrompt())
             .param("defaultPlaybook", area.defaultPlaybook())
             .param("defaultProfile", area.defaultProfile()).update();
     }
@@ -131,9 +128,8 @@ public class AreaRepository {
         Timestamp cat = rs.getTimestamp("created_at");
         Timestamp uat = rs.getTimestamp("updated_at");
         return new Area(rs.getString("name"), rs.getString("title"), rs.getString("description"),
-            rs.getBoolean("prototype"), rs.getString("default_system_prompt"),
-            rs.getString("default_playbook"), rs.getString("default_profile"),
-            cat != null ? cat.toInstant() : Instant.now(),
+            rs.getBoolean("prototype"), rs.getString("default_playbook"),
+            rs.getString("default_profile"), cat != null ? cat.toInstant() : Instant.now(),
             uat != null ? uat.toInstant() : Instant.now());
     }
 }

@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.rag.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -111,7 +113,13 @@ public class SystemPromptRepositoryIT {
 
         assertThat(repository.findByType(SystemPromptType.KG)).extracting(SystemPrompt::name)
             .doesNotContain(UPPER);
-        assertThat(repository.findByType(SystemPromptType.CHAT)).extracting(SystemPrompt::name)
-            .doesNotContain(UPPER);
+    }
+
+    @Test
+    public void checkConstraintRejectsRetiredPromptTypes() {
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                + "VALUES ('IT-BAD-CHAT', 'CHAT', 'body', 'x')"))
+            .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

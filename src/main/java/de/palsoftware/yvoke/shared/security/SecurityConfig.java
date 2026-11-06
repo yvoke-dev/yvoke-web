@@ -406,8 +406,7 @@ public class SecurityConfig {
                 // Gated paths:
                 // 1. Superadmin-only paths (hasRole("ADMIN"))
                 .requestMatchers("/admin/costs/**", "/admin/costs", "/admin/pricing/**",
-                    "/admin/pricing", "/admin/audit/**", "/admin/audit", "/admin/areas/delete",
-                    "/admin/prompts/active")
+                    "/admin/pricing", "/admin/audit/**", "/admin/audit", "/admin/areas/delete")
                 .hasRole("ADMIN")
                 // 2. Admin & Trace paths (hasAnyRole("ADMIN", "AREA_ADMIN"))
                 // Note: trace endpoint must precede /chat/** so it cannot be matched by plain

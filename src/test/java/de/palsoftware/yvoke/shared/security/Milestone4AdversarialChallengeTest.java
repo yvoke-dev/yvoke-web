@@ -360,7 +360,7 @@ class Milestone4AdversarialChallengeTest {
             when(playbookService.getPlaybook("cross-pb")).thenReturn(Optional.of(existingB));
 
             assertThatThrownBy(() -> ragController.createOrUpdatePlaybook("cross-pb", "New Title",
-                "desc", "tmpl", null, false, "specialist", false, "AreaA", null, 1, redirect))
+                "desc", "tmpl", null, false, "specialist", false, "AreaA", 1, redirect))
                 .isInstanceOf(ResponseStatusException.class).satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
                     assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -417,12 +417,12 @@ class Milestone4AdversarialChallengeTest {
                     promptService, mock(RagService.class), new ObjectMapper(),
                     mock(RetrievalTelemetryService.class), 200, 20, areaService);
 
-            SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.CHAT,
-                "prompt", "desc", Instant.now(), Instant.now(), false, "AreaB");
+            SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.KG, "prompt",
+                "desc", Instant.now(), Instant.now(), false, "AreaB");
             when(promptService.getPrompt("cross-prompt")).thenReturn(Optional.of(existingB));
 
             assertThatThrownBy(() -> ragController.createOrUpdatePrompt("cross-prompt",
-                SystemPromptType.CHAT, "desc", "new text", "AreaA", redirect))
+                SystemPromptType.KG, "desc", "new text", "AreaA", redirect))
                 .isInstanceOf(ResponseStatusException.class).satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
                     assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -445,11 +445,11 @@ class Milestone4AdversarialChallengeTest {
                     promptService, mock(RagService.class), new ObjectMapper(),
                     mock(RetrievalTelemetryService.class), 200, 20, areaService);
 
-            SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.CHAT,
-                "prompt", "desc", Instant.now(), Instant.now(), false, "AreaB");
+            SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.KG, "prompt",
+                "desc", Instant.now(), Instant.now(), false, "AreaB");
             when(promptService.getPrompt("cross-prompt")).thenReturn(Optional.of(existingB));
 
-            String markdown = "---\nname: cross-prompt\ntype: CHAT\narea: AreaA\n---\nPrompt body";
+            String markdown = "---\nname: cross-prompt\ntype: KG\narea: AreaA\n---\nPrompt body";
             MockMultipartFile file = new MockMultipartFile("file", "cross-prompt.md",
                 "text/markdown", markdown.getBytes(StandardCharsets.UTF_8));
 
@@ -711,52 +711,6 @@ class Milestone4AdversarialChallengeTest {
                     .isEqualTo(HttpStatus.NOT_FOUND));
 
             verify(hybridSearch, never()).searchWithId(any(), any());
-        }
-
-        @Test
-        @DisplayName("Prompt: Area Admin attempting to set active default chat prompt -> 403 FORBIDDEN")
-        void testUpdateActiveDefaultPrompt_areaAdmin_forbidden() {
-            authenticateAs("ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA");
-
-            SystemPromptService systemPromptService = mock(SystemPromptService.class);
-            AreaService areaService = TestAreas.withAreas("AreaA");
-
-            RagAdminController controller = new RagAdminController(mock(HybridSearch.class),
-                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
-                mock(CollectionService.class), mock(PlaybookService.class), systemPromptService,
-                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
-                200, 20, areaService);
-
-            assertThatThrownBy(
-                () -> controller.updateActiveChatPrompt("oim-access-governance", redirect))
-                .isInstanceOf(ResponseStatusException.class).satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(rse.getReason())
-                        .contains("Only superadmin can change active chat prompt");
-                });
-
-            verify(systemPromptService, never()).setDefaultChatPromptName(any());
-        }
-
-        @Test
-        @DisplayName("Prompt: Superadmin setting active default chat prompt -> allowed")
-        void testUpdateActiveDefaultPrompt_superAdmin_allowed() {
-            authenticateAs("ROLE_ADMIN");
-
-            SystemPromptService systemPromptService = mock(SystemPromptService.class);
-            AreaService areaService = TestAreas.withAreas("AreaA");
-
-            RagAdminController controller = new RagAdminController(mock(HybridSearch.class),
-                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
-                mock(CollectionService.class), mock(PlaybookService.class), systemPromptService,
-                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
-                200, 20, areaService);
-
-            String view = controller.updateActiveChatPrompt("oim-access-governance", redirect);
-
-            assertThat(view).isEqualTo("redirect:/admin/prompts");
-            verify(systemPromptService).setDefaultChatPromptName("oim-access-governance");
         }
     }
 }

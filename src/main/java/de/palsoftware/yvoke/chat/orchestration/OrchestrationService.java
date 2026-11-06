@@ -8,8 +8,6 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -60,14 +58,12 @@ public class OrchestrationService {
     private final AgentStepRepository stepRepository;
     private final ObjectMapper objectMapper;
     private final ConversationRepository conversationRepository;
-    private final SystemPromptService systemPromptService;
 
     @Autowired
     public OrchestrationService(RagService ragService, PlaybookService playbookService,
         OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
         AgentRunRepository runRepository, AgentStepRepository stepRepository,
-        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository,
-        SystemPromptService systemPromptService) {
+        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository) {
         this.ragService = ragService;
         this.playbookService = playbookService;
         this.properties = properties;
@@ -76,8 +72,6 @@ public class OrchestrationService {
         this.stepRepository = stepRepository;
         this.objectMapper = objectMapper;
         this.conversationRepository = conversationRepository;
-        this.systemPromptService =
-            Objects.requireNonNull(systemPromptService, "systemPromptService must not be null");
     }
 
     public boolean hasProfile(String name) {
@@ -372,22 +366,6 @@ public class OrchestrationService {
         }
     }
 
-    private String resolvePlaybookSystemPrompt(Playbook playbook) {
-        if (playbook == null || playbook.systemPrompt() == null
-            || playbook.systemPrompt().isBlank()) {
-            return null;
-        }
-        Optional<SystemPrompt> prompt =
-            systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
-        if (prompt.isPresent()) {
-            return prompt.get().systemPrompt();
-        }
-        log.warn(
-            "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
-            playbook.name(), playbook.systemPrompt().trim());
-        return null;
-    }
-
     /** Invoked by call_specialist: runs one specialist, records the step, harvests its evidence. */
     private String runSpecialist(RunState st, List<Playbook> specialists, String playbookName,
         String subQuestion) {
@@ -402,22 +380,14 @@ public class OrchestrationService {
             specialists.stream().filter(p -> p.name().equals(playbookName)).findFirst().orElseThrow(
                 () -> new IllegalArgumentException("Specialist not in profile: " + playbookName));
 
-        // The playbook is prepended to the QUERY on a first call (this is the same composition
-        // regular chat uses: default-chat is the system prompt, the playbook opens the user turn).
-        // On a resumed call it is already in the conversation, so re-prepending would duplicate it.
         List<LlmMessage> priorSpecialistMessages = st.specialistMessages.get(pb.name());
-        boolean resuming = priorSpecialistMessages != null && !priorSpecialistMessages.isEmpty();
-        String query = (!resuming && pb.templateText() != null && !pb.templateText().isBlank())
-            ? pb.templateText() + "\n\n---\n\n" + subQuestion
-            : subQuestion;
         List<String> allowed = new ArrayList<>(pb.tools() != null ? pb.tools() : List.of());
         if (!allowed.contains("ask_clarifying_question")) {
             allowed.add("ask_clarifying_question");
         }
 
-        String specialistSystemPrompt = resolvePlaybookSystemPrompt(pb);
         AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), pb.version(),
-            specialistSystemPrompt, query, subQuestion, profileSpecialistCfg(st), allowed,
+            pb.templateText(), subQuestion, subQuestion, profileSpecialistCfg(st), allowed,
             pb.codeExecution(), List.<ToolCallback>of(), null, priorSpecialistMessages, null);
 
         if (outcome.result().messages() != null && !outcome.result().messages().isEmpty()) {
@@ -560,9 +530,14 @@ public class OrchestrationService {
     // ------------------------------------------------------------------------------------------
 
     private Playbook requirePlaybook(String name, String role) {
-        return playbookService.getPlaybook(name)
+        Playbook pb = playbookService.getPlaybook(name)
             .orElseThrow(() -> new IllegalStateException("Orchestrator " + role + " playbook '"
                 + name + "' is not defined in the playbooks table."));
+        if (pb.templateText() == null || pb.templateText().isBlank()) {
+            throw new IllegalStateException(
+                "Orchestrator " + role + " playbook '" + name + "' has empty template text.");
+        }
+        return pb;
     }
 
     private static String renderRoster(List<Playbook> specialists) {

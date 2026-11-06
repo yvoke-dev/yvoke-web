@@ -18,9 +18,6 @@ import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.shared.user.model.User;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
@@ -56,7 +53,6 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 class DesktopSyncControllerTest {
 
     private DesktopSyncService syncService;
-    private SystemPromptService systemPromptService;
     private PlaybookService playbookService;
     private OrchestratorProperties orchestratorProperties;
     private OrchestratorProfileService profileService;
@@ -72,7 +68,6 @@ class DesktopSyncControllerTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         syncService = mock(DesktopSyncService.class);
-        systemPromptService = mock(SystemPromptService.class);
         playbookService = mock(PlaybookService.class);
         profileService = mock(OrchestratorProfileService.class);
         when(profileService.listAllProfiles()).thenReturn(List.of());
@@ -81,8 +76,8 @@ class DesktopSyncControllerTest {
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
                 List.of("oim-access-governance", "oim-developer-api"), null, null, null)));
         orchestratorRunService = mock(DesktopOrchestratorRunService.class);
-        controller = new DesktopSyncController(syncService, systemPromptService, playbookService,
-            orchestratorProperties, profileService, orchestratorRunService, areaService);
+        controller = new DesktopSyncController(syncService, playbookService, orchestratorProperties,
+            profileService, orchestratorRunService, areaService);
     }
 
     @AfterEach
@@ -118,30 +113,12 @@ class DesktopSyncControllerTest {
 
     @Test
     void listOrchestratorProfilesReturnsEmptyWhenNoneConfigured() {
-        controller = new DesktopSyncController(syncService, systemPromptService, playbookService,
+        controller = new DesktopSyncController(syncService, playbookService,
             new OrchestratorProperties(null, null, null, null), profileService,
             orchestratorRunService, areaService);
         assertThat(controller.listOrchestratorProfiles()).isEmpty();
     }
 
-    /**
-     * The desktop's bootstrap makes two GETs against this controller, and both have to prefer the
-     * live source and degrade rather than fail. Neither branch runs today: both existing profile
-     * tests build the controller through the 5-arg constructor, which passes a NULL
-     * {@code OrchestratorProfileService}, so the DB-first branch has never executed; and both
-     * {@code getSystemPrompt} tests resolve a real prompt, so the empty-string branch has never
-     * executed either.
-     *
-     * <p>
-     * If DB profiles stopped being returned, the desktop would silently fall back to the
-     * yml-configured set and run a DIFFERENT orchestrator/reviewer/specialist trio than the one an
-     * admin edited in the UI — answers still arrive, nothing looks broken, and the only symptom is
-     * that a playbook fix "did not take". The fallback is deliberately conditioned on an EMPTY db
-     * list, so both directions are asserted here: a non-empty db list must WIN, an empty one must
-     * fall through. And if an unknown prompt name started 404ing instead of returning
-     * {@code {"systemPrompt":""}}, the desktop's prompt bootstrap would fail hard on a name it
-     * merely has not heard of rather than running with no system prompt.
-     */
     /**
      * A prototype profile is SENT to the desktop, flagged — never withheld.
      *
@@ -160,9 +137,8 @@ class DesktopSyncControllerTest {
      */
     @Test
     void aPrototypeProfileReachesTheDesktopFlaggedRatherThanWithheld() {
-        DesktopSyncController dbBacked =
-            new DesktopSyncController(syncService, systemPromptService, playbookService,
-                orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
+            orchestratorProperties, profileService, orchestratorRunService, areaService);
 
         when(profileService.listAllProfiles()).thenReturn(List.of(
             new OrchestratorProfile("OIM", 2, 8, "oim-orch", "oim-rev", List.of("spec"), null, null,
@@ -184,9 +160,8 @@ class DesktopSyncControllerTest {
     /** P1-12: the desktop's lists carry each item's area; an added field does not break it. */
     @Test
     void theDesktopListsCarryTheArea() {
-        DesktopSyncController dbBacked =
-            new DesktopSyncController(syncService, systemPromptService, playbookService,
-                orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
+            orchestratorProperties, profileService, orchestratorRunService, areaService);
         when(profileService.listAllProfiles())
             .thenReturn(List.of(new OrchestratorProfile("Ping", 2, 8, "o", "r", List.of(), null,
                 null, null, null, null, null, false, null, null, "PingID")));
@@ -200,10 +175,9 @@ class DesktopSyncControllerTest {
     }
 
     @Test
-    void orchestratorProfilesComeFromTheDatabaseAndAnUnknownPromptDegradesToEmpty() {
-        DesktopSyncController dbBacked =
-            new DesktopSyncController(syncService, systemPromptService, playbookService,
-                orchestratorProperties, profileService, orchestratorRunService, areaService);
+    void orchestratorProfilesComeFromTheDatabase() {
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
+            orchestratorProperties, profileService, orchestratorRunService, areaService);
 
         when(profileService.listAllProfiles())
             .thenReturn(List.of(new OrchestratorProfile("OIM", 2, 8, "oim-orchestrator-edited",
@@ -221,24 +195,6 @@ class DesktopSyncControllerTest {
             .as("an EMPTY db list, and only that, falls back to the configured profiles")
             .extracting(OrchestratorProfileDto::orchestratorPlaybook)
             .containsExactly("oim-orchestrator");
-
-        when(systemPromptService.findChatPrompt("no-such-prompt")).thenReturn(Optional.empty());
-
-        ResponseEntity<Map<String, String>> unknown = dbBacked.getSystemPrompt("no-such-prompt");
-        assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(unknown.getBody()).containsEntry("systemPrompt", "");
-    }
-
-    @Test
-    void getSystemPromptResolvesDefaultChatViaFindChatPrompt() {
-        when(systemPromptService.findChatPrompt("default-chat"))
-            .thenReturn(Optional.of(new SystemPrompt("active-prompt", SystemPromptType.CHAT,
-                "Active base prompt", "desc")));
-
-        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("default-chat");
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("systemPrompt", "Active base prompt");
-        verify(systemPromptService).findChatPrompt("default-chat");
     }
 
     @Test
@@ -389,30 +345,6 @@ class DesktopSyncControllerTest {
     }
 
     @Test
-    void getSystemPromptReturnsPromptFromService() {
-        SystemPrompt prompt =
-            new SystemPrompt("custom-prompt", SystemPromptType.CHAT, "Hello System", "desc");
-        when(systemPromptService.findChatPrompt("custom-prompt")).thenReturn(Optional.of(prompt));
-
-        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("custom-prompt");
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("systemPrompt", "Hello System");
-    }
-
-    @Test
-    void getSystemPromptFallsBackForDefaultChat() {
-        SystemPrompt fallback =
-            new SystemPrompt("active-chat", SystemPromptType.CHAT, "Hello Fallback", "desc");
-        when(systemPromptService.findChatPrompt("default-chat")).thenReturn(Optional.of(fallback));
-
-        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("default-chat");
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("systemPrompt", "Hello Fallback");
-    }
-
-    @Test
     void updateConversationPassesTitleAndSettings() {
         UUID id = UUID.randomUUID();
         UpdateConversationRequest request =
@@ -437,20 +369,6 @@ class DesktopSyncControllerTest {
         assertThat(playbooks.get(0).tools()).containsExactly("tool1");
         assertThat(playbooks.get(0).codeExecution()).isTrue();
         assertThat(playbooks.get(0).targetAgent()).isEqualTo("specialist");
-        assertThat(playbooks.get(0).systemPrompt()).isNull();
-    }
-
-    @Test
-    void listPlaybooksPropagatesSystemPrompt() {
-        Playbook playbook =
-            new Playbook("prompted", "Prompted", "Description", "template", List.of("tool1"), true,
-                "specialist", false, Instant.now(), Instant.now(), false, "OIM", "prompted-system");
-        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(playbook));
-
-        List<PlaybookDto> playbooks = controller.listPlaybooks();
-
-        assertThat(playbooks).hasSize(1);
-        assertThat(playbooks.get(0).systemPrompt()).isEqualTo("prompted-system");
     }
 
     @Test
@@ -541,8 +459,8 @@ class DesktopSyncControllerTest {
 
     @Test
     void listAreasReturnsAccessibleAreas() {
-        when(areaService.listAccessibleForCurrentUser()).thenReturn(List.of(new Area("security",
-            "Security", "Security area", false, null, null, null, null, null)));
+        when(areaService.listAccessibleForCurrentUser()).thenReturn(List
+            .of(new Area("security", "Security", "Security area", false, null, null, null, null)));
 
         List<AreaDto> result = controller.listAreas();
 
@@ -552,8 +470,8 @@ class DesktopSyncControllerTest {
 
     @Test
     void getAreaPackageReturnsMembersForAccessibleArea() {
-        Area area = new Area("security", "Security", "Security area", false, "prompt1", "pb1",
-            "prof1", null, null);
+        Area area =
+            new Area("security", "Security", "Security area", false, "pb1", "prof1", null, null);
         AreaMembers members =
             new AreaMembers(List.of("prompt1"), List.of("col1"), List.of("pb1"), List.of("prof1"));
         when(areaService.findByNameForUser("security")).thenReturn(Optional.of(area));
@@ -597,9 +515,8 @@ class DesktopSyncControllerTest {
         SecurityContextHolder.getContext().setAuthentication(
             new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
         OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
-        DesktopSyncController dbBacked =
-            new DesktopSyncController(syncService, systemPromptService, playbookService,
-                orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
+            orchestratorProperties, profileService, orchestratorRunService, areaService);
         OrchestratorProfile profSec = new OrchestratorProfile("sec-prof", 2, 8, "o", "r", List.of(),
             null, null, null, null, null, null, false, null, null, "security");
         OrchestratorProfile profFin = new OrchestratorProfile("fin-prof", 2, 8, "o", "r", List.of(),
@@ -612,64 +529,26 @@ class DesktopSyncControllerTest {
     }
 
     @Test
-    void getSystemPromptDegradesToEmptyForUnauthorizedArea() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
-        SystemPrompt prompt = new SystemPrompt("finance-chat", SystemPromptType.CHAT,
-            "Finance instructions", "desc", Instant.now(), Instant.now(), false, "finance");
-        when(systemPromptService.findChatPrompt("finance-chat")).thenReturn(Optional.of(prompt));
-
-        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("finance-chat");
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("systemPrompt", "");
+    void getSystemPromptEndpointIsRemoved() {
+        assertThatThrownBy(
+            () -> DesktopSyncController.class.getMethod("getSystemPrompt", String.class))
+            .isInstanceOf(NoSuchMethodException.class);
     }
 
     @Test
-    void getSystemPromptAllowsGlobalDefaultChatAcrossAreas() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
-        SystemPrompt defaultPrompt = new SystemPrompt("active-chat", SystemPromptType.CHAT,
-            "Global default instructions", "desc", Instant.now(), Instant.now(), true, "OIM");
-        when(systemPromptService.findChatPrompt("default-chat"))
-            .thenReturn(Optional.of(defaultPrompt));
+    void dtosDoNotExposeSystemPromptFields() {
+        assertThatThrownBy(() -> AreaDto.class.getMethod("defaultSystemPrompt"))
+            .isInstanceOf(NoSuchMethodException.class);
+        assertThatThrownBy(() -> AreaDto.class.getMethod("systemPrompts"))
+            .isInstanceOf(NoSuchMethodException.class);
 
-        ResponseEntity<Map<String, String>> response = controller.getSystemPrompt("default-chat");
+        assertThatThrownBy(() -> AreaPackageDto.class.getMethod("defaultSystemPrompt"))
+            .isInstanceOf(NoSuchMethodException.class);
+        assertThatThrownBy(() -> AreaPackageDto.class.getMethod("systemPrompts"))
+            .isInstanceOf(NoSuchMethodException.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("systemPrompt", "Global default instructions");
-    }
-
-    @Test
-    void getSystemPromptPrefersDirectPromptNameOverAreaWithSameNameAndFallsBackToAreaDefaultWhenNoDirectPrompt() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
-        Area secArea =
-            new Area("security", "Security", "desc", false, "sec-default", null, null, null, null);
-        AreaMembers members =
-            new AreaMembers(List.of("sec-default", "security"), List.of(), List.of(), List.of());
-        when(areaService.findAreaWithMembers("security"))
-            .thenReturn(Optional.of(new AreaWithMembers(secArea, members)));
-
-        SystemPrompt directSameAsArea =
-            new SystemPrompt("security", SystemPromptType.CHAT, "Direct prompt named security",
-                "desc", Instant.now(), Instant.now(), false, "security");
-        SystemPrompt areaDefaultPrompt =
-            new SystemPrompt("sec-default", SystemPromptType.CHAT, "Security area default prompt",
-                "desc", Instant.now(), Instant.now(), false, "security");
-        when(systemPromptService.findChatPrompt("security"))
-            .thenReturn(Optional.of(directSameAsArea));
-        when(systemPromptService.findChatPrompt("sec-default"))
-            .thenReturn(Optional.of(areaDefaultPrompt));
-
-        ResponseEntity<Map<String, String>> directResp = controller.getSystemPrompt("security");
-        assertThat(directResp.getBody()).containsEntry("systemPrompt",
-            "Direct prompt named security");
-
-        when(systemPromptService.findChatPrompt("security")).thenReturn(Optional.empty());
-        ResponseEntity<Map<String, String>> areaFallbackResp =
-            controller.getSystemPrompt("security");
-        assertThat(areaFallbackResp.getBody()).containsEntry("systemPrompt",
-            "Security area default prompt");
+        assertThatThrownBy(() -> PlaybookDto.class.getMethod("systemPrompt"))
+            .isInstanceOf(NoSuchMethodException.class);
     }
 }
+

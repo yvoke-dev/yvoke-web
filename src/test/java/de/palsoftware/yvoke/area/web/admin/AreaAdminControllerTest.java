@@ -60,12 +60,12 @@ class AreaAdminControllerTest {
     void everyPostedFieldReachesTheSave() throws Exception {
         mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "Oracle-IAM")
             .param("title", "Oracle Identity").param("description", "Docs")
-            .param("prototype", "true").param("defaultSystemPrompt", "oim-chat")
-            .param("defaultPlaybook", "oim-full").param("defaultProfile", "OIM"))
-            .andExpect(redirectedUrl("/admin/areas")).andExpect(flash().attributeExists("success"));
+            .param("prototype", "true").param("defaultPlaybook", "oim-full")
+            .param("defaultProfile", "OIM")).andExpect(redirectedUrl("/admin/areas"))
+            .andExpect(flash().attributeExists("success"));
 
         verify(areaService).saveArea("OIM", "Oracle-IAM", "Oracle Identity", "Docs", true,
-            "oim-chat", "oim-full", "OIM");
+            "oim-full", "OIM");
     }
 
     @Test
@@ -73,7 +73,7 @@ class AreaAdminControllerTest {
         mvc.perform(post("/admin/areas").param("name", "PingID"))
             .andExpect(redirectedUrl("/admin/areas"));
 
-        verify(areaService).saveArea(null, "PingID", null, null, false, null, null, null);
+        verify(areaService).saveArea(null, "PingID", null, null, false, null, null);
     }
 
     @Test
@@ -138,7 +138,7 @@ class AreaAdminControllerTest {
             .param("title", "Updated Title")).andExpect(redirectedUrl("/admin/areas"))
             .andExpect(flash().attributeExists("success"));
 
-        verify(areaService).saveArea("OIM", "OIM", "Updated Title", null, false, null, null, null);
+        verify(areaService).saveArea("OIM", "OIM", "Updated Title", null, false, null, null);
     }
 
     @Test

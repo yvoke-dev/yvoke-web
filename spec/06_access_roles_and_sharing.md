@@ -19,7 +19,7 @@ areas, and automation or AI coding tools connecting on a company account or a ma
 | **Read-only view of a shared conversation** | A viewer sees the whole history with a *Shared* badge and a banner saying it is read-only. The message box, tag controls and delete button are hidden. |
 | **Viewers can reveal reasoning for themselves** | Someone reading a shared conversation can toggle *Show thinking & tools*. The choice applies only to them and never changes the owner's settings. |
 | **Administrators inspect area conversations** | Superadmins can inspect all conversations; Area Admins can review user conversations, message feedback, and execution traces strictly within their administered areas. |
-| **Administrators unlock the admin console** | Knowledge areas, documents, records, the graph, playbooks, profiles, prompts, imports, connectors, agent runs, jobs, user conversations, search testing, logs, and feedback. Superadmins also access cost monitoring, model pricing, audit trail, area creation/deletion, and global prompt activation. Regular users see none of it. |
+| **Administrators unlock the admin console** | Knowledge areas, documents, records, the graph, playbooks, profiles, prompts, imports, connectors, agent runs, jobs, user conversations, search testing, logs, and feedback. Superadmins also access cost monitoring, model pricing, audit trail, and area creation/deletion. Regular users see none of it. |
 | **Access from AI coding tools** | An agentic IDE connects on the same company account and reads knowledge areas authorized for that user. Setup is the server address plus a sign-in. |
 | **Machine access for automation** | Scripts authenticate with a global machine key (`APP_SECURITY_API_KEY`) or per-area machine keys (`APP_SECURITY_AREA_API_KEYS`). Keys unlock importing content, running jobs, and deleting documents within their authorized area. |
 | **Chat can be switched off** | When web chat is off, chat pages say so while the admin console, the AI-client connection and the automation interfaces keep working. Useful during incidents or cost freezes. |
@@ -49,7 +49,7 @@ areas, and automation or AI coding tools connecting on a company account or a ma
 - **Machine keys are partitioned per area.** External automation scripts can use area-specific API keys
   configured in `APP_SECURITY_AREA_API_KEYS`. A per-area key cannot write to, inspect jobs in, or delete
   documents from any other area. Constant-time key comparison prevents timing leaks.
-- **Playbooks, profiles, and prompts are area-scoped.** Users and connected AI clients can discover and
+- **Playbooks and profiles are area-scoped.** Users and connected AI clients can discover and
   read only playbooks and profiles belonging to areas they are authorized to access.
 
 ## Limits
@@ -61,8 +61,8 @@ areas, and automation or AI coding tools connecting on a company account or a ma
   covers only the live word-by-word mode, so the effective limit depends on which mode people use.
 - **All automation shares one machine key**, therefore one send budget and one identity. A busy script can
   rate-limit every other integration, and reporting cannot tell them apart.
-- **Every signed-in user can read how the assistant is configured.** The playbook library, the
-  specialist profiles and the base instructions are readable by any account holding an access token —
+- **Every signed-in user can read how the assistant is configured.** The playbook library and the
+  specialist profiles are readable by any account holding an access token —
   the desktop app and connected AI clients need them — with no administrator check. So how Yvoke works
   is visible to everyone who can sign in, not only what it knows. The machine key, by contrast, cannot
   reach them at all: it is confined to importing, jobs and documents.

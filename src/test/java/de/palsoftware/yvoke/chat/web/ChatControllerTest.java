@@ -339,7 +339,7 @@ class ChatControllerTest {
             .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
         when(playbookService.getPlaybook("my-playbook")).thenReturn(
             Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl", List.of(),
-                false, "specialist", false, Instant.now(), Instant.now(), false, null, null, 2)));
+                false, "specialist", false, Instant.now(), Instant.now(), false, null, 2)));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);

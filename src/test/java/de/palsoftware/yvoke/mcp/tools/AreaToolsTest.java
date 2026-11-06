@@ -49,8 +49,8 @@ class AreaToolsTest {
 
     @Test
     void oneAreaCarriesItsFieldsDefaultsAndMembers() throws Exception {
-        when(areaRepository.findAll()).thenReturn(List.of(new Area("OIM", "Oracle Identity",
-            "OIM docs", true, "oim-chat", "oim-full", "OIM", null, null)));
+        when(areaRepository.findAll()).thenReturn(List.of(
+            new Area("OIM", "Oracle Identity", "OIM docs", true, "oim-full", "OIM", null, null)));
         when(areaRepository.findAllMembers())
             .thenReturn(Map.of("OIM", new AreaMembers(List.of("oim-chat"), List.of("OIM - Docs"),
                 List.of("oim-full"), List.of("OIM"))));
@@ -58,16 +58,14 @@ class AreaToolsTest {
         JsonNode area = single(json.readTree(tools.listAreas()));
 
         assertThat(fieldNames(area)).containsExactlyInAnyOrder("name", "title", "description",
-            "prototype", "defaultSystemPrompt", "defaultPlaybook", "defaultProfile",
-            "systemPrompts", "collections", "playbooks", "profiles");
+            "prototype", "defaultPlaybook", "defaultProfile", "collections", "playbooks",
+            "profiles");
         assertThat(area.get("name").asText()).isEqualTo("OIM");
         assertThat(area.get("title").asText()).isEqualTo("Oracle Identity");
         assertThat(area.get("description").asText()).isEqualTo("OIM docs");
         assertThat(area.get("prototype").asBoolean()).isTrue();
-        assertThat(area.get("defaultSystemPrompt").asText()).isEqualTo("oim-chat");
         assertThat(area.get("defaultPlaybook").asText()).isEqualTo("oim-full");
         assertThat(area.get("defaultProfile").asText()).isEqualTo("OIM");
-        assertThat(texts(area.get("systemPrompts"))).containsExactly("oim-chat");
         assertThat(texts(area.get("collections"))).containsExactly("OIM - Docs");
         assertThat(texts(area.get("playbooks"))).containsExactly("oim-full");
         assertThat(texts(area.get("profiles"))).containsExactly("OIM");
@@ -89,11 +87,9 @@ class AreaToolsTest {
         JsonNode ping = list.get(1);
         assertThat(oim.get("name").asText()).isEqualTo("OIM");
         assertThat(ping.get("name").asText()).isEqualTo("PingID");
-        assertThat(texts(oim.get("systemPrompts"))).containsExactly("oim-chat");
         assertThat(texts(oim.get("collections"))).containsExactly("OIM - Docs");
         assertThat(texts(oim.get("playbooks"))).containsExactly("oim-full");
         assertThat(texts(oim.get("profiles"))).containsExactly("OIM");
-        assertThat(texts(ping.get("systemPrompts"))).containsExactly("ping-chat");
         assertThat(texts(ping.get("collections"))).containsExactly("Ping - Docs");
         assertThat(texts(ping.get("playbooks"))).containsExactly("ping-full");
         assertThat(texts(ping.get("profiles"))).containsExactly("Ping");
@@ -105,7 +101,6 @@ class AreaToolsTest {
 
         JsonNode area = single(json.readTree(tools.listAreas()));
 
-        assertThat(area.get("defaultSystemPrompt").isNull()).isTrue();
         assertThat(area.get("defaultPlaybook").isNull()).isTrue();
         assertThat(area.get("defaultProfile").isNull()).isTrue();
         assertThat(area.get("description").isNull()).isTrue();
@@ -120,14 +115,14 @@ class AreaToolsTest {
      */
     @Test
     void aDefaultThatIsNotAPickableMemberOfTheAreaIsNull() throws Exception {
-        when(areaRepository.findAll()).thenReturn(List.of(new Area("OIM", "OIM", null, false,
-            "ping-chat", "oim-orchestrator", "Ping", null, null), area("PingID")));
-        when(areaRepository.findAllMembers()).thenReturn(Map.of("PingID",
-            new AreaMembers(List.of("ping-chat"), List.of(), List.of(), List.of("Ping"))));
+        when(areaRepository.findAll()).thenReturn(
+            List.of(new Area("OIM", "OIM", null, false, "oim-orchestrator", "Ping", null, null),
+                area("PingID")));
+        when(areaRepository.findAllMembers()).thenReturn(
+            Map.of("PingID", new AreaMembers(List.of(), List.of(), List.of(), List.of("Ping"))));
 
         JsonNode oim = json.readTree(tools.listAreas()).get(0);
 
-        assertThat(oim.get("defaultSystemPrompt").isNull()).isTrue();
         assertThat(oim.get("defaultPlaybook").isNull()).isTrue();
         assertThat(oim.get("defaultProfile").isNull()).isTrue();
     }
@@ -176,6 +171,6 @@ class AreaToolsTest {
     }
 
     private static Area area(String name) {
-        return new Area(name, name, null, false, null, null, null, null, null);
+        return new Area(name, name, null, false, null, null, null, null);
     }
 }

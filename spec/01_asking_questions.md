@@ -62,16 +62,11 @@ areas (or all conversations for Superadmins).
   error advising the user to start a new conversation.
   Sending the first question also locks and stamps the conversation's knowledge area (`conversations.area`).
   All subsequent turns, citations, and sharing permissions are bound to this area.
-- **A playbook adds to the base instructions; it does not replace them.** The administrator's base
-  instructions always apply, and the playbook is layered on top for the conversation. So rules that
-  hold for every answer — how sources are cited, never naming an unverified object, always naming a knowledge
-  area and version — are written once in the base instructions, and a playbook only says what is specific to
-  its own subject. The same layering applies to each specialist inside an in-depth investigation.
-  **The two exceptions are the in-depth lead and its reviewer**: those two run entirely on their own
-  instructions, because neither of them searches the knowledge base — the lead only delegates, and the
-  reviewer only checks a finished draft against the evidence, so the base instructions about searching and
-  citing do not describe their work. A rule that must reach them has to be written into their own
-  instructions; it is not inherited.
+- **Every playbook is self-contained.** The chosen playbook (and in in-depth mode, each lead, specialist,
+  and reviewer playbook) supplies the complete instructions for its role, with no separate base
+  instructions underneath. Universal rules — how sources are cited, never naming an unverified object,
+  always naming a knowledge area and version, and which tools are available — are written directly into
+  each playbook. Instructions are never layered or inherited.
 - **Only the owner may change anything.** Administrators and viewers of a shared conversation can read a
   thread and its ratings, but cannot post, rate, tag, stop or delete it.
 - **In-app research tools enforce strict area isolation.** During answer generation in single-playbook or

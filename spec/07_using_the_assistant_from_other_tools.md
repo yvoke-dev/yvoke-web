@@ -22,11 +22,11 @@ running corpus scripts and the evaluation harness.
 | **Query structured records** | Read the declared field structure first, then filter records, pick fields, count matches, or group counts by a field. |
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
 | **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
-| **Fetch the base instructions** | A client asks for the base instructions by name, or for the active default when it names none. The active default is the chat prompt an administrator has made active, the same one a single-agent answer in the web app runs under, so switching it changes both. This is how the Claude plugin gets them. A client can instead ask for an area's base instructions: it gets the ones the area names as its default, or the active default when the area names none. They are deliberately **not** sent to a client when it connects, so a connected coding session that is not using the knowledge base never receives them. |
 | **Fetch playbooks as tools** | Two tools hand a client the playbook library directly, for clients that cannot read prompts (the Yvoke plugin for Claude) or whose playbook skills tell the model to fetch the playbook first (Claude Chat and Cowork). One lists the playbooks a user can pick, with each one's version number, tools, code execution, target agent and prototype flag, leaving out the orchestrator and reviewer ones as the chat picker does. The list is strictly filtered to the user's authorized areas. The other returns one playbook's full text and details by name; requesting a playbook from an unauthorized area returns *not found*. Both read the library on every call, so a new, edited or deleted playbook shows at once. |
 | **Keep desktop conversations in the account** | The desktop app creates conversations, appends each turn (including the playbook name and version the client ran when a playbook was used), retitles, changes settings and deletes. They appear in the web sidebar marked *Desktop*. Ratings are stored too and appear in the same feedback screens. |
-| **List the areas** | A tool (`list_areas`) lists every area the user is authorized to access, with its title, description, prototype flag, its default base instructions, playbook and in-depth profile, and the names of its knowledge areas, chat base instructions, pickable playbooks and in-depth profiles. |
-| **Same behaviour across surfaces** | The desktop app reads the same playbook library, the same in-depth profiles and the same base instructions the web chat uses, so a change made once reaches both. |
+| **List the areas** | A tool (`list_areas`) lists every area the user is authorized to access, with its title, description, prototype flag, its default playbook and in-depth profile, and the names of its knowledge areas, pickable playbooks and in-depth profiles. |
+| **Rate answers from the Claude plugin** | A client-only tool (`submit_feedback`) records a thumbs-up (`1`) or thumbs-down (`-1`, with a required comment) rating on a self-contained plugin turn (`turnId`, `question`, `answer`, optional `area`, `mode`, `playbook`, `playbookVersion`, `profile`, `citedIds`, `model`, `client`, `pluginVersion`). Re-rating the same `turnId` updates the stored rating and comment in place, and the rated turn appears in the admin conversation and feedback screens marked `claude-plugin`. |
+| **Same behaviour across surfaces** | The desktop app reads the same playbook library and the same in-depth profiles the web chat uses, so a change made once reaches both. |
 | **Record in-depth runs the desktop app performed** | The desktop app reports the steps it ran locally (including the playbook name and version for each step), and those runs appear in the admin trace screens alongside web runs. |
 | **Drive imports from automation** | Scripts with a global machine key (`APP_SECURITY_API_KEY`) or a per-area machine key (`APP_SECURITY_AREA_API_KEYS`) can list documents, upload files, start graph extraction, queue any import, check a job's state and watch its progress. Per-area keys are confined to their designated area. Confluence imports still require an administrator. |
 
@@ -41,9 +41,9 @@ running corpus scripts and the evaluation harness.
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients read only.** Nothing reachable over that connection can add, change or delete content.
-- **Client-only tools stay out of the in-app assistant.** Fetching the base instructions, listing
-  the areas, and listing or fetching playbooks as tools are offered on the client connection and never to
-  the in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
+- **Client-only tools stay out of the in-app assistant.** Listing the areas, listing or fetching
+  playbooks as tools, and submitting feedback are offered on the client connection and never to the
+  in-app assistant: the playbook editor does not list them as tool choices, and a playbook that names
   one gets nothing for it.
 - **Access control is enforced per area on every request.** When an AI client or desktop app authenticates
   with a Bearer JWT, Yvoke parses the user's Entra app roles (`AreaAccessContext`). The client is granted
@@ -53,7 +53,7 @@ running corpus scripts and the evaluation harness.
   zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). All
   tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
   `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
-  `list_playbooks`, `get_playbook`, `get_system_prompt`) enforce this boundary.
+  `list_playbooks`, `get_playbook`) enforce this boundary.
 - **Unauthorized access returns opaque refusal.** Requesting an area, document, chunk, or playbook
   outside the caller's authorized areas returns an opaque *not found* error, never confirming whether the
   resource exists in another area.
@@ -64,18 +64,10 @@ running corpus scripts and the evaluation harness.
 - **Any result that hit its ceiling says so**, so a client never mistakes a capped list for a complete one.
 - **Citation checking proves the cited source exists.** It does not check that the source supports the
   claim, and the tool says so in its own output.
-- **An area is matched ignoring capitalisation and surrounding spaces.** An unknown area is an error when
-  asking for base instructions, and an empty list when listing playbooks.
+- **An area is matched ignoring capitalisation and surrounding spaces.** An unknown area produces an
+  empty list when listing playbooks.
 - **A default that is not one of the area's own members is reported as none**, so a client never starts a
-  session on an item the area does not list. An area with no usable default base instructions falls back
-  to the active default.
-- **Asking for base instructions that do not exist is an error**, not an empty answer, so a client can
-  refuse to start without them rather than run with none. Only chat instructions are handed out; the
-  prompts used to import content are not.
-- **The desktop base instructions endpoint (`GET /api/chat/v1/prompts/system/{name}`) serves only CHAT
-  prompts**, returning an empty string for non-chat prompts or unknown names. Requesting `default-chat`
-  dynamically resolves to the administrator's active default chat prompt, ignoring any stored database row
-  literally named `default-chat`.
+  session on an item the area does not list.
 - **The desktop app lists only the conversations it created.** Web chat conversations, and conversations
   someone shared, are invisible there.
 - **Asking for an import that is already running returns the existing job** instead of starting a second
@@ -83,9 +75,9 @@ running corpus scripts and the evaluation harness.
 - **AI clients and the in-app assistant share one knowledge-base tool set.** The 10 search, browse,
   graph, structured-record, citation and clarifying-question tools are shared identically between
   connected AI clients and the in-app assistant — adding, renaming or re-describing one changes both
-  surfaces at once. The 4 client-only tools (base instructions, areas, playbook list, one playbook) are
-  offered to connected clients only. `WebSearch` is an in-app chat-only tool because connected AI clients
-  provide their own web tools.
+  surfaces at once. The 4 client-only tools (areas, playbook list, one playbook, and feedback submission)
+  are offered to connected clients only (14 total tools). `WebSearch` is an in-app chat-only tool because
+  connected AI clients provide their own web tools.
 - **A connecting client is told which build of the assistant it is talking to.** The version it receives
   when it connects is the version that was released, so a client or a bug report can state which build
   produced an answer. Builds that are not a release identify themselves as such rather than borrowing
@@ -125,6 +117,7 @@ running corpus scripts and the evaluation harness.
 
 ## Not supported
 
+- Serving separate chat base instructions. Playbooks are self-contained prompts; the former `get_system_prompt` tool and `/api/chat/v1/prompts/system/{name}` endpoint are not provided.
 - Writing to the knowledge base from an AI client. No upload, edit or delete.
 - Restricting an AI client to specific collections or documents within an authorized area (access is granted at the area level).
 - Cross-area multi-search in a single MCP tool call.

@@ -13,10 +13,8 @@ import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
-import de.palsoftware.yvoke.chat.ChatTestFixtures;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
@@ -77,9 +75,6 @@ public class ConversationAgentRunContextIT {
     private PlaybookService playbookService;
 
     @Autowired
-    private SystemPromptService systemPromptService;
-
-    @Autowired
     private OrchestratorProfileRepository orchestratorProfileRepository;
 
     @Autowired
@@ -123,11 +118,9 @@ public class ConversationAgentRunContextIT {
                 new LlmUsage(100, 20, 120, 0, 0))
         );
 
-        ChatTestFixtures.ensureDefaultChatPrompt(systemPromptService);
-
-        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", null, 1);
-        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", null, 1);
-        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM", 1);
 
         orchestratorProfileRepository.upsert(new OrchestratorProfile(
             "oim", 2, 5, "oim-orch", "oim-rev", List.of("oim-spec"),
@@ -329,7 +322,7 @@ public class ConversationAgentRunContextIT {
             Map.of("model", "gemini-2.5-flash", "chat-prompt", "oim-access-governance"));
 
         playbookService.savePlaybook("oim-access-governance", "OIM Access Governance", "",
-            "Access governance prompt", List.of(), false, "specialist", false, "OIM", null, 1);
+            "Access governance prompt", List.of(), false, "specialist", false, "OIM", 1);
 
         UUID assistantMessageId = UUID.randomUUID();
         ChatMessageService.PreparedChat prepared = chatMessageService.prepare(convId,

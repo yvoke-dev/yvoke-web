@@ -101,11 +101,11 @@ class Wave3AdversarialSecurityTest {
         private DesktopSyncController controller;
 
         private final Area areaOim =
-            new Area("OIM", "OIM KB", "desc", false, "p1", "pb1", "prof1", null, null);
+            new Area("OIM", "OIM KB", "desc", false, "pb1", "prof1", null, null);
         private final Area areaPing =
-            new Area("PingID", "PingID KB", "desc", false, "p2", "pb2", "prof2", null, null);
+            new Area("PingID", "PingID KB", "desc", false, "pb2", "prof2", null, null);
         private final Area areaFin =
-            new Area("Finance", "Finance KB", "desc", false, "p3", "pb3", "prof3", null, null);
+            new Area("Finance", "Finance KB", "desc", false, "pb3", "prof3", null, null);
 
         @BeforeEach
         void setUp() {
@@ -117,9 +117,9 @@ class Wave3AdversarialSecurityTest {
             orchestratorRunService = mock(DesktopOrchestratorRunService.class);
             areaService = mock(AreaService.class);
 
-            controller = new DesktopSyncController(syncService, systemPromptService,
-                playbookService, orchestratorProperties, orchestratorProfileService,
-                orchestratorRunService, areaService);
+            controller =
+                new DesktopSyncController(syncService, playbookService, orchestratorProperties,
+                    orchestratorProfileService, orchestratorRunService, areaService);
         }
 
         @Test
@@ -183,9 +183,9 @@ class Wave3AdversarialSecurityTest {
         @Test
         @DisplayName("DesktopSyncController constructor rejects null areaService")
         void listAreasNullAreaService() {
-            assertThatThrownBy(() -> new DesktopSyncController(syncService, systemPromptService,
-                playbookService, orchestratorProperties, orchestratorProfileService,
-                orchestratorRunService, null)).isInstanceOf(NullPointerException.class);
+            assertThatThrownBy(() -> new DesktopSyncController(syncService, playbookService,
+                orchestratorProperties, orchestratorProfileService, orchestratorRunService, null))
+                .isInstanceOf(NullPointerException.class);
         }
 
         @Test
@@ -233,8 +233,8 @@ class Wave3AdversarialSecurityTest {
         @Test
         @DisplayName("DesktopSyncController constructor rejects null orchestratorProfileService")
         void getAreaPackageNullAreaServiceThrows404() {
-            assertThatThrownBy(() -> new DesktopSyncController(syncService, systemPromptService,
-                playbookService, orchestratorProperties, null, orchestratorRunService, areaService))
+            assertThatThrownBy(() -> new DesktopSyncController(syncService, playbookService,
+                orchestratorProperties, null, orchestratorRunService, areaService))
                 .isInstanceOf(NullPointerException.class);
         }
     }

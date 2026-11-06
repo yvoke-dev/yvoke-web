@@ -172,9 +172,6 @@ public class DesktopSyncService {
             if (mapped.containsKey("thinkingLevel")) {
                 mapped.put("thinking-level", mapped.remove("thinkingLevel"));
             }
-            if (mapped.containsKey("chatPrompt")) {
-                mapped.put("chat-prompt", mapped.remove("chatPrompt"));
-            }
             conversationRepository.updateSettings(conversationId, mapped);
         }
     }
