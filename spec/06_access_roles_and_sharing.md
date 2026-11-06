@@ -49,8 +49,9 @@ areas, and automation or AI coding tools connecting on a company account or a ma
 - **Machine keys are partitioned per area.** External automation scripts can use area-specific API keys
   configured in `APP_SECURITY_AREA_API_KEYS`. A per-area key cannot write to, inspect jobs in, or delete
   documents from any other area. Constant-time key comparison prevents timing leaks.
-- **Playbooks and profiles are area-scoped.** Users and connected AI clients can discover and
-  read only playbooks and profiles belonging to areas they are authorized to access.
+- **Playbooks, profiles and import prompts are area-scoped.** Users and connected AI clients can discover and
+  read only playbooks and profiles belonging to areas they are authorized to access, and area administrators
+  can manage only the playbooks, profiles and import prompts of their administered areas.
 
 ## Limits
 

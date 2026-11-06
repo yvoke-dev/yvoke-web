@@ -486,4 +486,62 @@ public class ChatAdminQueryRepositoryIT {
             jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
         }
     }
+
+    @Test
+    void findMessagesSurfacingChunk_excludesConversationsFromMismatchedArea() {
+        jdbcTemplate.update(
+            "INSERT INTO areas (name, title) VALUES ('OIM', 'OIM') ON CONFLICT DO NOTHING");
+        jdbcTemplate.update(
+            "INSERT INTO areas (name, title) VALUES ('PingID', 'PingID') ON CONFLICT DO NOTHING");
+        UUID collectionId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID chunkId = UUID.randomUUID();
+        try {
+            jdbcTemplate.update(
+                "INSERT INTO collections (id, name, area) VALUES (?, ?, 'OIM')",
+                collectionId, "caqr-it-col-" + collectionId);
+            jdbcTemplate.update(
+                "INSERT INTO documents (id, collection_id, kind, title) VALUES (?, ?, 'markdown', 'Doc')",
+                documentId, collectionId);
+            jdbcTemplate.update(
+                "INSERT INTO chunks (id, document_id, text, sort_order, collection_id) VALUES (?, ?, 'chunk body', 0, ?)",
+                chunkId, documentId, collectionId);
+
+            UUID user = createUser("caqr-it-chunk-area@example.com", "CAQR Chunk User");
+            UUID oimConv = createConversation(user, "CAQR-IT OIM Chunk Conv",
+                OffsetDateTime.now(ZoneOffset.UTC));
+            jdbcTemplate.update("UPDATE conversations SET area = 'OIM' WHERE id = ?", oimConv);
+
+            UUID nullAreaConv = createConversation(user, "CAQR-IT NullArea Chunk Conv",
+                OffsetDateTime.now(ZoneOffset.UTC));
+
+            UUID pingConv = createConversation(user, "CAQR-IT PingID Chunk Conv",
+                OffsetDateTime.now(ZoneOffset.UTC));
+            jdbcTemplate.update("UPDATE conversations SET area = 'PingID' WHERE id = ?", pingConv);
+
+            UUID oimMsg = UUID.randomUUID();
+            UUID nullAreaMsg = UUID.randomUUID();
+            UUID pingMsg = UUID.randomUUID();
+            for (Map.Entry<UUID, UUID> entry : List.of(Map.entry(oimMsg, oimConv),
+                Map.entry(nullAreaMsg, nullAreaConv), Map.entry(pingMsg, pingConv))) {
+                jdbcTemplate.update(
+                    "INSERT INTO messages (id, conversation_id, role, content, retrieved_chunk_ids, status, created_at, updated_at) VALUES (?, ?, 'assistant', 'CAQR-IT answer', ARRAY[?]::uuid[], 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    entry.getKey(), entry.getValue(), chunkId);
+            }
+
+            List<Map<String, Object>> surfacing =
+                chatAdminQueryRepository.findMessagesSurfacingChunk(chunkId);
+
+            assertThat(surfacing).extracting(m -> (String) m.get("message_id"))
+                .containsExactlyInAnyOrder(oimMsg.toString(), nullAreaMsg.toString())
+                .doesNotContain(pingMsg.toString());
+        } finally {
+            jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", chunkId);
+            jdbcTemplate.update("DELETE FROM documents WHERE id = ?", documentId);
+            jdbcTemplate.update("DELETE FROM collections WHERE id = ?", collectionId);
+            jdbcTemplate.update("DELETE FROM messages WHERE content LIKE 'CAQR-IT%'");
+            jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAQR-IT%'");
+            jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
+        }
+    }
 }

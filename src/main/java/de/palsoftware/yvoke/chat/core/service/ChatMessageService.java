@@ -207,7 +207,7 @@ public class ChatMessageService {
         });
 
         if (playbook.templateText() == null || playbook.templateText().isBlank()) {
-            throw new IllegalStateException("The selected playbook has empty template text.");
+            throw new IllegalArgumentException("The selected playbook has empty template text.");
         }
 
         Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();

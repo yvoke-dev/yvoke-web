@@ -638,4 +638,22 @@ class ChatControllerTest {
             () -> controller.updateOrchestratorProfile(conversationId, "FinanceProfile"));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
     }
+
+    @Test
+    void threadView_whenConversationSourceIsClaudePlugin_marksThreadReadOnlyEvenForOwner() {
+        UUID conversationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Conversation pluginConv = new Conversation(conversationId, ownerId, "Plugin Turn", Map.of(),
+            Instant.now(), Instant.now(), List.of(), "claude-plugin", "OIM");
+        when(conversationService.getConversation(conversationId))
+            .thenReturn(Optional.of(pluginConv));
+        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
+            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), ownerId));
+        when(messageService.getMessages(conversationId)).thenReturn(List.of());
+
+        Model model = new ConcurrentModel();
+        assertEquals("chat/thread", controller.threadView(conversationId, model));
+
+        assertTrue((Boolean) model.getAttribute("isReadOnly"));
+    }
 }

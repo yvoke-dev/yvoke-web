@@ -16,6 +16,7 @@ import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaRepository;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
@@ -23,13 +24,20 @@ import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.service.PluginFeedbackService.PluginFeedbackRequest;
 import de.palsoftware.yvoke.chat.core.service.PluginFeedbackService.PluginFeedbackResult;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.mcp.tools.SubmitFeedbackTool;
+import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
+import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationStatus;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +63,8 @@ class PluginFeedbackServiceTest {
     private FeedbackRepository feedbackRepository;
     private UserService userService;
     private AreaRepository areaRepository;
+    private PlaybookService playbookService;
+    private OrchestratorProfileService orchestratorProfileService;
     private PluginFeedbackService service;
 
     private final UUID userId = UUID.fromString("11111111-2222-3333-4444-555555555555");
@@ -73,6 +83,8 @@ class PluginFeedbackServiceTest {
         feedbackRepository = mock(FeedbackRepository.class);
         userService = mock(UserService.class);
         areaRepository = mock(AreaRepository.class);
+        playbookService = mock(PlaybookService.class);
+        orchestratorProfileService = mock(OrchestratorProfileService.class);
 
         when(userService.getCurrentUser()).thenReturn(Optional.of(currentUser));
         when(areaRepository.findAll()).thenReturn(
@@ -80,8 +92,8 @@ class PluginFeedbackServiceTest {
                 new Area("PingID", "Ping Identity", null, false, null, null, null, null)));
 
         service = new PluginFeedbackService(conversationRepository, messageRepository,
-            feedbackRepository, userService, new AreaService(areaRepository),
-            Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+            feedbackRepository, userService, new AreaService(areaRepository), playbookService,
+            orchestratorProfileService, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     @AfterEach
@@ -101,7 +113,7 @@ class PluginFeedbackServiceTest {
                 .getBytes(StandardCharsets.UTF_8));
         UUID storedFeedbackId = UUID.randomUUID();
         String fullChunkUuid = "550e8400-e29b-41d4-a716-446655440000";
-        String dashlessUuid = "660e8400e29b41d4a716446655440001";
+        String docCitation = "[document_id=660e8400-e29b-41d4-a716-446655440001]";
         String shortPrefix = "8f7c1a2b";
 
         when(conversationRepository.findById(expectedConvId)).thenReturn(Optional.empty());
@@ -114,8 +126,8 @@ class PluginFeedbackServiceTest {
             new PluginFeedbackRequest("  turn-42  ", 1, "  Helpful answer  ",
                 "How does PersonWantsOrg synchronization work in OIM when provisioning?",
                 "PersonWantsOrg drives request-based provisioning [chunk_id=8f7c1a2b].", " oim ",
-                "single", "oim-full", 2, null,
-                List.of(fullChunkUuid, dashlessUuid, shortPrefix, fullChunkUuid, "   "),
+                "single", "oim-full", 2, "oim-profile",
+                List.of(fullChunkUuid, docCitation, shortPrefix, fullChunkUuid, "   "),
                 "claude-sonnet-4-5", "claude-plugin", "0.1.0");
 
         PluginFeedbackResult result = service.submitFeedback(request);
@@ -129,20 +141,22 @@ class PluginFeedbackServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> settingsCaptor = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
-        verify(conversationRepository).create(eq(expectedConvId), eq(userId), titleCaptor.capture(),
-            settingsCaptor.capture(), eq("claude-plugin"), eq("OIM"));
+        verify(conversationRepository).createIfAbsent(eq(expectedConvId), eq(userId),
+            titleCaptor.capture(), settingsCaptor.capture(), eq("claude-plugin"), eq("OIM"));
 
         assertThat(titleCaptor.getValue()).hasSize(60)
             .isEqualTo("How does PersonWantsOrg synchronization work in OIM when pro");
         Map<String, Object> settings = settingsCaptor.getValue();
         assertThat(settings).containsEntry("turnId", "turn-42")
             .containsEntry("client", "claude-plugin").containsEntry("pluginVersion", "0.1.0")
-            .containsEntry("mode", "single").containsEntry("playbook", "oim-full")
-            .containsEntry("playbookVersion", 2).containsEntry("model", "claude-sonnet-4-5")
-            .containsEntry("citedIds", List.of(fullChunkUuid, dashlessUuid, shortPrefix));
+            .containsEntry("mode", "single").containsEntry("profile", "oim-profile")
+            .containsEntry(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim-profile")
+            .containsEntry("playbook", "oim-full").containsEntry("playbookVersion", 2)
+            .containsEntry("model", "claude-sonnet-4-5")
+            .containsEntry("citedIds", List.of(fullChunkUuid, docCitation, shortPrefix));
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(messageRepository, times(2)).save(messageCaptor.capture());
+        verify(messageRepository, times(2)).saveIfAbsent(messageCaptor.capture());
         List<Message> savedMessages = messageCaptor.getAllValues();
 
         Message userMsg = savedMessages.get(0);
@@ -162,9 +176,15 @@ class PluginFeedbackServiceTest {
         assertThat(assistantMsg.playbookVersion()).isEqualTo(2);
         assertThat(assistantMsg.createdAt()).isEqualTo(FIXED_NOW.plusNanos(1_000_000));
         assertThat(userMsg.createdAt()).isBefore(assistantMsg.createdAt());
-        assertThat(assistantMsg.retrievedChunkIds()).containsExactly(UUID.fromString(fullChunkUuid),
-            UUID.fromString("660e8400-e29b-41d4-a716-446655440001"));
-        assertThat(assistantMsg.citations()).hasSize(3);
+        assertThat(assistantMsg.retrievedChunkIds()).isEmpty();
+        assertThat(assistantMsg.citations()).usingRecursiveFieldByFieldElementComparator()
+            .containsExactly(
+                new CitationCheckResult("[chunk_id=" + fullChunkUuid + "]", "chunk",
+                    CitationStatus.UNVERIFIED, "reported by claude-plugin"),
+                new CitationCheckResult(docCitation, "document", CitationStatus.UNVERIFIED,
+                    "reported by claude-plugin"),
+                new CitationCheckResult("[chunk_id=8f7c1a2b]", "chunk", CitationStatus.UNVERIFIED,
+                    "reported by claude-plugin"));
 
         verify(feedbackRepository).upsert(expectedAssistantMsgId, 1, "Helpful answer");
     }
@@ -197,8 +217,9 @@ class PluginFeedbackServiceTest {
         assertThat(result.messageId()).isEqualTo(expectedAssistantMsgId);
         assertThat(result.rating()).isEqualTo(-1);
 
-        verify(conversationRepository, never()).create(any(), any(), any(), any(), any(), any());
-        verify(messageRepository, never()).save(any());
+        verify(conversationRepository, never()).createIfAbsent(any(), any(), any(), any(), any(),
+            any());
+        verify(messageRepository, never()).saveIfAbsent(any());
         verify(conversationRepository).touch(expectedConvId);
         verify(feedbackRepository).upsert(expectedAssistantMsgId, -1,
             "Missed the QBM table reference");
@@ -216,7 +237,7 @@ class PluginFeedbackServiceTest {
         service.submitFeedback(request);
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(messageRepository, times(2)).save(messageCaptor.capture());
+        verify(messageRepository, times(2)).saveIfAbsent(messageCaptor.capture());
         for (Message m : messageCaptor.getAllValues()) {
             assertThat(m.playbook()).isNull();
             assertThat(m.playbookVersion()).isNull();
@@ -312,6 +333,154 @@ class PluginFeedbackServiceTest {
             "Q", "A", "OIM", "single", "oim-full", 0, null, List.of(), null, null, null)))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("playbookVersion must be >= 1 when provided.");
+    }
+
+    @Test
+    void enforcesInputSizeBoundsOnAllFields() {
+        String over256 = "x".repeat(257);
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest(over256, 1, null,
+            "Q", "A", "OIM", null, null, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("turnId must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "x".repeat(50_001), "A", "OIM", null, null, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("question must not exceed 50000 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "x".repeat(200_001), "OIM", null, null, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("answer must not exceed 200000 characters.");
+
+        assertThatThrownBy(
+            () -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, "x".repeat(4_001),
+                "Q", "A", "OIM", null, null, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("comment must not exceed 4000 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", over256, null, null, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("area must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, over256, null, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("playbook must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, null, null, over256, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("profile must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, null, null, null, List.of(), over256, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("model must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, null, null, null, List.of(), null, over256, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("client must not exceed 256 characters.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, null, null, null, List.of(), null, null, over256)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("pluginVersion must not exceed 256 characters.");
+
+        assertThatThrownBy(
+            () -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null, "Q", "A",
+                "OIM", null, null, null, null, Collections.nCopies(101, "id"), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("citedIds must not exceed 100 items.");
+
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-1", 1, null,
+            "Q", "A", "OIM", null, null, null, null, List.of(over256), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Each citedId must not exceed 256 characters.");
+    }
+
+    @Test
+    void infersAndAuthorizesAreaFromPlaybookProfileOrSingleAccessibleAreaWhenRawAreaIsBlank() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_OIM"))));
+        when(conversationRepository.findById(any())).thenReturn(Optional.empty());
+        when(messageRepository.findById(any())).thenReturn(Optional.empty());
+
+        // 1. Playbook area inference (authorized)
+        when(playbookService.getPlaybook("oim-pb"))
+            .thenReturn(Optional.of(new Playbook("oim-pb", "Title", "Desc", "Body", List.of(),
+                false, "specialist", false, FIXED_NOW, FIXED_NOW, false, "oim", 1)));
+        service.submitFeedback(new PluginFeedbackRequest("turn-pb", 1, null, "Q", "A", "  ",
+            "single", "oim-pb", 1, null, List.of(), null, null, null));
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), any(),
+            eq("claude-plugin"), eq("OIM"));
+
+        // 1b. Playbook area inference (unauthorized area rejected)
+        when(playbookService.getPlaybook("ping-pb"))
+            .thenReturn(Optional.of(new Playbook("ping-pb", "Title", "Desc", "Body", List.of(),
+                false, "specialist", false, FIXED_NOW, FIXED_NOW, false, "PingID", 1)));
+        assertThatThrownBy(() -> service.submitFeedback(new PluginFeedbackRequest("turn-ping-pb", 1,
+            null, "Q", "A", null, "single", "ping-pb", 1, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("area 'PingID' does not exist.");
+
+        // 2. Profile area inference (authorized, for multi-area user)
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_OIM"),
+                    new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+        when(orchestratorProfileService.getProfile("ping-prof")).thenReturn(
+            Optional.of(new OrchestratorProfile("ping-prof", 3, 8, "orch", "rev", List.of(), null,
+                null, null, null, null, null, false, FIXED_NOW, FIXED_NOW, "pingid")));
+        service.submitFeedback(new PluginFeedbackRequest("turn-prof", 1, null, "Q", "A", null,
+            "multi", null, null, "ping-prof", List.of(), null, null, null));
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), any(),
+            eq("claude-plugin"), eq("PingID"));
+
+        // 3. Single accessible area fallback when neither playbook nor profile yields an area
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+        service.submitFeedback(new PluginFeedbackRequest("turn-single-area", 1, null, "Q", "A",
+            null, "single", null, null, null, List.of(), null, null, null));
+        verify(conversationRepository, times(2)).createIfAbsent(any(), eq(userId), any(), any(),
+            eq("claude-plugin"), eq("PingID"));
+
+        // 4. Multi-area user without rawArea, playbook area, or profile area resolves to null
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_OIM"),
+                    new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+        service.submitFeedback(new PluginFeedbackRequest("turn-multi-null", 1, null, "Q", "A", null,
+            "single", null, null, null, List.of(), null, null, null));
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), any(),
+            eq("claude-plugin"), eq(null));
+    }
+
+    @Test
+    void buildCitationsListDistinguishesDocumentAndChunkCitations() {
+        List<CitationCheckResult> citations = PluginFeedbackService
+            .buildCitationsList(List.of("[document_id=doc-123]", "DOCUMENT_ID=doc-456",
+                "[chunk_id=chunk-789]", "CHUNK_ID=chunk-abc", "bare-chunk-id"));
+
+        assertThat(citations).usingRecursiveFieldByFieldElementComparator().containsExactly(
+            new CitationCheckResult("[document_id=doc-123]", "document", CitationStatus.UNVERIFIED,
+                "reported by claude-plugin"),
+            new CitationCheckResult("[document_id=doc-456]", "document", CitationStatus.UNVERIFIED,
+                "reported by claude-plugin"),
+            new CitationCheckResult("[chunk_id=chunk-789]", "chunk", CitationStatus.UNVERIFIED,
+                "reported by claude-plugin"),
+            new CitationCheckResult("[chunk_id=chunk-abc]", "chunk", CitationStatus.UNVERIFIED,
+                "reported by claude-plugin"),
+            new CitationCheckResult("[chunk_id=bare-chunk-id]", "chunk", CitationStatus.UNVERIFIED,
+                "reported by claude-plugin"));
     }
 
     @Nested

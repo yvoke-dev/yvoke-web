@@ -3,17 +3,23 @@ package de.palsoftware.yvoke.chat.core.service;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationStatus;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import jakarta.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -27,7 +33,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,34 +51,56 @@ import org.springframework.transaction.annotation.Transactional;
 public class PluginFeedbackService {
 
     private static final int MAX_TITLE_CHARS = 60;
+    private static final int MAX_METADATA_CHARS = 256;
+    private static final int MAX_QUESTION_CHARS = 50_000;
+    private static final int MAX_ANSWER_CHARS = 200_000;
+    private static final int MAX_COMMENT_CHARS = 4_000;
+    private static final int MAX_CITED_IDS = 100;
     private static final Set<String> ALLOWED_MODES = Set.of("single", "multi");
-    private static final Pattern UUID_PATTERN = Pattern
-        .compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    private static final Pattern UUID_NO_HYPHENS_PATTERN = Pattern.compile("^[0-9a-fA-F]{32}$");
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final FeedbackRepository feedbackRepository;
     private final UserService userService;
     private final AreaService areaService;
+    private final @Nullable PlaybookService playbookService;
+    private final @Nullable OrchestratorProfileService orchestratorProfileService;
     private final Clock clock;
 
     @Autowired
     public PluginFeedbackService(ConversationRepository conversationRepository,
         MessageRepository messageRepository, FeedbackRepository feedbackRepository,
+        UserService userService, AreaService areaService, @Nullable PlaybookService playbookService,
+        @Nullable OrchestratorProfileService orchestratorProfileService) {
+        this(conversationRepository, messageRepository, feedbackRepository, userService,
+            areaService, playbookService, orchestratorProfileService, Clock.systemUTC());
+    }
+
+    public PluginFeedbackService(ConversationRepository conversationRepository,
+        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
         UserService userService, AreaService areaService) {
         this(conversationRepository, messageRepository, feedbackRepository, userService,
-            areaService, Clock.systemUTC());
+            areaService, null, null, Clock.systemUTC());
     }
 
     PluginFeedbackService(ConversationRepository conversationRepository,
         MessageRepository messageRepository, FeedbackRepository feedbackRepository,
         UserService userService, AreaService areaService, Clock clock) {
+        this(conversationRepository, messageRepository, feedbackRepository, userService,
+            areaService, null, null, clock);
+    }
+
+    PluginFeedbackService(ConversationRepository conversationRepository,
+        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
+        UserService userService, AreaService areaService, @Nullable PlaybookService playbookService,
+        @Nullable OrchestratorProfileService orchestratorProfileService, Clock clock) {
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.feedbackRepository = Objects.requireNonNull(feedbackRepository);
         this.userService = Objects.requireNonNull(userService);
         this.areaService = Objects.requireNonNull(areaService);
+        this.playbookService = playbookService;
+        this.orchestratorProfileService = orchestratorProfileService;
         this.clock = Objects.requireNonNull(clock);
     }
 
@@ -97,11 +124,19 @@ public class PluginFeedbackService {
             throw new SecurityException("Authenticated user is required to submit feedback.");
         }
 
-        String resolvedArea = resolveAndAuthorizeArea(request.area());
+        Optional<Set<String>> allowedAreas = AreaAccessContext.allowedUserAreasLower();
+        if (allowedAreas.isPresent() && allowedAreas.get().isEmpty()) {
+            throw new SecurityException("Access denied: user has no accessible areas.");
+        }
 
         String trimmedTurnId = requireNonBlank(request.turnId(), "turnId");
+        requireMaxLength(trimmedTurnId, "turnId", MAX_METADATA_CHARS);
+
         String trimmedQuestion = requireNonBlank(request.question(), "question");
+        requireMaxLength(trimmedQuestion, "question", MAX_QUESTION_CHARS);
+
         String trimmedAnswer = requireNonBlank(request.answer(), "answer");
+        requireMaxLength(trimmedAnswer, "answer", MAX_ANSWER_CHARS);
 
         if (request.rating() == null || (request.rating() != 1 && request.rating() != -1)) {
             throw new IllegalArgumentException("rating must be 1 or -1.");
@@ -113,6 +148,7 @@ public class PluginFeedbackService {
             throw new IllegalArgumentException(
                 "comment is required for negative feedback (rating = -1).");
         }
+        requireMaxLength(normalizedComment, "comment", MAX_COMMENT_CHARS);
 
         String normalizedMode = trimToNull(request.mode());
         if (normalizedMode != null && !ALLOWED_MODES.contains(normalizedMode)) {
@@ -120,6 +156,7 @@ public class PluginFeedbackService {
         }
 
         String normalizedPlaybook = trimToNull(request.playbook());
+        requireMaxLength(normalizedPlaybook, "playbook", MAX_METADATA_CHARS);
         Integer rawPlaybookVersion = request.playbookVersion();
         if (rawPlaybookVersion != null && rawPlaybookVersion < 1) {
             throw new IllegalArgumentException("playbookVersion must be >= 1 when provided.");
@@ -127,10 +164,21 @@ public class PluginFeedbackService {
         Integer normalizedPlaybookVersion = normalizedPlaybook != null ? rawPlaybookVersion : null;
 
         String normalizedProfile = trimToNull(request.profile());
+        requireMaxLength(normalizedProfile, "profile", MAX_METADATA_CHARS);
+
         String normalizedModel = trimToNull(request.model());
+        requireMaxLength(normalizedModel, "model", MAX_METADATA_CHARS);
+
         String normalizedClient = trimToNull(request.client());
+        requireMaxLength(normalizedClient, "client", MAX_METADATA_CHARS);
+
         String normalizedPluginVersion = trimToNull(request.pluginVersion());
+        requireMaxLength(normalizedPluginVersion, "pluginVersion", MAX_METADATA_CHARS);
+
         List<String> sanitizedCitedIds = sanitizeCitedIds(request.citedIds());
+
+        String resolvedArea =
+            resolveAndAuthorizeArea(request.area(), normalizedPlaybook, normalizedProfile);
 
         UUID userId = user.id();
         UUID conversationId =
@@ -147,8 +195,9 @@ public class PluginFeedbackService {
             Map<String, Object> settings = buildSettings(trimmedTurnId, normalizedClient,
                 normalizedPluginVersion, normalizedMode, normalizedProfile, normalizedPlaybook,
                 normalizedPlaybookVersion, normalizedModel, sanitizedCitedIds);
-            conversationRepository.create(conversationId, userId, deriveTitle(trimmedQuestion),
-                settings, ConversationSource.CLAUDE_PLUGIN.getValue(), resolvedArea);
+            conversationRepository.createIfAbsent(conversationId, userId,
+                deriveTitle(trimmedQuestion), settings, ConversationSource.CLAUDE_PLUGIN.getValue(),
+                resolvedArea);
             saveTurnMessages(conversationId, userMessageId, assistantMessageId, trimmedQuestion,
                 trimmedAnswer, normalizedPlaybook, normalizedPlaybookVersion, normalizedModel,
                 sanitizedCitedIds, now);
@@ -173,18 +222,42 @@ public class PluginFeedbackService {
             trimmedTurnId, rating);
     }
 
-    private String resolveAndAuthorizeArea(String rawArea) {
+    private String resolveAndAuthorizeArea(String rawArea, String normalizedPlaybook,
+        String normalizedProfile) {
         Optional<Set<String>> allowed = AreaAccessContext.allowedUserAreasLower();
         if (allowed.isPresent() && allowed.get().isEmpty()) {
             throw new SecurityException("Access denied: user has no accessible areas.");
         }
         String trimmedArea = trimToNull(rawArea);
-        if (trimmedArea == null) {
-            return null;
+        if (trimmedArea != null) {
+            requireMaxLength(trimmedArea, "area", MAX_METADATA_CHARS);
+            return authorizeCanonicalArea(trimmedArea);
         }
-        Optional<Area> found = areaService.findArea(trimmedArea);
+        if (normalizedPlaybook != null && playbookService != null) {
+            Optional<String> playbookArea = playbookService.getPlaybook(normalizedPlaybook)
+                .map(Playbook::area).map(PluginFeedbackService::trimToNull);
+            if (playbookArea.isPresent()) {
+                return authorizeCanonicalArea(playbookArea.get());
+            }
+        }
+        if (normalizedProfile != null && orchestratorProfileService != null) {
+            Optional<String> profileArea = orchestratorProfileService.getProfile(normalizedProfile)
+                .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
+            if (profileArea.isPresent()) {
+                return authorizeCanonicalArea(profileArea.get());
+            }
+        }
+        if (allowed.isPresent() && allowed.get().size() == 1) {
+            String singleAllowed = allowed.get().iterator().next();
+            return areaService.findArea(singleAllowed).map(Area::name).orElse(null);
+        }
+        return null;
+    }
+
+    private String authorizeCanonicalArea(String candidateArea) {
+        Optional<Area> found = areaService.findArea(candidateArea);
         if (found.isEmpty() || !AreaAccessContext.canAccessUserArea(found.get().name())) {
-            throw new IllegalArgumentException("area '" + trimmedArea + "' does not exist.");
+            throw new IllegalArgumentException("area '" + candidateArea + "' does not exist.");
         }
         return found.get().name();
     }
@@ -196,12 +269,12 @@ public class PluginFeedbackService {
             Message userMsg = new Message(userMessageId, conversationId, "user", question, playbook,
                 playbookVersion, List.of(), List.of(), now, null, null, null, null, null, "done",
                 null);
-            messageRepository.save(userMsg);
+            messageRepository.saveIfAbsent(userMsg);
         }
         Message assistantMsg = new Message(assistantMessageId, conversationId, "assistant", answer,
-            playbook, playbookVersion, parseUuidCitedIds(citedIds), buildCitationsList(citedIds),
+            playbook, playbookVersion, List.of(), buildCitationsList(citedIds),
             now.plusNanos(1_000_000), null, null, null, null, null, "done", model);
-        messageRepository.save(assistantMsg);
+        messageRepository.saveIfAbsent(assistantMsg);
     }
 
     static String deriveTitle(String trimmedQuestion) {
@@ -227,6 +300,7 @@ public class PluginFeedbackService {
         }
         if (profile != null) {
             settings.put("profile", profile);
+            settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profile);
         }
         if (playbook != null) {
             settings.put("playbook", playbook);
@@ -247,34 +321,22 @@ public class PluginFeedbackService {
         if (rawIds == null || rawIds.isEmpty()) {
             return List.of();
         }
+        if (rawIds.size() > MAX_CITED_IDS) {
+            throw new IllegalArgumentException(
+                "citedIds must not exceed " + MAX_CITED_IDS + " items.");
+        }
         Set<String> deduped = new LinkedHashSet<>();
         for (String raw : rawIds) {
             String trimmed = trimToNull(raw);
             if (trimmed != null) {
+                if (trimmed.length() > MAX_METADATA_CHARS) {
+                    throw new IllegalArgumentException(
+                        "Each citedId must not exceed " + MAX_METADATA_CHARS + " characters.");
+                }
                 deduped.add(trimmed);
             }
         }
         return List.copyOf(deduped);
-    }
-
-    static List<UUID> parseUuidCitedIds(List<String> citedIds) {
-        if (citedIds == null || citedIds.isEmpty()) {
-            return List.of();
-        }
-        Set<UUID> uuids = new LinkedHashSet<>();
-        for (String raw : citedIds) {
-            String candidate = stripCitationDecoration(raw);
-            if (UUID_PATTERN.matcher(candidate).matches()) {
-                uuids.add(UUID.fromString(candidate.toLowerCase(Locale.ROOT)));
-            } else if (UUID_NO_HYPHENS_PATTERN.matcher(candidate).matches()) {
-                String lower = candidate.toLowerCase(Locale.ROOT);
-                String hyphenated = lower.substring(0, 8) + "-" + lower.substring(8, 12) + "-"
-                    + lower.substring(12, 16) + "-" + lower.substring(16, 20) + "-"
-                    + lower.substring(20);
-                uuids.add(UUID.fromString(hyphenated));
-            }
-        }
-        return List.copyOf(uuids);
     }
 
     static List<CitationCheckResult> buildCitationsList(List<String> citedIds) {
@@ -283,26 +345,29 @@ public class PluginFeedbackService {
         }
         List<CitationCheckResult> results = new ArrayList<>(citedIds.size());
         for (String id : citedIds) {
-            String raw = id.startsWith("[") && id.endsWith("]") ? id : "[chunk_id=" + id + "]";
-            results.add(new CitationCheckResult(raw, "chunk", CitationStatus.UNVERIFIED,
+            String inner = id.trim();
+            if (inner.startsWith("[") && inner.endsWith("]") && inner.length() >= 2) {
+                inner = inner.substring(1, inner.length() - 1).trim();
+            }
+            String lower = inner.toLowerCase(Locale.ROOT);
+            String raw;
+            String type;
+            if (lower.startsWith("document_id=")) {
+                String idPart = inner.substring("document_id=".length()).trim();
+                raw = "[document_id=" + idPart + "]";
+                type = "document";
+            } else if (lower.startsWith("chunk_id=")) {
+                String idPart = inner.substring("chunk_id=".length()).trim();
+                raw = "[chunk_id=" + idPart + "]";
+                type = "chunk";
+            } else {
+                raw = "[chunk_id=" + inner + "]";
+                type = "chunk";
+            }
+            results.add(new CitationCheckResult(raw, type, CitationStatus.UNVERIFIED,
                 "reported by claude-plugin"));
         }
         return List.copyOf(results);
-    }
-
-    private static String stripCitationDecoration(String raw) {
-        String s = raw.trim();
-        if (s.startsWith("[") && s.endsWith("]")) {
-            s = s.substring(1, s.length() - 1).trim();
-        }
-        String lower = s.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("chunk_id=")) {
-            return s.substring("chunk_id=".length()).trim();
-        }
-        if (lower.startsWith("document_id=")) {
-            return s.substring("document_id=".length()).trim();
-        }
-        return s;
     }
 
     private static UUID deterministicUuid(String key) {
@@ -315,6 +380,13 @@ public class PluginFeedbackService {
             throw new IllegalArgumentException(fieldName + " is required.");
         }
         return trimmed;
+    }
+
+    private static void requireMaxLength(String value, String fieldName, int maxLength) {
+        if (value != null && value.length() > maxLength) {
+            throw new IllegalArgumentException(
+                fieldName + " must not exceed " + maxLength + " characters.");
+        }
     }
 
     private static String trimToNull(String value) {

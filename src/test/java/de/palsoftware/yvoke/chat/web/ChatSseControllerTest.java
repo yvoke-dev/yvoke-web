@@ -383,4 +383,34 @@ class ChatSseControllerTest {
 
         verify(sseExecutor, never()).submit(any(Runnable.class));
     }
+
+    @Test
+    void sendMessageStream_emptyPlaybookTemplateText_returnsBadRequestAndReleasesPermit()
+        throws Exception {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = allowingLimiter();
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), eq("blank-playbook")))
+            .thenThrow(
+                new IllegalArgumentException("The selected playbook has empty template text."));
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+
+        mockMvc
+            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
+                .param("content", "Hello").param("promptName", "blank-playbook"))
+            .andExpect(MockMvcResultMatchers.status().isBadRequest())
+            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
+                .value("The selected playbook has empty template text."));
+
+        verify(limiter).release();
+        verify(sseExecutor, never()).submit(any(Runnable.class));
+    }
 }

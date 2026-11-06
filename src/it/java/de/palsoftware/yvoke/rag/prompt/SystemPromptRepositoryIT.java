@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>
  * The corpus tooling in {@code yvoke-exports} writes the type upper-cased — its own code carries
- * the comment "the stored values are CHAT/KG/SUMMARIZE" — and that importer is what actually
+ * the comment "the stored values are KG/SUMMARIZE" — and that importer is what actually
  * populated every environment. {@code SystemPromptType.dbValue()} returned
  * {@code name().toLowerCase()}, and {@code findByType} compared it with a case-SENSITIVE {@code =},
  * so every imported prompt was invisible to Java.
@@ -27,7 +27,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Nothing failed. The admin ingest page rendered an empty prompt dropdown and, from that emptiness,
  * concluded "No system prompts of type SUMMARIZE are configured. Please create one in the System
  * Prompts tab first." — an error message that is confidently wrong, pointing the operator at a tab
- * where the prompt is plainly listed. It also silently disabled prompt selection for KG and CHAT.
+ * where the prompt is plainly listed. It also silently disabled prompt selection for KG.
  *
  * <p>
  * This has to be an integration test: a mocked {@code JdbcClient} returns whatever it is stubbed
@@ -43,6 +43,7 @@ public class SystemPromptRepositoryIT {
 
     private static final String UPPER = "IT-UPPER-SUMMARIZE";
     private static final String LOWER = "IT-LOWER-SUMMARIZE";
+    private static final String PADDED = "IT-PADDED-KG";
     private static final String SAVED = "IT-SAVED-SUMMARIZE";
 
     @Autowired
@@ -62,8 +63,8 @@ public class SystemPromptRepositoryIT {
     }
 
     private void cleanup() {
-        jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?, ?)", UPPER, LOWER,
-            SAVED);
+        jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?, ?, ?)", UPPER, LOWER,
+            PADDED, SAVED);
     }
 
     /** The shape the corpus importer actually writes, and the one that was invisible. */
@@ -92,6 +93,17 @@ public class SystemPromptRepositoryIT {
 
         assertThat(repository.findByType(SystemPromptType.SUMMARIZE)).extracting(SystemPrompt::name)
             .contains(LOWER);
+    }
+
+    @Test
+    public void aPromptStoredWithSurroundingWhitespaceIsFound() {
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                + "VALUES (?, ' kg ', 'body', 'padded type')",
+            PADDED);
+
+        assertThat(repository.findByType(SystemPromptType.KG)).extracting(SystemPrompt::name)
+            .contains(PADDED);
     }
 
     /** Whatever case {@code upsert} chooses, its own read path must find the row back. */

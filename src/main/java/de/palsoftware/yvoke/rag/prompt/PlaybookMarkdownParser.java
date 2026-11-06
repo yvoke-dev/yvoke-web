@@ -47,6 +47,14 @@ public class PlaybookMarkdownParser {
             try {
                 Object loaded = new Yaml().load(yamlFrontmatter);
                 if (loaded instanceof Map<?, ?> map) {
+                    Object retiredPrompt = map.get("system_prompt");
+                    if (retiredPrompt == null) {
+                        retiredPrompt = map.get("systemPrompt");
+                    }
+                    if (retiredPrompt != null && !String.valueOf(retiredPrompt).isBlank()) {
+                        throw new IllegalArgumentException(
+                            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.");
+                    }
                     if (map.get("name") != null) {
                         name = String.valueOf(map.get("name")).trim();
                     }
@@ -105,6 +113,8 @@ public class PlaybookMarkdownParser {
                         codeExecution = Boolean.parseBoolean(String.valueOf(codeExecObj));
                     }
                 }
+            } catch (IllegalArgumentException e) {
+                throw e;
             } catch (Exception ignored) {
                 // Keep defaults if frontmatter parsing fails
             }

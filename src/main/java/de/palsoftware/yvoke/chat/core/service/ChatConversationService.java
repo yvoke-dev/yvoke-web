@@ -5,6 +5,7 @@ import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
+import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
@@ -288,6 +289,11 @@ public class ChatConversationService {
             && !AreaAccessContext.canAccessUserArea(conversation.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + conversation.id());
+        }
+        if (!readOnlyAllowed
+            && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
+            throw new AccessDeniedException(
+                "Cannot modify claude-plugin feedback conversation: " + conversation.id());
         }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         if (Objects.equals(conversation.userId(), currentUserId)) {

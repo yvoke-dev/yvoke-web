@@ -79,13 +79,13 @@ public class DesktopSyncServiceIT {
      * the other field. Drop them — the natural "simplify this condition" edit — and renaming a
      * conversation wipes its whole settings map, or a settings change blanks its title. Nothing
      * errors, nothing is logged, and the user notices days later that a thread lost its name or its
-     * pinned chat-prompt.
+     * pinned playbook.
      *
      * <p>
      * The opposite half is that a settings map which IS supplied replaces the stored jsonb wholesale
      * — {@code ConversationRepository.updateSettings} writes {@code SET settings = :settings::jsonb}
      * — because replacement is the only way a desktop client can REMOVE a setting (a stuck
-     * chat-prompt override, say). {@code ChatConversationServiceTest#updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt}
+     * playbook override, say). {@code ChatConversationServiceTest#updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt}
      * pins merging in the WEB service, which sits on top of this same repository method, so if the
      * merge were pushed down into the repository that test would stay green while the desktop lost
      * the ability to delete a key forever.
@@ -99,7 +99,7 @@ public class DesktopSyncServiceIT {
         userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
         User owner = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
         Conversation conv = service.createConversation(owner, "Release notes 10.0",
-            Map.<String, Object>of("chat-prompt", "oim-expert", "thinking-level", "high"));
+            Map.<String, Object>of("playbook", "oim-expert", "thinking-level", "high"));
         conversationId = conv.id();
 
         // A PATCH that carries nothing, and one that carries blank/empty, are both no-ops.
@@ -110,7 +110,7 @@ public class DesktopSyncServiceIT {
             String.class, conversationId)).as("a blank title must not clear the stored one")
             .isEqualTo("Release notes 10.0");
         assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'chat-prompt' FROM conversations WHERE id = ?", String.class,
+            "SELECT settings ->> 'playbook' FROM conversations WHERE id = ?", String.class,
             conversationId)).as("an empty settings map must not wipe the stored settings")
             .isEqualTo("oim-expert");
         assertThat(jdbcTemplate.queryForObject(
@@ -131,7 +131,7 @@ public class DesktopSyncServiceIT {
         assertThat(jdbcTemplate.queryForObject(
             "SELECT settings::text FROM conversations WHERE id = ?", String.class, conversationId))
             .as("the map is REPLACED: a merge would make a setting impossible to remove")
-            .doesNotContain("chat-prompt");
+            .doesNotContain("playbook");
     }
 
     @AfterEach

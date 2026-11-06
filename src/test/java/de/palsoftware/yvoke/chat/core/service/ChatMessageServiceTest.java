@@ -252,7 +252,7 @@ public class ChatMessageServiceTest {
         when(playbookService.getPlaybook("oim-explain-table"))
             .thenReturn(Optional.of(mockBlankPlaybook));
 
-        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "User query", "oim-explain-table"));
         assertThat(ex.getMessage()).isEqualTo("The selected playbook has empty template text.");
     }
@@ -615,7 +615,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void prepare_withBlankPlaybookTemplateText_throwsIllegalStateExceptionSynchronously() {
+    public void prepare_withBlankPlaybookTemplateText_throwsIllegalArgumentExceptionSynchronously() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -627,7 +627,7 @@ public class ChatMessageServiceTest {
             Instant.now(), Instant.now(), false);
         when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
 
-        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "What is an account?", "pb1"));
         assertThat(ex.getMessage()).isEqualTo("The selected playbook has empty template text.");
         verify(conversationRepository, never()).lockForUpdate(any());
@@ -635,7 +635,7 @@ public class ChatMessageServiceTest {
     }
 
     @Test
-    public void prepare_withNullPlaybookTemplateText_throwsIllegalStateExceptionSynchronously() {
+    public void prepare_withNullPlaybookTemplateText_throwsIllegalArgumentExceptionSynchronously() {
         UUID conversationId = UUID.randomUUID();
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
@@ -647,7 +647,7 @@ public class ChatMessageServiceTest {
             Instant.now(), Instant.now(), false);
         when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
 
-        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+        IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
             () -> chatMessageService.prepare(conversationId, "What is an account?", "pb1"));
         assertThat(ex.getMessage()).isEqualTo("The selected playbook has empty template text.");
         verify(conversationRepository, never()).lockForUpdate(any());

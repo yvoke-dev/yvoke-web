@@ -319,7 +319,7 @@ public class ConversationAgentRunContextIT {
     void testCostCalculationService_getFilteredExplorerReport_resolvesPlaybookAndUser() {
         UUID convId = UUID.randomUUID();
         conversationRepository.create(convId, testUser.id(), "Explorer Conv",
-            Map.of("model", "gemini-2.5-flash", "chat-prompt", "oim-access-governance"));
+            Map.of("model", "gemini-2.5-flash"));
 
         playbookService.savePlaybook("oim-access-governance", "OIM Access Governance", "",
             "Access governance prompt", List.of(), false, "specialist", false, "OIM", 1);

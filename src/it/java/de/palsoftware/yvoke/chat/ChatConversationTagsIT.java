@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -222,5 +223,36 @@ public class ChatConversationTagsIT {
         // Switch back to User A for cleanup
         setUp();
         chatConversationService.deleteConversation(convId);
+    }
+
+    @Test
+    public void listAllExcludesClaudePluginConversationsAndCreateIfAbsentIsIdempotent() {
+        Conversation webConv = chatConversationService.createConversation();
+        UUID userId = webConv.userId();
+        UUID pluginConvId = UUID.randomUUID();
+
+        conversationRepository.createIfAbsent(pluginConvId, userId, "First Title",
+            Map.of("turnId", "t-1"), "claude-plugin", "OIM");
+        // Second call with same ID is a no-op (ON CONFLICT DO NOTHING)
+        conversationRepository.createIfAbsent(pluginConvId, userId, "Overwritten Title",
+            Map.of("turnId", "t-2"), "claude-plugin", "OIM");
+
+        Conversation storedPluginConv =
+            conversationRepository.findById(pluginConvId).orElseThrow();
+        assertThat(storedPluginConv.title()).isEqualTo("First Title");
+        assertThat(storedPluginConv.source()).isEqualTo("claude-plugin");
+
+        // Web sidebar / listAll must exclude claude-plugin conversations
+        List<Conversation> visible = chatConversationService.listAllConversations(100, 0);
+        assertThat(visible).extracting(Conversation::id).contains(webConv.id())
+            .doesNotContain(pluginConvId);
+
+        // Owner can still read the claude-plugin conversation directly, but cannot mutate/delete it via service
+        assertThat(chatConversationService.getConversation(pluginConvId)).isPresent();
+        assertThrows(AccessDeniedException.class,
+            () -> chatConversationService.deleteConversation(pluginConvId));
+
+        conversationRepository.delete(pluginConvId);
+        chatConversationService.deleteConversation(webConv.id());
     }
 }

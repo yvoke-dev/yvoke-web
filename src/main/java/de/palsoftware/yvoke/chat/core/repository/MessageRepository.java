@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResul
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -65,6 +66,44 @@ public class MessageRepository {
             .param("cachedTokens", message.cachedTokens())
             .param("thoughtTokens", message.thoughtTokens()).param("status", message.status())
             .param("model", message.model()).update();
+    }
+
+    public void saveIfAbsent(Message message) {
+        MessageRole.fromValue(message.role());
+        UUID[] chunkIdsArray = null;
+        if (message.retrievedChunkIds() != null && !message.retrievedChunkIds().isEmpty()) {
+            chunkIdsArray = message.retrievedChunkIds().toArray(new UUID[0]);
+        }
+
+        String citationsJson = null;
+        if (message.citations() != null && !message.citations().isEmpty()) {
+            try {
+                citationsJson = objectMapper.writeValueAsString(message.citations());
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to serialize citations for message {}", message.id(), e);
+            }
+        }
+
+        Timestamp createdAt =
+            message.createdAt() != null ? Timestamp.from(message.createdAt()) : null;
+        String sql =
+            """
+                INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at, updated_at)
+                VALUES (:id, :conversationId, :role, :content, :playbook, :playbookVersion, :retrievedChunkIds::uuid[], :citations::jsonb, :promptTokens, :completionTokens, :totalTokens, :cachedTokens, :thoughtTokens, :status, :model, COALESCE(:createdAt::timestamptz, clock_timestamp()), COALESCE(:createdAt::timestamptz, clock_timestamp()))
+                ON CONFLICT (id) DO NOTHING
+                """;
+
+        jdbcClient.sql(sql).param("id", message.id())
+            .param("conversationId", message.conversationId()).param("role", message.role())
+            .param("content", message.content()).param("playbook", message.playbook())
+            .param("playbookVersion", message.playbookVersion())
+            .param("retrievedChunkIds", chunkIdsArray).param("citations", citationsJson)
+            .param("promptTokens", message.promptTokens())
+            .param("completionTokens", message.completionTokens())
+            .param("totalTokens", message.totalTokens())
+            .param("cachedTokens", message.cachedTokens())
+            .param("thoughtTokens", message.thoughtTokens()).param("status", message.status())
+            .param("model", message.model()).param("createdAt", createdAt).update();
     }
 
     public List<Message> findByConversationId(UUID conversationId, int limit, int offset) {

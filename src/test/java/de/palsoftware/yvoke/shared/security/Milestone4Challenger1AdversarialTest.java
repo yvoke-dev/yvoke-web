@@ -78,7 +78,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Cross-area collection name hijack prevention. 2. Dual-area collection move checks (requires admin
  * on source AND target area). 3. Area Admin creation/renaming restrictions. 4. Document / chunk /
  * JSON object / KG cross-area refusals (404 opaque refusal). 5. Superadmin route guards (403 on
- * costs, pricing, audit, areas/delete, prompts/active).
+ * costs, pricing, audit, areas/delete).
  */
 public class Milestone4Challenger1AdversarialTest {
 

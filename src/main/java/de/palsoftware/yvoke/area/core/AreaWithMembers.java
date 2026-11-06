@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.area.core;
 
 import java.util.List;
-import org.jspecify.annotations.Nullable;
 
 /**
  * An area with its members. The default accessors report a default only when it is a member a
@@ -10,8 +9,6 @@ import org.jspecify.annotations.Nullable;
  * not offer, so it reads as no default.
  */
 public record AreaWithMembers(Area area,AreaMembers members){
-
-@Nullable public String defaultSystemPrompt(){return null;}
 
 public String defaultPlaybook(){return memberOrNull(area.defaultPlaybook(),members.playbooks());}
 

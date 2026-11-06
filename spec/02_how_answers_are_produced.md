@@ -61,8 +61,9 @@ in-depth profiles, and can inspect any search or trace.
   or shared chat base instructions underneath, and playbooks do not define or inherit base instructions.
   Playbook instructions are not prepended to user messages or re-injected across chat history. In multi-agent
   orchestration, specialists receive their own playbook's instructions as their complete system prompt, and
-  each sub-question alone is sent as the user query. Blank playbook instructions are rejected immediately on
-  send before saving or locking turns.
+  each sub-question alone is sent as the user query. In single-agent chat, blank playbook instructions are
+  rejected immediately on send before saving or locking turns; in multi-agent orchestration, a blank
+  orchestrator, specialist, or reviewer playbook is rejected when that role's turn starts.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft

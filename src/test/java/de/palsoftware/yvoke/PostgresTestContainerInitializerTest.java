@@ -51,4 +51,27 @@ class PostgresTestContainerInitializerTest {
         assertThat(ports.getBindings().get(ExposedPort.tcp(9000)))
             .containsExactly(new Binding("10.0.0.1", "9000"));
     }
+
+    @Test
+    void isRemoteTcpDockerHost_recognizesLocalAndRemoteHosts() {
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost(null)).isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("")).isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("   ")).isFalse();
+        assertThat(
+            PostgresTestContainerInitializer.isRemoteTcpDockerHost("unix:///var/run/docker.sock"))
+            .isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://localhost:2375"))
+            .isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("TCP://LOCALHOST:2375"))
+            .isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://127.0.0.1:2375"))
+            .isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://[::1]:2375"))
+            .isFalse();
+        assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://10.0.0.5:2375"))
+            .isTrue();
+        assertThat(
+            PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://docker.example.com:2376"))
+            .isTrue();
+    }
 }

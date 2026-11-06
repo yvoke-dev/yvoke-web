@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
+import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
@@ -110,7 +111,8 @@ public class ChatController {
         // message row for every widget, so this scaled with thread length.
         Map<UUID, Feedback> feedbacks = chatFeedbackService.getFeedbackByConversation(id);
 
-        boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId());
+        boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId())
+            || ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source());
 
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(AreaAccessContext.filterByUserArea(

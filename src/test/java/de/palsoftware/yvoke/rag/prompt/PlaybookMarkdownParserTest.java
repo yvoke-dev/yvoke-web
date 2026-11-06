@@ -180,17 +180,32 @@ class PlaybookMarkdownParserTest {
     }
 
     @Test
-    void legacySystemPromptInFrontmatterIsIgnoredAndOmittedFromToMarkdown() {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: pb
-            title: PB
-            system_prompt: coding-chat
-            ---
-            Body
-            """, null);
-        String md = PlaybookMarkdownParser.toMarkdown(parsed);
-        assertFalse(md.contains("system_prompt:"));
+    void retiredSystemPromptInFrontmatterThrowsIllegalArgumentException() {
+        IllegalArgumentException exSnake = assertThrows(IllegalArgumentException.class,
+            () -> PlaybookMarkdownParser.parseMarkdown("""
+                ---
+                name: pb
+                title: PB
+                system_prompt: coding-chat
+                ---
+                Body
+                """, null));
+        assertEquals(
+            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
+            exSnake.getMessage());
+
+        IllegalArgumentException exCamel = assertThrows(IllegalArgumentException.class,
+            () -> PlaybookMarkdownParser.parseMarkdown("""
+                ---
+                name: pb
+                title: PB
+                systemPrompt: coding-chat
+                ---
+                Body
+                """, null));
+        assertEquals(
+            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
+            exCamel.getMessage());
     }
 
     @Test

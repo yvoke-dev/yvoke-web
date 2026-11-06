@@ -2,11 +2,8 @@ package de.palsoftware.yvoke.rag.prompt;
 
 import java.time.Instant;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
 
 public record Playbook(String name,String title,String description,String templateText,List<String>tools,boolean codeExecution,String targetAgent,boolean prototype,Instant createdAt,Instant updatedAt,boolean readOnly,String area,int version){
-
-@Nullable public String systemPrompt(){return null;}
 
 public Playbook{if(version<1){throw new IllegalArgumentException("Playbook version must be >= 1.");}}
 

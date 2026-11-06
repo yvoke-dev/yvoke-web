@@ -372,7 +372,11 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                        c.title AS conversation_title
                 FROM messages m
                 JOIN conversations c ON m.conversation_id = c.id
+                JOIN chunks ch ON ch.id = :chunkId
+                JOIN documents d ON ch.document_id = d.id
+                JOIN collections col ON d.collection_id = col.id
                 WHERE :chunkId = ANY(m.retrieved_chunk_ids)
+                  AND (c.area IS NULL OR LOWER(c.area) = LOWER(col.area))
                 ORDER BY m.created_at DESC
                 LIMIT 10
                 """;

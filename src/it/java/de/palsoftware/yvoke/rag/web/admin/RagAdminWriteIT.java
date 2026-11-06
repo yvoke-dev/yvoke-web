@@ -36,9 +36,8 @@ import org.hamcrest.Matchers;
  * console smoke sweeps), and the service-level tests run against a mocked repository.
  *
  * <p>These matter out of proportion to their size. A playbook is a hard dependency of the only user
- * workflow — the chat client refuses to send without one — and the active CHAT prompt is prepended to
- * every assistant turn application-wide, so a silent no-op in {@code POST /admin/prompts/active}
- * degrades every answer for every user with the whole suite still green.
+ * workflow — the chat client refuses to send without one — and the ingestion prompts govern graph
+ * extraction and section summarisation across every knowledge area.
  *
  * <p>What is asserted here is the <em>HTTP contract</em> the service tests cannot see: request-param
  * binding (including the {@code tools} multi-select to {@code List<String>}, the {@code codeExecution}

@@ -126,12 +126,12 @@ class AreaMembersIT {
     }
 
     /**
-     * One membership query feeds list_areas, get_system_prompt's area default and the area admin
-     * page. Its playbook rule must match list_playbooks (PlaybookService.listSpecializedPlaybooks):
-     * orchestrator and reviewer playbooks are left out, any other role or none is pickable.
+     * One membership query feeds list_areas and the area admin page. Its playbook rule must match
+     * list_playbooks (PlaybookService.listSpecializedPlaybooks): orchestrator and reviewer playbooks
+     * are left out, any other role or none is pickable.
      */
     @Test
-    void membersAreListedPerAreaWithOnlyChatPromptsAndPickablePlaybooks() {
+    void membersAreListedPerAreaWithIngestionPromptsAndPickablePlaybooks() {
         systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
         systemPromptRepository.upsert("it-members-sum", SystemPromptType.SUMMARIZE, "t", null, OTHER);
         collectionRepository.create("it-members-col", "", OTHER);

@@ -5,6 +5,8 @@ import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Ports;
 import com.github.dockerjava.api.model.Ports.Binding;
+import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +58,9 @@ public class PostgresTestContainerInitializer
      */
     @Override
     public CreateContainerCmd modify(CreateContainerCmd cmd) {
+        if (isRemoteTcpDockerHost(System.getenv("DOCKER_HOST"))) {
+            return cmd;
+        }
         HostConfig hostConfig = cmd.getHostConfig();
         if (hostConfig != null && hostConfig.getPortBindings() != null) {
             Ports ports = hostConfig.getPortBindings();
@@ -75,6 +80,28 @@ public class PostgresTestContainerInitializer
             }
         }
         return cmd;
+    }
+
+    static boolean isRemoteTcpDockerHost(String dockerHost) {
+        if (dockerHost == null || dockerHost.isBlank()) {
+            return false;
+        }
+        String trimmed = dockerHost.trim();
+        if (!trimmed.toLowerCase(Locale.ROOT).startsWith("tcp://")) {
+            return false;
+        }
+        try {
+            String host = URI.create(trimmed).getHost();
+            if (host == null || host.isBlank()) {
+                return false;
+            }
+            return !"localhost".equalsIgnoreCase(host)
+                    && !"127.0.0.1".equals(host)
+                    && !"[::1]".equals(host)
+                    && !"::1".equals(host);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     @Override

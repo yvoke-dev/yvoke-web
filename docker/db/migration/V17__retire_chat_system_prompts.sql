@@ -22,7 +22,12 @@ UPDATE system_prompts
 DELETE FROM system_prompts
  WHERE upper(btrim(type)) NOT IN ('KG', 'SUMMARIZE');
 
--- 5. Enforce valid ingestion prompt types (case-insensitive to preserve external/legacy
+-- 5. Canonicalize remaining ingestion prompt types before adding constraint
+UPDATE system_prompts
+   SET type = upper(btrim(type))
+ WHERE upper(btrim(type)) IN ('KG', 'SUMMARIZE');
+
+-- 6. Enforce valid ingestion prompt types (case-insensitive to preserve external/legacy
 --    lowercase writes pinned by SystemPromptRepositoryIT)
 ALTER TABLE system_prompts
   ADD CONSTRAINT ck_system_prompts_type

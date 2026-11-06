@@ -580,5 +580,48 @@ public class ChatConversationServiceTest {
 
         verify(conversationRepository).listAll(userId, 20, 0, Set.of("oim"));
     }
+
+    @Test
+    public void verifyConversationOwnership_claudePluginConversation_allowsReadButRejectsWriteEvenForOwner() {
+        UUID convId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        User owner = new User(ownerId, "entra-owner", "owner@test.local", "Owner", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
+
+        Conversation pluginConv =
+            new Conversation(convId, ownerId, "Plugin Turn", Collections.emptyMap(), Instant.now(),
+                Instant.now(), List.of(), "claude-plugin", "OIM");
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(pluginConv));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        // Read-only access (getConversation / verifyConversationOwnership(..., true)) is allowed
+        // for owner
+        assertThat(chatConversationService.getConversation(convId)).contains(pluginConv);
+
+        // Mutating access is rejected even for the owner
+        assertThatThrownBy(
+            () -> chatConversationService.verifyConversationOwnership(pluginConv, false))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+
+        assertThatThrownBy(() -> chatConversationService.deleteConversation(convId))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(
+            () -> chatConversationService.updateSettings(convId, Map.of("streaming", true)))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(
+            () -> chatConversationService.updateModel(convId, "gemini-3.1-flash-lite"))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chatConversationService.addTag(convId, "tag1"))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chatConversationService.removeTag(convId, "tag1"))
+            .isInstanceOf(AccessDeniedException.class);
+
+        verify(conversationRepository, never()).delete(any());
+        verify(conversationRepository, never()).updateSettings(any(), any());
+        verifyNoInteractions(tagRepository);
+    }
 }
 
