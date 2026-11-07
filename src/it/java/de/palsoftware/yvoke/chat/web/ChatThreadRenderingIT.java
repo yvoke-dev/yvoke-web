@@ -208,7 +208,23 @@ public class ChatThreadRenderingIT {
             .as("the model picker options keep the wire ID as value while rendering the friendly label")
             .contains(
                 "<option value=\"deepseek/deepseek-v4.1-flash-1017\">OpenRouter - DeepSeek 4.1 Flash</option>")
-            .contains(">Gemini - 3.8 Flash</option>");
+            .contains(">Gemini - 3.8 Flash</option>")
+            .contains("feedback-buttons-container")
+            .contains("feedback-thumbs-up");
+
+        // A read-only thread (e.g. a claude-plugin feedback conversation) hides the rating buttons.
+        jdbcClient.sql("UPDATE conversations SET source = 'claude-plugin' WHERE id = :id")
+            .param("id", convId).update();
+        MvcResult readOnlyResult =
+            mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(readOnlyResult.getModelAndView().getModel().get("isReadOnly")).isEqualTo(true);
+        String readOnlyHtml = readOnlyResult.getResponse().getContentAsString();
+        assertThat(readOnlyHtml)
+            .doesNotContain("feedback-buttons-container")
+            .doesNotContain("feedback-thumbs-up");
+        jdbcClient.sql("UPDATE conversations SET source = 'web' WHERE id = :id")
+            .param("id", convId).update();
 
         // Cleanup (the security filter clears the holder after each MockMvc request).
         setSecurityContext(userOid, "thread-model@local", "Thread Model User");

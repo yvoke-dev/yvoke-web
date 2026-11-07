@@ -55,7 +55,7 @@ running corpus scripts and the evaluation harness.
   zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). All
   tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
   `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
-  `list_playbooks`, `get_playbook`) enforce this boundary.
+  `list_playbooks`, `get_playbook`, `submit_feedback`) enforce this boundary.
 - **Unauthorized access returns opaque refusal.** Requesting an area, document, chunk, or playbook
   outside the caller's authorized areas returns an opaque *not found* error, never confirming whether the
   resource exists in another area.

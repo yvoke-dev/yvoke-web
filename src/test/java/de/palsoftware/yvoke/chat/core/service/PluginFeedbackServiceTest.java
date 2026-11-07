@@ -465,6 +465,38 @@ class PluginFeedbackServiceTest {
     }
 
     @Test
+    void rejectsExplicitAreaWhenPlaybookOrProfileBelongsToDifferentArea() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"),
+                    new SimpleGrantedAuthority("AREA_USER_OIM"),
+                    new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+
+        when(playbookService.getPlaybook("ping-pb"))
+            .thenReturn(Optional.of(new Playbook("ping-pb", "Title", "Desc", "Body", List.of(),
+                false, "specialist", false, FIXED_NOW, FIXED_NOW, false, "PingID", 1)));
+        when(orchestratorProfileService.getProfile("ping-prof")).thenReturn(
+            Optional.of(new OrchestratorProfile("ping-prof", 3, 8, "orch", "rev", List.of(), null,
+                null, null, null, null, null, false, FIXED_NOW, FIXED_NOW, "PingID")));
+
+        assertThatThrownBy(
+            () -> service.submitFeedback(new PluginFeedbackRequest("turn-mismatch-pb", 1, null, "Q",
+                "A", "OIM", "single", "ping-pb", 1, null, List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("playbook 'ping-pb' does not belong to area 'OIM'.");
+
+        assertThatThrownBy(
+            () -> service.submitFeedback(new PluginFeedbackRequest("turn-mismatch-prof", 1, null,
+                "Q", "A", "OIM", "multi", null, null, "ping-prof", List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("profile 'ping-prof' does not belong to area 'OIM'.");
+
+        verify(conversationRepository, never()).createIfAbsent(any(), any(), any(), any(), any(),
+            any());
+        verify(feedbackRepository, never()).upsert(any(), any(Integer.class), any());
+    }
+
+    @Test
     void buildCitationsListDistinguishesDocumentAndChunkCitations() {
         List<CitationCheckResult> citations = PluginFeedbackService
             .buildCitationsList(List.of("[document_id=doc-123]", "DOCUMENT_ID=doc-456",

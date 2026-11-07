@@ -231,7 +231,24 @@ public class PluginFeedbackService {
         String trimmedArea = trimToNull(rawArea);
         if (trimmedArea != null) {
             requireMaxLength(trimmedArea, "area", MAX_METADATA_CHARS);
-            return authorizeCanonicalArea(trimmedArea);
+            String resolvedArea = authorizeCanonicalArea(trimmedArea);
+            if (playbookService != null && normalizedPlaybook != null) {
+                Optional<String> pbArea = playbookService.getPlaybook(normalizedPlaybook)
+                    .map(Playbook::area).map(PluginFeedbackService::trimToNull);
+                if (pbArea.isPresent() && !pbArea.get().trim().equalsIgnoreCase(resolvedArea)) {
+                    throw new IllegalArgumentException("playbook '" + normalizedPlaybook
+                        + "' does not belong to area '" + resolvedArea + "'.");
+                }
+            }
+            if (orchestratorProfileService != null && normalizedProfile != null) {
+                Optional<String> profArea = orchestratorProfileService.getProfile(normalizedProfile)
+                    .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
+                if (profArea.isPresent() && !profArea.get().trim().equalsIgnoreCase(resolvedArea)) {
+                    throw new IllegalArgumentException("profile '" + normalizedProfile
+                        + "' does not belong to area '" + resolvedArea + "'.");
+                }
+            }
+            return resolvedArea;
         }
         if (normalizedPlaybook != null && playbookService != null) {
             Optional<String> playbookArea = playbookService.getPlaybook(normalizedPlaybook)

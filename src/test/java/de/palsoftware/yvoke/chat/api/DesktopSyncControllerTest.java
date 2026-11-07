@@ -551,4 +551,3 @@ class DesktopSyncControllerTest {
             .isInstanceOf(NoSuchMethodException.class);
     }
 }
-

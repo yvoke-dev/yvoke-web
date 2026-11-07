@@ -533,8 +533,8 @@ public class ChatAdminQueryRepositoryIT {
                 chatAdminQueryRepository.findMessagesSurfacingChunk(chunkId);
 
             assertThat(surfacing).extracting(m -> (String) m.get("message_id"))
-                .containsExactlyInAnyOrder(oimMsg.toString(), nullAreaMsg.toString())
-                .doesNotContain(pingMsg.toString());
+                .containsExactly(oimMsg.toString())
+                .doesNotContain(nullAreaMsg.toString(), pingMsg.toString());
         } finally {
             jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", chunkId);
             jdbcTemplate.update("DELETE FROM documents WHERE id = ?", documentId);

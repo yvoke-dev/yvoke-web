@@ -58,7 +58,11 @@ public class PostgresTestContainerInitializer
      */
     @Override
     public CreateContainerCmd modify(CreateContainerCmd cmd) {
-        if (isRemoteTcpDockerHost(System.getenv("DOCKER_HOST"))) {
+        String dockerHost = System.getenv("DOCKER_HOST");
+        if (dockerHost == null || dockerHost.isBlank()) {
+            dockerHost = System.getProperty("docker.host");
+        }
+        if (isRemoteTcpDockerHost(dockerHost)) {
             return cmd;
         }
         HostConfig hostConfig = cmd.getHostConfig();
@@ -87,7 +91,11 @@ public class PostgresTestContainerInitializer
             return false;
         }
         String trimmed = dockerHost.trim();
-        if (!trimmed.toLowerCase(Locale.ROOT).startsWith("tcp://")) {
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("ssh://")) {
+            return true;
+        }
+        if (!lower.startsWith("tcp://")) {
             return false;
         }
         try {

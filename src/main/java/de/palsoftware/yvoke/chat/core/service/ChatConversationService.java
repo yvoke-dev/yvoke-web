@@ -290,13 +290,13 @@ public class ChatConversationService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + conversation.id());
         }
-        if (!readOnlyAllowed
-            && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
-            throw new AccessDeniedException(
-                "Cannot modify claude-plugin feedback conversation: " + conversation.id());
-        }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         if (Objects.equals(conversation.userId(), currentUserId)) {
+            if (!readOnlyAllowed
+                && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
+                throw new AccessDeniedException(
+                    "Cannot modify claude-plugin feedback conversation: " + conversation.id());
+            }
             return;
         }
         if (readOnlyAllowed) {

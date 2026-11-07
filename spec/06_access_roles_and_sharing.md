@@ -16,7 +16,7 @@ areas, and automation or AI coding tools connecting on a company account or a ma
 | **Roles come from the company directory** | Four logical role levels are derived from Microsoft Entra ID `roles` claims: Superadmin (`Admin`), Global User (`User`), Area Admin (`<Area>.Admin`), and Area User (`<Area>.User`). Multi-role union allows combining roles, while users without recognized role claims are denied by default. |
 | **Conversations are private by default** | A conversation belongs to whoever started it. Nobody else sees it, and nobody else can open it — unless the owner shares it, or an administrator deliberately opens it through the admin console. |
 | **Share with colleagues in an area** | Adding the folder tag `public` publishes the conversation to users authorized for that conversation's knowledge area, in a *Public Conversations* folder. Removing the tag un-shares it immediately. |
-| **Read-only view of a shared conversation** | A viewer sees the whole history with a *Shared* badge and a banner saying it is read-only. The message box, tag controls and delete button are hidden. |
+| **Read-only view of a shared conversation** | A viewer sees the whole history with a *Shared* badge and a banner saying it is read-only. The message box, tag controls, rating buttons and delete button are hidden. |
 | **Viewers can reveal reasoning for themselves** | Someone reading a shared conversation can toggle *Show thinking & tools*. The choice applies only to them and never changes the owner's settings. |
 | **Administrators inspect area conversations** | Superadmins can inspect all conversations; Area Admins can review user conversations, message feedback, and execution traces strictly within their administered areas. |
 | **Administrators unlock the admin console** | Knowledge areas, documents, records, the graph, playbooks, profiles, prompts, imports, connectors, agent runs, jobs, user conversations, search testing, logs, and feedback. Superadmins also access cost monitoring, model pricing, audit trail, and area creation/deletion. Regular users see none of it. |
@@ -72,8 +72,6 @@ areas, and automation or AI coding tools connecting on a company account or a ma
   in the product. Changing any of them is a deployment change.
 - **The *Public Conversations* count counts a conversation once per folder it sits in**, so the number can
   exceed the number of distinct shared conversations.
-- **Rating buttons are shown to viewers of a shared conversation**, but any rating they submit is refused
-  and the widget silently keeps its previous state.
 - **Sharing has no expiry and no viewer list.** It stays visible until the owner removes the tag, and the
   owner cannot see who has read it.
 - **Authorization is enforced at the Area boundary.** Permissions are granted per area. A user authorized

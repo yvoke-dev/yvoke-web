@@ -63,7 +63,7 @@ in-depth profiles, and can inspect any search or trace.
   orchestration, specialists receive their own playbook's instructions as their complete system prompt, and
   each sub-question alone is sent as the user query. In single-agent chat, blank playbook instructions are
   rejected immediately on send before saving or locking turns; in multi-agent orchestration, a blank
-  orchestrator, specialist, or reviewer playbook is rejected when that role's turn starts.
+  orchestrator, specialist, or reviewer playbook is rejected when the run starts.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft

@@ -73,5 +73,34 @@ class PostgresTestContainerInitializerTest {
         assertThat(
             PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://docker.example.com:2376"))
             .isTrue();
+        assertThat(
+            PostgresTestContainerInitializer.isRemoteTcpDockerHost("ssh://user@remote-docker-host"))
+            .isTrue();
+        assertThat(PostgresTestContainerInitializer
+            .isRemoteTcpDockerHost("SSH://user@remote-docker-host:22")).isTrue();
+    }
+
+    @Test
+    void modifyLeavesWildcardPortBindingsUntouchedWhenDockerHostPropertyIsRemoteSsh() {
+        String previous = System.getProperty("docker.host");
+        try {
+            System.setProperty("docker.host", "ssh://user@remote-docker-host");
+            HostConfig hostConfig = new HostConfig()
+                .withPortBindings(List.of(new PortBinding(Binding.empty(), ExposedPort.tcp(5432))));
+            CreateContainerCmd cmd = mock(CreateContainerCmd.class);
+            when(cmd.getHostConfig()).thenReturn(hostConfig);
+
+            new PostgresTestContainerInitializer().modify(cmd);
+
+            Ports ports = hostConfig.getPortBindings();
+            assertThat(ports.getBindings().get(ExposedPort.tcp(5432)))
+                .containsExactly(Binding.empty());
+        } finally {
+            if (previous == null) {
+                System.clearProperty("docker.host");
+            } else {
+                System.setProperty("docker.host", previous);
+            }
+        }
     }
 }
