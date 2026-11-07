@@ -7,7 +7,6 @@ import static org.mockito.Mockito.*;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import io.modelcontextprotocol.server.McpSyncServer;
 import java.util.List;
 import java.util.Optional;
@@ -30,7 +29,7 @@ public class PromptsServiceTest {
                 List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         playbookRepository = mock(PlaybookRepository.class);
         prompts = new PromptsService(new PlaybookService(playbookRepository, (McpSyncServer) null,
-            TestAreas.withAreas("OIM"), mock(SystemPromptService.class)));
+            TestAreas.withAreas("OIM")));
     }
 
     @AfterEach
@@ -62,9 +61,9 @@ public class PromptsServiceTest {
             .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
                 List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
         Playbook playbook1 = new Playbook("name-1", "Title 1", "Desc 1", "Template 1", List.of(),
-            false, null, false, null, null, false, "OIM", null, 1);
+            false, null, false, null, null, false, "OIM", 1);
         Playbook playbook2 = new Playbook("name-2", "Title 2", "Desc 2", "Template 2", List.of(),
-            false, null, false, null, null, false, "PingID", null, 1);
+            false, null, false, null, null, false, "PingID", 1);
         when(playbookRepository.findAll()).thenReturn(List.of(playbook1, playbook2));
 
         List<PromptsService.PromptMetadata> metadataList = prompts.getPromptsMetadata();
@@ -92,7 +91,7 @@ public class PromptsServiceTest {
             .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
                 List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
         Playbook playbook = new Playbook("name-1", "Title 1", "Desc 1", "Template 1", List.of(),
-            false, null, false, null, null, false, "OIM", null, 1);
+            false, null, false, null, null, false, "OIM", 1);
         when(playbookRepository.findByName("name-1")).thenReturn(Optional.of(playbook));
 
         assertNull(prompts.getPromptText("name-1"));

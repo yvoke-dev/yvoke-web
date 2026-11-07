@@ -78,7 +78,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Cross-area collection name hijack prevention. 2. Dual-area collection move checks (requires admin
  * on source AND target area). 3. Area Admin creation/renaming restrictions. 4. Document / chunk /
  * JSON object / KG cross-area refusals (404 opaque refusal). 5. Superadmin route guards (403 on
- * costs, pricing, audit, areas/delete, prompts/active).
+ * costs, pricing, audit, areas/delete).
  */
 public class Milestone4Challenger1AdversarialTest {
 
@@ -248,7 +248,7 @@ public class Milestone4Challenger1AdversarialTest {
                 .andExpect(status().isForbidden());
 
             verify(areaService, never()).saveArea(any(), any(), any(), any(), any(Boolean.class),
-                any(), any(), any());
+                any(), any());
         }
 
         @Test
@@ -262,7 +262,7 @@ public class Milestone4Challenger1AdversarialTest {
                 .andExpect(status().isBadRequest());
 
             verify(areaService, never()).saveArea(any(), any(), any(), any(), any(Boolean.class),
-                any(), any(), any());
+                any(), any());
         }
 
         @Test
@@ -289,7 +289,7 @@ public class Milestone4Challenger1AdversarialTest {
                 .andExpect(flash().attribute("success", "Area 'AreaA' saved."));
 
             verify(areaService).saveArea("AreaA", "AreaA", "New Title", "Updated desc", false, null,
-                null, null);
+                null);
         }
 
         @Test
@@ -300,12 +300,12 @@ public class Milestone4Challenger1AdversarialTest {
 
             mvc.perform(post("/admin/areas").param("name", "BrandNewArea"))
                 .andExpect(status().is3xxRedirection());
-            verify(areaService).saveArea(null, "BrandNewArea", null, null, false, null, null, null);
+            verify(areaService).saveArea(null, "BrandNewArea", null, null, false, null, null);
 
             mvc.perform(
                 post("/admin/areas").param("originalName", "OldName").param("name", "NewName"))
                 .andExpect(status().is3xxRedirection());
-            verify(areaService).saveArea("OldName", "NewName", null, null, false, null, null, null);
+            verify(areaService).saveArea("OldName", "NewName", null, null, false, null, null);
         }
     }
 
@@ -444,11 +444,6 @@ public class Milestone4Challenger1AdversarialTest {
             public String deleteArea() {
                 return "delete";
             }
-
-            @GetMapping("/admin/prompts/active")
-            public String activePrompt() {
-                return "prompt";
-            }
         }
 
         @Configuration
@@ -501,8 +496,8 @@ public class Milestone4Challenger1AdversarialTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"/admin/costs", "/admin/pricing", "/admin/audit",
-            "/admin/areas/delete", "/admin/prompts/active"})
+        @ValueSource(
+            strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
         @DisplayName("Area Admin is rejected with 403 Forbidden from superadmin-only endpoints")
         void superadminEndpoints_forbidAreaAdmin(String path) throws Exception {
             mockMvc.perform(get(path).with(user("areaAdminA").roles("AREA_ADMIN", "USER")))
@@ -510,8 +505,8 @@ public class Milestone4Challenger1AdversarialTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"/admin/costs", "/admin/pricing", "/admin/audit",
-            "/admin/areas/delete", "/admin/prompts/active"})
+        @ValueSource(
+            strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
         @DisplayName("Superadmin with ROLE_ADMIN is allowed on superadmin endpoints")
         void superadminEndpoints_permitSuperAdmin(String path) throws Exception {
             mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN", "USER")))

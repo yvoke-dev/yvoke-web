@@ -185,4 +185,33 @@ public class MessageRepositoryIT {
 
         assertThat(messageRepository.hasInDepthTurns(conversationId)).isTrue();
     }
+
+    @Test
+    void saveIfAbsent_isIdempotentAndPreservesExplicitOrDefaultTimestamp() {
+        UUID msg1Id = UUID.randomUUID();
+        Instant explicitTime = Instant.parse("2026-11-02T10:15:30Z");
+        Message first = new Message(msg1Id, conversationId, "user", "Original Question",
+            "pb-1", 1, List.of(), List.of(), explicitTime, null, null, null, null, null, "done",
+            null);
+        Message duplicate = new Message(msg1Id, conversationId, "user", "Overwritten Question",
+            "pb-2", 2, List.of(), List.of(), explicitTime.plusSeconds(60), null, null, null, null,
+            null, "done", null);
+
+        messageRepository.saveIfAbsent(first);
+        assertThatCode(() -> messageRepository.saveIfAbsent(duplicate)).doesNotThrowAnyException();
+
+        Message loaded1 = messageRepository.findById(msg1Id).orElseThrow();
+        assertThat(loaded1.content()).isEqualTo("Original Question");
+        assertThat(loaded1.playbook()).isEqualTo("pb-1");
+        assertThat(loaded1.createdAt()).isEqualTo(explicitTime);
+
+        UUID msg2Id = UUID.randomUUID();
+        Message withNullTime = new Message(msg2Id, conversationId, "assistant", "Answer",
+            null, null, List.of(), List.of(), null, null, null, null, null, null, "done",
+            "claude-sonnet-4-5");
+        messageRepository.saveIfAbsent(withNullTime);
+        Message loaded2 = messageRepository.findById(msg2Id).orElseThrow();
+        assertThat(loaded2.content()).isEqualTo("Answer");
+        assertThat(loaded2.createdAt()).isNotNull();
+    }
 }

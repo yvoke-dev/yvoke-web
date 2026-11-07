@@ -33,10 +33,10 @@ public final class TestAreas {
     }
 
     public static Area area(String name) {
-        return new Area(name, name, null, false, null, null, null, null, null);
+        return new Area(name, name, null, false, null, null, null, null);
     }
 
     public static Area areaWithDefaultPlaybook(String name, String defaultPlaybook) {
-        return new Area(name, name, null, false, null, defaultPlaybook, null, null, null);
+        return new Area(name, name, null, false, defaultPlaybook, null, null, null);
     }
 }

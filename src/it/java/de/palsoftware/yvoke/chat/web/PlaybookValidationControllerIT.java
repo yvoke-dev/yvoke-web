@@ -89,7 +89,7 @@ public class PlaybookValidationControllerIT {
         }
         try {
             areaService.findArea("OIM").ifPresent(oim -> areaService.saveArea("OIM", "OIM",
-                oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), null,
+                oim.title(), oim.description(), oim.prototype(), null,
                 oim.defaultProfile()));
         } catch (Exception e) {}
         try {
@@ -143,7 +143,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -170,8 +170,8 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
-        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook", "Suggested Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook", "Suggested Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"This question is about user setup.\", \"suggestedPlaybookName\": \"suggested-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -198,9 +198,9 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", 1);
         Area oim = areaService.findArea("OIM").orElseThrow();
-        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), "oim-full", oim.defaultProfile());
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), "oim-full", oim.defaultProfile());
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Should not be called\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -229,7 +229,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Synchronization issues are handled here.\", \"suggestedPlaybookName\": \"correct-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -293,9 +293,9 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", 1);
         Area oim = areaService.findArea("OIM").orElseThrow();
-        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), oim.defaultSystemPrompt(), "oim-full", oim.defaultProfile());
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), "oim-full", oim.defaultProfile());
 
         String userBOid = "user-b-validate-test-oid";
         userRepository.upsert(userBOid, "user-b-test@local", "User B");
@@ -341,7 +341,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
@@ -405,7 +405,7 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
         when(llmClient.generate(any(LlmRequest.class)))
             .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Bad selection.\", \"suggestedPlaybookName\": \"non-existent-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));

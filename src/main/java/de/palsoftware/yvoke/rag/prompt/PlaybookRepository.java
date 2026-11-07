@@ -26,7 +26,7 @@ public class PlaybookRepository {
             rs.getBoolean("code_execution"), targetAgent, rs.getBoolean("prototype"),
             cat != null ? cat.toInstant() : Instant.now(),
             uat != null ? uat.toInstant() : Instant.now(), false, rs.getString("area"),
-            rs.getString("system_prompt"), version >= 1 ? version : 1);
+            version >= 1 ? version : 1);
     };
 
     private final JdbcClient jdbcClient;
@@ -37,27 +37,25 @@ public class PlaybookRepository {
 
     public List<Playbook> findAll() {
         return jdbcClient.sql(
-            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks ORDER BY name ASC")
+            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, version FROM playbooks ORDER BY name ASC")
             .query(PLAYBOOK_ROW_MAPPER).list();
     }
 
     public Optional<Playbook> findByName(String name) {
         return jdbcClient.sql(
-            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, system_prompt, version FROM playbooks WHERE name = :name")
+            "SELECT name, title, description, template_text, tools, code_execution, target_agent, prototype, created_at, updated_at, area, version FROM playbooks WHERE name = :name")
             .param("name", name).query(PLAYBOOK_ROW_MAPPER).optional();
     }
 
     public void upsert(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area, String systemPrompt, int version) {
+        String area, int version) {
         String agent = targetAgent != null && !targetAgent.isBlank() ? targetAgent : "specialist";
-        String prompt =
-            systemPrompt != null && !systemPrompt.isBlank() ? systemPrompt.trim() : null;
         jdbcClient
             .sql(
                 """
-                    INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, target_agent, prototype, area, system_prompt, version)
-                    VALUES (:name, :title, :description, :templateText, :tools, :codeExecution, :targetAgent, :prototype, :area, :systemPrompt, :version)
+                    INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, target_agent, prototype, area, version)
+                    VALUES (:name, :title, :description, :templateText, :tools, :codeExecution, :targetAgent, :prototype, :area, :version)
                     ON CONFLICT (name) DO UPDATE SET
                         title = EXCLUDED.title,
                         description = EXCLUDED.description,
@@ -67,7 +65,6 @@ public class PlaybookRepository {
                         target_agent = EXCLUDED.target_agent,
                         prototype = EXCLUDED.prototype,
                         area = EXCLUDED.area,
-                        system_prompt = EXCLUDED.system_prompt,
                         version = EXCLUDED.version,
                         updated_at = CURRENT_TIMESTAMP
                     """)
@@ -75,8 +72,7 @@ public class PlaybookRepository {
             .param("templateText", templateText)
             .param("tools", tools != null ? tools.toArray(new String[0]) : new String[0])
             .param("codeExecution", codeExecution).param("targetAgent", agent)
-            .param("prototype", prototype).param("area", area).param("systemPrompt", prompt)
-            .param("version", version).update();
+            .param("prototype", prototype).param("area", area).param("version", version).update();
     }
 
     public void delete(String name) {

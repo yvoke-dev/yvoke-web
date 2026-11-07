@@ -70,11 +70,6 @@ class SecurityConfigRouteGuardAdversarialTest {
             return "delete-area";
         }
 
-        @GetMapping("/admin/prompts/active")
-        public String activePrompt() {
-            return "active-prompt";
-        }
-
         @GetMapping("/admin/collections")
         public String collections() {
             return "collections";
@@ -175,13 +170,12 @@ class SecurityConfigRouteGuardAdversarialTest {
     // =========================================================================
     // 1. Superadmin-only paths: Require ROLE_ADMIN
     // /admin/costs, /admin/costs/**, /admin/pricing, /admin/pricing/**,
-    // /admin/audit, /admin/audit/**, /admin/areas/delete, /admin/prompts/active
+    // /admin/audit, /admin/audit/**, /admin/areas/delete
     // =========================================================================
 
     @ParameterizedTest
-    @ValueSource(
-        strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing", "/admin/pricing/edit",
-            "/admin/audit", "/admin/audit/logs", "/admin/areas/delete", "/admin/prompts/active"})
+    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
+        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
     @DisplayName("Superadmin-only routes forbid plain ROLE_USER")
     void superadminRoutesForbidPlainUser(String path) throws Exception {
         mockMvc.perform(get(path).with(user("regularUser").roles("USER")))
@@ -189,9 +183,8 @@ class SecurityConfigRouteGuardAdversarialTest {
     }
 
     @ParameterizedTest
-    @ValueSource(
-        strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing", "/admin/pricing/edit",
-            "/admin/audit", "/admin/audit/logs", "/admin/areas/delete", "/admin/prompts/active"})
+    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
+        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
     @DisplayName("Superadmin-only routes strictly forbid ROLE_AREA_ADMIN without ROLE_ADMIN")
     void superadminRoutesForbidAreaAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("areaAdmin").roles("AREA_ADMIN", "USER")))
@@ -199,9 +192,8 @@ class SecurityConfigRouteGuardAdversarialTest {
     }
 
     @ParameterizedTest
-    @ValueSource(
-        strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing", "/admin/pricing/edit",
-            "/admin/audit", "/admin/audit/logs", "/admin/areas/delete", "/admin/prompts/active"})
+    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
+        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
     @DisplayName("Superadmin-only routes permit ROLE_ADMIN")
     void superadminRoutesPermitAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN", "USER")))

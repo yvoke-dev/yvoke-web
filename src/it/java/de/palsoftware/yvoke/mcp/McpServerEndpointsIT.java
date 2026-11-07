@@ -305,7 +305,8 @@ public class McpServerEndpointsIT {
             List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
                     "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
                     "get_json_schema", "query_json_objects", "verify_citations",
-                    "get_system_prompt", "list_playbooks", "get_playbook", "list_areas");
+                    "list_playbooks", "get_playbook", "list_areas",
+                    "submit_feedback");
             // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
             // its own registration: the descriptions cross-reference each other in SINGLE quotes,
             // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
@@ -333,76 +334,15 @@ public class McpServerEndpointsIT {
         var registry = ragService.getToolRegistry().keySet();
         assertTrue(registry.contains("search_corpus"),
                 "the shared tools must still reach the web assistant — registry=" + registry);
-        for (String clientOnly : List.of("get_system_prompt", "list_areas", "list_playbooks",
-                "get_playbook")) {
+        for (String clientOnly : List.of("list_areas", "list_playbooks",
+                "get_playbook", "submit_feedback")) {
             assertFalse(registry.contains(clientOnly),
                     "'" + clientOnly + "' is for MCP clients only, but the web assistant's registry "
                             + "holds it — registry=" + registry);
         }
     }
 
-    /**
-     * The Claude plugin's base instructions (P1-01): a {@code tools/call} of
-     * {@code get_system_prompt} with no arguments returns the chat prompt an admin made active,
-     * end to end through the MCP transport, exactly as the web chat resolves it. A stored row
-     * literally named {@code default-chat} is present too, as it is in every real deployment, and
-     * must NOT win: following it would leave the plugin on the generic prompt after an admin
-     * switched the web chat to another one. The previous default is restored afterwards because
-     * {@code app_config} is shared by the whole context. The handshake itself asserts that no
-     * server {@code instructions} are sent.
-     */
-    @Test
-    public void getSystemPromptReturnsTheAdminsActiveChatPromptOverAStoredDefaultChatRow()
-            throws Exception {
-        String name = "test-endpoints-it-active-chat";
-        String previousDefault = systemPromptService.getDefaultChatPromptName();
-        boolean createdDefaultChatRow =
-                systemPromptService.getPrompt(SystemPromptService.DEFAULT_CHAT).isEmpty();
-        if (createdDefaultChatRow) {
-            systemPromptService.savePrompt(SystemPromptService.DEFAULT_CHAT, SystemPromptType.CHAT,
-                    "IT generic default-chat row.", "P1-01 IT", "OIM");
-        }
-        systemPromptService.savePrompt(name, SystemPromptType.CHAT,
-                "IT base instructions: cite every claim.", "P1-01 IT", "OIM");
-        systemPromptService.setDefaultChatPromptName(name);
 
-        try (McpSession session = establishSession()) {
-            HttpRequest callRequest = HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:" + port + "/mcp"))
-                    .header("Authorization", "Bearer mock-jwt-token")
-                    .header("Mcp-Session-Id", session.getSessionId())
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/event-stream")
-                    .POST(HttpRequest.BodyPublishers.ofString("""
-                            {
-                              "jsonrpc": "2.0",
-                              "method": "tools/call",
-                              "params": {
-                                  "name": "get_system_prompt",
-                                  "arguments": {}
-                              },
-                              "id": "8"
-                            }
-                            """))
-                    .build();
-
-            HttpResponse<String> response = session.getHttpClient().send(callRequest,
-                    HttpResponse.BodyHandlers.ofString());
-            assertEquals(200, response.statusCode());
-            assertTrue(response.body().contains("IT base instructions: cite every claim."),
-                    "the admin's active chat prompt must be returned — BODY=" + response.body());
-            assertFalse(response.body().contains("\"isError\":true"),
-                    "the call must succeed — BODY=" + response.body());
-        } finally {
-            systemPromptService.setDefaultChatPromptName(previousDefault);
-            try {
-                systemPromptService.deletePrompt(name);
-                if (createdDefaultChatRow) {
-                    systemPromptService.deletePrompt(SystemPromptService.DEFAULT_CHAT);
-                }
-            } catch (Exception ignored) {}
-        }
-    }
 
     /**
      * A client that asks its own user intercepts {@code ask_clarifying_question} before it reaches
@@ -456,7 +396,7 @@ public class McpServerEndpointsIT {
         String name = "test-endpoints-it-live-edit";
         playbookService.savePlaybook(name, "Live Edit IT Playbook", "Description before the edit",
                 "ORIGINAL instructions: answer {query} from the corpus.", List.of("search_corpus"),
-                false, "specialist", false, "OIM", null, 1);
+                false, "specialist", false, "OIM", 1);
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -492,7 +432,7 @@ public class McpServerEndpointsIT {
             // prompt here, so only the handler's own re-read at call time can surface it.
             playbookRepository.upsert(name, "Live Edit IT Playbook", "Description after the edit",
                     "REVISED instructions: cite every claim with a chunk id.",
-                    List.of("search_corpus"), false, "specialist", false, "OIM", null, 1);
+                    List.of("search_corpus"), false, "specialist", false, "OIM", 1);
 
             HttpRequest secondGet = HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:" + port + "/mcp"))
@@ -558,7 +498,7 @@ public class McpServerEndpointsIT {
     public void promptsGetCarriesTheToolAndTargetAgentMetadata() throws Exception {
         playbookService.savePlaybook("test-endpoints-it-prompt-meta", "Prompt Meta IT Playbook",
             "Carries tool metadata", "Answer {query} from the corpus.", List.of("search_corpus"),
-            false, "specialist", false, "OIM", null, 1);
+            false, "specialist", false, "OIM", 1);
 
         try (McpSession session = establishSession()) {
             HttpRequest getRequest = HttpRequest.newBuilder()
@@ -606,7 +546,7 @@ public class McpServerEndpointsIT {
     @Test
     public void testDynamicPromptsListAndGetRpc() throws Exception {
         // Seed a dynamic prompt
-        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false, "specialist", false, "OIM", null, 1);
+        playbookService.savePlaybook("test-endpoints-it-playbook", "Test Endpoints IT Playbook", "Testing integration details", "Hello context: {query}", List.of(), false, "specialist", false, "OIM", 1);
 
         try (McpSession session = establishSession()) {
             HttpClient httpClient = session.getHttpClient();
@@ -706,7 +646,7 @@ public class McpServerEndpointsIT {
     public void playbookToolsServeTheLiveLibraryOverMcp() throws Exception {
         String name = "test-endpoints-it-playbook-tools";
         playbookService.savePlaybook(name, "Playbook Tools IT", "Served by the playbook tools",
-                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false, "specialist", false, "OIM", null, 1);
+                "PLAYBOOK TOOLS instructions.", List.of("search_corpus"), false, "specialist", false, "OIM", 1);
 
         try (McpSession session = establishSession()) {
             String listed = callTool(session, "8", "list_playbooks", "{}").body();
@@ -751,28 +691,27 @@ public class McpServerEndpointsIT {
 
     /**
      * P1-12 over the wire: {@code list_areas} lists an area with its members and defaults, and the
-     * area filters of {@code list_playbooks} and {@code get_system_prompt} answer for it.
+     * area filters of {@code list_playbooks} answer for it.
      */
     @Test
     public void areaToolsAndFiltersServeTheLiveAreasOverMcp() throws Exception {
         String area = "IT_AREA_WIRE";
         String playbook = "test-endpoints-it-area-playbook";
         String prompt = "test-endpoints-it-area-prompt";
-        areaRepository.upsert(new Area(area, "Wire area", null, false, null, null, null, null,
-                null));
+        areaRepository.upsert(new Area(area, "Wire area", null, false, null, null, null, null));
         try {
             playbookService.savePlaybook(playbook, "Area IT", "", "AREA instructions.",
-                    List.of(), false, "specialist", false, area, null, 1);
-            systemPromptService.savePrompt(prompt, SystemPromptType.CHAT,
+                    List.of(), false, "specialist", false, area, 1);
+            systemPromptService.savePrompt(prompt, SystemPromptType.KG,
                     "AREA base instructions.", "P1-12 IT", area);
-            areaRepository.upsert(new Area(area, "Wire area", null, false, prompt, playbook, null,
-                    null, null));
+            areaRepository.upsert(new Area(area, "Wire area", null, false, playbook, null, null,
+                    null));
 
             try (McpSession session = establishSession()) {
                 String areas = callTool(session, "8", "list_areas", "{}").body();
                 assertTrue(areas.contains(area) && areas.contains("Wire area"),
                         "list_areas must list the area — BODY=" + areas);
-                assertTrue(areas.contains(playbook) && areas.contains(prompt),
+                assertTrue(areas.contains(playbook),
                         "list_areas must list its members — BODY=" + areas);
 
                 String mine = callTool(session, "9", "list_playbooks",
@@ -784,11 +723,6 @@ public class McpServerEndpointsIT {
                 String none = callTool(session, "10", "list_playbooks",
                         "{ \"area\": \"no-such-area\" }").body();
                 assertFalse(none.contains(playbook), "an unknown area lists nothing — BODY=" + none);
-
-                String base = callTool(session, "11", "get_system_prompt",
-                        "{ \"area\": \"" + area + "\" }").body();
-                assertTrue(base.contains("AREA base instructions."),
-                        "the area's default prompt is returned — BODY=" + base);
             }
         } finally {
             try {
@@ -796,6 +730,42 @@ public class McpServerEndpointsIT {
                 systemPromptService.deletePrompt(prompt);
             } catch (Exception ignored) {}
             areaRepository.delete(area);
+        }
+    }
+
+    @Test
+    public void submitFeedbackOverMcpPersistsAndUpdatesFeedback() throws Exception {
+        try (McpSession session = establishSession()) {
+            String positive = callTool(session, "12", "submit_feedback", """
+                    {
+                      "turnId": "it-turn-feedback-1",
+                      "rating": 1,
+                      "area": "OIM",
+                      "mode": "single",
+                      "playbook": "oim-full",
+                      "playbookVersion": 2,
+                      "question": "How do I create custom icons?",
+                      "answer": "Create the icon in Designer."
+                    }
+                    """).body();
+            assertTrue(positive.contains("\\\"status\\\":\\\"ok\\\"") && positive.contains("\\\"rating\\\":1"),
+                    "positive feedback over MCP must succeed — BODY=" + positive);
+
+            String negative = callTool(session, "13", "submit_feedback", """
+                    {
+                      "turnId": "it-turn-feedback-1",
+                      "rating": -1,
+                      "comment": "Needs more detail",
+                      "area": "OIM",
+                      "mode": "single",
+                      "playbook": "oim-full",
+                      "playbookVersion": 2,
+                      "question": "How do I create custom icons?",
+                      "answer": "Create the icon in Designer."
+                    }
+                    """).body();
+            assertTrue(negative.contains("\\\"status\\\":\\\"ok\\\"") && negative.contains("\\\"rating\\\":-1"),
+                    "re-rating the same turn over MCP must succeed — BODY=" + negative);
         }
     }
 }

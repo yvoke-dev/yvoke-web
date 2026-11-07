@@ -4,7 +4,7 @@
 knowledge base and citing the passages it used. Hard questions can instead be handed to a team of
 specialist agents whose draft is reviewed before it reaches the user.
 
-**Who uses it.** Everyone who asks a question. Administrators curate the playbooks, base instructions and
+**Who uses it.** Everyone who asks a question. Administrators curate the playbooks, import prompts and
 in-depth profiles, and can inspect any search or trace.
 
 ## What you can do
@@ -22,8 +22,8 @@ in-depth profiles, and can inspect any search or trace.
 | **See how the answer was produced** | A toggle reveals the reasoning and every tool called. Where tool call tracing is enabled, verbatim tool arguments and execution traces are recorded with correlated call IDs, while normal transcript replay strips tool banners cleanly without leaking arguments or reasoning. Where a playbook enables code execution (`code_execution`), the assistant can also write and run Python programs in a server-side sandbox for calculations, statistics, and date or data analysis; both the code and its result appear in the answer. |
 | **In-depth investigation** | A lead agent breaks the question into sub-questions, hands each to a specialist playbook, and writes the final answer from what they bring back. The user asks once and gets one answer. |
 | **Automated review of in-depth answers** | A reviewer agent checks the draft against the evidence the specialists gathered, and either approves it or sends it back with notes. If it still fails after the last attempt, the answer is delivered with a visible warning and the reviewer's notes. |
-| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, a positive integer version (defaulting to `1`), its area, the tools it may use, whether code execution is allowed, its role, an optional designated base instruction set (system prompt), and whether it is flagged as a prototype (`prototype = true`). Every web single-agent message and every web multi-agent step records both the playbook name and its version, and the desktop client reports the playbook name and version it ran on each playbook turn and multi-agent step, so answers from different iterations of a playbook can be compared over time. Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
-| **Administrators manage base instructions** | Managed separately from playbooks, with one marked as the active default. Each belongs to one area. Typed by purpose — chat, graph extraction, summarisation — and the type is enforced wherever one is chosen, so an entry can only be picked for the job it was written for. Importable/exportable as files. Base instructions are not versioned on their own; when a chat base instruction changes, administrators increment the version of the affected playbooks so downstream analysis can separate answers before and after the change. |
+| **Administrators manage playbooks** | Create, edit, delete, import and export. Each carries a title, description, a positive integer version (defaulting to `1`), its area, the tools it may use, whether code execution is allowed, its role, and whether it is flagged as a prototype (`prototype = true`). Every web single-agent message and every web multi-agent step records both the playbook name and its version, and the desktop client reports the playbook name and version it ran on each playbook turn and multi-agent step, so answers from different iterations of a playbook can be compared over time. Prototype playbooks are hidden by default from regular users. A saved playbook is immediately live for users and connected AI clients. |
+| **Administrators manage import prompts** | Managed separately from playbooks. Each belongs to one area. Typed by purpose — graph extraction (`KG`) and section summarisation (`SUMMARIZE`) — and the type is enforced wherever one is chosen, so an entry can only be picked for the job it was written for. Importable/exportable as files. |
 | **Administrators configure in-depth profiles** | A profile belongs to one area and names the lead playbook, the reviewer playbook and the available specialists, plus how many review rounds and specialist calls one question may spend, which model each role runs at, and whether it is flagged as a prototype (`prototype = true`). Prototype profiles are hidden by default from regular users. |
 | **Administrators test and audit** | A search console runs any query against a knowledge area and shows the passages, their scores and which search found them. A log lists past searches with the rating the user gave. Every investigation keeps a full trace. |
 
@@ -55,17 +55,15 @@ in-depth profiles, and can inspect any search or trace.
   and are cited as standard markdown links (`[Title](https://...)`) rather than passage markers, so the corpus
   citation check leaves them untouched and in-depth mode passes specialist web search outputs in full to the
   reviewer.
-- **A playbook can define its own base instructions (system prompt).** If set, the playbook's chosen
-  system prompt overrides the default chat base instructions for conversations using that playbook (unless an
-  explicit conversation-level prompt override is configured). In web chat, the playbook instructions and its
-  associated base system prompt are combined into the LLM system prompt, separated by `\n\n---\n\n`. Playbook
-  instructions are not prepended to user messages or re-injected across chat history. In multi-agent orchestration,
-  a specialist playbook's designated prompt is passed as its base instruction override. Orchestrator and reviewer
-  playbooks run under their own self-contained instructions and do not inherit chat base instructions (which describe
-  retrieval tools they cannot call); configuring a designated system prompt on an orchestrator or reviewer
-  playbook is rejected on save and omitted from exports, DTOs, and MCP metadata. If unconfigured or deleted,
-  it falls back seamlessly to the default base instructions. If no default chat base instructions are configured in the
-  system, sending a message is refused.
+- **Every playbook is a complete, versioned instruction set.** Across single-agent chat and multi-agent
+  orchestration (lead orchestrator, specialists, and reviewer), each role runs strictly under its active
+  playbook's instructions as the complete LLM system prompt (`playbook.templateText`). There are no separate
+  or shared chat base instructions underneath, and playbooks do not define or inherit base instructions.
+  Playbook instructions are not prepended to user messages or re-injected across chat history. In multi-agent
+  orchestration, specialists receive their own playbook's instructions as their complete system prompt, and
+  each sub-question alone is sent as the user query. In single-agent chat, blank playbook instructions are
+  rejected immediately on send before saving or locking turns; in multi-agent orchestration, a blank
+  orchestrator, specialist, or reviewer playbook is rejected when the run starts.
 - **Choosing an in-depth profile takes over the conversation.** The model, thinking depth, response mode
   and playbook pickers disappear, because the profile decides them.
 - **Review rounds are counted from zero**, so a limit of three allows four answers: the first draft
@@ -156,9 +154,6 @@ in-depth profiles, and can inspect any search or trace.
 - **One web search returns 8 results by default, 20 at most, with a 500-character query limit and a 15-second request timeout.** Redirect resolution attempts are capped at twice the result limit per search. Allow-list
   entries require a valid multi-part hostname (with an optional path prefix); bare single-word hosts, raw IP
   addresses, and invalid entries are ignored when the allow-list is parsed.
-- **If the active base instruction set is deleted or its name mistyped**, the assistant runs with no base
-  instructions at all. Answers quietly get worse and nothing reports an error. If a playbook designates a system
-  prompt that cannot be resolved, it falls back to the default base instructions.
 - **Tool names inside a playbook are never validated.** A tool that is renamed or withdrawn is silently
   dropped from that playbook, so it stops being used with no visible sign.
 - **A playbook's role is stored without validation** (case does not matter). The admin form offers a fixed
@@ -191,7 +186,8 @@ in-depth profiles, and can inspect any search or trace.
   snippets and links from the administrator's allowed domains and path prefixes.
 - Automatic switching to another AI service when the chosen one fails or is busy. A model is answered by
   the one service it is mapped to, and a failure there is reported rather than retried elsewhere.
-- Revision history for playbooks, base instructions or profiles. Although each playbook carries a version number stamped onto the messages and trace steps that used it, saving overwrites the playbook in place without keeping prior text revisions, deletion is immediate, and nothing warns about conversations still using them.
+- Revision history for playbooks, import prompts or profiles. Although each playbook carries a version number stamped onto the messages and trace steps that used it, saving overwrites the playbook in place without keeping prior text revisions, deletion is immediate, and nothing warns about conversations still using them.
+- Separate shared or per-playbook chat base prompts outside playbooks.
 - Any check that a cited passage actually supports the sentence it is attached to.
 - Direct knowledge-base search for end users. The search console and traces are administrator-only.
 - Specialists talking to the user. A specialist's clarification request goes to the lead agent, never to

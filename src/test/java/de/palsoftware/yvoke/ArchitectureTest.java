@@ -129,8 +129,9 @@ class ArchitectureTest {
     /** Method names that write. Deliberately broad — a read path never needs any of them. */
     private static final Pattern MUTATING =
         Pattern.compile("^(save|insert|update|upsert|delete|create|import|purge|remove|clear"
-            + "|consolidate|enqueue|touch|append)[A-Z].*|^(save|insert|update|upsert|delete|create"
-            + "|import|purge|remove|clear|consolidate|enqueue|touch|append)$");
+            + "|consolidate|enqueue|touch|append|submit|record|write|store|persist)[A-Z].*"
+            + "|^(save|insert|update|upsert|delete|create|import|purge|remove|clear"
+            + "|consolidate|enqueue|touch|append|submit|record|write|store|persist)$");
 
     /**
      * MCP tools are READ-ONLY over the corpus, and nothing in the code enforces that on its own.
@@ -138,10 +139,12 @@ class ArchitectureTest {
      * <p>
      * The MCP surface is reachable by any signed-in user from an external AI client, with no
      * per-area restriction — access control is the sign-in, not the content. Every tool today only
-     * reads, but a tool is a small class with a repository already injected, so adding a write is a
-     * two-line change that no reviewer would necessarily catch and no other test would fail on. The
-     * read-only property is the whole security argument for exposing the corpus this way, so it is
-     * asserted structurally rather than left as prose.
+     * reads the corpus, except {@code submit_feedback} ({@code SubmitFeedbackTool} -&gt;
+     * {@code PluginFeedbackService.submitFeedback}), which records the caller's own turn rating and
+     * conversation for administrator review and never touches corpus tables. Adding a corpus write
+     * is a two-line change that no reviewer would necessarily catch and no other test would fail
+     * on. The read-only property over the corpus is the whole security argument for exposing it
+     * this way, so it is asserted structurally rather than left as prose.
      *
      * <p>
      * Retrieval telemetry is not a counter-example: {@code search_corpus} reaches it through
@@ -158,6 +161,13 @@ class ArchitectureTest {
                     // is too broad: LlmCallContextHolder.clear() resets a ThreadLocal for cost
                     // attribution and is not a write to anything.
                     String owner = call.getTargetOwner().getSimpleName();
+                    if (call.getOriginOwner().getSimpleName().equals("SubmitFeedbackTool")
+                        && owner.equals("PluginFeedbackService")
+                        && call.getTarget().getName().equals("submitFeedback")) {
+                        // submit_feedback is the sole intentional write from ..mcp..: it records
+                        // caller-scoped feedback rows only and never touches corpus tables.
+                        return false;
+                    }
                     boolean touchesCorpus = owner.endsWith("Repository")
                         || owner.endsWith("Service") || owner.endsWith("Consolidator");
                     return call.getTargetOwner().getPackageName().startsWith("de.palsoftware.yvoke")

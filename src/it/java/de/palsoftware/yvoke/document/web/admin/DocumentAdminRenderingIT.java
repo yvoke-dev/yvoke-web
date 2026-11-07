@@ -186,7 +186,7 @@ public class DocumentAdminRenderingIT {
         UUID conversationId = UUID.randomUUID();
         try {
             jdbcTemplate.update(
-                "INSERT INTO conversations (id, user_id, title, source) VALUES (?, NULL, ?, 'web')",
+                "INSERT INTO conversations (id, user_id, title, source, area) VALUES (?, NULL, ?, 'web', 'OIM')",
                 conversationId, "Chunk Surfacing Chat");
 
             // A fixed mid-day UTC instant: whatever zone the renderer applies, the rendered date

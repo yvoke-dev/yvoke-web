@@ -1,14 +1,25 @@
 package de.palsoftware.yvoke;
 
+import com.github.dockerjava.api.command.CreateContainerCmd;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
+import com.github.dockerjava.api.model.Ports.Binding;
+import java.net.URI;
+import java.util.Locale;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.support.TestPropertySourceUtils;
-import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.core.CreateContainerCmdModifier;
+import org.testcontainers.utility.DockerImageName;
 
-public class PostgresTestContainerInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+public class PostgresTestContainerInitializer
+        implements ApplicationContextInitializer<ConfigurableApplicationContext>,
+                CreateContainerCmdModifier {
 
     private static final Logger log = LoggerFactory.getLogger(PostgresTestContainerInitializer.class);
 
@@ -30,6 +41,75 @@ public class PostgresTestContainerInitializer implements ApplicationContextIniti
             log.info("PostgreSQL Testcontainer started. JDBC URL: {}", postgres.getJdbcUrl());
         }
         return postgres;
+    }
+
+    /**
+     * Binds every Testcontainers exposed port (including internal containers such as
+     * {@code RyukContainer} and {@code PostgreSQLContainer}) explicitly to IPv4 loopback
+     * {@code 127.0.0.1} rather than the default {@code 0.0.0.0}/{@code [::]} wildcard.
+     *
+     * <p>On macOS, Docker Desktop's {@code com.docker.backend} allocates wildcard host ports by
+     * calling {@code bind([::], 0)}, and the macOS kernel's IPv6 wildcard port allocator does not
+     * check IPv4-only {@code 127.0.0.1} listeners (such as local IDE {@code language_server}
+     * proxies). When a container's host port collides with one of those {@code 127.0.0.1}
+     * listeners, {@code PostgreSQLContainer}'s log-based wait strategy still passes, and HikariCP's
+     * first JDBC connection to {@code localhost:<port>} hits the HTTP proxy and blocks forever in
+     * {@code PGStream.receiveChar()} waiting for a PostgreSQL authentication packet.
+     */
+    @Override
+    public CreateContainerCmd modify(CreateContainerCmd cmd) {
+        String dockerHost = System.getProperty("docker.host");
+        if (dockerHost == null || dockerHost.isBlank()) {
+            dockerHost = System.getenv("DOCKER_HOST");
+        }
+        if (isRemoteTcpDockerHost(dockerHost)) {
+            return cmd;
+        }
+        HostConfig hostConfig = cmd.getHostConfig();
+        if (hostConfig != null && hostConfig.getPortBindings() != null) {
+            Ports ports = hostConfig.getPortBindings();
+            Map<ExposedPort, Binding[]> bindings = ports.getBindings();
+            if (bindings != null) {
+                for (Binding[] portBindings : bindings.values()) {
+                    if (portBindings != null) {
+                        for (int i = 0; i < portBindings.length; i++) {
+                            Binding binding = portBindings[i];
+                            if (binding != null
+                                    && (binding.getHostIp() == null || binding.getHostIp().isBlank())) {
+                                portBindings[i] = new Binding("127.0.0.1", binding.getHostPortSpec());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return cmd;
+    }
+
+    static boolean isRemoteTcpDockerHost(String dockerHost) {
+        if (dockerHost == null || dockerHost.isBlank()) {
+            return false;
+        }
+        String trimmed = dockerHost.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("ssh://")) {
+            return true;
+        }
+        if (!lower.startsWith("tcp://")) {
+            return false;
+        }
+        try {
+            String host = URI.create(trimmed).getHost();
+            if (host == null || host.isBlank()) {
+                return false;
+            }
+            return !"localhost".equalsIgnoreCase(host)
+                    && !"127.0.0.1".equals(host)
+                    && !"[::1]".equals(host)
+                    && !"::1".equals(host);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     @Override
@@ -58,6 +138,14 @@ public class PostgresTestContainerInitializer implements ApplicationContextIniti
                 // (see the context-cache pitfall in CLAUDE.md).
                 // Safe: the only tests touching /actuator (SecurityGatingIT, SecurityMockGatingIT)
                 // use MockMvc, which never goes through the management container.
-                "management.server.port=0");
+                "management.server.port=0",
+                // Bind RANDOM_PORT Tomcat instances explicitly to IPv4 loopback 127.0.0.1 rather
+                // than the IPv6 wildcard ([::]:0). On macOS, the kernel's IPv6 wildcard port
+                // allocator does not check IPv4-only 127.0.0.1 listeners (such as local IDE
+                // language_server proxies), so an unbound server.address can be assigned a port
+                // already held on 127.0.0.1 and lose localhost HTTP traffic to that proxy (400
+                // "This is an explicit proxy server. Does not respond to relative URIs.").
+                "server.address=127.0.0.1",
+                "management.server.address=127.0.0.1");
     }
 }

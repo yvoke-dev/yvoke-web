@@ -27,7 +27,9 @@
         <div class="message-meta" th:if="${msg.role == 'assistant'}" th:style="${msg.status == 'generating'} ? 'display: none;' : ''">
             <!-- Thumbs up / down feedback -->
             <th:block th:if="${msg.status != 'generating'}">
-                <div th:replace="~{chat/fragments/feedback-buttons :: feedback-buttons(messageId=${msg.id}, feedback=${feedbacks != null ? feedbacks[msg.id] : null})}"></div>
+                <th:block th:if="${!T(java.lang.Boolean).TRUE.equals(isReadOnly)}">
+                    <div th:replace="~{chat/fragments/feedback-buttons :: feedback-buttons(messageId=${msg.id}, feedback=${feedbacks != null ? feedbacks[msg.id] : null})}"></div>
+                </th:block>
                 
                 <div class="token-usage" th:if="${msg.promptTokens != null and msg.promptTokens > 0}">
                     Prompt: <span th:text="${msg.promptTokens}">0</span>

@@ -38,15 +38,14 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
 
   private static final String NAME = "e2e-playbook-crud";
   private static final String TITLE = "E2E Playbook CRUD";
+  private static final String VERSION = "3";
   private static final String TEMPLATE_BODY = "# Answer policy\n\nAlways cite the source document.";
-  private static final String SYSTEM_PROMPT_NAME = "e2e-chat-prompt";
 
   @Autowired private JdbcTemplate jdbcTemplate;
 
   @AfterEach
   void removePlaybook() {
     jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", NAME);
-    jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", SYSTEM_PROMPT_NAME);
   }
 
   /**
@@ -69,21 +68,17 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
 
   @Test
   void createsAPlaybookThroughTheFormAndPersistsEveryField() {
-    jdbcTemplate.update(
-        "INSERT INTO system_prompts (name, type, system_prompt, description) "
-            + "VALUES (?, 'CHAT', 'Prompt content.', 'E2E prompt') "
-            + "ON CONFLICT (name) DO NOTHING",
-        SYSTEM_PROMPT_NAME);
-
     loginAs("admin");
     page.navigate(url("/admin/playbooks"));
     page.waitForLoadState(LoadState.NETWORKIDLE);
 
+    Assertions.assertThat(page.locator("#systemPrompt").count()).isZero();
+
     page.fill("#name", NAME);
     page.fill("#title", TITLE);
     page.fill("#description", "Created by AdminPlaybookCrudE2EIT.");
+    page.fill("#version", VERSION);
     page.selectOption("#targetAgent", new SelectOption().setValue("specialist"));
-    page.selectOption("#systemPrompt", new SelectOption().setValue(SYSTEM_PROMPT_NAME));
     page.check("#codeExecution");
 
     // The tools multi-select is populated from the live tool registry; pick the first real option so
@@ -116,18 +111,27 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
             String.class, NAME))
         .isEqualTo(TITLE);
     Assertions
-        .assertThat(jdbcTemplate.queryForObject(
-            "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, NAME))
-        .isEqualTo(SYSTEM_PROMPT_NAME);
+        .assertThat(jdbcTemplate.queryForObject("SELECT version FROM playbooks WHERE name = ?",
+            Integer.class, NAME))
+        .isEqualTo(Integer.parseInt(VERSION));
 
     // And it renders in the list after a fresh load, so the round trip is complete.
     page.navigate(url("/admin/playbooks"));
     assertThat(page.locator("body")).containsText(TITLE);
-    assertThat(page.locator("body")).containsText("Prompt: " + SYSTEM_PROMPT_NAME);
+    assertThat(page.locator("body")).containsText("v" + VERSION);
+    assertThat(page.locator("body")).not().containsText("Prompt:");
 
-    // Edit button round-trip: clicking edit opens the modal and populates #systemPrompt
+    // Edit button round-trip: clicking edit populates the form fields with the saved playbook
     page.click("button[onclick='editPlaybook(this)'][data-name='" + NAME + "']");
-    assertThat(page.locator("#systemPrompt")).hasValue(SYSTEM_PROMPT_NAME);
+    assertThat(page.locator("#form-title")).hasText("Edit Playbook");
+    assertThat(page.locator("#title")).hasValue(TITLE);
+    assertThat(page.locator("#version")).hasValue(VERSION);
+    assertThat(page.locator("#codeExecution")).isChecked();
+
+    // Reset button round-trip: clicking New clears the form back to Create mode (version 1)
+    page.click("#clear-btn");
+    assertThat(page.locator("#form-title")).hasText("Create Playbook");
+    assertThat(page.locator("#version")).hasValue("1");
   }
 
   @Test

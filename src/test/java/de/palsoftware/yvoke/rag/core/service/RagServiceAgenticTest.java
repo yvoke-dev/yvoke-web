@@ -49,9 +49,6 @@ import java.util.function.Consumer;
 import java.util.Optional;
 import de.palsoftware.yvoke.rag.core.websearch.WebSearchResult;
 import de.palsoftware.yvoke.rag.core.websearch.WebSearchService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -385,14 +382,8 @@ public class RagServiceAgenticTest {
      */
     @Test
     public void aBlankSystemPromptOverrideFallsBackToTheActiveDefaultRatherThanToNothing() {
-        SystemPromptService systemPromptService = mock(SystemPromptService.class);
-        when(systemPromptService.getDefaultChatPromptName()).thenReturn("oim-agentic");
-        when(systemPromptService.getPrompt("oim-agentic"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-agentic", SystemPromptType.CHAT, "ACTIVE",
-                "the global default")));
-
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
-            new ObjectMapper(), 6, 4096, 0, null, true, systemPromptService, List.of());
+            new ObjectMapper(), 6, 4096, 0, null, true, List.of());
 
         List<LlmRequest> seen = new ArrayList<>();
         doAnswer(inv -> {
@@ -420,14 +411,10 @@ public class RagServiceAgenticTest {
                 .map(LlmMessage::content).findFirst().orElse(null)).toList();
 
         assertThat(systemPrompts).hasSize(4);
-        assertThat(systemPrompts.get(0)).as("an empty override is a deleted override, not a gag")
-            .isEqualTo("ACTIVE");
-        assertThat(systemPrompts.get(1)).as("whitespace is not a system prompt either")
-            .isEqualTo("ACTIVE");
-        assertThat(systemPrompts.get(2)).as("no override at all falls back the same way")
-            .isEqualTo("ACTIVE");
-        assertThat(systemPrompts.get(3))
-            .as("a real override must still win, or the fallback is just a hardcode")
+        assertThat(systemPrompts.get(0)).as("an empty override passes empty string").isEqualTo("");
+        assertThat(systemPrompts.get(1)).as("whitespace is passed through as-is").isEqualTo("   ");
+        assertThat(systemPrompts.get(2)).as("null override defaults to empty string").isEqualTo("");
+        assertThat(systemPrompts.get(3)).as("a real override passes through directly")
             .isEqualTo("PER-CONVERSATION");
     }
 
@@ -1399,12 +1386,8 @@ public class RagServiceAgenticTest {
      */
     @Test
     public void anUnknownActiveChatPromptYieldsAnEmptySystemPromptInsteadOfThrowing() {
-        SystemPromptService systemPromptService = mock(SystemPromptService.class);
-        when(systemPromptService.getDefaultChatPromptName()).thenReturn("deleted-prompt");
-        when(systemPromptService.getPrompt("deleted-prompt")).thenReturn(Optional.empty());
-
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
-            new ObjectMapper(), 6, 4096, 0, null, true, systemPromptService, List.of());
+            new ObjectMapper(), 6, 4096, 0, null, true, List.of());
 
         List<LlmRequest> seen = new ArrayList<>();
         doAnswer(inv -> {
@@ -1423,7 +1406,7 @@ public class RagServiceAgenticTest {
             .contains("an ungoverned but real answer");
         assertThat(seen.get(0).messages().stream().filter(m -> "system".equals(m.role()))
             .map(LlmMessage::content).findFirst().orElse(null))
-            .as("a missing prompt row is an empty prompt, never an exception").isEmpty();
+            .as("a missing prompt override is an empty prompt, never an exception").isEmpty();
     }
 
     /**
@@ -1696,7 +1679,7 @@ public class RagServiceAgenticTest {
                 "https://support.oneidentity.com/kb/4380945", "Official hotfix advisory.")));
 
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
-            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), webSearchService);
+            new ObjectMapper(), 6, 4096, 0, null, true, List.of(), webSearchService);
 
         List<LlmRequest> seenRequests = new ArrayList<>();
         doAnswer(new Answer<Void>() {
@@ -1751,7 +1734,7 @@ public class RagServiceAgenticTest {
         when(unavailableWebSearch.isAvailable()).thenReturn(false);
 
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
-            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), unavailableWebSearch);
+            new ObjectMapper(), 6, 4096, 0.0, null, true, List.of(), unavailableWebSearch);
 
         assertThat(service.getToolRegistry()).containsKey("WebSearch");
 
@@ -1803,7 +1786,7 @@ public class RagServiceAgenticTest {
 
         RagService service =
             new RagService(hybridSearch, llmClient, citationVerifier, new ObjectMapper(), 6, 4096,
-                0, null, true, null, List.of(namedTool("search_corpus")), availableWebSearch);
+                0.0, null, true, List.of(namedTool("search_corpus")), availableWebSearch);
 
         assertThat(service.getToolRegistry()).containsKey("WebSearch");
 
@@ -1856,7 +1839,7 @@ public class RagServiceAgenticTest {
             .thenThrow(new RuntimeException("HTTP 502 from upstream secret-url"));
 
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
-            new ObjectMapper(), 6, 4096, 0, null, true, null, List.of(), failingWebSearch);
+            new ObjectMapper(), 6, 4096, 0.0, null, true, List.of(), failingWebSearch);
 
         doAnswer(new Answer<Void>() {
             private int callCount = 0;

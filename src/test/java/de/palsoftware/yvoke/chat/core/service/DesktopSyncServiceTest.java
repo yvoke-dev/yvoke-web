@@ -396,8 +396,7 @@ public class DesktopSyncServiceTest {
         when(conversationRepository.findById(conversationId))
             .thenReturn(Optional.of(ownConversation(conversationId, "t")));
 
-        Map<String, Object> settings =
-            Map.of("thinkingLevel", "high", "chatPrompt", "playbook-x", "model", "claude-3-5");
+        Map<String, Object> settings = Map.of("thinkingLevel", "high", "model", "claude-3-5");
 
         service.updateConversation(conversationId, currentUser, "Updated Title", settings);
 
@@ -408,10 +407,8 @@ public class DesktopSyncServiceTest {
 
         Map<String, Object> mapped = captor.getValue();
         assertThat(mapped).containsEntry("thinking-level", "high");
-        assertThat(mapped).containsEntry("chat-prompt", "playbook-x");
         assertThat(mapped).containsEntry("model", "claude-3-5");
         assertThat(mapped).doesNotContainKey("thinkingLevel");
-        assertThat(mapped).doesNotContainKey("chatPrompt");
     }
 
     @Test

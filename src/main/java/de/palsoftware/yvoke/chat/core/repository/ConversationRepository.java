@@ -50,6 +50,20 @@ public class ConversationRepository {
             .param("settings", settingsJson).param("source", source).param("area", area).update();
     }
 
+    public void createIfAbsent(UUID id, UUID userId, String title, Map<String, Object> settings,
+        String source, String area) {
+        ConversationSource.fromValue(source);
+        String settingsJson = serializeSettings(settings);
+        String sql =
+            """
+                INSERT INTO conversations (id, user_id, title, settings, source, area, created_at, updated_at, tags)
+                VALUES (:id, :userId, :title, :settings::jsonb, :source, :area, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '{}'::text[])
+                ON CONFLICT (id) DO NOTHING
+                """;
+        jdbcClient.sql(sql).param("id", id).param("userId", userId).param("title", title)
+            .param("settings", settingsJson).param("source", source).param("area", area).update();
+    }
+
     public Optional<Conversation> findById(UUID id) {
         String sql =
             """
@@ -93,7 +107,7 @@ public class ConversationRepository {
             """
                 SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area
                 FROM conversations
-                WHERE (user_id = :userId OR 'public' = ANY(tags))
+                WHERE source <> 'claude-plugin' AND (user_id = :userId OR 'public' = ANY(tags))
                 """);
 
         if (allowedAreasLower != null) {

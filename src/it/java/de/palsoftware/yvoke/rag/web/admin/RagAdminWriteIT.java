@@ -36,9 +36,8 @@ import org.hamcrest.Matchers;
  * console smoke sweeps), and the service-level tests run against a mocked repository.
  *
  * <p>These matter out of proportion to their size. A playbook is a hard dependency of the only user
- * workflow — the chat client refuses to send without one — and the active CHAT prompt is prepended to
- * every assistant turn application-wide, so a silent no-op in {@code POST /admin/prompts/active}
- * degrades every answer for every user with the whole suite still green.
+ * workflow — the chat client refuses to send without one — and the ingestion prompts govern graph
+ * extraction and section summarisation across every knowledge area.
  *
  * <p>What is asserted here is the <em>HTTP contract</em> the service tests cannot see: request-param
  * binding (including the {@code tools} multi-select to {@code List<String>}, the {@code codeExecution}
@@ -277,21 +276,15 @@ public class RagAdminWriteIT {
     public void savingASystemPromptCoercesTheTypeAndPersists() throws Exception {
         mockMvc
             .perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
-                .param("type", "CHAT").param("description", "d")
-                .param("systemPrompt", "You are terse."))
+                .param("type", "KG").param("description", "d")
+                .param("systemPrompt", "Extract entities."))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
 
-        // dbValue() now stores the canonical UPPER CASE spelling. It used to lowercase, which was
-        // the whole defect: the corpus importer in yvoke-exports writes CHAT/KG/SUMMARIZE, and
-        // findByType compared with a case-sensitive '=' — so every imported prompt was invisible
-        // and the ingest page reported "No system prompts of type SUMMARIZE are configured" while
-        // one was plainly listed in the prompts tab. See SystemPromptRepositoryIT, which pins the
-        // read side against both spellings.
         assertThat(jdbcTemplate.queryForObject("SELECT type FROM system_prompts WHERE name = ?",
-            String.class, PROMPT)).isEqualTo("CHAT");
+            String.class, PROMPT)).isEqualTo("KG");
         assertThat(
             jdbcTemplate.queryForObject("SELECT system_prompt FROM system_prompts WHERE name = ?",
-                String.class, PROMPT)).isEqualTo("You are terse.");
+                String.class, PROMPT)).isEqualTo("Extract entities.");
     }
 
     @Test
@@ -300,27 +293,12 @@ public class RagAdminWriteIT {
             .param("type", "NOT_A_TYPE").param("systemPrompt", "x"))
             .andExpect(status().is4xxClientError());
 
+        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
+            .param("type", "CHAT").param("systemPrompt", "x"))
+            .andExpect(status().is4xxClientError());
+
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM system_prompts WHERE name = ?",
             Integer.class, PROMPT)).isZero();
-    }
-
-    /**
-     * The application-wide default CHAT prompt. Nothing exercised this before, at any tier — and
-     * {@code SystemPromptService.setDefaultChatPromptName} had no test caller at all.
-     */
-    @Test
-    public void settingTheActiveChatPromptPersistsAndIsReadBackByThePage() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM").param("name", PROMPT)
-            .param("type", "CHAT").param("systemPrompt", "You are terse."))
-            .andExpect(status().is3xxRedirection());
-
-        mockMvc
-            .perform(post("/admin/prompts/active").with(csrf()).with(admin())
-                .param("activeChatPrompt", PROMPT))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
-
-        mockMvc.perform(get("/admin/prompts").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString(PROMPT)));
     }
 
     @Test
@@ -344,21 +322,19 @@ public class RagAdminWriteIT {
             .param("type", "KG").param("systemPrompt", "Extract entities."))
             .andExpect(status().is3xxRedirection());
         mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PROMPT + "-chat").param("type", "CHAT").param("systemPrompt", "Chat."))
+            .param("name", PROMPT + "-sum").param("type", "SUMMARIZE").param("systemPrompt", "Summarize."))
             .andExpect(status().is3xxRedirection());
 
         String body = mockMvc.perform(get("/admin/prompts/kg-options").with(admin()))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
-        assertThat(body).contains(PROMPT).doesNotContain(PROMPT + "-chat");
+        assertThat(body).contains(PROMPT).doesNotContain(PROMPT + "-sum");
     }
 
     @Test
     public void everyPromptWriteRequiresAdmin() throws Exception {
         mockMvc.perform(post("/admin/prompts").with(csrf()).with(plainUser()).param("name", PROMPT)
-            .param("type", "CHAT").param("systemPrompt", "x")).andExpect(status().isForbidden());
-        mockMvc.perform(post("/admin/prompts/active").with(csrf()).with(plainUser())
-            .param("activeChatPrompt", PROMPT)).andExpect(status().isForbidden());
+            .param("type", "KG").param("systemPrompt", "x")).andExpect(status().isForbidden());
         mockMvc.perform(
             post("/admin/prompts/delete").with(csrf()).with(plainUser()).param("name", PROMPT))
             .andExpect(status().isForbidden());

@@ -26,22 +26,19 @@ public class AreaTools {
     private static final String DESCRIPTION =
         "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
             + "tells you to. Lists the Yvoke areas (knowledge bases such as OIM) as a JSON array of "
-            + "{name, title, description, prototype, defaultSystemPrompt, defaultPlaybook, "
-            + "defaultProfile, systemPrompts, collections, playbooks, profiles}, where the last "
-            + "four are the names of the area's members. It does not answer questions about the "
-            + "knowledge base.";
+            + "{name, title, description, prototype, defaultPlaybook, defaultProfile, "
+            + "collections, playbooks, profiles}, where the last three are the names of the area's "
+            + "members. It does not answer questions about the knowledge base.";
 
     /** One area as {@code list_areas} returns it. */
     record AreaDto(String name, String title, String description, boolean prototype,
-        String defaultSystemPrompt, String defaultPlaybook, String defaultProfile,
-        List<String> systemPrompts, List<String> collections, List<String> playbooks,
-        List<String> profiles) {
+        String defaultPlaybook, String defaultProfile, List<String> collections,
+        List<String> playbooks, List<String> profiles) {
 
         static AreaDto from(AreaWithMembers a) {
             return new AreaDto(a.area().name(), a.area().title(), a.area().description(),
-                a.area().prototype(), a.defaultSystemPrompt(), a.defaultPlaybook(),
-                a.defaultProfile(), a.members().systemPrompts(), a.members().collections(),
-                a.members().playbooks(), a.members().profiles());
+                a.area().prototype(), a.defaultPlaybook(), a.defaultProfile(),
+                a.members().collections(), a.members().playbooks(), a.members().profiles());
         }
     }
 

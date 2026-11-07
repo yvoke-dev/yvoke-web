@@ -279,43 +279,32 @@ public class SchemaPresenceIT {
     }
 
     @Test
-    public void testMigrationV14PlaybookSystemPromptExists() {
+    public void testMigrationV17RetireChatSystemPrompts() {
         assertThat(columnExists("playbooks", "system_prompt"))
-            .withFailMessage("Column playbooks.system_prompt should exist (V14)")
-            .isTrue();
+            .withFailMessage("Column playbooks.system_prompt should be dropped (V17)")
+            .isFalse();
         assertThat(indexExists("playbooks", "idx_playbooks_system_prompt"))
-            .withFailMessage("Index idx_playbooks_system_prompt should exist (V14)")
-            .isTrue();
-    }
+            .withFailMessage("Index idx_playbooks_system_prompt should be dropped (V17)")
+            .isFalse();
+        assertThat(columnExists("areas", "default_system_prompt"))
+            .withFailMessage("Column areas.default_system_prompt should be dropped (V17)")
+            .isFalse();
+        assertThat(indexExists("areas", "idx_areas_default_system_prompt"))
+            .withFailMessage("Index idx_areas_default_system_prompt should be dropped (V17)")
+            .isFalse();
 
-    @Test
-    public void testMigrationV14PlaybookSystemPromptForeignKeyBehavior() {
-        String promptName1 = "v14-it-prompt-orig-" + UUID.randomUUID();
-        String promptName2 = "v14-it-prompt-renamed-" + UUID.randomUUID();
-        String playbookName = "v14-it-playbook-" + UUID.randomUUID();
-
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'CHAT', 'body', 'test')",
-            promptName1);
-        jdbcTemplate.update(
-            "INSERT INTO playbooks (name, title, description, template_text, system_prompt) VALUES (?, 'title', 'desc', 'template', ?)",
-            playbookName, promptName1);
-
+        // Check constraint enforces KG or SUMMARIZE
+        String promptName = "v17-it-prompt-" + UUID.randomUUID();
         try {
-            // Verify FK update cascade
-            jdbcTemplate.update("UPDATE system_prompts SET name = ? WHERE name = ?", promptName2, promptName1);
-            String cascadedPrompt = jdbcTemplate.queryForObject(
-                "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, playbookName);
-            assertThat(cascadedPrompt).isEqualTo(promptName2);
-
-            // Verify FK delete set null
-            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", promptName2);
-            String setNullPrompt = jdbcTemplate.queryForObject(
-                "SELECT system_prompt FROM playbooks WHERE name = ?", String.class, playbookName);
-            assertThat(setNullPrompt).isNull();
+            jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'KG', 'body', 'test')",
+                promptName);
+            assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'CHAT', 'body', 'test')",
+                promptName + "-chat"))
+                .isInstanceOf(DataIntegrityViolationException.class);
         } finally {
-            jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", playbookName);
-            jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?)", promptName1, promptName2);
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", promptName);
         }
     }
 
@@ -484,10 +473,10 @@ public class SchemaPresenceIT {
             jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", customArea,
                 customArea);
             jdbcTemplate.update(
-                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'ORCHESTRATOR', 'sys', 'desc', 'OIM')",
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'KG', 'sys', 'desc', 'OIM')",
                 oimPromptName);
             jdbcTemplate.update(
-                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'ORCHESTRATOR', 'sys', 'desc', ?)",
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) VALUES (?, 'KG', 'sys', 'desc', ?)",
                 promptName, customArea);
             jdbcTemplate.update(
                 "INSERT INTO playbooks (name, title, description, template_text, area) VALUES (?, 'Title', 'Desc', 'Text', 'OIM')",

@@ -580,7 +580,7 @@ class SecurityConfigMockAuthGuardTest {
                 Path.of("src/main/java/de/palsoftware/yvoke/shared/security/SecurityConfig.java"))
             .replaceAll("\\s+", " ");
         assertThat(configSource).as("Superadmin sections require ROLE_ADMIN").contains(
-            "requestMatchers(\"/admin/costs/**\", \"/admin/costs\", \"/admin/pricing/**\", \"/admin/pricing\", \"/admin/audit/**\", \"/admin/audit\", \"/admin/areas/delete\", \"/admin/prompts/active\")")
+            "requestMatchers(\"/admin/costs/**\", \"/admin/costs\", \"/admin/pricing/**\", \"/admin/pricing\", \"/admin/audit/**\", \"/admin/audit\", \"/admin/areas/delete\")")
             .contains(".hasRole(\"ADMIN\")");
         assertThat(configSource).as("Trace endpoint requires ADMIN or AREA_ADMIN")
             .contains("requestMatchers(\"/chat/*/messages/*/trace\")");

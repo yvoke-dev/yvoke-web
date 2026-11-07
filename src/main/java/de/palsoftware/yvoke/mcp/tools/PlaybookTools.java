@@ -37,7 +37,7 @@ public class PlaybookTools {
     private static final String LIST_DESCRIPTION =
         "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
             + "tells you to. Lists the Yvoke playbooks a user can pick, as a JSON array of "
-            + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, systemPrompt, version}. "
+            + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, version}. "
             + "Pass area to list only that area's playbooks. "
             + "It does not answer questions about the knowledge base.";
 
@@ -45,7 +45,7 @@ public class PlaybookTools {
         "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
             + "tells you to, with the playbook name it gives. Returns that playbook as a JSON object "
             + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, "
-            + "systemPrompt, version, text}, " + "where text is the playbook's full instructions.";
+            + "version, text}, " + "where text is the playbook's full instructions.";
 
     private static final String NAME_PARAM = "The playbook's name, e.g. \"oim-full\".";
 
@@ -54,14 +54,14 @@ public class PlaybookTools {
 
     /** One playbook with its text: {@link PlaybookDto}'s fields plus {@code text}. */
     record PlaybookWithText(String name, String title, String description, List<String> tools,
-        boolean codeExecution, String targetAgent, boolean prototype, String area,
-        String systemPrompt, int version, String text) {
+        boolean codeExecution, String targetAgent, boolean prototype, String area, int version,
+        String text) {
 
         static PlaybookWithText from(Playbook playbook) {
             PlaybookDto meta = PlaybookDto.from(playbook);
-            return new PlaybookWithText(meta.name(), meta.title(), meta.description(),
-                meta.tools(), meta.codeExecution(), meta.targetAgent(), meta.prototype(),
-                meta.area(), meta.systemPrompt(), meta.version(), playbook.templateText());
+            return new PlaybookWithText(meta.name(), meta.title(), meta.description(), meta.tools(),
+                meta.codeExecution(), meta.targetAgent(), meta.prototype(), meta.area(),
+                meta.version(), playbook.templateText());
         }
     }
 

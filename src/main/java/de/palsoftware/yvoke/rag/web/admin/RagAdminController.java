@@ -240,8 +240,6 @@ public class RagAdminController {
             .filterByAdminArea(playbookService.listAllPlaybooks(), Playbook::area));
         model.addAttribute("areas",
             AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
-        model.addAttribute("systemPrompts", AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.CHAT), SystemPrompt::area));
         model.addAttribute("availableTools",
             ragService.getToolRegistry().keySet().stream().sorted().collect(Collectors.toList()));
         return "admin/playbooks";
@@ -254,8 +252,7 @@ public class RagAdminController {
         @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
         @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
         @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam String area, @RequestParam(required = false) String systemPrompt,
-        @RequestParam(required = false, defaultValue = "1") int version,
+        @RequestParam String area, @RequestParam(required = false, defaultValue = "1") int version,
         RedirectAttributes redirectAttributes) {
 
         if (!AreaAccessContext.canAdministerArea(area)) {
@@ -275,21 +272,8 @@ public class RagAdminController {
             }
         }
 
-        String sysPrompt =
-            (systemPrompt != null && !systemPrompt.isBlank()) ? systemPrompt.trim() : null;
-        if (sysPrompt != null) {
-            Optional<SystemPrompt> spOpt = systemPromptService.getPrompt(sysPrompt);
-            if (spOpt.isEmpty() || spOpt.get().area() == null
-                || !spOpt.get().area().equalsIgnoreCase(area)
-                || !AreaAccessContext.canAdministerArea(spOpt.get().area())) {
-                redirectAttributes.addFlashAttribute("error",
-                    "Referenced system prompt not found in area: " + sysPrompt);
-                return "redirect:/admin/playbooks";
-            }
-        }
-
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent, prototype, area, sysPrompt, version);
+            targetAgent, prototype, area, version);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";
@@ -345,21 +329,6 @@ public class RagAdminController {
             }
         }
 
-        String importedSysPrompt =
-            (parsed.systemPrompt() != null && !parsed.systemPrompt().isBlank())
-                ? parsed.systemPrompt().trim()
-                : null;
-        if (importedSysPrompt != null) {
-            Optional<SystemPrompt> spOpt = systemPromptService.getPrompt(importedSysPrompt);
-            if (spOpt.isEmpty() || spOpt.get().area() == null
-                || !spOpt.get().area().equalsIgnoreCase(targetArea)
-                || !AreaAccessContext.canAdministerArea(spOpt.get().area())) {
-                redirectAttributes.addFlashAttribute("error",
-                    "Referenced system prompt not found in area: " + importedSysPrompt);
-                return "redirect:/admin/playbooks";
-            }
-        }
-
         Playbook imported = playbookService.importPlaybookFromMarkdown(content, fallbackName, area);
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + imported.title() + "' imported successfully.");
@@ -383,24 +352,7 @@ public class RagAdminController {
             .filterByAdminArea(systemPromptService.listAllPrompts(), SystemPrompt::area));
         model.addAttribute("areas",
             AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
-        model.addAttribute("chatPrompts", AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.CHAT), SystemPrompt::area));
-        model.addAttribute("activeChatPrompt", systemPromptService.getDefaultChatPromptName());
         return "admin/prompts";
-    }
-
-    @PostMapping("/prompts/active")
-    public String updateActiveChatPrompt(@RequestParam String activeChatPrompt,
-        RedirectAttributes redirectAttributes) {
-        if (!AreaAccessContext.isSuperAdmin()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only superadmin can change active chat prompt");
-        }
-        systemPromptService.setDefaultChatPromptName(activeChatPrompt);
-        redirectAttributes.addFlashAttribute("success",
-            "Active default chat system prompt updated to '" + activeChatPrompt
-                + "' successfully.");
-        return "redirect:/admin/prompts";
     }
 
     @PostMapping("/prompts")

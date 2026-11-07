@@ -46,18 +46,17 @@ class AreaRepositoryIT {
     @Test
     void anAreaRoundTripsAndIsRefreshedByTheUpsert() {
         insertPlaybook("it-area-pb", "OIM");
-        repository.upsert(new Area("IT_AREA_A", "Area A", "first", true, null, "it-area-pb", null,
+        repository.upsert(new Area("IT_AREA_A", "Area A", "first", true, "it-area-pb", null,
             null, null));
         assertThat(repository.findByName("IT_AREA_A")).get().satisfies(a -> {
             assertThat(a.title()).isEqualTo("Area A");
             assertThat(a.description()).isEqualTo("first");
             assertThat(a.prototype()).isTrue();
             assertThat(a.defaultPlaybook()).isEqualTo("it-area-pb");
-            assertThat(a.defaultSystemPrompt()).isNull();
         });
 
         repository.upsert(
-            new Area("IT_AREA_A", "Area A2", null, false, null, null, null, null, null));
+            new Area("IT_AREA_A", "Area A2", null, false, null, null, null, null));
         assertThat(repository.findByName("IT_AREA_A")).get().satisfies(a -> {
             assertThat(a.title()).isEqualTo("Area A2");
             assertThat(a.prototype()).isFalse();
@@ -67,15 +66,15 @@ class AreaRepositoryIT {
 
     @Test
     void findAllIsSortedByName() {
-        repository.upsert(new Area("IT_AREA_B", "B", null, false, null, null, null, null, null));
-        repository.upsert(new Area("IT_AREA_A", "A", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_B", "B", null, false, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_A", "A", null, false, null, null, null, null));
         assertThat(repository.findAll()).extracting(Area::name).containsSubsequence("IT_AREA_A",
             "IT_AREA_B", "OIM");
     }
 
     @Test
     void renamingAnAreaCarriesOverToItsMembers() {
-        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null, null));
         insertPlaybook("it-area-member", "IT_AREA_OLD");
 
         repository.rename("IT_AREA_OLD", "IT_AREA_NEW");
@@ -87,7 +86,7 @@ class AreaRepositoryIT {
 
     @Test
     void anAreaWithMembersCannotBeDeleted() {
-        repository.upsert(new Area("IT_AREA_USED", "Used", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_USED", "Used", null, false, null, null, null, null));
         insertPlaybook("it-area-used", "IT_AREA_USED");
 
         assertThatThrownBy(() -> repository.delete("IT_AREA_USED"))
@@ -101,9 +100,9 @@ class AreaRepositoryIT {
      */
     @Test
     void theServiceDeletesAnEmptyAreaAndNamesTheRefusalForAUsedOne() {
-        repository.upsert(new Area("IT_AREA_USED", "Used", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_USED", "Used", null, false, null, null, null, null));
         insertPlaybook("it-area-used", "IT_AREA_USED");
-        repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null));
 
         assertThatThrownBy(() -> areaService.deleteArea("it_area_used"))
             .isInstanceOf(IllegalArgumentException.class)
@@ -116,7 +115,7 @@ class AreaRepositoryIT {
 
     @Test
     void anEmptyAreaCanBeDeleted() {
-        repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_EMPTY", "Empty", null, false, null, null, null, null));
         repository.delete("IT_AREA_EMPTY");
         assertThat(repository.findByName("IT_AREA_EMPTY")).isEmpty();
     }
@@ -124,7 +123,7 @@ class AreaRepositoryIT {
     @Test
     void deletingTheDefaultPlaybookClearsTheDefault() {
         insertPlaybook("it-area-default", "OIM");
-        repository.upsert(new Area("IT_AREA_D", "D", null, false, null, "it-area-default", null,
+        repository.upsert(new Area("IT_AREA_D", "D", null, false, "it-area-default", null,
             null, null));
 
         jdbcClient.sql("DELETE FROM playbooks WHERE name = 'it-area-default'").update();
@@ -153,7 +152,7 @@ class AreaRepositoryIT {
      */
     @Test
     void aSaveWhoseSecondStatementFailsLeavesTheAreaAsItWas() {
-        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null, null,
+        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null,
             null));
         jdbcClient.sql("""
             CREATE FUNCTION it_area_refuse_title() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -166,7 +165,7 @@ class AreaRepositoryIT {
             FOR EACH ROW EXECUTE FUNCTION it_area_refuse_title()""").update();
 
         assertThatThrownBy(() -> areaService.saveArea("IT_AREA_OLD", "IT_AREA_NEW", "it-refused",
-            null, false, null, null, null)).isInstanceOf(DataAccessException.class);
+            null, false, null, null)).isInstanceOf(DataAccessException.class);
 
         assertThat(repository.findByName("IT_AREA_OLD")).get().extracting(Area::title)
             .isEqualTo("Old");

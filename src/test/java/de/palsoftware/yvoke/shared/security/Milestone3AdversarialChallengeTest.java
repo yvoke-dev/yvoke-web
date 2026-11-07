@@ -383,8 +383,8 @@ public class Milestone3AdversarialChallengeTest {
     public void mcpAreaTools_unauthorizedArea_returnsIdenticalErrorToNonexistent()
         throws Exception {
         when(areaRepository.findAll()).thenReturn(
-            List.of(new Area("OIM", "Oracle Identity", "desc", false, null, null, null, null, null),
-                new Area("PingID", "Ping Identity", "desc", false, null, null, null, null, null)));
+            List.of(new Area("OIM", "Oracle Identity", "desc", false, null, null, null, null),
+                new Area("PingID", "Ping Identity", "desc", false, null, null, null, null)));
         when(areaRepository.findAllMembers()).thenReturn(
             Map.of("OIM", new AreaMembers(List.of(), List.of("OIM-Docs"), List.of(), List.of()),
                 "PingID", new AreaMembers(List.of(), List.of("Ping-Docs"), List.of(), List.of())));
@@ -409,9 +409,9 @@ public class Milestone3AdversarialChallengeTest {
     public void mcpPlaybookTools_unauthorizedArea_returnsIdenticalErrorToNonexistent()
         throws Exception {
         Playbook oimPlaybook = new Playbook("oim-full", "OIM Full", "desc", "instructions",
-            List.of(), false, "specialist", false, null, null, false, "OIM", null);
+            List.of(), false, "specialist", false, null, null, false, "OIM", 1);
         Playbook pingPlaybook = new Playbook("ping-full", "Ping Full", "desc", "instructions",
-            List.of(), false, "specialist", false, null, null, false, "PingID", null);
+            List.of(), false, "specialist", false, null, null, false, "PingID", 1);
 
         when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(oimPlaybook));
         when(playbookRepository.findByName("ping-full")).thenReturn(Optional.of(pingPlaybook));

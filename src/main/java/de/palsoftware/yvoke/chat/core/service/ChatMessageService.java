@@ -38,8 +38,6 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
@@ -83,7 +81,6 @@ public class ChatMessageService {
     private final RagService ragService;
     private final RetrievalLogRepository retrievalLogRepository;
     private final PlaybookService playbookService;
-    private final SystemPromptService systemPromptService;
     private final TransactionTemplate transactionTemplate;
     private final AsyncTaskExecutor taskExecutor;
     private final ChatCancellationService chatCancellationService;
@@ -98,7 +95,7 @@ public class ChatMessageService {
         ConversationRepository conversationRepository,
         ChatConversationService chatConversationService, RagService ragService,
         RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
-        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager,
+        PlatformTransactionManager transactionManager,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
         ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
         MessageToolCallRepository messageToolCallRepository,
@@ -111,7 +108,6 @@ public class ChatMessageService {
         this.ragService = ragService;
         this.retrievalLogRepository = retrievalLogRepository;
         this.playbookService = playbookService;
-        this.systemPromptService = systemPromptService;
         this.taskExecutor = taskExecutor;
         this.chatCancellationService = chatCancellationService;
         this.orchestrationService = orchestrationService;
@@ -210,6 +206,10 @@ public class ChatMessageService {
             return new IllegalArgumentException("The selected playbook is invalid.");
         });
 
+        if (playbook.templateText() == null || playbook.templateText().isBlank()) {
+            throw new IllegalArgumentException("The selected playbook has empty template text.");
+        }
+
         Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
         if (userAllowedAreas.isPresent()) {
             if (playbook.area() == null || playbook.area().isBlank() || !userAllowedAreas.get()
@@ -225,7 +225,7 @@ public class ChatMessageService {
         boolean codeExecution = playbook.codeExecution();
 
         String modelToUse = resolveModelToUse(settings);
-        String systemPrompt = resolveSystemPrompt(settings, playbook);
+        String systemPrompt = playbook.templateText();
         String thinkingLevel = resolveThinkingLevel(settings);
 
         UUID userMessageId = UUID.randomUUID();
@@ -668,57 +668,6 @@ public class ChatMessageService {
             throw new IllegalStateException("No model selected in conversation settings");
         }
         return modelToUse;
-    }
-
-    private String resolveSystemPrompt(Map<String, Object> settings, Playbook playbook) {
-        String basePrompt = null;
-        String chatPromptName = (String) settings.get(ConversationSetting.CHAT_PROMPT.getValue());
-        if (chatPromptName != null && !chatPromptName.isBlank()) {
-            Optional<SystemPrompt> prompt =
-                systemPromptService.findChatPrompt(chatPromptName.trim());
-            if (prompt.isPresent()) {
-                basePrompt = prompt.get().systemPrompt();
-            } else {
-                log.warn(
-                    "Conversation-level chat prompt '{}' could not be resolved as an active CHAT prompt; trying playbook prompt.",
-                    chatPromptName.trim());
-            }
-        }
-        if (basePrompt == null && playbook != null && playbook.systemPrompt() != null
-            && !playbook.systemPrompt().isBlank()) {
-            Optional<SystemPrompt> prompt =
-                systemPromptService.findChatPrompt(playbook.systemPrompt().trim());
-            if (prompt.isPresent()) {
-                basePrompt = prompt.get().systemPrompt();
-            } else {
-                log.warn(
-                    "Playbook '{}' designated system prompt '{}' could not be resolved as an active CHAT prompt; falling back to default.",
-                    playbook.name(), playbook.systemPrompt().trim());
-            }
-        }
-        if (basePrompt == null && systemPromptService != null) {
-            // Note: Falling back to findChatPrompt(null) here mirrors
-            // RagService.loadAgenticSystemPrompt().
-            // Because PreparedChat passes this resolved system prompt down into AgenticRagRequest,
-            // RagService's own fallback is effectively bypassed for web chat, ensuring consistent
-            // prompt resolution.
-            basePrompt =
-                systemPromptService.findChatPrompt(null).map(SystemPrompt::systemPrompt).orElse("");
-        }
-
-        if (basePrompt == null || basePrompt.isBlank()) {
-            throw new IllegalStateException(
-                "No active CHAT base system prompt is configured; cannot proceed without base instructions.");
-        }
-
-        String playbookInstructions =
-            (playbook != null && playbook.templateText() != null) ? playbook.templateText() : null;
-
-        if (playbookInstructions != null && !playbookInstructions.isBlank()) {
-            return basePrompt + "\n\n---\n\n" + playbookInstructions;
-        }
-
-        return basePrompt;
     }
 
     private String resolveThinkingLevel(Map<String, Object> settings) {

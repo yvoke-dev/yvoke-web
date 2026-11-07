@@ -14,8 +14,6 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import jakarta.validation.Valid;
@@ -45,7 +43,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class DesktopSyncController {
 
     private final DesktopSyncService syncService;
-    private final SystemPromptService systemPromptService;
     private final PlaybookService playbookService;
     private final OrchestratorProperties orchestratorProperties;
     private final OrchestratorProfileService orchestratorProfileService;
@@ -53,13 +50,11 @@ public class DesktopSyncController {
     private final AreaService areaService;
 
     @Autowired
-    public DesktopSyncController(DesktopSyncService syncService,
-        SystemPromptService systemPromptService, PlaybookService playbookService,
+    public DesktopSyncController(DesktopSyncService syncService, PlaybookService playbookService,
         OrchestratorProperties orchestratorProperties,
         OrchestratorProfileService orchestratorProfileService,
         DesktopOrchestratorRunService orchestratorRunService, AreaService areaService) {
         this.syncService = Objects.requireNonNull(syncService);
-        this.systemPromptService = Objects.requireNonNull(systemPromptService);
         this.playbookService = Objects.requireNonNull(playbookService);
         this.orchestratorProperties = Objects.requireNonNull(orchestratorProperties);
         this.orchestratorProfileService = Objects.requireNonNull(orchestratorProfileService);
@@ -118,49 +113,6 @@ public class DesktopSyncController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }
         return Map.of("id", orchestratorRunService.record(user, request));
-    }
-
-    @GetMapping("/prompts/system/{name}")
-    public ResponseEntity<Map<String, String>> getSystemPrompt(@PathVariable String name) {
-        String trimmed = name != null ? name.trim() : "";
-        if (SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(trimmed)) {
-            String text =
-                hasAnyAreaAccess()
-                    ? systemPromptService.findChatPrompt(SystemPromptService.DEFAULT_CHAT)
-                        .map(SystemPrompt::systemPrompt).orElse("")
-                    : "";
-            return ResponseEntity.ok(Map.of("systemPrompt", text));
-        }
-        Optional<SystemPrompt> directPrompt = systemPromptService.findChatPrompt(trimmed);
-        if (directPrompt.isPresent()) {
-            String text = directPrompt
-                .filter(p -> p.area() == null || p.area().isBlank()
-                    || AreaAccessContext.canAccessUserArea(p.area()))
-                .map(SystemPrompt::systemPrompt).orElse("");
-            return ResponseEntity.ok(Map.of("systemPrompt", text));
-        }
-        if (!trimmed.isEmpty() && AreaAccessContext.canAccessUserArea(trimmed)) {
-            Optional<AreaWithMembers> areaOpt = areaService.findAreaWithMembers(trimmed);
-            if (areaOpt.isPresent()) {
-                String preferred = areaOpt.get().defaultSystemPrompt();
-                String requested = preferred != null && !preferred.isBlank() ? preferred
-                    : SystemPromptService.DEFAULT_CHAT;
-                boolean isDefaultChat =
-                    SystemPromptService.DEFAULT_CHAT.equalsIgnoreCase(requested);
-                String text = systemPromptService.findChatPrompt(requested)
-                    .filter(p -> isDefaultChat ? hasAnyAreaAccess()
-                        : (p.area() == null || p.area().isBlank()
-                            || AreaAccessContext.canAccessUserArea(p.area())))
-                    .map(SystemPrompt::systemPrompt).orElse("");
-                return ResponseEntity.ok(Map.of("systemPrompt", text));
-            }
-        }
-        return ResponseEntity.ok(Map.of("systemPrompt", ""));
-    }
-
-    private static boolean hasAnyAreaAccess() {
-        return AreaAccessContext.hasAllUserAreas()
-            || !AreaAccessContext.allowedUserAreasLower().orElse(Set.of()).isEmpty();
     }
 
     @GetMapping("/conversations")

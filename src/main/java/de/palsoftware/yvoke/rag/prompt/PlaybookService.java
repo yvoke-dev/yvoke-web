@@ -34,22 +34,18 @@ public class PlaybookService {
      */
     private final ObjectProvider<McpSyncServer> mcpSyncServer;
     private final AreaService areaService;
-    private final SystemPromptService systemPromptService;
 
     @Autowired
     public PlaybookService(PlaybookRepository playbookRepository,
-        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService,
-        SystemPromptService systemPromptService) {
+        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService) {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
         this.areaService = areaService;
-        this.systemPromptService =
-            Objects.requireNonNull(systemPromptService, "systemPromptService must not be null");
     }
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
     public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
-        AreaService areaService, SystemPromptService systemPromptService) {
+        AreaService areaService) {
         this(playbookRepository, new ObjectProvider<>() {
             @Override
             public McpSyncServer getObject() {
@@ -60,7 +56,7 @@ public class PlaybookService {
             public McpSyncServer getIfAvailable() {
                 return mcpSyncServer;
             }
-        }, areaService, systemPromptService);
+        }, areaService);
     }
 
     public List<Playbook> listAllPlaybooks() {
@@ -91,7 +87,7 @@ public class PlaybookService {
         condition = "#name != null && !#name.isBlank()")
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area, String systemPrompt, int version) {
+        String area, int version) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
         }
@@ -108,27 +104,11 @@ public class PlaybookService {
         String agent =
             targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
 
-        if (!Playbook.isSpecialist(agent) && systemPrompt != null && !systemPrompt.isBlank()) {
-            throw new IllegalArgumentException(
-                "Playbooks for role '" + agent + "' cannot have a designated system prompt.");
-        }
-
         String storedArea = areaService.requireArea(area);
-        String prompt = null;
-        if (Playbook.isSpecialist(agent) && systemPrompt != null && !systemPrompt.isBlank()) {
-            SystemPrompt sp =
-                systemPromptService.requirePrompt(systemPrompt.trim(), SystemPromptType.CHAT);
-            if (sp.area() != null && !sp.area().equalsIgnoreCase(storedArea)) {
-                throw new IllegalArgumentException(
-                    "System prompt '" + sp.name() + "' belongs to area '" + sp.area()
-                        + "', but playbook belongs to area '" + storedArea + "'.");
-            }
-            prompt = sp.name();
-        }
 
         playbookRepository.upsert(name.trim(), title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,
-            codeExecution, agent, prototype, storedArea, prompt, version);
+            codeExecution, agent, prototype, storedArea, version);
 
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
@@ -150,7 +130,7 @@ public class PlaybookService {
             parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
         savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),
             parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype(), area,
-            parsed.systemPrompt(), parsed.version());
+            parsed.version());
         return getPlaybook(parsed.name()).orElse(parsed);
     }
 
@@ -214,9 +194,6 @@ public class PlaybookService {
         meta.put("targetAgent",
             playbook.targetAgent() != null ? playbook.targetAgent() : "specialist");
         meta.put("prototype", playbook.prototype());
-        if (playbook.systemPrompt() != null && !playbook.systemPrompt().isBlank()) {
-            meta.put("systemPrompt", playbook.systemPrompt().trim());
-        }
         meta.put("version", playbook.version());
         return meta;
     }

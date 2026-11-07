@@ -81,12 +81,11 @@ public class ChatConversationServiceTest {
      *
      * <p>
      * An EXTRA key is just as damaging, which is why this asserts on the whole map rather than
-     * checking four entries. {@code orchestrator-profile} and {@code chat-prompt} are deliberately
-     * absent: {@code prepareAndSubmitAsync} routes to the multi-agent orchestrator whenever
+     * checking four entries. {@code orchestrator-profile} is deliberately absent:
+     * {@code prepareAndSubmitAsync} routes to the multi-agent orchestrator whenever
      * {@code orchestrator-profile} is present and non-blank, so seeding it — even with a value that
      * merely looks like a sensible default — silently puts every new conversation into MAS mode,
-     * multiplying cost per turn and bypassing the playbook path entirely. Seeding
-     * {@code chat-prompt} similarly overrides the system prompt for everyone.
+     * multiplying cost per turn and bypassing the playbook path entirely.
      *
      * <p>
      * {@code testCreateConversation} asserts only that {@code create} was called with
@@ -579,6 +578,65 @@ public class ChatConversationServiceTest {
         chatConversationService.listAllConversations(20, 0);
 
         verify(conversationRepository).listAll(userId, 20, 0, Set.of("oim"));
+    }
+
+    @Test
+    public void verifyConversationOwnership_claudePluginConversation_allowsReadButRejectsWriteEvenForOwner() {
+        UUID convId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        User owner = new User(ownerId, "entra-owner", "owner@test.local", "Owner", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
+
+        Conversation pluginConv =
+            new Conversation(convId, ownerId, "Plugin Turn", Collections.emptyMap(), Instant.now(),
+                Instant.now(), List.of(), "claude-plugin", "OIM");
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(pluginConv));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        // Read-only access (getConversation / verifyConversationOwnership(..., true)) is allowed
+        // for owner
+        assertThat(chatConversationService.getConversation(convId)).contains(pluginConv);
+
+        // Mutating access is rejected even for the owner
+        assertThatThrownBy(
+            () -> chatConversationService.verifyConversationOwnership(pluginConv, false))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+
+        assertThatThrownBy(() -> chatConversationService.deleteConversation(convId))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+        assertThatThrownBy(
+            () -> chatConversationService.updateSettings(convId, Map.of("streaming", true)))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(
+            () -> chatConversationService.updateModel(convId, "gemini-3.1-flash-lite"))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chatConversationService.addTag(convId, "tag1"))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chatConversationService.removeTag(convId, "tag1"))
+            .isInstanceOf(AccessDeniedException.class);
+
+        // Non-owner attempting a write gets the generic AccessDeniedException without revealing
+        // that the conversation's source is claude-plugin
+        User nonOwner =
+            new User(UUID.randomUUID(), "entra-other", "other@test.local", "Other", null);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(nonOwner));
+        assertThatThrownBy(
+            () -> chatConversationService.verifyConversationOwnership(pluginConv, false))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Access denied to conversation: " + convId)
+            .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
+        assertThatThrownBy(() -> chatConversationService.deleteConversation(convId))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Access denied to conversation: " + convId)
+            .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
+
+        verify(conversationRepository, never()).delete(any());
+        verify(conversationRepository, never()).updateSettings(any(), any());
+        verifyNoInteractions(tagRepository);
     }
 }
 
