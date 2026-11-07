@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -543,5 +544,48 @@ public class ChatAdminQueryRepositoryIT {
             jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAQR-IT%'");
             jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
         }
+    }
+
+    @Test
+    void listFilteredConversations_extractsClientVersionAndFormatsSourceBadgePerSource() {
+        UUID user = createUser("caqr-it-versions@example.com", "CAQR Versions User");
+
+        UUID desktopVerId = UUID.randomUUID();
+        conversationRepository.create(desktopVerId, user, "CAQR-IT Desktop Versioned",
+            Map.of("desktopVersion", "1.3.1"), "desktop");
+
+        UUID desktopUnverId = UUID.randomUUID();
+        conversationRepository.create(desktopUnverId, user, "CAQR-IT Desktop Unversioned",
+            Map.of(), "desktop");
+
+        UUID pluginVerId = UUID.randomUUID();
+        conversationRepository.create(pluginVerId, user, "CAQR-IT Plugin Versioned",
+            Map.of("pluginVersion", "0.4.2"), "claude-plugin");
+
+        UUID webId = UUID.randomUUID();
+        conversationRepository.create(webId, user, "CAQR-IT Web",
+            Map.of("desktopVersion", "9.9.9"), "web");
+
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(
+            new ConversationFilter(Set.of(user), false, TimeFilter.all(), FeedbackFilter.ALL),
+            10, 0L);
+
+        assertThat(results).hasSize(4);
+        Map<UUID, AdminConversation> byId = new HashMap<>();
+        for (AdminConversation c : results) {
+            byId.put(c.id(), c);
+        }
+
+        assertThat(byId.get(desktopVerId).clientVersion()).isEqualTo("1.3.1");
+        assertThat(byId.get(desktopVerId).sourceBadge()).isEqualTo("desktop v1.3.1");
+
+        assertThat(byId.get(desktopUnverId).clientVersion()).isNull();
+        assertThat(byId.get(desktopUnverId).sourceBadge()).isEqualTo("desktop");
+
+        assertThat(byId.get(pluginVerId).clientVersion()).isEqualTo("0.4.2");
+        assertThat(byId.get(pluginVerId).sourceBadge()).isEqualTo("claude-plugin v0.4.2");
+
+        assertThat(byId.get(webId).clientVersion()).isNull();
+        assertThat(byId.get(webId).sourceBadge()).isEqualTo("web");
     }
 }

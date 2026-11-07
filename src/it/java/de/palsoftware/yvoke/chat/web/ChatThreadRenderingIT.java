@@ -842,6 +842,73 @@ public class ChatThreadRenderingIT {
         orchestratorProfileRepository.delete(profileName);
     }
 
+    @Test
+    @DisplayName("Renders versioned source badges in thread header and admin table while keeping sidebar badge bare")
+    public void rendersVersionedSourceBadgesInThreadHeaderAndAdminTableWhileSidebarRemainsBare()
+        throws Exception {
+        String userOid = "source-badge-user-oid";
+        userRepository.upsert(userOid, "source-badge@local", "Source Badge User");
+        UUID ownerId = userRepository.findByEntraOid(userOid).orElseThrow().id();
+        var login = testUserLogin(userOid, "source-badge@local", "Source Badge User");
+
+        UUID desktopVerId = UUID.randomUUID();
+        UUID desktopLegacyId = UUID.randomUUID();
+        UUID pluginVerId = UUID.randomUUID();
+        jdbcClient.sql("""
+            INSERT INTO conversations (id, user_id, title, settings, source, area)
+            VALUES (:id1, :uid, 'Desktop Versioned', '{"desktopVersion": "1.3.1"}'::jsonb, 'desktop', 'OIM'),
+                   (:id2, :uid, 'Desktop Legacy', '{}'::jsonb, 'desktop', 'OIM'),
+                   (:id3, :uid, 'Plugin Versioned', '{"pluginVersion": "0.4.2"}'::jsonb, 'claude-plugin', 'OIM')
+            """)
+            .param("id1", desktopVerId)
+            .param("id2", desktopLegacyId)
+            .param("id3", pluginVerId)
+            .param("uid", ownerId)
+            .update();
+
+        try {
+            // 1. Versioned desktop conversation: header has "desktop v1.3.1" with text-transform: none,
+            // while sidebar has bare "desktop"
+            String desktopVerHtml = mockMvc.perform(get("/chat/" + desktopVerId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(desktopVerHtml)
+                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">desktop v1.3.1</span>")
+                .contains("style=\"font-size: 0.6rem; padding: 0.1rem 0.35rem; text-transform: capitalize; border-radius: 4px;\">desktop</span>");
+
+            // 2. Legacy desktop conversation without desktopVersion: header has bare "desktop"
+            String desktopLegacyHtml = mockMvc.perform(get("/chat/" + desktopLegacyId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(desktopLegacyHtml)
+                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">desktop</span>")
+                .doesNotContain("desktop v");
+
+            // 3. Versioned claude-plugin conversation: header has "claude-plugin v0.4.2"
+            String pluginVerHtml = mockMvc.perform(get("/chat/" + pluginVerId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(pluginVerHtml)
+                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">claude-plugin v0.4.2</span>");
+
+            // 4. Admin conversations table renders versioned badges with text-transform: none
+            var adminLogin = oidcLogin()
+                .idToken(token -> token.claim("oid", userOid).claim("name", "Admin").claim("email", "source-badge@local"))
+                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
+            String adminHtml = mockMvc.perform(get("/admin/conversations")
+                    .param("userIds", ownerId.toString())
+                    .with(adminLogin))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(adminHtml)
+                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">desktop v1.3.1</span>")
+                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">desktop</span>")
+                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">claude-plugin v0.4.2</span>");
+        } finally {
+            jdbcClient.sql("DELETE FROM conversations WHERE id IN (:id1, :id2, :id3)")
+                .param("id1", desktopVerId)
+                .param("id2", desktopLegacyId)
+                .param("id3", pluginVerId)
+                .update();
+        }
+    }
+
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
     private static String optionTag(String html, String profileName) {
         Matcher m = Pattern.compile("<option[^>]*value=\"" + Pattern.quote(profileName) + "\"[^>]*>")

@@ -3,12 +3,20 @@ package de.palsoftware.yvoke.chat.core.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.AdminConversation;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationOverviewStats;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.FeedbackFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.UserConversationStats;
+import java.sql.ResultSet;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -21,16 +29,19 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 class ChatAdminQueryRepositoryTest {
 
+    private JdbcClient jdbcClient;
     private ChatAdminQueryRepository repository;
 
     @BeforeEach
     void setUp() {
-        JdbcClient jdbcClient = Mockito.mock(JdbcClient.class);
+        jdbcClient = Mockito.mock(JdbcClient.class);
         repository = new ChatAdminQueryRepository(jdbcClient);
     }
 
@@ -226,5 +237,88 @@ class ChatAdminQueryRepositoryTest {
                 default -> {}
             }
         }
+    }
+
+    @Test
+    void testAdminConversation_normalizesSourceAndClientVersionAndFormatsSourceBadge() {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        AdminConversation desktopVersioned = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", "desktop", now, now, 1, 0, " v1.3.1 ");
+        assertThat(desktopVersioned.source()).isEqualTo("desktop");
+        assertThat(desktopVersioned.clientVersion()).isEqualTo("1.3.1");
+        assertThat(desktopVersioned.sourceBadge()).isEqualTo("desktop v1.3.1");
+
+        AdminConversation pluginVersioned = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", "claude-plugin", now, now, 0, 0, "0.4.2");
+        assertThat(pluginVersioned.clientVersion()).isEqualTo("0.4.2");
+        assertThat(pluginVersioned.sourceBadge()).isEqualTo("claude-plugin v0.4.2");
+
+        for (String blankOrBareV : List.of("", "   ", "v", "V", "v   ")) {
+            AdminConversation unversioned = new AdminConversation(id, userId, "Alice",
+                "alice@example.com", "Title", "desktop", now, now, 0, 0, blankOrBareV);
+            assertThat(unversioned.clientVersion()).isNull();
+            assertThat(unversioned.sourceBadge()).isEqualTo("desktop");
+        }
+
+        AdminConversation tenArg = new AdminConversation(id, userId, "Alice", "alice@example.com",
+            "Title", "desktop", now, now, 0, 0);
+        assertThat(tenArg.clientVersion()).isNull();
+        assertThat(tenArg.sourceBadge()).isEqualTo("desktop");
+
+        AdminConversation nullSource = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", null, now, now, 0, 0);
+        assertThat(nullSource.source()).isEqualTo("web");
+        assertThat(nullSource.sourceBadge()).isEqualTo("web");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testListFilteredConversations_projectsAndMapsClientVersion() throws Exception {
+        JdbcClient.StatementSpec statementSpec = mock(JdbcClient.StatementSpec.class);
+        JdbcClient.MappedQuerySpec<AdminConversation> querySpec =
+            (JdbcClient.MappedQuerySpec<AdminConversation>) mock(JdbcClient.MappedQuerySpec.class);
+        when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
+        when(statementSpec.params(anyMap())).thenReturn(statementSpec);
+        when(statementSpec.query(any(RowMapper.class))).thenReturn(querySpec);
+        when(querySpec.list()).thenReturn(List.of());
+
+        repository.listFilteredConversations(ConversationFilter.empty(), 20, 0L);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcClient).sql(sqlCaptor.capture());
+        assertThat(sqlCaptor.getValue()).contains("COALESCE(c.source, 'web') AS source")
+            .contains(
+                "WHEN c.source = 'desktop' THEN NULLIF(BTRIM(c.settings->>'desktopVersion'), '')")
+            .contains(
+                "WHEN c.source = 'claude-plugin' THEN NULLIF(BTRIM(c.settings->>'pluginVersion'), '')")
+            .contains("END AS client_version");
+
+        ArgumentCaptor<RowMapper<AdminConversation>> mapperCaptor =
+            ArgumentCaptor.forClass(RowMapper.class);
+        verify(statementSpec).query(mapperCaptor.capture());
+
+        UUID convId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getObject("id", UUID.class)).thenReturn(convId);
+        when(rs.getObject("user_id", UUID.class)).thenReturn(userId);
+        when(rs.getString("display_name")).thenReturn("Alice");
+        when(rs.getString("email")).thenReturn("alice@example.com");
+        when(rs.getString("title")).thenReturn("Desktop Chat");
+        when(rs.getString("source")).thenReturn("desktop");
+        when(rs.getObject("created_at", OffsetDateTime.class)).thenReturn(now);
+        when(rs.getObject("updated_at", OffsetDateTime.class)).thenReturn(now);
+        when(rs.getInt("thumbs_up_count")).thenReturn(2);
+        when(rs.getInt("thumbs_down_count")).thenReturn(1);
+        when(rs.getString("client_version")).thenReturn("v1.3.1");
+
+        AdminConversation mapped = mapperCaptor.getValue().mapRow(rs, 0);
+        assertThat(mapped).isNotNull();
+        assertThat(mapped.clientVersion()).isEqualTo("1.3.1");
+        assertThat(mapped.sourceBadge()).isEqualTo("desktop v1.3.1");
     }
 }

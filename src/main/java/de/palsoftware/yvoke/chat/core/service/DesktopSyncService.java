@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.chat.core.service;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
@@ -37,6 +38,7 @@ public class DesktopSyncService {
     static final String SOURCE_DESKTOP = "desktop";
     static final String DEFAULT_TITLE = "New Conversation";
     private static final int MAX_AUTO_TITLE_LENGTH = 80;
+    private static final int MAX_DESKTOP_VERSION_LENGTH = 256;
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
@@ -66,10 +68,11 @@ public class DesktopSyncService {
     }
 
     public Conversation createConversation(User user, String title, Map<String, Object> settings) {
+        Map<String, Object> sanitizedSettings = sanitizeDesktopVersion(settings);
         UUID id = UUID.randomUUID();
         String effectiveTitle = (title == null || title.isBlank()) ? DEFAULT_TITLE : title.trim();
         conversationRepository.create(id, user.id(), effectiveTitle,
-            settings == null ? Map.of() : settings, SOURCE_DESKTOP);
+            sanitizedSettings.isEmpty() ? Map.of() : sanitizedSettings, SOURCE_DESKTOP);
         log.info("Desktop conversation created: id={}, user={}", id, user.id());
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -163,17 +166,51 @@ public class DesktopSyncService {
     @Transactional
     public void updateConversation(UUID conversationId, User user, String title,
         Map<String, Object> settings) {
-        verifyOwnership(conversationId, user);
+        Conversation conversation = verifyOwnership(conversationId, user);
+        Map<String, Object> mapped = sanitizeDesktopVersion(settings);
         if (title != null && !title.isBlank()) {
             conversationRepository.updateTitle(conversationId, title.trim());
         }
         if (settings != null && !settings.isEmpty()) {
-            Map<String, Object> mapped = new HashMap<>(settings);
             if (mapped.containsKey("thinkingLevel")) {
                 mapped.put("thinking-level", mapped.remove("thinkingLevel"));
             }
+            String existingVersion = Conversation.normalizeVersion(conversation.settings() != null
+                ? conversation.settings().get(ConversationSetting.DESKTOP_VERSION.key())
+                : null);
+            if (existingVersion != null) {
+                mapped.put(ConversationSetting.DESKTOP_VERSION.key(), existingVersion);
+            }
             conversationRepository.updateSettings(conversationId, mapped);
         }
+    }
+
+    private static Map<String, Object> sanitizeDesktopVersion(Map<String, Object> settings) {
+        if (settings == null || settings.isEmpty()) {
+            return new HashMap<>();
+        }
+        Map<String, Object> mapped = new HashMap<>(settings);
+        String key = ConversationSetting.DESKTOP_VERSION.key();
+        if (mapped.containsKey(key)) {
+            Object raw = mapped.get(key);
+            if (raw == null) {
+                mapped.remove(key);
+            } else if (!(raw instanceof String)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid desktopVersion: must be a string");
+            } else {
+                String normalized = Conversation.normalizeVersion(raw);
+                if (normalized == null) {
+                    mapped.remove(key);
+                } else if (normalized.length() > MAX_DESKTOP_VERSION_LENGTH) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid desktopVersion: exceeds maximum length");
+                } else {
+                    mapped.put(key, normalized);
+                }
+            }
+        }
+        return mapped;
     }
 
     public void deleteConversation(UUID conversationId, User user) {

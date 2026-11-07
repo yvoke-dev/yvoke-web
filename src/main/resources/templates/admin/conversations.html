@@ -186,7 +186,7 @@
                                     <span th:if="${conv.thumbsUpCount == 0 && conv.thumbsDownCount == 0}">—</span>
                                 </td>
                                 <td>
-                                    <span class="badge badge-muted" th:text="${conv.source}"></span>
+                                    <span class="badge badge-muted" style="text-transform: none;" th:text="${conv.sourceBadge()}"></span>
                                 </td>
                                 <td th:text="${conv.updatedAt != null ? #temporals.format(conv.updatedAt, 'yyyy-MM-dd HH:mm:ss') + ' UTC' : ''}"></td>
                             </tr>

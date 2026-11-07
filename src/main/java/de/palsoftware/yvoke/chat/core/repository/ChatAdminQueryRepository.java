@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
+import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
 import jakarta.annotation.Nullable;
 import java.time.Clock;
@@ -106,7 +107,24 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
     public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
         String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-        int thumbsUpCount, int thumbsDownCount) {}
+        int thumbsUpCount, int thumbsDownCount, @Nullable String clientVersion) {
+
+        public AdminConversation {
+            source = (source == null || source.isBlank()) ? "web" : source;
+            clientVersion = Conversation.normalizeVersion(clientVersion);
+        }
+
+        public AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
+            String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+            int thumbsUpCount, int thumbsDownCount) {
+            this(id, userId, userDisplayName, userEmail, title, source, createdAt, updatedAt,
+                thumbsUpCount, thumbsDownCount, null);
+        }
+
+        public String sourceBadge() {
+            return Conversation.formatSourceBadge(source, clientVersion);
+        }
+    }
 
     public record FeedbackComment(String feedbackId, String messageId, int rating, String comment,
         OffsetDateTime createdAt, String queryText, String conversationId, boolean reviewed,
@@ -116,7 +134,14 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         long offset) {
         StringBuilder sql = new StringBuilder(
             """
-                SELECT c.id, c.user_id, u.display_name, u.email, c.title, c.source, c.created_at, c.updated_at,
+                SELECT c.id, c.user_id, u.display_name, u.email, c.title,
+                       COALESCE(c.source, 'web') AS source,
+                       CASE
+                           WHEN c.source = 'desktop' THEN NULLIF(BTRIM(c.settings->>'desktopVersion'), '')
+                           WHEN c.source = 'claude-plugin' THEN NULLIF(BTRIM(c.settings->>'pluginVersion'), '')
+                           ELSE NULL
+                       END AS client_version,
+                       c.created_at, c.updated_at,
                        COALESCE(fb.thumbs_up_count, 0) AS thumbs_up_count,
                        COALESCE(fb.thumbs_down_count, 0) AS thumbs_down_count
                 FROM conversations c
@@ -143,7 +168,7 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 rs.getString("email"), rs.getString("title"), rs.getString("source"),
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getObject("updated_at", OffsetDateTime.class), rs.getInt("thumbs_up_count"),
-                rs.getInt("thumbs_down_count")))
+                rs.getInt("thumbs_down_count"), rs.getString("client_version")))
             .list();
     }
 

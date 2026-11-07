@@ -520,4 +520,59 @@ public class DesktopSyncServiceIT {
             "SELECT COUNT(*) FROM agent_steps WHERE agent_run_id = ?", Integer.class, runId);
         assertThat(stepCount).isEqualTo(1);
     }
+
+    @Test
+    public void desktopVersionRoundTripsInJsonbAndRemainsImmutableAcrossUpdates() {
+        userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
+        User owner = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
+
+        // 400 rejection on non-string or >256-char desktopVersion
+        assertThatThrownBy(() -> service.createConversation(owner, "Invalid Type",
+            Map.of("desktopVersion", 42)))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() -> service.createConversation(owner, "Oversized",
+            Map.of("desktopVersion", "1." + "0".repeat(255))))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+
+        Conversation created = service.createConversation(owner, "Versioned Thread",
+            Map.of("desktopVersion", " v1.3.0 ", "model", "claude-sonnet-4-6"));
+        conversationId = created.id();
+        assertThat(created.clientVersion()).isEqualTo("1.3.0");
+        assertThat(created.sourceBadge()).isEqualTo("desktop v1.3.0");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("1.3.0");
+
+        // Attempt to overwrite with "1.4.0" -> original "1.3.0" preserved in JSONB
+        service.updateConversation(conversationId, owner, null,
+            Map.of("desktopVersion", "1.4.0", "thinkingLevel", "high"));
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("1.3.0");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'thinking-level' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("high");
+
+        // Update omitting desktopVersion -> original "1.3.0" preserved in JSONB
+        service.updateConversation(conversationId, owner, null,
+            Map.of("model", "claude-opus-4-6"));
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("1.3.0");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("claude-opus-4-6");
+
+        // 400 rejection on update with non-string or >256-char desktopVersion even when DB has "1.3.0"
+        assertThatThrownBy(() -> service.updateConversation(conversationId, owner, null,
+            Map.of("desktopVersion", List.of("1.4.0"))))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() -> service.updateConversation(conversationId, owner, null,
+            Map.of("desktopVersion", "1." + "0".repeat(255))))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
 }

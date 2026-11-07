@@ -14,7 +14,7 @@
                     <div class="chat-thread-info">
                         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                             <h2 class="chat-thread-title" th:text="${conversation.title}">New Conversation</h2>
-                            <span class="badge" th:classappend="${conversation.source == 'desktop' ? 'badge-info' : 'badge-muted'}" style="text-transform: capitalize; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;" th:text="${conversation.source}">web</span>
+                            <span class="badge" th:classappend="${conversation.source == 'desktop' ? 'badge-info' : 'badge-muted'}" style="text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;" th:text="${conversation.sourceBadge()}">web</span>
                             <span th:if="${conversation.userId != currentUserId}" class="public-badge" style="background-color: rgba(59, 130, 246, 0.15); color: var(--color-accent-blue, #3b82f6); font-size: 0.75rem; padding: 0.15rem 0.4rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 500; border: 1px solid rgba(59, 130, 246, 0.3);">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
                                     <circle cx="12" cy="12" r="10"></circle>
