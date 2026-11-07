@@ -472,6 +472,9 @@ class PluginFeedbackServiceTest {
                     new SimpleGrantedAuthority("AREA_USER_OIM"),
                     new SimpleGrantedAuthority("AREA_USER_PINGID"))));
 
+        when(playbookService.getPlaybook("oim-pb"))
+            .thenReturn(Optional.of(new Playbook("oim-pb", "Title", "Desc", "Body", List.of(),
+                false, "specialist", false, FIXED_NOW, FIXED_NOW, false, "OIM", 1)));
         when(playbookService.getPlaybook("ping-pb"))
             .thenReturn(Optional.of(new Playbook("ping-pb", "Title", "Desc", "Body", List.of(),
                 false, "specialist", false, FIXED_NOW, FIXED_NOW, false, "PingID", 1)));
@@ -488,6 +491,12 @@ class PluginFeedbackServiceTest {
         assertThatThrownBy(
             () -> service.submitFeedback(new PluginFeedbackRequest("turn-mismatch-prof", 1, null,
                 "Q", "A", "OIM", "multi", null, null, "ping-prof", List.of(), null, null, null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("profile 'ping-prof' does not belong to area 'OIM'.");
+
+        assertThatThrownBy(() -> service
+            .submitFeedback(new PluginFeedbackRequest("turn-mismatch-inferred", 1, null, "Q", "A",
+                null, "multi", "oim-pb", 1, "ping-prof", List.of(), null, null, null)))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("profile 'ping-prof' does not belong to area 'OIM'.");
 

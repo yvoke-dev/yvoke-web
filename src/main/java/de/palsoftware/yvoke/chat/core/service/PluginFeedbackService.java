@@ -228,47 +228,55 @@ public class PluginFeedbackService {
         if (allowed.isPresent() && allowed.get().isEmpty()) {
             throw new SecurityException("Access denied: user has no accessible areas.");
         }
+        String resolvedArea = null;
         String trimmedArea = trimToNull(rawArea);
         if (trimmedArea != null) {
             requireMaxLength(trimmedArea, "area", MAX_METADATA_CHARS);
-            String resolvedArea = authorizeCanonicalArea(trimmedArea);
-            if (playbookService != null && normalizedPlaybook != null) {
-                Optional<String> pbArea = playbookService.getPlaybook(normalizedPlaybook)
-                    .map(Playbook::area).map(PluginFeedbackService::trimToNull);
-                if (pbArea.isPresent() && !pbArea.get().trim().equalsIgnoreCase(resolvedArea)) {
-                    throw new IllegalArgumentException("playbook '" + normalizedPlaybook
-                        + "' does not belong to area '" + resolvedArea + "'.");
-                }
-            }
-            if (orchestratorProfileService != null && normalizedProfile != null) {
-                Optional<String> profArea = orchestratorProfileService.getProfile(normalizedProfile)
-                    .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
-                if (profArea.isPresent() && !profArea.get().trim().equalsIgnoreCase(resolvedArea)) {
-                    throw new IllegalArgumentException("profile '" + normalizedProfile
-                        + "' does not belong to area '" + resolvedArea + "'.");
-                }
-            }
-            return resolvedArea;
-        }
-        if (normalizedPlaybook != null && playbookService != null) {
+            resolvedArea = authorizeCanonicalArea(trimmedArea);
+        } else if (normalizedPlaybook != null && playbookService != null) {
             Optional<String> playbookArea = playbookService.getPlaybook(normalizedPlaybook)
                 .map(Playbook::area).map(PluginFeedbackService::trimToNull);
             if (playbookArea.isPresent()) {
-                return authorizeCanonicalArea(playbookArea.get());
+                resolvedArea = authorizeCanonicalArea(playbookArea.get());
             }
         }
-        if (normalizedProfile != null && orchestratorProfileService != null) {
+        if (resolvedArea == null && normalizedProfile != null
+            && orchestratorProfileService != null) {
             Optional<String> profileArea = orchestratorProfileService.getProfile(normalizedProfile)
                 .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
             if (profileArea.isPresent()) {
-                return authorizeCanonicalArea(profileArea.get());
+                resolvedArea = authorizeCanonicalArea(profileArea.get());
             }
         }
-        if (allowed.isPresent() && allowed.get().size() == 1) {
+        if (resolvedArea == null && allowed.isPresent() && allowed.get().size() == 1) {
             String singleAllowed = allowed.get().iterator().next();
-            return areaService.findArea(singleAllowed).map(Area::name).orElse(null);
+            resolvedArea = areaService.findArea(singleAllowed).map(Area::name).orElse(null);
         }
-        return null;
+        if (resolvedArea != null) {
+            validatePlaybookAndProfileMatchArea(resolvedArea, normalizedPlaybook,
+                normalizedProfile);
+        }
+        return resolvedArea;
+    }
+
+    private void validatePlaybookAndProfileMatchArea(String resolvedArea, String normalizedPlaybook,
+        String normalizedProfile) {
+        if (playbookService != null && normalizedPlaybook != null) {
+            Optional<String> pbArea = playbookService.getPlaybook(normalizedPlaybook)
+                .map(Playbook::area).map(PluginFeedbackService::trimToNull);
+            if (pbArea.isPresent() && !pbArea.get().trim().equalsIgnoreCase(resolvedArea)) {
+                throw new IllegalArgumentException("playbook '" + normalizedPlaybook
+                    + "' does not belong to area '" + resolvedArea + "'.");
+            }
+        }
+        if (orchestratorProfileService != null && normalizedProfile != null) {
+            Optional<String> profArea = orchestratorProfileService.getProfile(normalizedProfile)
+                .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
+            if (profArea.isPresent() && !profArea.get().trim().equalsIgnoreCase(resolvedArea)) {
+                throw new IllegalArgumentException("profile '" + normalizedProfile
+                    + "' does not belong to area '" + resolvedArea + "'.");
+            }
+        }
     }
 
     private String authorizeCanonicalArea(String candidateArea) {

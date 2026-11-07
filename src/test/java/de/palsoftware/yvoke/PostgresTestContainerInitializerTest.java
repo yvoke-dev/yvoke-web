@@ -32,24 +32,34 @@ class PostgresTestContainerInitializerTest {
 
     @Test
     void modifyRewritesWildcardPortBindingsToIpv4LoopbackAndPreservesPortSpec() {
-        HostConfig hostConfig = new HostConfig()
-            .withPortBindings(List.of(new PortBinding(Binding.empty(), ExposedPort.tcp(5432)),
+        String previous = System.getProperty("docker.host");
+        try {
+            System.setProperty("docker.host", "unix:///var/run/docker.sock");
+            HostConfig hostConfig = new HostConfig().withPortBindings(List.of(
+                new PortBinding(Binding.empty(), ExposedPort.tcp(5432)),
                 new PortBinding(Binding.bindPort(15432), ExposedPort.tcp(8080)),
                 new PortBinding(Binding.bindIpAndPort("10.0.0.1", 9000), ExposedPort.tcp(9000))));
-        CreateContainerCmd cmd = mock(CreateContainerCmd.class);
-        when(cmd.getHostConfig()).thenReturn(hostConfig);
+            CreateContainerCmd cmd = mock(CreateContainerCmd.class);
+            when(cmd.getHostConfig()).thenReturn(hostConfig);
 
-        PostgresTestContainerInitializer initializer = new PostgresTestContainerInitializer();
-        assertThat((Object) initializer).isInstanceOf(CreateContainerCmdModifier.class);
-        ((CreateContainerCmdModifier) initializer).modify(cmd);
+            PostgresTestContainerInitializer initializer = new PostgresTestContainerInitializer();
+            assertThat((Object) initializer).isInstanceOf(CreateContainerCmdModifier.class);
+            ((CreateContainerCmdModifier) initializer).modify(cmd);
 
-        Ports ports = hostConfig.getPortBindings();
-        assertThat(ports.getBindings().get(ExposedPort.tcp(5432)))
-            .containsExactly(new Binding("127.0.0.1", null));
-        assertThat(ports.getBindings().get(ExposedPort.tcp(8080)))
-            .containsExactly(new Binding("127.0.0.1", "15432"));
-        assertThat(ports.getBindings().get(ExposedPort.tcp(9000)))
-            .containsExactly(new Binding("10.0.0.1", "9000"));
+            Ports ports = hostConfig.getPortBindings();
+            assertThat(ports.getBindings().get(ExposedPort.tcp(5432)))
+                .containsExactly(new Binding("127.0.0.1", null));
+            assertThat(ports.getBindings().get(ExposedPort.tcp(8080)))
+                .containsExactly(new Binding("127.0.0.1", "15432"));
+            assertThat(ports.getBindings().get(ExposedPort.tcp(9000)))
+                .containsExactly(new Binding("10.0.0.1", "9000"));
+        } finally {
+            if (previous == null) {
+                System.clearProperty("docker.host");
+            } else {
+                System.setProperty("docker.host", previous);
+            }
+        }
     }
 
     @Test

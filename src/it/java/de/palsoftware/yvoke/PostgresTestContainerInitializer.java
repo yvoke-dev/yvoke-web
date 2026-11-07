@@ -58,9 +58,9 @@ public class PostgresTestContainerInitializer
      */
     @Override
     public CreateContainerCmd modify(CreateContainerCmd cmd) {
-        String dockerHost = System.getenv("DOCKER_HOST");
+        String dockerHost = System.getProperty("docker.host");
         if (dockerHost == null || dockerHost.isBlank()) {
-            dockerHost = System.getProperty("docker.host");
+            dockerHost = System.getenv("DOCKER_HOST");
         }
         if (isRemoteTcpDockerHost(dockerHost)) {
             return cmd;
