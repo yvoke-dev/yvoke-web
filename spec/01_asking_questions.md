@@ -11,7 +11,7 @@ areas (or all conversations for Superadmins).
 
 | Capability | What happens |
 | --- | --- |
-| **Start a conversation** | *New Chat* opens an empty thread titled *New Conversation*. The first question becomes the title, shortened if long, and is then fixed. Conversations made in the desktop app appear in the same sidebar, marked *Desktop*. |
+| **Start a conversation** | *New Chat* opens an empty thread titled *New Conversation*. The first question becomes the title, shortened if long, and is then fixed. Conversations made in the desktop app appear in the same sidebar with a compact source badge (*Desktop*), while the conversation header badge shows the recorded client release version (`desktop v<version>` or `claude-plugin v<version>`, or the bare source name when unversioned). |
 | **Pick a playbook** | Before asking the first question, the user picks a named way of answering. Playbook options, starter chips, typing `/` or clicking **+** are strictly filtered to the knowledge areas the user is authorized for. The starter chips, the `/` list, the active playbook indicator above the input box, and the playbook badge on messages in the thread all show the playbook's version (`v1`, `v2`, …) alongside its name when a version is known. The choice is locked for the rest of the conversation once the first question is sent, permanently binding the conversation to that area. |
 | **Ask by typing or by voice** | The input grows as you type; Enter sends, Shift+Enter adds a line. A microphone button dictates into the box — tap to start and stop, or hold to record, chosen in voice settings. |
 | **Watch the answer being produced** | A placeholder appears immediately with rotating captions — *Thinking*, *Searching the knowledge base*, *Analyzing retrieved resources*, *Formulating the response*, *Polishing the answer* — and names each research tool as it runs. |
@@ -69,6 +69,12 @@ areas (or all conversations for Superadmins).
   each playbook. Instructions are never layered or inherited.
 - **Only the owner may change anything.** Administrators and viewers of a shared conversation can read a
   thread and its ratings, but cannot post, rate, tag, stop or delete it.
+- **The conversation header badge shows the client release version when recorded, while the sidebar badge stays compact.**
+  Opening a conversation created by the desktop app or rated from the Claude plugin shows its recorded client
+  release version in the thread header badge (`desktop v<version>` or `claude-plugin v<version>`). Web
+  conversations and older unversioned client conversations show the bare source name (`web`, `desktop`,
+  `claude-plugin`). In the conversation sidebar, badges always remain compact and show only the source name
+  without the version number.
 - **In-app research tools enforce strict area isolation.** During answer generation in single-playbook or
   in-depth mode, all background tool calls (`search_corpus`, `list_documents`, `get_toc`, `get_section`,
   `search_graph_entities`, `get_graph_neighbors`, `get_json_schema`, `query_json_objects`,
