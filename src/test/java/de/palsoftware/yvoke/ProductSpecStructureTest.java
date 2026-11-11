@@ -181,6 +181,29 @@ class ProductSpecStructureTest {
         }
     }
 
+    @Test
+    void clientVersionBadgesAndVerbatimRecordingProseStayAligned() throws IOException {
+        List<String> versionedClientChapters =
+            List.of("01_asking_questions.md", "07_using_the_assistant_from_other_tools.md",
+                "08_cost_usage_and_quality_visibility.md");
+
+        for (String chapterName : versionedClientChapters) {
+            Path chapterPath = SPEC_DIR.resolve(chapterName);
+            String text = Files.readString(chapterPath, StandardCharsets.UTF_8);
+            String collapsedWhitespace = text.replaceAll("\\s+", " ");
+
+            assertThat(collapsedWhitespace).as(
+                "%s must not describe client badges with a synthesized 'v' prefix or leading-prefix stripping",
+                chapterPath).doesNotContain("desktop v<version>", "claude-plugin v<version>",
+                    "stripping any leading");
+
+            assertThat(text)
+                .as("%s must document verbatim client version badges without a 'v' prefix",
+                    chapterPath)
+                .contains("desktop <version>", "claude-plugin <version>");
+        }
+    }
+
     /**
      * Reproduces GitHub's heading-to-anchor rule: lower-case, drop everything that is not a letter,
      * digit, space or hyphen, then spaces to hyphens.
