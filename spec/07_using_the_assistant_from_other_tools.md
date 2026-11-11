@@ -75,9 +75,11 @@ running corpus scripts and the evaluation harness.
 - **A conversation's recorded desktop release version is fixed at creation.** When the desktop app creates a
   conversation, Yvoke records the desktop release version verbatim (trimming only surrounding whitespace
   without altering the version text) and preserves that creation version across all subsequent settings
-  updates — without clearing other conversation settings when a later update omits, blanks, or attempts to
-  overwrite the version. Older desktop conversations created without a version remain unversioned unless a
-  later settings update supplies one (which is recorded without wiping existing conversation settings).
+  updates: a version-only update (carrying only a version or only a blank version) neither overwrites the
+  recorded version nor clears other conversation settings, whereas an update that changes other settings still
+  replaces the settings map (while keeping the creation version). Older desktop conversations created without a
+  version remain unversioned unless a later settings update supplies one (a version-only update adds it without
+  clearing existing conversation settings, whereas an update carrying other settings replaces the settings map).
   Non-text or overly long version values (exceeding 256 characters) are rejected, and blank values are
   ignored. Rated Claude plugin turns similarly record the plugin release version verbatim so both the
   conversation header and the administrator conversation register display `desktop <version>` or

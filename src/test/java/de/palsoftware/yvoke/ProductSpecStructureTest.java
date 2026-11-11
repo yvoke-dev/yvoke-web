@@ -201,6 +201,16 @@ class ProductSpecStructureTest {
                 .as("%s must document verbatim client version badges without a 'v' prefix",
                     chapterPath)
                 .contains("desktop <version>", "claude-plugin <version>");
+
+            if ("07_using_the_assistant_from_other_tools.md".equals(chapterName)) {
+                assertThat(collapsedWhitespace).as(
+                    "%s must scope the no-clear settings guarantee strictly to version-only updates",
+                    chapterPath)
+                    .doesNotContain(
+                        "without clearing other conversation settings when a later update omits",
+                        "which is recorded without wiping existing conversation settings")
+                    .contains("version-only update", "replaces the settings map");
+            }
         }
     }
 
