@@ -172,8 +172,15 @@ public class PluginFeedbackService {
         String normalizedClient = trimToNull(request.client());
         requireMaxLength(normalizedClient, "client", MAX_METADATA_CHARS);
 
-        String normalizedPluginVersion = trimToNull(request.pluginVersion());
-        requireMaxLength(normalizedPluginVersion, "pluginVersion", MAX_METADATA_CHARS);
+        String rawPluginVersion = request.pluginVersion();
+        String normalizedPluginVersion = null;
+        if (rawPluginVersion != null && !rawPluginVersion.isBlank()) {
+            normalizedPluginVersion = Conversation.normalizeVersion(rawPluginVersion);
+            if (normalizedPluginVersion == null) {
+                throw new IllegalArgumentException("pluginVersion must not exceed "
+                    + Conversation.MAX_CLIENT_VERSION_LENGTH + " characters.");
+            }
+        }
 
         List<String> sanitizedCitedIds = sanitizeCitedIds(request.citedIds());
 
@@ -318,7 +325,7 @@ public class PluginFeedbackService {
         settings.put("client",
             client != null ? client : ConversationSource.CLAUDE_PLUGIN.getValue());
         if (pluginVersion != null) {
-            settings.put("pluginVersion", pluginVersion);
+            settings.put(ConversationSetting.PLUGIN_VERSION.getValue(), pluginVersion);
         }
         if (mode != null) {
             settings.put("mode", mode);

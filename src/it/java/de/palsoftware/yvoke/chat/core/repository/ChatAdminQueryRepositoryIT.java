@@ -577,15 +577,87 @@ public class ChatAdminQueryRepositoryIT {
         }
 
         assertThat(byId.get(desktopVerId).clientVersion()).isEqualTo("1.3.1");
-        assertThat(byId.get(desktopVerId).sourceBadge()).isEqualTo("desktop v1.3.1");
+        assertThat(byId.get(desktopVerId).sourceBadge()).isEqualTo("desktop 1.3.1");
 
         assertThat(byId.get(desktopUnverId).clientVersion()).isNull();
         assertThat(byId.get(desktopUnverId).sourceBadge()).isEqualTo("desktop");
 
         assertThat(byId.get(pluginVerId).clientVersion()).isEqualTo("0.4.2");
-        assertThat(byId.get(pluginVerId).sourceBadge()).isEqualTo("claude-plugin v0.4.2");
+        assertThat(byId.get(pluginVerId).sourceBadge()).isEqualTo("claude-plugin 0.4.2");
 
         assertThat(byId.get(webId).clientVersion()).isNull();
         assertThat(byId.get(webId).sourceBadge()).isEqualTo("web");
+    }
+
+    @Test
+    void listFilteredConversations_handlesDirtyJsonbTypesUnicodeWhitespaceAndBoundariesAcrossSources() {
+        UUID user = createUser("caqr-it-dirty-jsonb@example.com", "CAQR Dirty JSONB User");
+        String exact256 = "1".repeat(256);
+        String over256 = "1".repeat(257);
+
+        for (String source : List.of("desktop", "claude-plugin")) {
+            String key = "desktop".equals(source) ? "desktopVersion" : "pluginVersion";
+
+            List<String> dirtyJsonPayloads = List.of(
+                "{\"" + key + "\": 123}",
+                "{\"" + key + "\": true}",
+                "{\"" + key + "\": [\"1.3.1\"]}",
+                "{\"" + key + "\": null}",
+                "{\"" + key + "\": \"\\t\\u2003\"}",
+                "{\"" + key + "\": \"" + over256 + "\"}");
+
+            List<UUID> dirtyIds = new ArrayList<>();
+            for (int i = 0; i < dirtyJsonPayloads.size(); i++) {
+                UUID id = UUID.randomUUID();
+                dirtyIds.add(id);
+                jdbcTemplate.update(
+                    "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                    id, user, "CAQR-IT Dirty " + source + " " + i, dirtyJsonPayloads.get(i),
+                    source);
+            }
+
+            UUID padded256Id = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                padded256Id, user, "CAQR-IT Padded256 " + source,
+                "{\"" + key + "\": \"\\t" + exact256 + "\\u2003\"}", source);
+
+            UUID versionWordId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                versionWordId, user, "CAQR-IT VersionWord " + source,
+                "{\"" + key + "\": \"Version 1.3.1\"}", source);
+
+            UUID vPrefixedId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                vPrefixedId, user, "CAQR-IT VPrefixed " + source,
+                "{\"" + key + "\": \"v0.4.2\"}", source);
+
+            List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(
+                new ConversationFilter(Set.of(user), false, TimeFilter.all(), FeedbackFilter.ALL),
+                50, 0L);
+            Map<UUID, AdminConversation> byId = new HashMap<>();
+            for (AdminConversation c : results) {
+                byId.put(c.id(), c);
+            }
+
+            for (UUID dirtyId : dirtyIds) {
+                AdminConversation dirty = byId.get(dirtyId);
+                assertThat(dirty).isNotNull();
+                assertThat(dirty.clientVersion()).as("source=%s id=%s", source, dirtyId).isNull();
+                assertThat(dirty.sourceBadge()).as("source=%s id=%s", source, dirtyId)
+                    .isEqualTo(source);
+            }
+
+            assertThat(byId.get(padded256Id).clientVersion()).isEqualTo(exact256);
+            assertThat(byId.get(padded256Id).sourceBadge()).isEqualTo(source + " " + exact256);
+
+            assertThat(byId.get(versionWordId).clientVersion()).isEqualTo("Version 1.3.1");
+            assertThat(byId.get(versionWordId).sourceBadge()).isEqualTo(source + " Version 1.3.1");
+
+            assertThat(byId.get(vPrefixedId).clientVersion()).isEqualTo("v0.4.2");
+            assertThat(byId.get(vPrefixedId).sourceBadge()).isEqualTo(source + " v0.4.2");
+        }
     }
 }

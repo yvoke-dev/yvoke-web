@@ -8,14 +8,16 @@ import java.util.UUID;
 
 public record Conversation(UUID id,UUID userId,String title,Map<String,Object>settings,Instant createdAt,Instant updatedAt,List<String>tags,String source,@Nullable String area){
 
+public static final int MAX_CLIENT_VERSION_LENGTH=256;
+
 public Conversation(UUID id,UUID userId,String title,Map<String,Object>settings,Instant createdAt,Instant updatedAt,List<String>tags,String source){this(id,userId,title,settings,createdAt,updatedAt,tags,source,null);}
 
-public Conversation(UUID id,UUID userId,String title,Map<String,Object>settings,Instant createdAt,Instant updatedAt,List<String>tags){this(id,userId,title,settings,createdAt,updatedAt,tags,"web",null);}
+public Conversation(UUID id,UUID userId,String title,Map<String,Object>settings,Instant createdAt,Instant updatedAt,List<String>tags){this(id,userId,title,settings,createdAt,updatedAt,tags,ConversationSource.WEB.getValue(),null);}
 
-public static @Nullable String normalizeVersion(@Nullable Object raw){if(!(raw instanceof String str)){return null;}String trimmed=str.trim();while(!trimmed.isEmpty()&&(trimmed.charAt(0)=='v'||trimmed.charAt(0)=='V')){trimmed=trimmed.substring(1).trim();}return trimmed.isEmpty()?null:trimmed;}
+public static @Nullable String normalizeVersion(@Nullable Object raw){if(!(raw instanceof String str)){return null;}int start=0;int end=str.length();while(start<end&&Character.isWhitespace(str.charAt(start))){start++;}while(end>start&&Character.isWhitespace(str.charAt(end-1))){end--;}int len=end-start;if(len==0||len>MAX_CLIENT_VERSION_LENGTH){return null;}return str.substring(start,end);}
 
-public static String formatSourceBadge(@Nullable String source,@Nullable Object rawVersion){String effectiveSource=(source==null||source.isBlank())?"web":source;String v=normalizeVersion(rawVersion);return v!=null?effectiveSource+" v"+v:effectiveSource;}
+public static String formatSourceBadge(@Nullable String source,@Nullable Object rawVersion){String effectiveSource=(source==null||source.isBlank())?ConversationSource.WEB.getValue():source;String v=normalizeVersion(rawVersion);return v!=null?effectiveSource+" "+v:effectiveSource;}
 
-public @Nullable String clientVersion(){if(settings==null||settings.isEmpty()){return null;}if("desktop".equals(source)){return normalizeVersion(settings.get(ConversationSetting.DESKTOP_VERSION.key()));}if("claude-plugin".equals(source)){return normalizeVersion(settings.get(ConversationSetting.PLUGIN_VERSION.key()));}return null;}
+public @Nullable String clientVersion(){if(settings==null||settings.isEmpty()){return null;}if(ConversationSource.DESKTOP.getValue().equals(source)){return normalizeVersion(settings.get(ConversationSetting.DESKTOP_VERSION.getValue()));}if(ConversationSource.CLAUDE_PLUGIN.getValue().equals(source)){return normalizeVersion(settings.get(ConversationSetting.PLUGIN_VERSION.getValue()));}return null;}
 
 public String sourceBadge(){return formatSourceBadge(source,clientVersion());}}

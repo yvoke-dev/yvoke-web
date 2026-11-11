@@ -27,6 +27,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
+    static final String BMP_WHITESPACE =
+        " \t\n\r\f\u000b\u001c\u001d\u001e\u001f\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2008\u2009\u200a\u2028\u2029\u205f\u3000";
+
     private final JdbcClient jdbcClient;
 
     public ChatAdminQueryRepository(JdbcClient jdbcClient) {
@@ -137,8 +140,14 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 SELECT c.id, c.user_id, u.display_name, u.email, c.title,
                        COALESCE(c.source, 'web') AS source,
                        CASE
-                           WHEN c.source = 'desktop' THEN NULLIF(BTRIM(c.settings->>'desktopVersion'), '')
-                           WHEN c.source = 'claude-plugin' THEN NULLIF(BTRIM(c.settings->>'pluginVersion'), '')
+                           WHEN c.source = 'desktop'
+                                AND jsonb_typeof(c.settings->'desktopVersion') = 'string'
+                                AND char_length(BTRIM(c.settings->>'desktopVersion', :ws)) BETWEEN 1 AND 256
+                               THEN BTRIM(c.settings->>'desktopVersion', :ws)
+                           WHEN c.source = 'claude-plugin'
+                                AND jsonb_typeof(c.settings->'pluginVersion') = 'string'
+                                AND char_length(BTRIM(c.settings->>'pluginVersion', :ws)) BETWEEN 1 AND 256
+                               THEN BTRIM(c.settings->>'pluginVersion', :ws)
                            ELSE NULL
                        END AS client_version,
                        c.created_at, c.updated_at,
@@ -156,6 +165,7 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 WHERE 1=1
                 """);
         Map<String, Object> params = new HashMap<>();
+        params.put("ws", BMP_WHITESPACE);
         params.put("limit", limit);
         params.put("offset", offset);
         appendConversationFilters(sql, params, filter);

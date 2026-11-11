@@ -240,25 +240,48 @@ class ChatAdminQueryRepositoryTest {
     }
 
     @Test
-    void testAdminConversation_normalizesSourceAndClientVersionAndFormatsSourceBadge() {
+    void testBmpWhitespaceConstantMatchesCharacterIsWhitespaceAcrossEntireBmp() {
+        assertThat(ChatAdminQueryRepository.BMP_WHITESPACE).isNotEmpty();
+        assertThat(ChatAdminQueryRepository.BMP_WHITESPACE.chars().distinct().count())
+            .isEqualTo(ChatAdminQueryRepository.BMP_WHITESPACE.length());
+
+        for (int cp = 0; cp <= 0xFFFF; cp++) {
+            char ch = (char) cp;
+            boolean inConstant = ChatAdminQueryRepository.BMP_WHITESPACE.indexOf(ch) >= 0;
+            assertThat(inConstant).as("codePoint=U+%04X", cp).isEqualTo(Character.isWhitespace(ch));
+        }
+    }
+
+    @Test
+    void testAdminConversation_normalizesSourceAndClientVersionVerbatimAndFormatsSourceBadge() {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        AdminConversation desktopVersioned = new AdminConversation(id, userId, "Alice",
+        AdminConversation desktopPrefixed = new AdminConversation(id, userId, "Alice",
             "alice@example.com", "Title", "desktop", now, now, 1, 0, " v1.3.1 ");
-        assertThat(desktopVersioned.source()).isEqualTo("desktop");
-        assertThat(desktopVersioned.clientVersion()).isEqualTo("1.3.1");
-        assertThat(desktopVersioned.sourceBadge()).isEqualTo("desktop v1.3.1");
+        assertThat(desktopPrefixed.source()).isEqualTo("desktop");
+        assertThat(desktopPrefixed.clientVersion()).isEqualTo("v1.3.1");
+        assertThat(desktopPrefixed.sourceBadge()).isEqualTo("desktop v1.3.1");
+
+        AdminConversation desktopBareSemver = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", "desktop", now, now, 1, 0, "1.3.1");
+        assertThat(desktopBareSemver.clientVersion()).isEqualTo("1.3.1");
+        assertThat(desktopBareSemver.sourceBadge()).isEqualTo("desktop 1.3.1");
+
+        AdminConversation desktopOversized = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", "desktop", now, now, 0, 0, "1".repeat(257));
+        assertThat(desktopOversized.clientVersion()).isNull();
+        assertThat(desktopOversized.sourceBadge()).isEqualTo("desktop");
 
         AdminConversation pluginVersioned = new AdminConversation(id, userId, "Alice",
             "alice@example.com", "Title", "claude-plugin", now, now, 0, 0, "0.4.2");
         assertThat(pluginVersioned.clientVersion()).isEqualTo("0.4.2");
-        assertThat(pluginVersioned.sourceBadge()).isEqualTo("claude-plugin v0.4.2");
+        assertThat(pluginVersioned.sourceBadge()).isEqualTo("claude-plugin 0.4.2");
 
-        for (String blankOrBareV : List.of("", "   ", "v", "V", "v   ")) {
+        for (String blank : List.of("", "   ", "\t\u2003")) {
             AdminConversation unversioned = new AdminConversation(id, userId, "Alice",
-                "alice@example.com", "Title", "desktop", now, now, 0, 0, blankOrBareV);
+                "alice@example.com", "Title", "desktop", now, now, 0, 0, blank);
             assertThat(unversioned.clientVersion()).isNull();
             assertThat(unversioned.sourceBadge()).isEqualTo("desktop");
         }
@@ -290,11 +313,18 @@ class ChatAdminQueryRepositoryTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient).sql(sqlCaptor.capture());
         assertThat(sqlCaptor.getValue()).contains("COALESCE(c.source, 'web') AS source")
-            .contains(
-                "WHEN c.source = 'desktop' THEN NULLIF(BTRIM(c.settings->>'desktopVersion'), '')")
-            .contains(
-                "WHEN c.source = 'claude-plugin' THEN NULLIF(BTRIM(c.settings->>'pluginVersion'), '')")
+            .contains("jsonb_typeof(c.settings->'desktopVersion') = 'string'")
+            .contains("char_length(BTRIM(c.settings->>'desktopVersion', :ws)) BETWEEN 1 AND 256")
+            .contains("THEN BTRIM(c.settings->>'desktopVersion', :ws)")
+            .contains("jsonb_typeof(c.settings->'pluginVersion') = 'string'")
+            .contains("char_length(BTRIM(c.settings->>'pluginVersion', :ws)) BETWEEN 1 AND 256")
+            .contains("THEN BTRIM(c.settings->>'pluginVersion', :ws)")
             .contains("END AS client_version");
+
+        ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(statementSpec).params(paramsCaptor.capture());
+        assertThat(paramsCaptor.getValue()).containsEntry("ws",
+            ChatAdminQueryRepository.BMP_WHITESPACE);
 
         ArgumentCaptor<RowMapper<AdminConversation>> mapperCaptor =
             ArgumentCaptor.forClass(RowMapper.class);
@@ -318,7 +348,7 @@ class ChatAdminQueryRepositoryTest {
 
         AdminConversation mapped = mapperCaptor.getValue().mapRow(rs, 0);
         assertThat(mapped).isNotNull();
-        assertThat(mapped.clientVersion()).isEqualTo("1.3.1");
+        assertThat(mapped.clientVersion()).isEqualTo("v1.3.1");
         assertThat(mapped.sourceBadge()).isEqualTo("desktop v1.3.1");
     }
 }

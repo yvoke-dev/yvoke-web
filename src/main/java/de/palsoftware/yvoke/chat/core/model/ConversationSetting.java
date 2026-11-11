@@ -14,8 +14,4 @@ public enum ConversationSetting {
     public String getValue() {
         return value;
     }
-
-    public String key() {
-        return value;
-    }
 }

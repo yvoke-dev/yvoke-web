@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class ConversationTest {
@@ -17,58 +18,96 @@ class ConversationTest {
     }
 
     @Test
-    void desktopConversationWithDesktopVersionFormatsBadge() {
-        Conversation conv = conversationWith("desktop",
-            Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), "1.3.1"));
+    void desktopConversationPreservesVersionVerbatimAndFormatsBadgeWithSpaceOnly() {
+        Map<String, String> cases =
+            Map.of("1.3.1", "1.3.1", "v1.3.1", "v1.3.1", " V1.3.1 ", "V1.3.1", "vv1.3.1", "vv1.3.1",
+                "Version 1.3.1", "Version 1.3.1", "vNext", "vNext", "v", "v", "V", "V");
 
-        assertThat(conv.clientVersion()).isEqualTo("1.3.1");
-        assertThat(conv.sourceBadge()).isEqualTo("desktop v1.3.1");
-    }
-
-    @Test
-    void desktopConversationStripsLeadingVAndWhitespaceWithoutDoublePrefix() {
-        for (String raw : List.of("v1.3.1", "V1.3.1", "vv1.3.1", " 1.3.1 ", "  v1.3.1  ",
-            "v 1.3.1")) {
+        for (Map.Entry<String, String> entry : cases.entrySet()) {
+            String raw = entry.getKey();
+            String expected = entry.getValue();
             Conversation conv = conversationWith("desktop",
                 Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), raw));
 
-            assertThat(conv.clientVersion()).as("raw=%s", raw).isEqualTo("1.3.1");
-            assertThat(conv.sourceBadge()).as("raw=%s", raw).isEqualTo("desktop v1.3.1");
+            assertThat(conv.clientVersion()).as("raw=%s", raw).isEqualTo(expected);
+            assertThat(conv.sourceBadge()).as("raw=%s", raw).isEqualTo("desktop " + expected);
         }
     }
 
     @Test
-    void claudePluginConversationWithPluginVersionFormatsBadge() {
+    void claudePluginConversationPreservesVersionVerbatimAndFormatsBadgeWithSpaceOnly() {
         Conversation conv = conversationWith("claude-plugin",
             Map.of(ConversationSetting.PLUGIN_VERSION.getValue(), "0.4.2"));
-
         assertThat(conv.clientVersion()).isEqualTo("0.4.2");
-        assertThat(conv.sourceBadge()).isEqualTo("claude-plugin v0.4.2");
+        assertThat(conv.sourceBadge()).isEqualTo("claude-plugin 0.4.2");
 
         Conversation prefixed = conversationWith("claude-plugin",
             Map.of(ConversationSetting.PLUGIN_VERSION.getValue(), "v0.4.2"));
-        assertThat(prefixed.clientVersion()).isEqualTo("0.4.2");
+        assertThat(prefixed.clientVersion()).isEqualTo("v0.4.2");
         assertThat(prefixed.sourceBadge()).isEqualTo("claude-plugin v0.4.2");
     }
 
     @Test
-    void desktopConversationWithMissingBlankBareVOrNonStringVersionFallsBackToBareSource() {
-        assertThat(conversationWith("desktop", Map.of()).clientVersion()).isNull();
-        assertThat(conversationWith("desktop", Map.of()).sourceBadge()).isEqualTo("desktop");
+    void unicodeWhitespaceAndMaxClientVersionLengthBoundariesAreEnforced() {
+        String exact256 = "1".repeat(Conversation.MAX_CLIENT_VERSION_LENGTH);
+        Conversation validPadded = conversationWith("desktop",
+            Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), "\t" + exact256 + "\u2003"));
+        assertThat(validPadded.clientVersion()).isEqualTo(exact256);
+        assertThat(validPadded.sourceBadge()).isEqualTo("desktop " + exact256);
 
-        assertThat(conversationWith("desktop", null).clientVersion()).isNull();
-        assertThat(conversationWith("desktop", null).sourceBadge()).isEqualTo("desktop");
+        String over256 = "1".repeat(Conversation.MAX_CLIENT_VERSION_LENGTH + 1);
+        for (String oversized : List.of(over256, " " + over256 + " ")) {
+            Conversation conv = conversationWith("desktop",
+                Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), oversized));
+            assertThat(conv.clientVersion()).isNull();
+            assertThat(conv.sourceBadge()).isEqualTo("desktop");
+        }
+    }
 
-        Map<String, Object> withNull = new HashMap<>();
-        withNull.put("desktopVersion", null);
-        assertThat(conversationWith("desktop", withNull).clientVersion()).isNull();
-        assertThat(conversationWith("desktop", withNull).sourceBadge()).isEqualTo("desktop");
+    @Test
+    void largeInputDoesNotCauseQuadraticTrimmingAndReturnsNullUnder100ms() {
+        String manyVs = "v".repeat(100_000);
+        String paddedManyVs = " ".repeat(100_000) + manyVs;
 
-        for (Object invalid : List.of("", "   ", "v", "V", "vv", "v   ", "  V  ",
-            Integer.valueOf(123), List.of("1.3.1"), Map.of("v", "1.3.1"))) {
-            Conversation conv = conversationWith("desktop", Map.of("desktopVersion", invalid));
-            assertThat(conv.clientVersion()).as("invalid=%s", invalid).isNull();
-            assertThat(conv.sourceBadge()).as("invalid=%s", invalid).isEqualTo("desktop");
+        // Warm up JIT once before measuring
+        Conversation.normalizeVersion("1.0.0");
+
+        long startNanos = System.nanoTime();
+        String result1 = Conversation.normalizeVersion(manyVs);
+        String result2 = Conversation.normalizeVersion(paddedManyVs);
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+
+        assertThat(result1).isNull();
+        assertThat(result2).isNull();
+        assertThat(elapsedMs).isLessThan(100L);
+    }
+
+    @Test
+    void nonStringNullOrUnicodeBlankVersionFallsBackToBareSourceAcrossAllSources() {
+        for (String source : List.of("desktop", "claude-plugin", "web")) {
+            String key =
+                "claude-plugin".equals(source) ? ConversationSetting.PLUGIN_VERSION.getValue()
+                    : ConversationSetting.DESKTOP_VERSION.getValue();
+
+            assertThat(conversationWith(source, Map.of()).clientVersion()).isNull();
+            assertThat(conversationWith(source, Map.of()).sourceBadge()).isEqualTo(source);
+
+            assertThat(conversationWith(source, null).clientVersion()).isNull();
+            assertThat(conversationWith(source, null).sourceBadge()).isEqualTo(source);
+
+            Map<String, Object> withNull = new HashMap<>();
+            withNull.put(key, null);
+            assertThat(conversationWith(source, withNull).clientVersion()).isNull();
+            assertThat(conversationWith(source, withNull).sourceBadge()).isEqualTo(source);
+
+            for (Object invalid : List.of("", " \t\n\u2003 ", Integer.valueOf(123), Boolean.TRUE,
+                List.of(), Map.of())) {
+                Conversation conv = conversationWith(source, Map.of(key, invalid));
+                assertThat(conv.clientVersion()).as("source=%s invalid=%s", source, invalid)
+                    .isNull();
+                assertThat(conv.sourceBadge()).as("source=%s invalid=%s", source, invalid)
+                    .isEqualTo(source);
+            }
         }
     }
 
@@ -100,7 +139,7 @@ class ConversationTest {
         assertThat(blankSource.clientVersion()).isNull();
         assertThat(blankSource.sourceBadge()).isEqualTo("web");
 
-        assertThat(Conversation.formatSourceBadge(null, "1.3.1")).isEqualTo("web v1.3.1");
+        assertThat(Conversation.formatSourceBadge(null, "1.3.1")).isEqualTo("web 1.3.1");
         assertThat(Conversation.formatSourceBadge("  ", null)).isEqualTo("web");
     }
 }

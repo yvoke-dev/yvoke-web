@@ -843,7 +843,7 @@ public class ChatThreadRenderingIT {
     }
 
     @Test
-    @DisplayName("Renders versioned source badges in thread header and admin table while keeping sidebar badge bare")
+    @DisplayName("Renders versioned source badges in thread header and admin table while keeping sidebar badge bare and HTML-escaped")
     public void rendersVersionedSourceBadgesInThreadHeaderAndAdminTableWhileSidebarRemainsBare()
         throws Exception {
         String userOid = "source-badge-user-oid";
@@ -854,41 +854,56 @@ public class ChatThreadRenderingIT {
         UUID desktopVerId = UUID.randomUUID();
         UUID desktopLegacyId = UUID.randomUUID();
         UUID pluginVerId = UUID.randomUUID();
+        UUID desktopXssId = UUID.randomUUID();
         jdbcClient.sql("""
             INSERT INTO conversations (id, user_id, title, settings, source, area)
             VALUES (:id1, :uid, 'Desktop Versioned', '{"desktopVersion": "1.3.1"}'::jsonb, 'desktop', 'OIM'),
                    (:id2, :uid, 'Desktop Legacy', '{}'::jsonb, 'desktop', 'OIM'),
-                   (:id3, :uid, 'Plugin Versioned', '{"pluginVersion": "0.4.2"}'::jsonb, 'claude-plugin', 'OIM')
+                   (:id3, :uid, 'Plugin Versioned', '{"pluginVersion": "0.4.2"}'::jsonb, 'claude-plugin', 'OIM'),
+                   (:id4, :uid, 'Desktop XSS', '{"desktopVersion": "1.3.1-<script>alert(1)</script>"}'::jsonb, 'desktop', 'OIM')
             """)
             .param("id1", desktopVerId)
             .param("id2", desktopLegacyId)
             .param("id3", pluginVerId)
+            .param("id4", desktopXssId)
             .param("uid", ownerId)
             .update();
 
         try {
-            // 1. Versioned desktop conversation: header has "desktop v1.3.1" with text-transform: none,
-            // while sidebar has bare "desktop"
+            // 1. Versioned desktop conversation: header has "desktop 1.3.1" with badge-info & text-transform: none,
+            // while sidebar has bare "desktop" and never leaks version strings
             String desktopVerHtml = mockMvc.perform(get("/chat/" + desktopVerId).with(login).with(csrf()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(desktopVerHtml)
-                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">desktop v1.3.1</span>")
-                .contains("style=\"font-size: 0.6rem; padding: 0.1rem 0.35rem; text-transform: capitalize; border-radius: 4px;\">desktop</span>");
+            String desktopVerHeader = extractRegion(desktopVerHtml, "<header class=\"chat-thread-header\">", "</header>");
+            String desktopVerSidebar = extractRegion(desktopVerHtml, "<aside", "</aside>");
+
+            assertHeaderBadge(desktopVerHeader, "badge badge-info", "desktop 1.3.1");
+            assertThat(desktopVerSidebar).doesNotContain("1.3.1").doesNotContain("0.4.2")
+                .doesNotContain("<script>alert(1)</script>");
+            String desktopSidebarLink = sidebarConversationLink(desktopVerSidebar, desktopVerId);
+            assertThat(desktopSidebarLink).contains(">desktop</span>");
 
             // 2. Legacy desktop conversation without desktopVersion: header has bare "desktop"
             String desktopLegacyHtml = mockMvc.perform(get("/chat/" + desktopLegacyId).with(login).with(csrf()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(desktopLegacyHtml)
-                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">desktop</span>")
-                .doesNotContain("desktop v");
+            String desktopLegacyHeader = extractRegion(desktopLegacyHtml, "<header class=\"chat-thread-header\">", "</header>");
+            assertHeaderBadge(desktopLegacyHeader, "badge badge-info", "desktop");
 
-            // 3. Versioned claude-plugin conversation: header has "claude-plugin v0.4.2"
+            // 3. Versioned claude-plugin conversation: header has "claude-plugin 0.4.2"
             String pluginVerHtml = mockMvc.perform(get("/chat/" + pluginVerId).with(login).with(csrf()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(pluginVerHtml)
-                .contains("style=\"text-transform: none; padding: 0.15rem 0.5rem; font-size: 0.75rem; border-radius: 4px;\">claude-plugin v0.4.2</span>");
+            String pluginVerHeader = extractRegion(pluginVerHtml, "<header class=\"chat-thread-header\">", "</header>");
+            assertHeaderBadge(pluginVerHeader, "badge badge-muted", "claude-plugin 0.4.2");
 
-            // 4. Admin conversations table renders versioned badges with text-transform: none
+            // 4. Stored XSS payload in desktopVersion is HTML-escaped in thread header
+            String desktopXssHtml = mockMvc.perform(get("/chat/" + desktopXssId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(desktopXssHtml).doesNotContain("<script>alert(1)</script>");
+            String desktopXssHeader = extractRegion(desktopXssHtml, "<header class=\"chat-thread-header\">", "</header>");
+            assertHeaderBadge(desktopXssHeader, "badge badge-info",
+                "desktop 1.3.1-&lt;script&gt;alert(1)&lt;/script&gt;");
+
+            // 5. Admin conversations table isolates each conversation's <tr> row and escapes XSS
             var adminLogin = oidcLogin()
                 .idToken(token -> token.claim("oid", userOid).claim("name", "Admin").claim("email", "source-badge@local"))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
@@ -896,17 +911,63 @@ public class ChatThreadRenderingIT {
                     .param("userIds", ownerId.toString())
                     .with(adminLogin))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(adminHtml)
-                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">desktop v1.3.1</span>")
-                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">desktop</span>")
-                .contains("<span class=\"badge badge-muted\" style=\"text-transform: none;\">claude-plugin v0.4.2</span>");
+
+            assertThat(adminHtml).doesNotContain("<script>alert(1)</script>");
+            assertAdminRowSourceBadge(adminHtml, desktopVerId, "desktop 1.3.1");
+            assertAdminRowSourceBadge(adminHtml, desktopLegacyId, "desktop");
+            assertAdminRowSourceBadge(adminHtml, pluginVerId, "claude-plugin 0.4.2");
+            assertAdminRowSourceBadge(adminHtml, desktopXssId,
+                "desktop 1.3.1-&lt;script&gt;alert(1)&lt;/script&gt;");
         } finally {
-            jdbcClient.sql("DELETE FROM conversations WHERE id IN (:id1, :id2, :id3)")
+            jdbcClient.sql("DELETE FROM conversations WHERE id IN (:id1, :id2, :id3, :id4)")
                 .param("id1", desktopVerId)
                 .param("id2", desktopLegacyId)
                 .param("id3", pluginVerId)
+                .param("id4", desktopXssId)
                 .update();
         }
+    }
+
+    private static String extractRegion(String html, String startMarker, String endMarker) {
+        int start = html.indexOf(startMarker);
+        assertThat(start).as("missing start marker: %s", startMarker).isGreaterThanOrEqualTo(0);
+        int end = html.indexOf(endMarker, start);
+        assertThat(end).as("missing end marker: %s", endMarker).isGreaterThan(start);
+        return html.substring(start, end + endMarker.length());
+    }
+
+    private static void assertHeaderBadge(String headerHtml, String expectedBadgeClass,
+        String expectedInnerHtml) {
+        Matcher m = Pattern.compile("(<span[^>]*class=\"" + Pattern.quote(expectedBadgeClass)
+            + "\"[^>]*>)([^<]*)</span>").matcher(headerHtml);
+        assertThat(m.find()).as("expected badge span with class '%s' in header: %s",
+            expectedBadgeClass, headerHtml).isTrue();
+        assertThat(m.group(1)).contains("text-transform: none");
+        assertThat(m.group(2)).isEqualTo(expectedInnerHtml);
+    }
+
+    private static String sidebarConversationLink(String sidebarHtml, UUID convId) {
+        Matcher m = Pattern.compile(
+            "<a[^>]*href=\"/chat/" + Pattern.quote(convId.toString()) + "\"[^>]*>[\\s\\S]*?</a>")
+            .matcher(sidebarHtml);
+        assertThat(m.find()).as("missing sidebar link for conversation %s", convId).isTrue();
+        return m.group();
+    }
+
+    private static void assertAdminRowSourceBadge(String adminHtml, UUID convId,
+        String expectedInnerHtml) {
+        Matcher rowMatcher = Pattern.compile(
+            "<tr[^>]*>(?:(?!</tr>)[\\s\\S])*?" + Pattern.quote(convId.toString()) + "[\\s\\S]*?</tr>")
+            .matcher(adminHtml);
+        assertThat(rowMatcher.find()).as("missing admin <tr> row for conversation %s", convId)
+            .isTrue();
+        String rowHtml = rowMatcher.group();
+
+        Matcher badgeMatcher = Pattern.compile(
+            "(<span[^>]*class=\"badge badge-muted\"[^>]*>)([^<]*)</span>").matcher(rowHtml);
+        assertThat(badgeMatcher.find()).as("missing source badge span in row: %s", rowHtml).isTrue();
+        assertThat(badgeMatcher.group(1)).contains("text-transform: none");
+        assertThat(badgeMatcher.group(2)).isEqualTo(expectedInnerHtml);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
