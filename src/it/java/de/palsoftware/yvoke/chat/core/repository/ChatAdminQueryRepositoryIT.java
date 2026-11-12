@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -542,6 +543,111 @@ public class ChatAdminQueryRepositoryIT {
             jdbcTemplate.update("DELETE FROM messages WHERE content LIKE 'CAQR-IT%'");
             jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAQR-IT%'");
             jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
+        }
+    }
+
+    @Test
+    void listFilteredConversations_extractsClientVersionAndFormatsSourceBadgePerSource() {
+        UUID user = createUser("caqr-it-versions@example.com", "CAQR Versions User");
+
+        UUID desktopVerId = UUID.randomUUID();
+        conversationRepository.create(desktopVerId, user, "CAQR-IT Desktop Versioned",
+            Map.of("desktopVersion", "1.3.1"), "desktop");
+
+        UUID desktopUnverId = UUID.randomUUID();
+        conversationRepository.create(desktopUnverId, user, "CAQR-IT Desktop Unversioned",
+            Map.of(), "desktop");
+
+        UUID pluginVerId = UUID.randomUUID();
+        conversationRepository.create(pluginVerId, user, "CAQR-IT Plugin Versioned",
+            Map.of("pluginVersion", "0.4.2"), "claude-plugin");
+
+        UUID webId = UUID.randomUUID();
+        conversationRepository.create(webId, user, "CAQR-IT Web",
+            Map.of("desktopVersion", "9.9.9"), "web");
+
+        List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(
+            new ConversationFilter(Set.of(user), false, TimeFilter.all(), FeedbackFilter.ALL),
+            10, 0L);
+
+        assertThat(results).hasSize(4);
+        Map<UUID, AdminConversation> byId = new HashMap<>();
+        for (AdminConversation c : results) {
+            byId.put(c.id(), c);
+        }
+
+        assertThat(byId.get(desktopVerId).clientVersion()).isEqualTo("1.3.1");
+        assertThat(byId.get(desktopVerId).sourceBadge()).isEqualTo("desktop 1.3.1");
+
+        assertThat(byId.get(desktopUnverId).clientVersion()).isNull();
+        assertThat(byId.get(desktopUnverId).sourceBadge()).isEqualTo("desktop");
+
+        assertThat(byId.get(pluginVerId).clientVersion()).isEqualTo("0.4.2");
+        assertThat(byId.get(pluginVerId).sourceBadge()).isEqualTo("claude-plugin 0.4.2");
+
+        assertThat(byId.get(webId).clientVersion()).isNull();
+        assertThat(byId.get(webId).sourceBadge()).isEqualTo("web");
+    }
+
+    @Test
+    void listFilteredConversations_handlesNullBlankAndVerbatimClientVersionsAcrossSources() {
+        UUID user = createUser("caqr-it-null-blank@example.com", "CAQR Null Blank User");
+
+        for (String source : List.of("desktop", "claude-plugin")) {
+            String key = "desktop".equals(source) ? "desktopVersion" : "pluginVersion";
+            String otherKey = "desktop".equals(source) ? "pluginVersion" : "desktopVersion";
+
+            List<String> blankOrCrossJsonPayloads = List.of(
+                "{\"" + key + "\": null}",
+                "{\"" + key + "\": \"\"}",
+                "{\"" + key + "\": \"   \"}",
+                "{\"" + key + "\": \"\\t\\u2003\"}",
+                "{\"" + otherKey + "\": \"1.3.1\"}");
+
+            List<UUID> unversionedIds = new ArrayList<>();
+            for (int i = 0; i < blankOrCrossJsonPayloads.size(); i++) {
+                UUID id = UUID.randomUUID();
+                unversionedIds.add(id);
+                jdbcTemplate.update(
+                    "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                    id, user, "CAQR-IT BlankCross " + source + " " + i,
+                    blankOrCrossJsonPayloads.get(i), source);
+            }
+
+            UUID versionWordId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                versionWordId, user, "CAQR-IT VersionWord " + source,
+                "{\"" + key + "\": \"Version 1.3.1\"}", source);
+
+            UUID vPrefixedId = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
+                vPrefixedId, user, "CAQR-IT VPrefixed " + source,
+                "{\"" + key + "\": \"v0.4.2\"}", source);
+
+            List<AdminConversation> results = chatAdminQueryRepository.listFilteredConversations(
+                new ConversationFilter(Set.of(user), false, TimeFilter.all(), FeedbackFilter.ALL),
+                50, 0L);
+            Map<UUID, AdminConversation> byId = new HashMap<>();
+            for (AdminConversation c : results) {
+                byId.put(c.id(), c);
+            }
+
+            for (UUID unversionedId : unversionedIds) {
+                AdminConversation unversioned = byId.get(unversionedId);
+                assertThat(unversioned).isNotNull();
+                assertThat(unversioned.clientVersion())
+                    .as("source=%s id=%s", source, unversionedId).isNull();
+                assertThat(unversioned.sourceBadge())
+                    .as("source=%s id=%s", source, unversionedId).isEqualTo(source);
+            }
+
+            assertThat(byId.get(versionWordId).clientVersion()).isEqualTo("Version 1.3.1");
+            assertThat(byId.get(versionWordId).sourceBadge()).isEqualTo(source + " Version 1.3.1");
+
+            assertThat(byId.get(vPrefixedId).clientVersion()).isEqualTo("v0.4.2");
+            assertThat(byId.get(vPrefixedId).sourceBadge()).isEqualTo(source + " v0.4.2");
         }
     }
 }

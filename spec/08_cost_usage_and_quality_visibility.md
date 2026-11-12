@@ -20,7 +20,7 @@ feedback triage and answer traces; every user rates answers.
 | **Open the conversation behind any row** | Conversation and message rows link into the conversation, so an expensive turn can be read in full. Rows also show the user, models, in-depth profile and playbooks involved. |
 | **Cache savings reported separately** | Where a call was answered by replaying an earlier identical request instead of running the model, it is billed at zero and its list price is reported as *Saved by Cache*, with a hit rate. **No AI service currently in use replays**, so this figure covers past usage only and no longer grows. |
 | **Editable model prices, with a coverage check** | Administrators set the four rates per model. The list exports and imports as a file. A companion view lists every model actually used beside every priced one and counts those still missing a price. |
-| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, whether it came from web chat or the desktop app, and its feedback summary. Filter by multi-selected users (including anonymous/deleted), time periods (presets or custom date range on start time), and feedback rating status (any, positive, negative, or unrated). Conversations open read-only. An overview header displays aggregated conversation and feedback counts, alongside a scrollable per-user statistics breakdown. |
+| **Register of all conversations** | Page through every conversation with owner name and email, title, start and last-active times, its source badge (showing `web`, `desktop <version>`, or `claude-plugin <version>` when a client release version was recorded, or the bare source label when unversioned), and its feedback summary. Filter by multi-selected users (including anonymous/deleted), time periods (presets or custom date range on start time), and feedback rating status (any, positive, negative, or unrated). Conversations open read-only. An overview header displays aggregated conversation and feedback counts, alongside a scrollable per-user statistics breakdown. |
 | **Effort shown on every answer** | Each answer shows how much text it read, re-used, thought with and wrote. Users see effort, never money. |
 | **Rate an answer with a comment** | Thumbs up and down on every answer; choosing one opens a comment box. |
 | **Feedback dashboard** | The satisfaction ratio and counts of helpful and unhelpful ratings, then filter by rating, review status and time. Each entry shows the comment and links to its conversation. |
@@ -74,6 +74,10 @@ feedback triage and answer traces; every user rates answers.
   total conversations, helpful (👍) and unhelpful (👎) answer totals, and distinct user counts in the
   active filter scope. A per-user breakdown displays conversation volume and thumbs up/down counts for
   up to the top 50 active users.
+- **The conversation register's Source column shows the recorded client release version.** In the *User
+  Conversations* table, conversations created from the desktop app or rated from the Claude plugin display
+  `desktop <version>` or `claude-plugin <version>` when a release version was recorded on the conversation,
+  and fall back to the bare source label (`desktop`, `claude-plugin`, `web`) when unversioned.
 - **Unified message trace retrieval endpoint (`GET /chat/{id}/messages/{messageId}/trace`).** Returns a
   standardized trace payload distinguishing single-agent traces (`mode: "single"`, including retrieved
   passage IDs and verbatim tool call records) from orchestrated multi-agent runs (`mode: "mas"`, including

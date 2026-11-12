@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -522,6 +523,50 @@ class PluginFeedbackServiceTest {
                 "reported by claude-plugin"),
             new CitationCheckResult("[chunk_id=bare-chunk-id]", "chunk", CitationStatus.UNVERIFIED,
                 "reported by claude-plugin"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void normalizesPluginVersionVerbatimWithUnicodeWhitespaceAndMaxLengthBoundaries() {
+        when(conversationRepository.findById(any())).thenReturn(Optional.empty());
+        when(messageRepository.findById(any())).thenReturn(Optional.empty());
+
+        // 1. "v0.4.2" is stored verbatim under ConversationSetting.PLUGIN_VERSION.getValue()
+        service.submitFeedback(new PluginFeedbackRequest("turn-ver-verbatim", 1, null, "Q", "A",
+            "OIM", "single", null, null, null, List.of(), null, "claude-plugin", "v0.4.2"));
+        ArgumentCaptor<Map<String, Object>> captor1 = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), captor1.capture(),
+            eq("claude-plugin"), eq("OIM"));
+        assertThat(captor1.getValue()).containsEntry(ConversationSetting.PLUGIN_VERSION.getValue(),
+            "v0.4.2");
+
+        // 2. Unicode EM SPACE ("\u2003") is treated as blank and omitted from settings
+        clearInvocations(conversationRepository);
+        service.submitFeedback(new PluginFeedbackRequest("turn-ver-emspace", 1, null, "Q", "A",
+            "OIM", "single", null, null, null, List.of(), null, "claude-plugin", "\u2003"));
+        ArgumentCaptor<Map<String, Object>> captor2 = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), captor2.capture(),
+            eq("claude-plugin"), eq("OIM"));
+        assertThat(captor2.getValue())
+            .doesNotContainKey(ConversationSetting.PLUGIN_VERSION.getValue());
+
+        // 3. "\u2003" + "1".repeat(256) succeeds and stores "1".repeat(256)
+        clearInvocations(conversationRepository);
+        String exact256 = "1".repeat(256);
+        service.submitFeedback(new PluginFeedbackRequest("turn-ver-256", 1, null, "Q", "A", "OIM",
+            "single", null, null, null, List.of(), null, "claude-plugin", "\u2003" + exact256));
+        ArgumentCaptor<Map<String, Object>> captor3 = ArgumentCaptor.forClass(Map.class);
+        verify(conversationRepository).createIfAbsent(any(), eq(userId), any(), captor3.capture(),
+            eq("claude-plugin"), eq("OIM"));
+        assertThat(captor3.getValue()).containsEntry(ConversationSetting.PLUGIN_VERSION.getValue(),
+            exact256);
+
+        // 4. "1".repeat(257) throws IllegalArgumentException
+        assertThatThrownBy(() -> service
+            .submitFeedback(new PluginFeedbackRequest("turn-ver-257", 1, null, "Q", "A", "OIM",
+                "single", null, null, null, List.of(), null, "claude-plugin", "1".repeat(257))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("pluginVersion must not exceed 256 characters.");
     }
 
     @Nested

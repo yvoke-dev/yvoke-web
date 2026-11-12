@@ -17,6 +17,7 @@ import static org.mockito.Mockito.*;
 import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -462,5 +463,249 @@ public class DesktopSyncServiceTest {
             .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
         verify(messageRepository, never()).save(any());
+    }
+
+    // --- desktopVersion validation, normalization & immutability ------------
+
+    @Test
+    public void createConversationPreservesDesktopVersionVerbatimAndHandlesImmutableMapOf() {
+        when(conversationRepository.findById(any())).thenAnswer(
+            inv -> Optional.of(ownConversation(inv.getArgument(0), "New Conversation")));
+
+        for (Map.Entry<String, String> entry : Map.of(" v1.3.1 ", "v1.3.1", "Version 1.3.1",
+            "Version 1.3.1", "v", "v", "\t" + "1".repeat(256) + "\u2003", "1".repeat(256))
+            .entrySet()) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(any())).thenAnswer(
+                inv -> Optional.of(ownConversation(inv.getArgument(0), "New Conversation")));
+
+            service.createConversation(currentUser, "Test",
+                Map.of("desktopVersion", entry.getKey(), "model", "claude-sonnet-4-6"));
+
+            verify(conversationRepository).create(any(UUID.class), eq(currentUserId), eq("Test"),
+                eq(Map.of("desktopVersion", entry.getValue(), "model", "claude-sonnet-4-6")),
+                eq("desktop"));
+        }
+    }
+
+    @Test
+    public void createConversationOmitsBlankUnicodeWhitespaceOrNullDesktopVersion() {
+        for (String blank : List.of("", "   ", "\u2003", "\t\n\u2003")) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(any())).thenAnswer(
+                inv -> Optional.of(ownConversation(inv.getArgument(0), "New Conversation")));
+
+            service.createConversation(currentUser, "Test",
+                Map.of("desktopVersion", blank, "model", "claude-sonnet-4-6"));
+
+            verify(conversationRepository).create(any(UUID.class), eq(currentUserId), eq("Test"),
+                eq(Map.of("model", "claude-sonnet-4-6")), eq("desktop"));
+        }
+
+        clearInvocations(conversationRepository);
+        when(conversationRepository.findById(any())).thenAnswer(
+            inv -> Optional.of(ownConversation(inv.getArgument(0), "New Conversation")));
+        Map<String, Object> withNull = new HashMap<>();
+        withNull.put("desktopVersion", null);
+        withNull.put("model", "claude-sonnet-4-6");
+        service.createConversation(currentUser, "Test", withNull);
+
+        verify(conversationRepository).create(any(UUID.class), eq(currentUserId), eq("Test"),
+            eq(Map.of("model", "claude-sonnet-4-6")), eq("desktop"));
+
+        // Blank-only map produces Map.of()
+        clearInvocations(conversationRepository);
+        when(conversationRepository.findById(any())).thenAnswer(
+            inv -> Optional.of(ownConversation(inv.getArgument(0), "New Conversation")));
+        service.createConversation(currentUser, "Test", Map.of("desktopVersion", "\u2003"));
+        verify(conversationRepository).create(any(UUID.class), eq(currentUserId), eq("Test"),
+            eq(Map.of()), eq("desktop"));
+    }
+
+    @Test
+    public void createConversationRejectsNonStringOrOversizedDesktopVersionWith400() {
+        for (Object nonString : List.of(Integer.valueOf(123), Boolean.TRUE, List.of("1.3.1"),
+            Map.of("v", "1.3.1"))) {
+            assertThatThrownBy(() -> service.createConversation(currentUser, "Test",
+                Map.of("desktopVersion", nonString)))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST))
+                .hasMessageContaining("Invalid desktopVersion: must be a string");
+        }
+
+        for (String oversized : List.of("1".repeat(257), " " + "1".repeat(257) + " ",
+            "v".repeat(100_000))) {
+            assertThatThrownBy(() -> service.createConversation(currentUser, "Test",
+                Map.of("desktopVersion", oversized)))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST))
+                .hasMessageContaining("Invalid desktopVersion: exceeds maximum length");
+        }
+
+        verify(conversationRepository, never()).create(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    public void updateConversationPreservesOriginalDesktopVersionVerbatimOnFullSettingsPatch() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation existing = new Conversation(conversationId, currentUserId, "Title",
+            Map.of("desktopVersion", "1.3.0", "model", "claude-sonnet-4-6"), Instant.now(),
+            Instant.now(), List.of(), "desktop", null);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(existing));
+
+        // 1. Full settings PATCH with overwrite attempt ("1.4.0") keeps "1.3.0"
+        service.updateConversation(conversationId, currentUser, null,
+            Map.of("model", "claude-opus-4-6", "desktopVersion", "1.4.0"));
+        verify(conversationRepository).updateSettings(conversationId,
+            Map.of("model", "claude-opus-4-6", "desktopVersion", "1.3.0"));
+
+        // 2. Overwrite attempt alongside camelCase thinkingLevel keeps verbatim existing "v1.3.0"
+        Conversation existingWithV = new Conversation(conversationId, currentUserId, "Title",
+            Map.of("desktopVersion", "v1.3.0", "model", "claude-sonnet-4-6"), Instant.now(),
+            Instant.now(), List.of(), "desktop", null);
+        clearInvocations(conversationRepository);
+        when(conversationRepository.findById(conversationId))
+            .thenReturn(Optional.of(existingWithV));
+        service.updateConversation(conversationId, currentUser, null,
+            Map.of("desktopVersion", "1.4.0", "thinkingLevel", "high"));
+        verify(conversationRepository).updateSettings(conversationId,
+            Map.of("desktopVersion", "v1.3.0", "thinking-level", "high"));
+
+        // 3. Omission of desktopVersion in full settings PATCH preserves existing version
+        clearInvocations(conversationRepository);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(existing));
+        service.updateConversation(conversationId, currentUser, null,
+            Map.of("model", "claude-opus-4-6"));
+        verify(conversationRepository).updateSettings(conversationId,
+            Map.of("desktopVersion", "1.3.0", "model", "claude-opus-4-6"));
+
+        // 4. Null or empty settings updates title without calling updateSettings
+        clearInvocations(conversationRepository);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(existing));
+        service.updateConversation(conversationId, currentUser, "Renamed", null);
+        service.updateConversation(conversationId, currentUser, "Renamed", Map.of());
+        verify(conversationRepository, times(2)).updateTitle(conversationId, "Renamed");
+        verify(conversationRepository, never()).updateSettings(any(), any());
+    }
+
+    @Test
+    public void updateConversationSkipsUpdateSettingsOnBlankOrNullVersionOnlyPatchWithoutWipingModel() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation unversioned = new Conversation(conversationId, currentUserId, "Title",
+            Map.of("model", "claude-sonnet-4-6"), Instant.now(), Instant.now(), List.of(),
+            "desktop", null);
+        Conversation versioned = new Conversation(conversationId, currentUserId, "Title",
+            Map.of("desktopVersion", "1.3.0", "model", "claude-sonnet-4-6"), Instant.now(),
+            Instant.now(), List.of(), "desktop", null);
+
+        Map<String, Object> nullVersionMap = new HashMap<>();
+        nullVersionMap.put("desktopVersion", null);
+
+        List<Map<String, Object>> blankPatches = List.of(Map.of("desktopVersion", ""),
+            Map.of("desktopVersion", "   "), Map.of("desktopVersion", "\u2003"), nullVersionMap);
+
+        for (Conversation target : List.of(unversioned, versioned)) {
+            for (Map<String, Object> patch : blankPatches) {
+                clearInvocations(conversationRepository);
+                when(conversationRepository.findById(conversationId))
+                    .thenReturn(Optional.of(target));
+
+                service.updateConversation(conversationId, currentUser, "Renamed", patch);
+
+                verify(conversationRepository).updateTitle(conversationId, "Renamed");
+                verify(conversationRepository, never()).updateSettings(any(), any());
+            }
+        }
+    }
+
+    @Test
+    public void updateConversationValidatesIncomingDesktopVersionBeforeUpdatingTitleOrSettings() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation existing = new Conversation(conversationId, currentUserId, "Title",
+            Map.of("desktopVersion", "1.3.0"), Instant.now(), Instant.now(), List.of(), "desktop",
+            null);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.updateConversation(conversationId, currentUser,
+            "New Title", Map.of("desktopVersion", 123)))
+            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST))
+            .hasMessageContaining("Invalid desktopVersion: must be a string");
+
+        for (String oversized : List.of("1".repeat(257), " " + "1".repeat(257) + " ",
+            "v".repeat(100_000))) {
+            assertThatThrownBy(() -> service.updateConversation(conversationId, currentUser,
+                "New Title", Map.of("desktopVersion", oversized)))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST))
+                .hasMessageContaining("Invalid desktopVersion: exceeds maximum length");
+        }
+
+        verify(conversationRepository, never()).updateTitle(any(), any());
+        verify(conversationRepository, never()).updateSettings(any(), any());
+
+        // Padded 256-char version is accepted on update backfill
+        Conversation unversioned = new Conversation(conversationId, currentUserId, "Title",
+            Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", null);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(unversioned));
+        service.updateConversation(conversationId, currentUser, null,
+            Map.of("desktopVersion", "\t" + "1".repeat(256) + "\u2003"));
+        verify(conversationRepository).updateSettings(conversationId,
+            Map.of("desktopVersion", "1".repeat(256)));
+    }
+
+    @Test
+    public void updateConversationHandlesNullNonStringOrBlankExistingDesktopVersionAndBackfillsUnversioned() {
+        UUID conversationId = UUID.randomUUID();
+
+        // 1. Existing settings null, non-String, or blank: PATCH with Map.of("model",
+        // "claude-opus-4-6")
+        // neither NPEs nor copies dirty/blank values
+        Conversation nullSettingsConv = new Conversation(conversationId, currentUserId, "Legacy",
+            null, Instant.now(), Instant.now(), List.of(), "desktop", null);
+        Conversation nonStringVersionConv =
+            new Conversation(conversationId, currentUserId, "Legacy", Map.of("desktopVersion", 123),
+                Instant.now(), Instant.now(), List.of(), "desktop", null);
+        Conversation blankVersionConv = new Conversation(conversationId, currentUserId, "Legacy",
+            Map.of("desktopVersion", "   "), Instant.now(), Instant.now(), List.of(), "desktop",
+            null);
+
+        for (Conversation target : List.of(nullSettingsConv, nonStringVersionConv,
+            blankVersionConv)) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(target));
+
+            service.updateConversation(conversationId, currentUser, null,
+                Map.of("model", "claude-opus-4-6"));
+
+            verify(conversationRepository).updateSettings(conversationId,
+                Map.of("model", "claude-opus-4-6"));
+        }
+
+        // 2. Unversioned conversation: PATCH supplying desktopVersion + model stores both
+        Conversation unversioned = new Conversation(conversationId, currentUserId, "Legacy",
+            Map.of("model", "claude-sonnet-4-6"), Instant.now(), Instant.now(), List.of(),
+            "desktop", null);
+        for (String verbatim : List.of("1.3.1", "v1.3.1", "Version 1.3.1")) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(conversationId))
+                .thenReturn(Optional.of(unversioned));
+
+            service.updateConversation(conversationId, currentUser, null,
+                Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
+
+            verify(conversationRepository).updateSettings(conversationId,
+                Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
+        }
+
+        // 3. Version-only PATCH on versioned conversation replaces map while keeping creation
+        // version
+        clearInvocations(conversationRepository);
+        Conversation versioned = new Conversation(conversationId, currentUserId, "Versioned",
+            Map.of("desktopVersion", "1.3.0", "model", "claude-sonnet-4-6"), Instant.now(),
+            Instant.now(), List.of(), "desktop", null);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(versioned));
+
+        service.updateConversation(conversationId, currentUser, null,
+            Map.of("desktopVersion", "1.4.0"));
+
+        verify(conversationRepository).updateSettings(conversationId,
+            Map.of("desktopVersion", "1.3.0"));
     }
 }

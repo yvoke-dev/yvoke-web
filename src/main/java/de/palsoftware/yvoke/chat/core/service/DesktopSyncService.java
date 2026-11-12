@@ -1,17 +1,18 @@
 package de.palsoftware.yvoke.chat.core.service;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
+import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
-
-
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
+import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,9 +35,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class DesktopSyncService {
     private static final Logger log = LoggerFactory.getLogger(DesktopSyncService.class);
 
-    static final String SOURCE_DESKTOP = "desktop";
+    static final String SOURCE_DESKTOP = ConversationSource.DESKTOP.getValue();
     static final String DEFAULT_TITLE = "New Conversation";
     private static final int MAX_AUTO_TITLE_LENGTH = 80;
+    private static final int MAX_DESKTOP_VERSION_LENGTH = 256;
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
@@ -66,10 +68,10 @@ public class DesktopSyncService {
     }
 
     public Conversation createConversation(User user, String title, Map<String, Object> settings) {
+        Map<String, Object> prepared = validateSettings(settings);
         UUID id = UUID.randomUUID();
         String effectiveTitle = (title == null || title.isBlank()) ? DEFAULT_TITLE : title.trim();
-        conversationRepository.create(id, user.id(), effectiveTitle,
-            settings == null ? Map.of() : settings, SOURCE_DESKTOP);
+        conversationRepository.create(id, user.id(), effectiveTitle, prepared, SOURCE_DESKTOP);
         log.info("Desktop conversation created: id={}, user={}", id, user.id());
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -163,17 +165,51 @@ public class DesktopSyncService {
     @Transactional
     public void updateConversation(UUID conversationId, User user, String title,
         Map<String, Object> settings) {
-        verifyOwnership(conversationId, user);
+        Conversation conversation = verifyOwnership(conversationId, user);
+        Map<String, Object> mapped = validateSettings(settings);
         if (title != null && !title.isBlank()) {
             conversationRepository.updateTitle(conversationId, title.trim());
         }
-        if (settings != null && !settings.isEmpty()) {
-            Map<String, Object> mapped = new HashMap<>(settings);
+        if (!mapped.isEmpty()) {
             if (mapped.containsKey("thinkingLevel")) {
                 mapped.put("thinking-level", mapped.remove("thinkingLevel"));
             }
+            String versionKey = ConversationSetting.DESKTOP_VERSION.getValue();
+            if (conversation.settings() != null
+                && conversation.settings().get(versionKey) instanceof String existing
+                && !existing.isBlank()) {
+                mapped.put(versionKey, existing);
+            }
             conversationRepository.updateSettings(conversationId, mapped);
         }
+    }
+
+    private static Map<String, Object> validateSettings(@Nullable Map<String, Object> settings) {
+        if (settings == null || settings.isEmpty()) {
+            return new HashMap<>();
+        }
+        Map<String, Object> copy = new HashMap<>(settings);
+        String key = ConversationSetting.DESKTOP_VERSION.getValue();
+        if (copy.containsKey(key)) {
+            Object raw = copy.get(key);
+            if (raw == null) {
+                copy.remove(key);
+            } else if (!(raw instanceof String str)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid desktopVersion: must be a string");
+            } else {
+                String stripped = str.strip();
+                if (stripped.isEmpty()) {
+                    copy.remove(key);
+                } else if (stripped.length() > MAX_DESKTOP_VERSION_LENGTH) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid desktopVersion: exceeds maximum length");
+                } else {
+                    copy.put(key, stripped);
+                }
+            }
+        }
+        return copy;
     }
 
     public void deleteConversation(UUID conversationId, User user) {

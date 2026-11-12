@@ -318,7 +318,7 @@ public class PluginFeedbackService {
         settings.put("client",
             client != null ? client : ConversationSource.CLAUDE_PLUGIN.getValue());
         if (pluginVersion != null) {
-            settings.put("pluginVersion", pluginVersion);
+            settings.put(ConversationSetting.PLUGIN_VERSION.getValue(), pluginVersion);
         }
         if (mode != null) {
             settings.put("mode", mode);
@@ -418,7 +418,7 @@ public class PluginFeedbackService {
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = value.strip();
         return trimmed.isEmpty() ? null : trimmed;
     }
 }
