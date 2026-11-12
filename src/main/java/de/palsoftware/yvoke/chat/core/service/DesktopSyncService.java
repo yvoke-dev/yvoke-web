@@ -38,6 +38,7 @@ public class DesktopSyncService {
     static final String SOURCE_DESKTOP = ConversationSource.DESKTOP.getValue();
     static final String DEFAULT_TITLE = "New Conversation";
     private static final int MAX_AUTO_TITLE_LENGTH = 80;
+    private static final int MAX_DESKTOP_VERSION_LENGTH = 256;
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
@@ -67,16 +68,10 @@ public class DesktopSyncService {
     }
 
     public Conversation createConversation(User user, String title, Map<String, Object> settings) {
-        SanitizedSettings sanitized = sanitizeSettings(settings);
-        Map<String, Object> toCreate = sanitized.otherSettings();
-        if (sanitized.incomingVersion() != null) {
-            toCreate.put(ConversationSetting.DESKTOP_VERSION.getValue(),
-                sanitized.incomingVersion());
-        }
+        Map<String, Object> prepared = validateSettings(settings);
         UUID id = UUID.randomUUID();
         String effectiveTitle = (title == null || title.isBlank()) ? DEFAULT_TITLE : title.trim();
-        conversationRepository.create(id, user.id(), effectiveTitle,
-            toCreate.isEmpty() ? Map.of() : toCreate, SOURCE_DESKTOP);
+        conversationRepository.create(id, user.id(), effectiveTitle, prepared, SOURCE_DESKTOP);
         log.info("Desktop conversation created: id={}, user={}", id, user.id());
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -167,65 +162,54 @@ public class DesktopSyncService {
         conversationRepository.updateTitle(conversationId, title.trim());
     }
 
-    private record SanitizedSettings(Map<String, Object> otherSettings,
-        @Nullable String incomingVersion) {}
-
     @Transactional
     public void updateConversation(UUID conversationId, User user, String title,
         Map<String, Object> settings) {
         Conversation conversation = verifyOwnership(conversationId, user);
-        SanitizedSettings sanitized = sanitizeSettings(settings);
+        Map<String, Object> mapped = validateSettings(settings);
         if (title != null && !title.isBlank()) {
             conversationRepository.updateTitle(conversationId, title.trim());
         }
-        String versionKey = ConversationSetting.DESKTOP_VERSION.getValue();
-        String existingVersion = Conversation.normalizeVersion(
-            conversation.settings() != null ? conversation.settings().get(versionKey) : null);
-        String effectiveVersion =
-            existingVersion != null ? existingVersion : sanitized.incomingVersion();
-        Map<String, Object> other = sanitized.otherSettings();
-        if (!other.isEmpty()) {
-            if (other.containsKey("thinkingLevel")) {
-                other.put("thinking-level", other.remove("thinkingLevel"));
+        if (!mapped.isEmpty()) {
+            if (mapped.containsKey("thinkingLevel")) {
+                mapped.put("thinking-level", mapped.remove("thinkingLevel"));
             }
-            if (effectiveVersion != null) {
-                other.put(versionKey, effectiveVersion);
+            String versionKey = ConversationSetting.DESKTOP_VERSION.getValue();
+            if (conversation.settings() != null
+                && conversation.settings().get(versionKey) instanceof String existing
+                && !existing.isBlank()) {
+                mapped.put(versionKey, existing);
             }
-            conversationRepository.updateSettings(conversationId, other);
-        } else if (existingVersion == null && sanitized.incomingVersion() != null) {
-            Map<String, Object> merged =
-                conversation.settings() != null ? new HashMap<>(conversation.settings())
-                    : new HashMap<>();
-            merged.put(versionKey, sanitized.incomingVersion());
-            conversationRepository.updateSettings(conversationId, merged);
+            conversationRepository.updateSettings(conversationId, mapped);
         }
     }
 
-    private static SanitizedSettings sanitizeSettings(@Nullable Map<String, Object> settings) {
+    private static Map<String, Object> validateSettings(@Nullable Map<String, Object> settings) {
         if (settings == null || settings.isEmpty()) {
-            return new SanitizedSettings(new HashMap<>(), null);
+            return new HashMap<>();
         }
-        Map<String, Object> other = new HashMap<>(settings);
+        Map<String, Object> copy = new HashMap<>(settings);
         String key = ConversationSetting.DESKTOP_VERSION.getValue();
-        String incomingVersion = null;
-        if (other.containsKey(key)) {
-            Object raw = other.remove(key);
-            if (raw != null) {
-                if (!(raw instanceof String str)) {
+        if (copy.containsKey(key)) {
+            Object raw = copy.get(key);
+            if (raw == null) {
+                copy.remove(key);
+            } else if (!(raw instanceof String str)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid desktopVersion: must be a string");
+            } else {
+                String stripped = str.strip();
+                if (stripped.isEmpty()) {
+                    copy.remove(key);
+                } else if (stripped.length() > MAX_DESKTOP_VERSION_LENGTH) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Invalid desktopVersion: must be a string");
-                }
-                if (!str.isBlank()) {
-                    String normalized = Conversation.normalizeVersion(str);
-                    if (normalized == null) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Invalid desktopVersion: exceeds maximum length");
-                    }
-                    incomingVersion = normalized;
+                        "Invalid desktopVersion: exceeds maximum length");
+                } else {
+                    copy.put(key, stripped);
                 }
             }
         }
-        return new SanitizedSettings(other, incomingVersion);
+        return copy;
     }
 
     public void deleteConversation(UUID conversationId, User user) {

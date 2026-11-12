@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class ConversationTest {
@@ -20,7 +19,7 @@ class ConversationTest {
     @Test
     void desktopConversationPreservesVersionVerbatimAndFormatsBadgeWithSpaceOnly() {
         Map<String, String> cases =
-            Map.of("1.3.1", "1.3.1", "v1.3.1", "v1.3.1", " V1.3.1 ", "V1.3.1", "vv1.3.1", "vv1.3.1",
+            Map.of("1.3.1", "1.3.1", "v1.3.1", "v1.3.1", "V1.3.1", "V1.3.1", "vv1.3.1", "vv1.3.1",
                 "Version 1.3.1", "Version 1.3.1", "vNext", "vNext", "v", "v", "V", "V");
 
         for (Map.Entry<String, String> entry : cases.entrySet()) {
@@ -31,6 +30,13 @@ class ConversationTest {
 
             assertThat(conv.clientVersion()).as("raw=%s", raw).isEqualTo(expected);
             assertThat(conv.sourceBadge()).as("raw=%s", raw).isEqualTo("desktop " + expected);
+        }
+
+        for (String asIs : List.of(" 1.3.1 ", "1".repeat(257))) {
+            Conversation conv = conversationWith("desktop",
+                Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), asIs));
+            assertThat(conv.clientVersion()).isEqualTo(asIs);
+            assertThat(conv.sourceBadge()).isEqualTo("desktop " + asIs);
         }
     }
 
@@ -45,41 +51,6 @@ class ConversationTest {
             Map.of(ConversationSetting.PLUGIN_VERSION.getValue(), "v0.4.2"));
         assertThat(prefixed.clientVersion()).isEqualTo("v0.4.2");
         assertThat(prefixed.sourceBadge()).isEqualTo("claude-plugin v0.4.2");
-    }
-
-    @Test
-    void unicodeWhitespaceAndMaxClientVersionLengthBoundariesAreEnforced() {
-        String exact256 = "1".repeat(Conversation.MAX_CLIENT_VERSION_LENGTH);
-        Conversation validPadded = conversationWith("desktop",
-            Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), "\t" + exact256 + "\u2003"));
-        assertThat(validPadded.clientVersion()).isEqualTo(exact256);
-        assertThat(validPadded.sourceBadge()).isEqualTo("desktop " + exact256);
-
-        String over256 = "1".repeat(Conversation.MAX_CLIENT_VERSION_LENGTH + 1);
-        for (String oversized : List.of(over256, " " + over256 + " ")) {
-            Conversation conv = conversationWith("desktop",
-                Map.of(ConversationSetting.DESKTOP_VERSION.getValue(), oversized));
-            assertThat(conv.clientVersion()).isNull();
-            assertThat(conv.sourceBadge()).isEqualTo("desktop");
-        }
-    }
-
-    @Test
-    void largeInputDoesNotCauseQuadraticTrimmingAndReturnsNullUnder100ms() {
-        String manyVs = "v".repeat(100_000);
-        String paddedManyVs = " ".repeat(100_000) + manyVs;
-
-        // Warm up JIT once before measuring
-        Conversation.normalizeVersion("1.0.0");
-
-        long startNanos = System.nanoTime();
-        String result1 = Conversation.normalizeVersion(manyVs);
-        String result2 = Conversation.normalizeVersion(paddedManyVs);
-        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-
-        assertThat(result1).isNull();
-        assertThat(result2).isNull();
-        assertThat(elapsedMs).isLessThan(100L);
     }
 
     @Test
@@ -141,5 +112,6 @@ class ConversationTest {
 
         assertThat(Conversation.formatSourceBadge(null, "1.3.1")).isEqualTo("web 1.3.1");
         assertThat(Conversation.formatSourceBadge("  ", null)).isEqualTo("web");
+        assertThat(Conversation.formatSourceBadge("desktop", "   ")).isEqualTo("desktop");
     }
 }

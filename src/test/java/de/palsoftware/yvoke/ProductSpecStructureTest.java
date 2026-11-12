@@ -204,12 +204,15 @@ class ProductSpecStructureTest {
 
             if ("07_using_the_assistant_from_other_tools.md".equals(chapterName)) {
                 assertThat(collapsedWhitespace).as(
-                    "%s must scope the no-clear settings guarantee strictly to version-only updates",
+                    "%s must describe settings map replacement while keeping creation version intact",
                     chapterPath)
-                    .doesNotContain(
-                        "without clearing other conversation settings when a later update omits",
+                    .doesNotContain("version-only update",
+                        "without clearing existing conversation settings",
+                        "without clearing other conversation settings",
                         "which is recorded without wiping existing conversation settings")
-                    .contains("version-only update", "replaces the settings map");
+                    .contains("replace the settings map",
+                        "keeping the recorded creation version intact",
+                        "blank version changes nothing");
             }
         }
     }

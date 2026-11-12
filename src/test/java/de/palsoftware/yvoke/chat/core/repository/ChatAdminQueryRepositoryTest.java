@@ -240,26 +240,13 @@ class ChatAdminQueryRepositoryTest {
     }
 
     @Test
-    void testBmpWhitespaceConstantMatchesCharacterIsWhitespaceAcrossEntireBmp() {
-        assertThat(ChatAdminQueryRepository.BMP_WHITESPACE).isNotEmpty();
-        assertThat(ChatAdminQueryRepository.BMP_WHITESPACE.chars().distinct().count())
-            .isEqualTo(ChatAdminQueryRepository.BMP_WHITESPACE.length());
-
-        for (int cp = 0; cp <= 0xFFFF; cp++) {
-            char ch = (char) cp;
-            boolean inConstant = ChatAdminQueryRepository.BMP_WHITESPACE.indexOf(ch) >= 0;
-            assertThat(inConstant).as("codePoint=U+%04X", cp).isEqualTo(Character.isWhitespace(ch));
-        }
-    }
-
-    @Test
     void testAdminConversation_normalizesSourceAndClientVersionVerbatimAndFormatsSourceBadge() {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         AdminConversation desktopPrefixed = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "desktop", now, now, 1, 0, " v1.3.1 ");
+            "alice@example.com", "Title", "desktop", now, now, 1, 0, "v1.3.1");
         assertThat(desktopPrefixed.source()).isEqualTo("desktop");
         assertThat(desktopPrefixed.clientVersion()).isEqualTo("v1.3.1");
         assertThat(desktopPrefixed.sourceBadge()).isEqualTo("desktop v1.3.1");
@@ -268,11 +255,6 @@ class ChatAdminQueryRepositoryTest {
             "alice@example.com", "Title", "desktop", now, now, 1, 0, "1.3.1");
         assertThat(desktopBareSemver.clientVersion()).isEqualTo("1.3.1");
         assertThat(desktopBareSemver.sourceBadge()).isEqualTo("desktop 1.3.1");
-
-        AdminConversation desktopOversized = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "desktop", now, now, 0, 0, "1".repeat(257));
-        assertThat(desktopOversized.clientVersion()).isNull();
-        assertThat(desktopOversized.sourceBadge()).isEqualTo("desktop");
 
         AdminConversation pluginVersioned = new AdminConversation(id, userId, "Alice",
             "alice@example.com", "Title", "claude-plugin", now, now, 0, 0, "0.4.2");
@@ -295,6 +277,11 @@ class ChatAdminQueryRepositoryTest {
             "alice@example.com", "Title", null, now, now, 0, 0);
         assertThat(nullSource.source()).isEqualTo("web");
         assertThat(nullSource.sourceBadge()).isEqualTo("web");
+
+        AdminConversation blankSource = new AdminConversation(id, userId, "Alice",
+            "alice@example.com", "Title", "   ", now, now, 0, 0);
+        assertThat(blankSource.source()).isEqualTo("web");
+        assertThat(blankSource.sourceBadge()).isEqualTo("web");
     }
 
     @Test
@@ -312,19 +299,14 @@ class ChatAdminQueryRepositoryTest {
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient).sql(sqlCaptor.capture());
-        assertThat(sqlCaptor.getValue()).contains("COALESCE(c.source, 'web') AS source")
-            .contains("jsonb_typeof(c.settings->'desktopVersion') = 'string'")
-            .contains("char_length(BTRIM(c.settings->>'desktopVersion', :ws)) BETWEEN 1 AND 256")
-            .contains("THEN BTRIM(c.settings->>'desktopVersion', :ws)")
-            .contains("jsonb_typeof(c.settings->'pluginVersion') = 'string'")
-            .contains("char_length(BTRIM(c.settings->>'pluginVersion', :ws)) BETWEEN 1 AND 256")
-            .contains("THEN BTRIM(c.settings->>'pluginVersion', :ws)")
-            .contains("END AS client_version");
+        assertThat(sqlCaptor.getValue()).contains("COALESCE(c.source, 'web') AS source",
+            "WHEN c.source = 'desktop' THEN c.settings->>'desktopVersion'",
+            "WHEN c.source = 'claude-plugin' THEN c.settings->>'pluginVersion'",
+            "END AS client_version").doesNotContain("BTRIM", "jsonb_typeof", ":ws");
 
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(statementSpec).params(paramsCaptor.capture());
-        assertThat(paramsCaptor.getValue()).containsEntry("ws",
-            ChatAdminQueryRepository.BMP_WHITESPACE);
+        assertThat(paramsCaptor.getValue()).doesNotContainKey("ws");
 
         ArgumentCaptor<RowMapper<AdminConversation>> mapperCaptor =
             ArgumentCaptor.forClass(RowMapper.class);

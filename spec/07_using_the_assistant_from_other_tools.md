@@ -73,15 +73,11 @@ running corpus scripts and the evaluation harness.
 - **The desktop app lists only the conversations it created.** Web chat conversations, and conversations
   someone shared, are invisible there.
 - **A conversation's recorded desktop release version is fixed at creation.** When the desktop app creates a
-  conversation, Yvoke records the desktop release version verbatim (trimming only surrounding whitespace
-  without altering the version text) and preserves that creation version across all subsequent settings
-  updates: a version-only update (carrying only a version or only a blank version) neither overwrites the
-  recorded version nor clears other conversation settings, whereas an update that changes other settings still
-  replaces the settings map (while keeping the creation version). Older desktop conversations created without a
-  version remain unversioned unless a later settings update supplies one (a version-only update adds it without
-  clearing existing conversation settings, whereas an update carrying other settings replaces the settings map).
-  Non-text or overly long version values (exceeding 256 characters) are rejected, and blank values are
-  ignored. Rated Claude plugin turns similarly record the plugin release version verbatim so both the
+  conversation, Yvoke validates and records the desktop release version verbatim (trimming surrounding spaces;
+  non-text or values exceeding 256 characters are rejected, and blank values are ignored). Later settings
+  updates still replace the settings map as usual, while keeping the recorded creation version intact (or
+  recording a version if the conversation had none yet; an update carrying only a blank version changes
+  nothing). Rated Claude plugin turns similarly record the plugin release version verbatim so both the
   conversation header and the administrator conversation register display `desktop <version>` or
   `claude-plugin <version>`.
 - **Asking for an import that is already running returns the existing job** instead of starting a second

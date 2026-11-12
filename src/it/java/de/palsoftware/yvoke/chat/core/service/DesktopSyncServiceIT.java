@@ -13,6 +13,7 @@ import de.palsoftware.yvoke.shared.user.model.User;
 import org.springframework.security.access.AccessDeniedException;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -545,16 +546,6 @@ public class DesktopSyncServiceIT {
             "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("1.3.0");
 
-        // Ignored-overwrite version-only PATCH ("1.4.0") keeps both "desktopVersion": "1.3.0" AND "model": "claude-sonnet-4-6"
-        service.updateConversation(conversationId, owner, null,
-            Map.of("desktopVersion", "1.4.0"));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("1.3.0");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("claude-sonnet-4-6");
-
         // Attempt to overwrite with "1.4.0" alongside other settings -> original "1.3.0" preserved in JSONB
         service.updateConversation(conversationId, owner, null,
             Map.of("desktopVersion", "1.4.0", "thinkingLevel", "high"));
@@ -575,6 +566,16 @@ public class DesktopSyncServiceIT {
             "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("claude-opus-4-6");
 
+        // PATCH with Map.of("desktopVersion", "1.4.0") replaces the settings map as usual while keeping creation version
+        service.updateConversation(conversationId, owner, null,
+            Map.of("desktopVersion", "1.4.0"));
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isEqualTo("1.3.0");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
+            conversationId)).isNull();
+
         // 400 rejection on update with non-string or >256-char desktopVersion leaves stored title unchanged
         assertThatThrownBy(() -> service.updateConversation(conversationId, owner,
             "Should Not Stick", Map.of("desktopVersion", List.of("1.4.0"))))
@@ -590,45 +591,47 @@ public class DesktopSyncServiceIT {
     }
 
     @Test
-    public void versionOnlyAndBlankOnlyPatchesNeverWipeExistingSettingsInPostgres() {
+    public void blankOnlyDesktopVersionPatchUpdatesTitleWithoutWipingExistingSettingsInPostgres() {
         userRepository.upsert(ENTRA_OID, "dss@local", "DSS User");
         User owner = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
 
-        Conversation legacy = service.createConversation(owner, "Initial Title",
+        Conversation unversioned = service.createConversation(owner, "Initial Title",
             Map.of("model", "claude-sonnet-4-6"));
-        conversationId = legacy.id();
+        conversationId = unversioned.id();
 
-        // 1. Blank-only PATCH with title = "Renamed" updates title and keeps "model" in Postgres
-        service.updateConversation(conversationId, owner, "Renamed",
-            Map.of("desktopVersion", ""));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
-            .isEqualTo("Renamed");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("claude-sonnet-4-6");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isNull();
+        Map<String, Object> nullVersionMap = new HashMap<>();
+        nullVersionMap.put("desktopVersion", null);
 
-        // 2. Legacy version-only backfill PATCH merges "desktopVersion": "1.3.1" alongside "model"
+        // 1. Blank/null desktopVersion PATCHes on unversioned conversation update title and keep "model"
+        for (Map<String, Object> blankPatch : List.of(Map.<String, Object>of("desktopVersion", ""),
+            Map.<String, Object>of("desktopVersion", "\u2003"), nullVersionMap)) {
+            service.updateConversation(conversationId, owner, "Renamed Unversioned", blankPatch);
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
+                .isEqualTo("Renamed Unversioned");
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
+                conversationId)).isEqualTo("claude-sonnet-4-6");
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?",
+                String.class, conversationId)).isNull();
+        }
+
+        // 2. Record a desktopVersion on the conversation, then verify blank/null PATCHes keep both desktopVersion and model
         service.updateConversation(conversationId, owner, null,
-            Map.of("desktopVersion", "1.3.1"));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("1.3.1");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("claude-sonnet-4-6");
-
-        // 3. Subsequent ignored-overwrite version-only PATCH ("1.4.0") keeps both "desktopVersion": "1.3.1" and "model"
-        service.updateConversation(conversationId, owner, null,
-            Map.of("desktopVersion", "1.4.0"));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("1.3.1");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
-            conversationId)).isEqualTo("claude-sonnet-4-6");
+            Map.of("desktopVersion", "1.3.1", "model", "claude-sonnet-4-6"));
+        for (Map<String, Object> blankPatch : List.of(Map.<String, Object>of("desktopVersion", ""),
+            Map.<String, Object>of("desktopVersion", "\u2003"), nullVersionMap)) {
+            service.updateConversation(conversationId, owner, "Renamed Versioned", blankPatch);
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
+                .isEqualTo("Renamed Versioned");
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?",
+                String.class, conversationId)).isEqualTo("1.3.1");
+            assertThat(jdbcTemplate.queryForObject(
+                "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
+                conversationId)).isEqualTo("claude-sonnet-4-6");
+        }
     }
 }

@@ -172,15 +172,8 @@ public class PluginFeedbackService {
         String normalizedClient = trimToNull(request.client());
         requireMaxLength(normalizedClient, "client", MAX_METADATA_CHARS);
 
-        String rawPluginVersion = request.pluginVersion();
-        String normalizedPluginVersion = null;
-        if (rawPluginVersion != null && !rawPluginVersion.isBlank()) {
-            normalizedPluginVersion = Conversation.normalizeVersion(rawPluginVersion);
-            if (normalizedPluginVersion == null) {
-                throw new IllegalArgumentException("pluginVersion must not exceed "
-                    + Conversation.MAX_CLIENT_VERSION_LENGTH + " characters.");
-            }
-        }
+        String normalizedPluginVersion = trimToNull(request.pluginVersion());
+        requireMaxLength(normalizedPluginVersion, "pluginVersion", MAX_METADATA_CHARS);
 
         List<String> sanitizedCitedIds = sanitizeCitedIds(request.citedIds());
 
@@ -425,7 +418,7 @@ public class PluginFeedbackService {
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = value.strip();
         return trimmed.isEmpty() ? null : trimmed;
     }
 }

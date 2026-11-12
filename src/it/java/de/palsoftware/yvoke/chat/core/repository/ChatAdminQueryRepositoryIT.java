@@ -590,37 +590,29 @@ public class ChatAdminQueryRepositoryIT {
     }
 
     @Test
-    void listFilteredConversations_handlesDirtyJsonbTypesUnicodeWhitespaceAndBoundariesAcrossSources() {
-        UUID user = createUser("caqr-it-dirty-jsonb@example.com", "CAQR Dirty JSONB User");
-        String exact256 = "1".repeat(256);
-        String over256 = "1".repeat(257);
+    void listFilteredConversations_handlesNullBlankAndVerbatimClientVersionsAcrossSources() {
+        UUID user = createUser("caqr-it-null-blank@example.com", "CAQR Null Blank User");
 
         for (String source : List.of("desktop", "claude-plugin")) {
             String key = "desktop".equals(source) ? "desktopVersion" : "pluginVersion";
+            String otherKey = "desktop".equals(source) ? "pluginVersion" : "desktopVersion";
 
-            List<String> dirtyJsonPayloads = List.of(
-                "{\"" + key + "\": 123}",
-                "{\"" + key + "\": true}",
-                "{\"" + key + "\": [\"1.3.1\"]}",
+            List<String> blankOrCrossJsonPayloads = List.of(
                 "{\"" + key + "\": null}",
+                "{\"" + key + "\": \"\"}",
+                "{\"" + key + "\": \"   \"}",
                 "{\"" + key + "\": \"\\t\\u2003\"}",
-                "{\"" + key + "\": \"" + over256 + "\"}");
+                "{\"" + otherKey + "\": \"1.3.1\"}");
 
-            List<UUID> dirtyIds = new ArrayList<>();
-            for (int i = 0; i < dirtyJsonPayloads.size(); i++) {
+            List<UUID> unversionedIds = new ArrayList<>();
+            for (int i = 0; i < blankOrCrossJsonPayloads.size(); i++) {
                 UUID id = UUID.randomUUID();
-                dirtyIds.add(id);
+                unversionedIds.add(id);
                 jdbcTemplate.update(
                     "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
-                    id, user, "CAQR-IT Dirty " + source + " " + i, dirtyJsonPayloads.get(i),
-                    source);
+                    id, user, "CAQR-IT BlankCross " + source + " " + i,
+                    blankOrCrossJsonPayloads.get(i), source);
             }
-
-            UUID padded256Id = UUID.randomUUID();
-            jdbcTemplate.update(
-                "INSERT INTO conversations (id, user_id, title, settings, source) VALUES (?, ?, ?, ?::jsonb, ?)",
-                padded256Id, user, "CAQR-IT Padded256 " + source,
-                "{\"" + key + "\": \"\\t" + exact256 + "\\u2003\"}", source);
 
             UUID versionWordId = UUID.randomUUID();
             jdbcTemplate.update(
@@ -642,16 +634,14 @@ public class ChatAdminQueryRepositoryIT {
                 byId.put(c.id(), c);
             }
 
-            for (UUID dirtyId : dirtyIds) {
-                AdminConversation dirty = byId.get(dirtyId);
-                assertThat(dirty).isNotNull();
-                assertThat(dirty.clientVersion()).as("source=%s id=%s", source, dirtyId).isNull();
-                assertThat(dirty.sourceBadge()).as("source=%s id=%s", source, dirtyId)
-                    .isEqualTo(source);
+            for (UUID unversionedId : unversionedIds) {
+                AdminConversation unversioned = byId.get(unversionedId);
+                assertThat(unversioned).isNotNull();
+                assertThat(unversioned.clientVersion())
+                    .as("source=%s id=%s", source, unversionedId).isNull();
+                assertThat(unversioned.sourceBadge())
+                    .as("source=%s id=%s", source, unversionedId).isEqualTo(source);
             }
-
-            assertThat(byId.get(padded256Id).clientVersion()).isEqualTo(exact256);
-            assertThat(byId.get(padded256Id).sourceBadge()).isEqualTo(source + " " + exact256);
 
             assertThat(byId.get(versionWordId).clientVersion()).isEqualTo("Version 1.3.1");
             assertThat(byId.get(versionWordId).sourceBadge()).isEqualTo(source + " Version 1.3.1");

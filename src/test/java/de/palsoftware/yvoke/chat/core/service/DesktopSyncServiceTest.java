@@ -587,7 +587,7 @@ public class DesktopSyncServiceTest {
     }
 
     @Test
-    public void updateConversationSkipsUpdateSettingsOnBlankOrIgnoredVersionOnlyPatchWithoutWipingModel() {
+    public void updateConversationSkipsUpdateSettingsOnBlankOrNullVersionOnlyPatchWithoutWipingModel() {
         UUID conversationId = UUID.randomUUID();
         Conversation unversioned = new Conversation(conversationId, currentUserId, "Title",
             Map.of("model", "claude-sonnet-4-6"), Instant.now(), Instant.now(), List.of(),
@@ -613,19 +613,6 @@ public class DesktopSyncServiceTest {
                 verify(conversationRepository).updateTitle(conversationId, "Renamed");
                 verify(conversationRepository, never()).updateSettings(any(), any());
             }
-        }
-
-        // Ignored-overwrite version-only PATCH on already-versioned conversation
-        for (String ignoredOverwrite : List.of("1.4.0", "v")) {
-            clearInvocations(conversationRepository);
-            when(conversationRepository.findById(conversationId))
-                .thenReturn(Optional.of(versioned));
-
-            service.updateConversation(conversationId, currentUser, "Renamed",
-                Map.of("desktopVersion", ignoredOverwrite));
-
-            verify(conversationRepository).updateTitle(conversationId, "Renamed");
-            verify(conversationRepository, never()).updateSettings(any(), any());
         }
     }
 
@@ -664,39 +651,61 @@ public class DesktopSyncServiceTest {
     }
 
     @Test
-    public void updateConversationBackfillsDesktopVersionVerbatimWithoutWipingExistingSettings() {
+    public void updateConversationHandlesNullNonStringOrBlankExistingDesktopVersionAndBackfillsUnversioned() {
         UUID conversationId = UUID.randomUUID();
-        Conversation legacy = new Conversation(conversationId, currentUserId, "Legacy",
-            Map.of("model", "claude-sonnet-4-6"), Instant.now(), Instant.now(), List.of(),
-            "desktop", null);
 
-        // 1. Version-only backfill PATCH merges desktopVersion into stored settings (preserving
-        // "model")
-        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(legacy));
-        service.updateConversation(conversationId, currentUser, null,
-            Map.of("desktopVersion", "1.3.1"));
-        verify(conversationRepository).updateSettings(conversationId,
-            Map.of("model", "claude-sonnet-4-6", "desktopVersion", "1.3.1"));
-
-        // 2. Version-only backfill PATCH with "Version 1.3.1" or "v1.3.1" preserves verbatim
-        for (String verbatim : List.of("v1.3.1", "Version 1.3.1")) {
-            clearInvocations(conversationRepository);
-            when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(legacy));
-            service.updateConversation(conversationId, currentUser, null,
-                Map.of("desktopVersion", verbatim));
-            verify(conversationRepository).updateSettings(conversationId,
-                Map.of("model", "claude-sonnet-4-6", "desktopVersion", verbatim));
-        }
-
-        // 3. Version-only backfill PATCH when conversation.settings() is null does not NPE
-        clearInvocations(conversationRepository);
+        // 1. Existing settings null, non-String, or blank: PATCH with Map.of("model",
+        // "claude-opus-4-6")
+        // neither NPEs nor copies dirty/blank values
         Conversation nullSettingsConv = new Conversation(conversationId, currentUserId, "Legacy",
             null, Instant.now(), Instant.now(), List.of(), "desktop", null);
-        when(conversationRepository.findById(conversationId))
-            .thenReturn(Optional.of(nullSettingsConv));
+        Conversation nonStringVersionConv =
+            new Conversation(conversationId, currentUserId, "Legacy", Map.of("desktopVersion", 123),
+                Instant.now(), Instant.now(), List.of(), "desktop", null);
+        Conversation blankVersionConv = new Conversation(conversationId, currentUserId, "Legacy",
+            Map.of("desktopVersion", "   "), Instant.now(), Instant.now(), List.of(), "desktop",
+            null);
+
+        for (Conversation target : List.of(nullSettingsConv, nonStringVersionConv,
+            blankVersionConv)) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(target));
+
+            service.updateConversation(conversationId, currentUser, null,
+                Map.of("model", "claude-opus-4-6"));
+
+            verify(conversationRepository).updateSettings(conversationId,
+                Map.of("model", "claude-opus-4-6"));
+        }
+
+        // 2. Unversioned conversation: PATCH supplying desktopVersion + model stores both
+        Conversation unversioned = new Conversation(conversationId, currentUserId, "Legacy",
+            Map.of("model", "claude-sonnet-4-6"), Instant.now(), Instant.now(), List.of(),
+            "desktop", null);
+        for (String verbatim : List.of("1.3.1", "v1.3.1", "Version 1.3.1")) {
+            clearInvocations(conversationRepository);
+            when(conversationRepository.findById(conversationId))
+                .thenReturn(Optional.of(unversioned));
+
+            service.updateConversation(conversationId, currentUser, null,
+                Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
+
+            verify(conversationRepository).updateSettings(conversationId,
+                Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
+        }
+
+        // 3. Version-only PATCH on versioned conversation replaces map while keeping creation
+        // version
+        clearInvocations(conversationRepository);
+        Conversation versioned = new Conversation(conversationId, currentUserId, "Versioned",
+            Map.of("desktopVersion", "1.3.0", "model", "claude-sonnet-4-6"), Instant.now(),
+            Instant.now(), List.of(), "desktop", null);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(versioned));
+
         service.updateConversation(conversationId, currentUser, null,
-            Map.of("desktopVersion", "v"));
+            Map.of("desktopVersion", "1.4.0"));
+
         verify(conversationRepository).updateSettings(conversationId,
-            Map.of("desktopVersion", "v"));
+            Map.of("desktopVersion", "1.3.0"));
     }
 }
