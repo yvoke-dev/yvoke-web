@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -27,9 +28,38 @@ class McpToolCatalogueParityTest {
 
     private static final List<Class<?>> TOOLS =
         List.of(GetGraphNeighborsTool.class, GetJsonSchemaTool.class, GetSectionTool.class,
-            GetTocTool.class, ListDocumentsTool.class, PlaybookTools.class,
+            GetTocTool.class, ListDocumentsTool.class, PlaybookTools.class, ProfileTools.class,
             QueryJsonObjectsTool.class, SearchCorpusTool.class, SearchGraphEntitiesTool.class,
             VerifyCitationsTool.class, AreaTools.class, SubmitFeedbackTool.class);
+
+    /**
+     * Hand-registered via {@code ContextAwareToolCallback} in {@code McpToolsConfig}, so their tool
+     * classes deliberately carry no {@code @McpTool}/{@code @Tool} annotations.
+     */
+    private static final Set<Class<?>> CALLBACK_PUBLISHED =
+        Set.of(GetSectionTool.class, SearchCorpusTool.class);
+
+    @Test
+    void everyAnnotationPublishedToolClassDeclaresAtLeastOneMcpTool() {
+        List<String> emptyTools = new ArrayList<>();
+        for (Class<?> tool : TOOLS) {
+            if (CALLBACK_PUBLISHED.contains(tool)) {
+                continue;
+            }
+            long count = 0;
+            for (Method m : tool.getDeclaredMethods()) {
+                if (m.isAnnotationPresent(McpTool.class)) {
+                    count++;
+                }
+            }
+            if (count == 0) {
+                emptyTools.add(tool.getSimpleName());
+            }
+        }
+        assertThat(emptyTools)
+            .as("every annotation-published tool class must declare at least one @McpTool method")
+            .isEmpty();
+    }
 
     @Test
     void everyToolMethodDeclaresBothCatalogues() {
@@ -49,7 +79,7 @@ class McpToolCatalogueParityTest {
     }
 
     @Test
-    void everyParameterIsDeclaredInBothCatalogues() {
+    void everyParameterIsDeclaredInBothCataloguesWithMatchingRequiredAndDescription() {
         List<String> mismatches = new ArrayList<>();
         for (Class<?> tool : TOOLS) {
             for (Method m : tool.getDeclaredMethods()) {
@@ -57,18 +87,33 @@ class McpToolCatalogueParityTest {
                     continue;
                 }
                 for (Parameter p : m.getParameters()) {
-                    boolean mcp = p.isAnnotationPresent(McpToolParam.class);
-                    boolean agentic = p.isAnnotationPresent(ToolParam.class);
+                    McpToolParam mcpParam = p.getAnnotation(McpToolParam.class);
+                    ToolParam toolParam = p.getAnnotation(ToolParam.class);
+                    boolean mcp = mcpParam != null;
+                    boolean agentic = toolParam != null;
                     if (mcp != agentic) {
                         mismatches.add(tool.getSimpleName() + "." + m.getName() + "(" + p.getName()
                             + "): @McpToolParam=" + mcp + " but @ToolParam=" + agentic);
+                        continue;
+                    }
+                    if (mcpParam != null) {
+                        if (mcpParam.required() != toolParam.required()) {
+                            mismatches
+                                .add(tool.getSimpleName() + "." + m.getName() + "(" + p.getName()
+                                    + "): required differs (@McpToolParam=" + mcpParam.required()
+                                    + " vs @ToolParam=" + toolParam.required() + ")");
+                        }
+                        if (!mcpParam.description().equals(toolParam.description())) {
+                            mismatches.add(tool.getSimpleName() + "." + m.getName() + "("
+                                + p.getName()
+                                + "): description differs between @McpToolParam and @ToolParam");
+                        }
                     }
                 }
             }
         }
-        assertThat(mismatches)
-            .as("a parameter exposed to one catalogue but not the other is invisible to half the "
-                + "callers — e.g. an agent that cannot paginate a tool an MCP client can")
+        assertThat(mismatches).as(
+            "parameters must match across @McpToolParam and @ToolParam in presence, required flag, and description")
             .isEmpty();
     }
 
