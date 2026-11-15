@@ -95,7 +95,7 @@ yvoke/
 │   │   │   │       └── service/ # LLM generation services
 │   │   │   ├── mcp/        # Model Context Protocol server tools and prompts
 │   │   │   │   ├── prompts/ # MCP prompt services
-│   │   │   │   └── tools/  # Graph neighbors, entity/corpus search, citation verification tools
+│   │   │   │   └── tools/  # Corpus, KG, JSON, citation, and client-only area/playbook/profile/feedback MCP tools (incl. ProfileTools)
 │   │   │   ├── rag/        # RAG pipeline, retrieval, and prompt generation
 │   │   │   │   ├── core/   # RAG service, context, request, and result models
 │   │   │   │   │   ├── model/ # RAG context/request/result records
