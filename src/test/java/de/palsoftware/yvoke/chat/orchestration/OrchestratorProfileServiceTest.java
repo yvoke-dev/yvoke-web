@@ -300,4 +300,43 @@ public class OrchestratorProfileServiceTest {
                 null, null, null, null, null, false, null, null, "PingID")));
         assertThat(service.exportProfileToJson("P")).contains("\"area\" : \"PingID\"");
     }
+
+    @Test
+    void resolveProfileInstanceDirectlyAppliesDefaultsNormalizesNullSpecialistsAndRejectsNull() {
+        assertThatThrownBy(() -> service.resolve((OrchestratorProfile) null))
+            .isInstanceOf(NullPointerException.class).hasMessage("profile must not be null");
+
+        OrchestratorProfile positiveOverrides = new OrchestratorProfile("OIM ", 4, 12,
+            "  oim-orch  ", "  oim-rev  ", List.of(" spec-1 ", ""), "custom-orch", "low",
+            "custom-rev", "medium", "custom-spec", "high", true, null, null, "OIM");
+        ResolvedProfile resolvedPositive = service.resolve(positiveOverrides);
+        assertThat(resolvedPositive.name()).isEqualTo("OIM ");
+        assertThat(resolvedPositive.orchestratorPlaybook()).isEqualTo("  oim-orch  ");
+        assertThat(resolvedPositive.reviewerPlaybook()).isEqualTo("  oim-rev  ");
+        assertThat(resolvedPositive.specialistPlaybooks()).containsExactly(" spec-1 ", "");
+        assertThat(resolvedPositive.maxReviewRounds()).isEqualTo(4);
+        assertThat(resolvedPositive.maxSpecialistCalls()).isEqualTo(12);
+        assertThat(resolvedPositive.orchestrator()).isEqualTo(new RoleConfig("custom-orch", "low"));
+        assertThat(resolvedPositive.reviewer()).isEqualTo(new RoleConfig("custom-rev", "medium"));
+        assertThat(resolvedPositive.specialist()).isEqualTo(new RoleConfig("custom-spec", "high"));
+
+        OrchestratorProfile zeroAndBlanksAndNullSpecialists = new OrchestratorProfile("ZeroProf", 0,
+            0, "orch", "rev", null, "", "   ", null, "", "   ", null, false, null, null, "OIM");
+        ResolvedProfile resolvedZero = service.resolve(zeroAndBlanksAndNullSpecialists);
+        assertThat(resolvedZero.specialistPlaybooks()).isEmpty();
+        assertThat(resolvedZero.maxReviewRounds()).isEqualTo(2);
+        assertThat(resolvedZero.maxSpecialistCalls()).isEqualTo(8);
+        assertThat(resolvedZero.orchestrator()).isEqualTo(new RoleConfig("gemini-3.1-pro", "high"));
+        assertThat(resolvedZero.reviewer()).isEqualTo(new RoleConfig("gemini-3.1-pro", "high"));
+        assertThat(resolvedZero.specialist())
+            .isEqualTo(new RoleConfig("gemini-3.1-flash", "medium"));
+
+        OrchestratorProfile negativeCaps = new OrchestratorProfile("NegProf", -1, -5, "orch", "rev",
+            List.of("spec-1"), null, null, null, null, null, null, false, null, null, "OIM");
+        ResolvedProfile resolvedNegative = service.resolve(negativeCaps);
+        assertThat(resolvedNegative.maxReviewRounds()).isEqualTo(2);
+        assertThat(resolvedNegative.maxSpecialistCalls()).isEqualTo(8);
+
+        verify(repository, never()).findByName(any());
+    }
 }

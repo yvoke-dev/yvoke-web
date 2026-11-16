@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.mcp.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -15,35 +16,42 @@ import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.Profile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
+import de.palsoftware.yvoke.chat.orchestration.ResolvedProfile;
+import java.lang.reflect.Method;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * {@code list_profiles} and {@code get_profile} expose multi-agent orchestrator profiles from the
- * database to Yvoke MCP clients with resolved limits and role model/thinking defaults.
+ * database to Yvoke MCP clients with resolved limits via {@link OrchestratorProfileService#resolve}
+ * and without leaking server-side operator model or thinking-level bindings.
  */
 class ProfileToolsTest {
 
-    private static final Set<String> EXPECTED_KEYS = Set.of("name", "area", "prototype",
-        "orchestratorPlaybook", "reviewerPlaybook", "specialistPlaybooks", "maxReviewRounds",
-        "maxSpecialistCalls", "orchestratorModel", "orchestratorThinkingLevel", "reviewerModel",
-        "reviewerThinkingLevel", "specialistModel", "specialistThinkingLevel");
+    private static final Set<String> EXPECTED_KEYS =
+        Set.of("name", "area", "prototype", "orchestratorPlaybook", "reviewerPlaybook",
+            "specialistPlaybooks", "maxReviewRounds", "maxSpecialistCalls");
+
+    private static final Set<String> OMITTED_OPERATOR_KEYS =
+        Set.of("orchestratorModel", "orchestratorThinkingLevel", "reviewerModel",
+            "reviewerThinkingLevel", "specialistModel", "specialistThinkingLevel");
 
     private static final Instant NOW = Instant.parse("2026-05-01T10:00:00Z");
 
@@ -51,6 +59,7 @@ class ProfileToolsTest {
     private OrchestratorProfileRepository profileRepository;
     private AreaService areaService;
     private OrchestratorProperties defaultProperties;
+    private OrchestratorProfileService profileService;
     private ProfileTools tools;
 
     @BeforeEach
@@ -63,7 +72,9 @@ class ProfileToolsTest {
                 new RoleConfig("gemini-2.5-flash", "MEDIUM"),
                 new RoleConfig("gemini-2.5-flash-lite", "LOW")),
             List.of());
-        tools = new ProfileTools(profileRepository, defaultProperties, areaService, json);
+        profileService =
+            new OrchestratorProfileService(profileRepository, defaultProperties, areaService);
+        tools = new ProfileTools(profileService, areaService, json);
     }
 
     @AfterEach
@@ -72,7 +83,7 @@ class ProfileToolsTest {
     }
 
     @Test
-    void listAndGetReturnExactFourteenKeysAndExpectedJsonTypesIncludingPrototypeProfiles()
+    void listAndGetReturnExactEightKeysOmittingOperatorModelsAndIncludingPrototypeProfiles()
         throws Exception {
         OrchestratorProfile full = new OrchestratorProfile("OIM", 5, 12, "oim-orch", "oim-rev",
             List.of("oim-spec-1", "oim-spec-2"), "Claude-Opus-4.6", "HIGH", "Claude-Sonnet-4.6",
@@ -83,7 +94,11 @@ class ProfileToolsTest {
         when(profileRepository.findAll()).thenReturn(List.of(full, nonProto));
         when(profileRepository.findByName("OIM")).thenReturn(Optional.of(full));
 
-        JsonNode list = json.readTree(tools.listProfiles(null));
+        String rawList = tools.listProfiles(null);
+        assertThat(rawList).doesNotContain("Claude-Opus-4.6").doesNotContain("gemini-2.5-pro");
+        verify(profileRepository, never()).findByName(any());
+
+        JsonNode list = json.readTree(rawList);
         assertThat(list.isArray()).isTrue();
         assertThat(list).hasSize(2);
 
@@ -91,7 +106,6 @@ class ProfileToolsTest {
         assertExactShapeAndTypes(first);
         assertThat(first.get("name").asText()).isEqualTo("OIM");
         assertThat(first.get("area").asText()).isEqualTo("OIM");
-        assertThat(first.get("prototype").isBoolean()).isTrue();
         assertThat(first.get("prototype").booleanValue()).isTrue();
         assertThat(first.get("orchestratorPlaybook").asText()).isEqualTo("oim-orch");
         assertThat(first.get("reviewerPlaybook").asText()).isEqualTo("oim-rev");
@@ -99,20 +113,34 @@ class ProfileToolsTest {
             .containsExactly("oim-spec-1", "oim-spec-2");
         assertThat(first.get("maxReviewRounds").intValue()).isEqualTo(5);
         assertThat(first.get("maxSpecialistCalls").intValue()).isEqualTo(12);
-        assertThat(first.get("orchestratorModel").asText()).isEqualTo("Claude-Opus-4.6");
-        assertThat(first.get("orchestratorThinkingLevel").asText()).isEqualTo("high");
-        assertThat(first.get("reviewerModel").asText()).isEqualTo("Claude-Sonnet-4.6");
-        assertThat(first.get("reviewerThinkingLevel").asText()).isEqualTo("medium");
-        assertThat(first.get("specialistModel").asText()).isEqualTo("Claude-Haiku-4.5");
-        assertThat(first.get("specialistThinkingLevel").asText()).isEqualTo("minimal");
 
         JsonNode second = list.get(1);
         assertExactShapeAndTypes(second);
         assertThat(second.get("prototype").booleanValue()).isFalse();
 
-        JsonNode fetched = json.readTree(tools.getProfile("OIM"));
+        String rawGet = tools.getProfile("OIM");
+        assertThat(rawGet).doesNotContain("Claude-Opus-4.6").doesNotContain("gemini-2.5-pro");
+        JsonNode fetched = json.readTree(rawGet);
         assertExactShapeAndTypes(fetched);
         assertThat(fetched).isEqualTo(first);
+    }
+
+    @Test
+    void toolDescriptionsAdvertiseExactEightFieldsWithoutModelOrThinkingNames() throws Exception {
+        Method listMethod = ProfileTools.class.getDeclaredMethod("listProfiles", String.class);
+        Method getMethod = ProfileTools.class.getDeclaredMethod("getProfile", String.class);
+
+        for (String desc : List.of(listMethod.getAnnotation(McpTool.class).description(),
+            listMethod.getAnnotation(Tool.class).description(),
+            getMethod.getAnnotation(McpTool.class).description(),
+            getMethod.getAnnotation(Tool.class).description())) {
+            for (String expected : EXPECTED_KEYS) {
+                assertThat(desc).contains(expected);
+            }
+            for (String omitted : OMITTED_OPERATOR_KEYS) {
+                assertThat(desc).doesNotContain(omitted);
+            }
+        }
     }
 
     @Test
@@ -122,8 +150,9 @@ class ProfileToolsTest {
                 List.of(new Profile("yaml-only", "yaml-orch", "yaml-rev", List.of("yaml-spec"),
                     new RoleConfig("m1", "high"), new RoleConfig("m2", "low"),
                     new RoleConfig("m3", "minimal"))));
-        ProfileTools yamlTools =
-            new ProfileTools(profileRepository, propsWithYaml, areaService, json);
+        OrchestratorProfileService yamlService =
+            new OrchestratorProfileService(profileRepository, propsWithYaml, areaService);
+        ProfileTools yamlTools = new ProfileTools(yamlService, areaService, json);
         when(profileRepository.findAll()).thenReturn(List.of());
         when(profileRepository.findByName("yaml-only")).thenReturn(Optional.empty());
 
@@ -135,160 +164,70 @@ class ProfileToolsTest {
     }
 
     @Test
-    void maxReviewRoundsAndMaxSpecialistCallsRespectZeroAndFallbackBoundaries() throws Exception {
-        OrchestratorProfile zeroRoundsZeroCalls = new OrchestratorProfile("zero-prof", 0, 0, "orch",
-            "rev", List.of(), null, null, null, null, null, null, false, NOW, NOW, "OIM");
-        OrchestratorProfile negativeRoundsNegativeCalls =
-            new OrchestratorProfile("neg-prof", -1, -1, "orch", "rev", List.of(), null, null, null,
-                null, null, null, false, NOW, NOW, "OIM");
-        OrchestratorProfile explicitPositive = new OrchestratorProfile("pos-prof", 5, 12, "orch",
-            "rev", List.of(), null, null, null, null, null, null, false, NOW, NOW, "OIM");
+    void resolvedLimitsAndPlaybooksMatchOrchestratorProfileServiceResolve() throws Exception {
+        OrchestratorProfile zeroCaps = new OrchestratorProfile("zero-prof", 0, 0, "orch-z", "rev-z",
+            List.of("spec-z"), null, null, null, null, null, null, false, NOW, NOW, "OIM");
+        OrchestratorProfile negativeCaps = new OrchestratorProfile("neg-prof", -1, -5, "orch-n",
+            "rev-n", null, null, null, null, null, null, null, false, NOW, NOW, "OIM");
+        OrchestratorProfile positiveCaps = new OrchestratorProfile("pos-prof", 4, 12, "orch-p",
+            "rev-p", List.of("spec-1", "spec-2"), null, null, null, null, null, null, true, NOW,
+            NOW, "OIM");
+        List<OrchestratorProfile> all = List.of(zeroCaps, negativeCaps, positiveCaps);
 
-        when(profileRepository.findByName("zero-prof"))
-            .thenReturn(Optional.of(zeroRoundsZeroCalls));
-        when(profileRepository.findByName("neg-prof"))
-            .thenReturn(Optional.of(negativeRoundsNegativeCalls));
-        when(profileRepository.findByName("pos-prof")).thenReturn(Optional.of(explicitPositive));
+        when(profileRepository.findAll()).thenReturn(all);
+        for (OrchestratorProfile p : all) {
+            when(profileRepository.findByName(p.name())).thenReturn(Optional.of(p));
+        }
 
-        // Default properties (null maxReviewRounds -> 3, null maxSpecialistCalls -> 8)
-        JsonNode zeroNode = json.readTree(tools.getProfile("zero-prof"));
-        assertThat(zeroNode.get("maxReviewRounds").isIntegralNumber()).isTrue();
-        assertThat(zeroNode.get("maxReviewRounds").intValue()).isZero();
-        assertThat(zeroNode.get("maxSpecialistCalls").isIntegralNumber()).isTrue();
-        assertThat(zeroNode.get("maxSpecialistCalls").intValue()).isEqualTo(8);
+        // 1. Default properties (null maxReviewRounds -> 3, null maxSpecialistCalls -> 8)
+        assertParityWithService(profileService, tools, all);
+        assertThat(json.readTree(tools.getProfile("zero-prof")).get("maxReviewRounds").intValue())
+            .isEqualTo(3);
+        assertThat(
+            json.readTree(tools.getProfile("zero-prof")).get("maxSpecialistCalls").intValue())
+            .isEqualTo(8);
 
-        JsonNode negNode = json.readTree(tools.getProfile("neg-prof"));
-        assertThat(negNode.get("maxReviewRounds").isIntegralNumber()).isTrue();
-        assertThat(negNode.get("maxReviewRounds").intValue()).isEqualTo(3);
-        assertThat(negNode.get("maxSpecialistCalls").isIntegralNumber()).isTrue();
-        assertThat(negNode.get("maxSpecialistCalls").intValue()).isEqualTo(8);
-
-        JsonNode posNode = json.readTree(tools.getProfile("pos-prof"));
-        assertThat(posNode.get("maxReviewRounds").intValue()).isEqualTo(5);
-        assertThat(posNode.get("maxSpecialistCalls").intValue()).isEqualTo(12);
-
-        // Custom properties (4 review rounds, 10 specialist calls)
-        ProfileTools customLimitTools = new ProfileTools(profileRepository,
-            new OrchestratorProperties(4, 10, null, null), areaService, json);
-        JsonNode customNeg = json.readTree(customLimitTools.getProfile("neg-prof"));
-        assertThat(customNeg.get("maxReviewRounds").intValue()).isEqualTo(4);
-        assertThat(customNeg.get("maxSpecialistCalls").intValue()).isEqualTo(10);
-
-        JsonNode customZero = json.readTree(customLimitTools.getProfile("zero-prof"));
-        assertThat(customZero.get("maxReviewRounds").intValue()).isZero();
-        assertThat(customZero.get("maxSpecialistCalls").intValue()).isEqualTo(10);
+        // 2. Custom properties (5 review rounds, 10 specialist calls)
+        OrchestratorProfileService customService = new OrchestratorProfileService(profileRepository,
+            new OrchestratorProperties(5, 10, null, null), areaService);
+        ProfileTools customTools = new ProfileTools(customService, areaService, json);
+        assertParityWithService(customService, customTools, all);
+        assertThat(
+            json.readTree(customTools.getProfile("zero-prof")).get("maxReviewRounds").intValue())
+            .isEqualTo(5);
+        assertThat(
+            json.readTree(customTools.getProfile("zero-prof")).get("maxSpecialistCalls").intValue())
+            .isEqualTo(10);
     }
 
     @Test
-    void normalizesPlaybooksNamesAndSpecialistPlaybooksList() throws Exception {
-        OrchestratorProfile messy = new OrchestratorProfile("  messy-name  ", 1, 2, "  orch-pb  ",
-            "   ", Arrays.asList(" oim-a ", null, "", "   ", "oim-b"), null, null, null, null, null,
-            null, false, NOW, NOW, " OIM ");
-        OrchestratorProfile nullListAndBlanks = new OrchestratorProfile("   ", 1, 2, "", null, null,
+    void storedIdentifiersAreReturnedUnchangedWithoutTrimming() throws Exception {
+        OrchestratorProfile untrimmed = new OrchestratorProfile("OIM ", 2, 6, "  orch-pb  ", "   ",
+            List.of(" oim-a ", ""), null, null, null, null, null, null, false, NOW, NOW, " OIM ");
+        OrchestratorProfile nullSpecialists = new OrchestratorProfile("Bare", 1, 4, null, "", null,
             null, null, null, null, null, null, false, NOW, NOW, "OIM");
-
-        when(profileRepository.findAll()).thenReturn(List.of(messy, nullListAndBlanks));
+        when(profileRepository.findAll()).thenReturn(List.of(untrimmed, nullSpecialists));
 
         JsonNode list = json.readTree(tools.listProfiles(null));
         assertThat(list).hasSize(2);
 
         JsonNode first = list.get(0);
-        assertThat(first.get("name").asText()).isEqualTo("messy-name");
-        assertThat(first.get("area").asText()).isEqualTo("OIM");
-        assertThat(first.get("orchestratorPlaybook").asText()).isEqualTo("orch-pb");
-        assertThat(first.get("reviewerPlaybook").isNull()).isTrue();
-        assertThat(first.get("specialistPlaybooks").isArray()).isTrue();
+        assertExactShapeAndTypes(first);
+        assertThat(first.get("name").asText()).isEqualTo("OIM ");
+        assertThat(first.get("area").asText()).isEqualTo(" OIM ");
+        assertThat(first.get("orchestratorPlaybook").asText()).isEqualTo("  orch-pb  ");
+        assertThat(first.get("reviewerPlaybook").isTextual()).isTrue();
+        assertThat(first.get("reviewerPlaybook").asText()).isEqualTo("   ");
         assertThat(json.convertValue(first.get("specialistPlaybooks"), List.class))
-            .containsExactly("oim-a", "oim-b");
+            .containsExactly(" oim-a ", "");
 
         JsonNode second = list.get(1);
-        assertThat(second.get("name").isNull()).isTrue();
+        assertExactShapeAndTypes(second);
+        assertThat(second.get("name").asText()).isEqualTo("Bare");
         assertThat(second.get("orchestratorPlaybook").isNull()).isTrue();
-        assertThat(second.get("reviewerPlaybook").isNull()).isTrue();
-        assertThat(second.get("specialistPlaybooks").isArray()).isTrue();
+        assertThat(second.get("reviewerPlaybook").isTextual()).isTrue();
+        assertThat(second.get("reviewerPlaybook").asText()).isEmpty();
         assertThat(second.get("specialistPlaybooks")).isEmpty();
-    }
-
-    @Test
-    void roleModelsAndThinkingLevelsTrimPreserveModelCaseLowercaseThinkingUnderTurkishLocaleAndFallback()
-        throws Exception {
-        Locale previous = Locale.getDefault();
-        try {
-            Locale.setDefault(Locale.forLanguageTag("tr"));
-
-            OrchestratorProperties paddedDefaults = new OrchestratorProperties(null, null,
-                new RoleDefaults(new RoleConfig("  GPT-5.6-Luna  ", "  HIGH  "),
-                    new RoleConfig("  Gemini-Rev-Model  ", "  MINIMAL  "),
-                    new RoleConfig("  Spec-Default-Model  ", "  MEDIUM  ")),
-                null);
-            ProfileTools trTools =
-                new ProfileTools(profileRepository, paddedDefaults, areaService, json);
-
-            // Profile overrides orchestrator (padded + uppercase I), leaves reviewer blank (" ")
-            // and specialist null so both fall back to paddedDefaults.
-            OrchestratorProfile prof = new OrchestratorProfile("tr-prof", 2, 4, "orch", "rev",
-                List.of("spec"), "  Custom-Orch-Model  ", "  MINIMAL  ", "   ", "   ", null, null,
-                false, NOW, NOW, "OIM");
-            when(profileRepository.findByName("tr-prof")).thenReturn(Optional.of(prof));
-
-            JsonNode node = json.readTree(trTools.getProfile("tr-prof"));
-            assertThat(node.get("orchestratorModel").asText()).isEqualTo("Custom-Orch-Model");
-            assertThat(node.get("orchestratorThinkingLevel").asText()).isEqualTo("minimal");
-            assertThat(node.get("reviewerModel").asText()).isEqualTo("Gemini-Rev-Model");
-            assertThat(node.get("reviewerThinkingLevel").asText()).isEqualTo("minimal");
-            assertThat(node.get("specialistModel").asText()).isEqualTo("Spec-Default-Model");
-            assertThat(node.get("specialistThinkingLevel").asText()).isEqualTo("medium");
-
-            // Also verify HIGH -> "high" (never "hıgh") on profile override directly under tr
-            // locale
-            OrchestratorProfile highProf = new OrchestratorProfile("high-prof", 2, 4, "orch", "rev",
-                List.of(), null, "  HIGH  ", null, null, null, null, false, NOW, NOW, "OIM");
-            when(profileRepository.findByName("high-prof")).thenReturn(Optional.of(highProf));
-            JsonNode highNode = json.readTree(trTools.getProfile("high-prof"));
-            assertThat(highNode.get("orchestratorModel").asText()).isEqualTo("GPT-5.6-Luna");
-            assertThat(highNode.get("orchestratorThinkingLevel").asText()).isEqualTo("high");
-        } finally {
-            Locale.setDefault(previous);
-        }
-    }
-
-    @Test
-    void partialRoleDefaultsAndNullPropertiesResolveUnsetRoleFieldsToJsonNullWithoutNpe()
-        throws Exception {
-        OrchestratorProfile bare = new OrchestratorProfile("bare-prof", -1, 0, "orch", "rev",
-            List.of(), "   ", "   ", null, null, "", "", false, NOW, NOW, "OIM");
-        when(profileRepository.findByName("bare-prof")).thenReturn(Optional.of(bare));
-
-        // Partial RoleDefaults: orchestrator non-null (with blank thinking), reviewer & specialist
-        // null
-        ProfileTools partialTools = new ProfileTools(profileRepository,
-            new OrchestratorProperties(null, null,
-                new RoleDefaults(new RoleConfig("  Only-Orch  ", "   "), null, null), null),
-            areaService, json);
-
-        JsonNode partialNode = json.readTree(partialTools.getProfile("bare-prof"));
-        assertExactShapeAndTypes(partialNode);
-        assertThat(partialNode.get("orchestratorModel").asText()).isEqualTo("Only-Orch");
-        assertThat(partialNode.get("orchestratorThinkingLevel").isNull()).isTrue();
-        assertThat(partialNode.get("reviewerModel").isNull()).isTrue();
-        assertThat(partialNode.get("reviewerThinkingLevel").isNull()).isTrue();
-        assertThat(partialNode.get("specialistModel").isNull()).isTrue();
-        assertThat(partialNode.get("specialistThinkingLevel").isNull()).isTrue();
-
-        // Fully null OrchestratorProperties(null, null, null, null)
-        ProfileTools nullPropsTools = new ProfileTools(profileRepository,
-            new OrchestratorProperties(null, null, null, null), areaService, json);
-
-        JsonNode nullPropsNode = json.readTree(nullPropsTools.getProfile("bare-prof"));
-        assertExactShapeAndTypes(nullPropsNode);
-        assertThat(nullPropsNode.get("orchestratorModel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("orchestratorThinkingLevel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("reviewerModel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("reviewerThinkingLevel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("specialistModel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("specialistThinkingLevel").isNull()).isTrue();
-        assertThat(nullPropsNode.get("maxReviewRounds").intValue()).isEqualTo(3);
-        assertThat(nullPropsNode.get("maxSpecialistCalls").intValue()).isEqualTo(8);
     }
 
     @Test
@@ -357,7 +296,7 @@ class ProfileToolsTest {
         assertThat(nullAreaJson.get("area").isNull()).isTrue();
         JsonNode blankAreaJson = json.readTree(tools.getProfile("blank-area-prof"));
         assertThat(blankAreaJson.get("name").asText()).isEqualTo("blank-area-prof");
-        assertThat(blankAreaJson.get("area").isNull()).isTrue();
+        assertThat(blankAreaJson.get("area").asText()).isEqualTo("   ");
 
         // 2. Scoped user AREA_USER_OIM
         authenticateAs("AREA_USER_OIM");
@@ -446,8 +385,9 @@ class ProfileToolsTest {
         when(failingAreas.findArea("OIM"))
             .thenThrow(new RuntimeException("secret-db-host area lookup failed"));
         OrchestratorProfileRepository cleanRepo = mock(OrchestratorProfileRepository.class);
-        ProfileTools areaFailTools =
-            new ProfileTools(cleanRepo, defaultProperties, failingAreas, json);
+        OrchestratorProfileService areaFailService =
+            new OrchestratorProfileService(cleanRepo, defaultProperties, failingAreas);
+        ProfileTools areaFailTools = new ProfileTools(areaFailService, failingAreas, json);
         assertThat(areaFailTools.listProfiles("OIM"))
             .isEqualTo("ERROR: the 'list_profiles' tool failed to complete the request.")
             .doesNotContain("secret-db-host");
@@ -458,8 +398,9 @@ class ProfileToolsTest {
             .thenThrow(new JsonProcessingException("secret-db-host serialization boom") {});
         when(cleanRepo.findAll()).thenReturn(List.of(profileInArea("OIM", "OIM")));
         when(cleanRepo.findByName("OIM")).thenReturn(Optional.of(profileInArea("OIM", "OIM")));
-        ProfileTools mapperFailTools =
-            new ProfileTools(cleanRepo, defaultProperties, areaService, brokenMapper);
+        OrchestratorProfileService cleanService =
+            new OrchestratorProfileService(cleanRepo, defaultProperties, areaService);
+        ProfileTools mapperFailTools = new ProfileTools(cleanService, areaService, brokenMapper);
 
         assertThat(mapperFailTools.listProfiles(null))
             .isEqualTo("ERROR: the 'list_profiles' tool failed to complete the request.")
@@ -467,6 +408,32 @@ class ProfileToolsTest {
         assertThat(mapperFailTools.getProfile("OIM"))
             .isEqualTo("ERROR: the 'get_profile' tool failed to complete the request.")
             .doesNotContain("secret-db-host");
+    }
+
+    private void assertParityWithService(OrchestratorProfileService service, ProfileTools target,
+        List<OrchestratorProfile> profiles) throws Exception {
+        JsonNode listed = json.readTree(target.listProfiles(null));
+        assertThat(listed).hasSize(profiles.size());
+        for (int i = 0; i < profiles.size(); i++) {
+            OrchestratorProfile profile = profiles.get(i);
+            ResolvedProfile expected = service.resolve(profile);
+            JsonNode fromList = listed.get(i);
+            JsonNode fromGet = json.readTree(target.getProfile(profile.name()));
+            for (JsonNode node : List.of(fromList, fromGet)) {
+                assertExactShapeAndTypes(node);
+                assertThat(node.get("name").asText()).isEqualTo(expected.name());
+                assertThat(node.get("orchestratorPlaybook").asText())
+                    .isEqualTo(expected.orchestratorPlaybook());
+                assertThat(node.get("reviewerPlaybook").asText())
+                    .isEqualTo(expected.reviewerPlaybook());
+                assertThat(json.convertValue(node.get("specialistPlaybooks"), List.class))
+                    .isEqualTo(expected.specialistPlaybooks());
+                assertThat(node.get("maxReviewRounds").intValue())
+                    .isEqualTo(expected.maxReviewRounds());
+                assertThat(node.get("maxSpecialistCalls").intValue())
+                    .isEqualTo(expected.maxSpecialistCalls());
+            }
+        }
     }
 
     private static OrchestratorProfile profileInArea(String name, String area) {
@@ -481,7 +448,9 @@ class ProfileToolsTest {
     }
 
     private static void assertExactShapeAndTypes(JsonNode node) {
-        assertThat(keys(node)).isEqualTo(new TreeSet<>(EXPECTED_KEYS));
+        Set<String> actualKeys = keys(node);
+        assertThat(actualKeys).doesNotContainAnyElementsOf(OMITTED_OPERATOR_KEYS);
+        assertThat(actualKeys).isEqualTo(new TreeSet<>(EXPECTED_KEYS));
         assertThat(node.get("prototype").isBoolean()).isTrue();
         assertThat(node.get("specialistPlaybooks").isArray()).isTrue();
         assertThat(node.get("maxReviewRounds").isIntegralNumber()).isTrue();

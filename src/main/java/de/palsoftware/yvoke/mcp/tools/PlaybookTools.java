@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.api.model.PlaybookDto;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
@@ -83,13 +82,7 @@ public class PlaybookTools {
     public String listPlaybooks(@McpToolParam(description = AREA_PARAM, required = false)
     @ToolParam(description = AREA_PARAM, required = false) String area) {
         try {
-            Predicate<Playbook> inArea = playbook -> true;
-            if (area != null && !area.isBlank()) {
-                // Compare with the stored name, not the caller's spelling: matched leniently,
-                // filtered strictly. An unknown area matches nothing.
-                Optional<String> stored = areaService.findArea(area).map(Area::name);
-                inArea = playbook -> stored.isPresent() && stored.get().equals(playbook.area());
-            }
+            Predicate<Playbook> inArea = McpToolUtils.inArea(areaService, area, Playbook::area);
             List<Playbook> list = AreaAccessContext
                 .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
             return objectMapper

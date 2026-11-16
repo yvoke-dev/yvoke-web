@@ -1,19 +1,14 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
-import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
+import de.palsoftware.yvoke.chat.orchestration.ResolvedProfile;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -24,8 +19,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Multi-agent orchestrator profiles as client-only MCP tools for Yvoke clients. Reads directly from
- * {@code orchestrator_profiles} on every call and merges unset limits and per-role model/thinking
- * levels over {@link OrchestratorProperties}.
+ * {@code orchestrator_profiles} on every call via {@link OrchestratorProfileService} and resolves
+ * effective review-round and specialist-call limits without exposing server-side model or
+ * thinking-level bindings.
  */
 @ClientOnlyTools
 @Component
@@ -35,38 +31,44 @@ public class ProfileTools {
         "For Yvoke clients only: call this only when the Yvoke plugin tells you to. Lists the "
             + "Yvoke multi-agent orchestrator profiles as a JSON array of {name, area, prototype, "
             + "orchestratorPlaybook, reviewerPlaybook, specialistPlaybooks, maxReviewRounds, "
-            + "maxSpecialistCalls, orchestratorModel, orchestratorThinkingLevel, reviewerModel, "
-            + "reviewerThinkingLevel, specialistModel, specialistThinkingLevel}. Pass area to list "
-            + "only that area's profiles. It does not answer questions about the knowledge base.";
+            + "maxSpecialistCalls}. Pass area to list only that area's profiles. It does not "
+            + "answer questions about the knowledge base.";
 
     private static final String GET_DESCRIPTION =
         "For Yvoke clients only: call this only when the Yvoke plugin tells you to, with the "
             + "profile name it gives. Returns that multi-agent orchestrator profile as a JSON "
             + "object {name, area, prototype, orchestratorPlaybook, reviewerPlaybook, "
-            + "specialistPlaybooks, maxReviewRounds, maxSpecialistCalls, orchestratorModel, "
-            + "orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel, "
-            + "specialistThinkingLevel}.";
+            + "specialistPlaybooks, maxReviewRounds, maxSpecialistCalls}.";
 
     private static final String AREA_PARAM =
         "Optional area name, e.g. \"OIM\" (see list_areas). Omit to list every area's profiles.";
 
     private static final String NAME_PARAM = "The orchestrator profile's name, e.g. \"OIM\".";
 
+    /**
+     * Multi-agent profile exposed to MCP clients. As with {@code OrchestratorProfileDto}, per-role
+     * model and thinking-level bindings are deliberately omitted: server profiles name server-side
+     * provider deployments, whereas external clients bind their own models locally.
+     */
     private record ProfilePayload(String name, String area, boolean prototype,
         String orchestratorPlaybook, String reviewerPlaybook, List<String> specialistPlaybooks,
-        int maxReviewRounds, int maxSpecialistCalls, String orchestratorModel,
-        String orchestratorThinkingLevel, String reviewerModel, String reviewerThinkingLevel,
-        String specialistModel, String specialistThinkingLevel) {}
+        int maxReviewRounds, int maxSpecialistCalls) {
 
-    private final OrchestratorProfileRepository profileRepository;
-    private final OrchestratorProperties properties;
+        static ProfilePayload from(OrchestratorProfile profile, ResolvedProfile resolved) {
+            return new ProfilePayload(resolved.name(), profile.area(), profile.prototype(),
+                resolved.orchestratorPlaybook(), resolved.reviewerPlaybook(),
+                resolved.specialistPlaybooks(), resolved.maxReviewRounds(),
+                resolved.maxSpecialistCalls());
+        }
+    }
+
+    private final OrchestratorProfileService profileService;
     private final AreaService areaService;
     private final ObjectMapper objectMapper;
 
-    public ProfileTools(OrchestratorProfileRepository profileRepository,
-        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper) {
-        this.profileRepository = profileRepository;
-        this.properties = properties;
+    public ProfileTools(OrchestratorProfileService profileService, AreaService areaService,
+        ObjectMapper objectMapper) {
+        this.profileService = profileService;
         this.areaService = areaService;
         this.objectMapper = objectMapper;
     }
@@ -76,16 +78,12 @@ public class ProfileTools {
     public String listProfiles(@McpToolParam(description = AREA_PARAM, required = false)
     @ToolParam(description = AREA_PARAM, required = false) String area) {
         try {
-            Predicate<OrchestratorProfile> inArea = profile -> true;
-            if (area != null && !area.isBlank()) {
-                Optional<String> stored = areaService.findArea(area).map(Area::name);
-                inArea = profile -> stored.isPresent()
-                    && stored.get().equals(blankToNull(profile.area()));
-            }
+            Predicate<OrchestratorProfile> inArea =
+                McpToolUtils.inArea(areaService, area, OrchestratorProfile::area);
             List<OrchestratorProfile> accessible = AreaAccessContext
-                .filterByUserArea(profileRepository.findAll(), OrchestratorProfile::area);
-            return objectMapper.writeValueAsString(
-                accessible.stream().filter(inArea).map(this::toPayload).toList());
+                .filterByUserArea(profileService.listAllProfiles(), OrchestratorProfile::area);
+            return objectMapper.writeValueAsString(accessible.stream().filter(inArea)
+                .map(p -> ProfilePayload.from(p, profileService.resolve(p))).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_profiles", e);
         }
@@ -100,59 +98,15 @@ public class ProfileTools {
         }
         String trimmed = name.trim();
         try {
-            Optional<OrchestratorProfile> found = profileRepository.findByName(trimmed);
+            Optional<OrchestratorProfile> found = profileService.getProfile(trimmed);
             if (found.isEmpty() || !AreaAccessContext.canAccessUserArea(found.get().area())) {
                 return "ERROR: profile '" + trimmed + "' not found.";
             }
-            return objectMapper.writeValueAsString(toPayload(found.get()));
+            OrchestratorProfile profile = found.get();
+            return objectMapper
+                .writeValueAsString(ProfilePayload.from(profile, profileService.resolve(profile)));
         } catch (Exception e) {
             return McpToolUtils.toolError("get_profile", e);
         }
-    }
-
-    private ProfilePayload toPayload(OrchestratorProfile p) {
-        RoleDefaults defaults = properties.defaults();
-        RoleConfig defaultOrch = defaults == null ? null : defaults.orchestrator();
-        RoleConfig defaultRev = defaults == null ? null : defaults.reviewer();
-        RoleConfig defaultSpec = defaults == null ? null : defaults.specialist();
-
-        List<String> specialists = p.specialistPlaybooks() == null ? List.of()
-            : p.specialistPlaybooks().stream().filter(Objects::nonNull).map(String::trim)
-                .filter(s -> !s.isEmpty()).toList();
-
-        int maxReviewRounds =
-            p.maxReviewRounds() >= 0 ? p.maxReviewRounds() : properties.resolvedMaxReviewRounds();
-        int maxSpecialistCalls = p.maxSpecialistCalls() > 0 ? p.maxSpecialistCalls()
-            : properties.resolvedMaxSpecialistCalls();
-
-        return new ProfilePayload(blankToNull(p.name()), blankToNull(p.area()), p.prototype(),
-            blankToNull(p.orchestratorPlaybook()), blankToNull(p.reviewerPlaybook()), specialists,
-            maxReviewRounds, maxSpecialistCalls, resolveModel(p.orchestratorModel(), defaultOrch),
-            resolveThinkingLevel(p.orchestratorThinkingLevel(), defaultOrch),
-            resolveModel(p.reviewerModel(), defaultRev),
-            resolveThinkingLevel(p.reviewerThinkingLevel(), defaultRev),
-            resolveModel(p.specialistModel(), defaultSpec),
-            resolveThinkingLevel(p.specialistThinkingLevel(), defaultSpec));
-    }
-
-    private static String resolveModel(String profileValue, RoleConfig defaultRole) {
-        String candidate = blankToNull(profileValue);
-        if (candidate != null) {
-            return candidate;
-        }
-        return defaultRole == null ? null : blankToNull(defaultRole.model());
-    }
-
-    private static String resolveThinkingLevel(String profileValue, RoleConfig defaultRole) {
-        String candidate = blankToNull(profileValue);
-        if (candidate != null) {
-            return candidate.toLowerCase(Locale.ROOT);
-        }
-        String fallback = defaultRole == null ? null : blankToNull(defaultRole.thinkingLevel());
-        return fallback == null ? null : fallback.toLowerCase(Locale.ROOT);
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 }

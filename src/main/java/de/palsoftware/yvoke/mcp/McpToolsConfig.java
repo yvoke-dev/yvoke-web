@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +34,14 @@ import org.springframework.stereotype.Component;
 public class McpToolsConfig {
 
     private static final Logger log = LoggerFactory.getLogger(McpToolsConfig.class);
+
+    /**
+     * Tool classes in {@code mcp.tools} registered by hand in {@link #sharedToolCallbacks} with
+     * custom {@code ContextAwareToolCallback} schemas, so their scanned registrations are skipped
+     * to keep a single source of truth per tool schema.
+     */
+    public static final Set<Class<?>> CALLBACK_PUBLISHED = Set.of(SearchCorpusTool.class,
+        GetSectionTool.class, ListDocumentsTool.class, VerifyCitationsTool.class);
 
     /**
      * The tools both the in-app assistant ({@code RagService}, through its
@@ -100,8 +109,7 @@ public class McpToolsConfig {
             // Registered by hand above with a context-aware callback. The duplicate-name
             // guard below would skip the scanned copy anyway, but that leaves two sources
             // of truth for one tool's schema; skipping the class keeps exactly one.
-            if (clazz.equals(SearchCorpusTool.class) || clazz.equals(GetSectionTool.class)
-                || clazz.equals(ListDocumentsTool.class) || clazz.equals(VerifyCitationsTool.class)
+            if (CALLBACK_PUBLISHED.contains(clazz)
                 || clazz.isAnnotationPresent(ClientOnlyTools.class)) {
                 continue;
             }
@@ -133,7 +141,7 @@ public class McpToolsConfig {
 
     // Classpath scanning rather than getBeansWithAnnotation on the entire ApplicationContext,
     // which would eagerly instantiate other unrelated beans and cause circular reference errors.
-    private static List<Class<?>> scanToolClasses() {
+    public static List<Class<?>> scanToolClasses() {
         ClassPathScanningCandidateComponentProvider scanner =
             new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(Component.class));
@@ -150,6 +158,7 @@ public class McpToolsConfig {
                 log.error("Failed to load MCP Tool candidate: {}", className, e);
             }
         }
+        classes.sort(Comparator.comparing(Class::getName));
         return classes;
     }
 

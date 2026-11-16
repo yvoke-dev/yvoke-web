@@ -2,53 +2,47 @@ package de.palsoftware.yvoke.mcp.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.mcp.ClientOnlyTools;
+import de.palsoftware.yvoke.mcp.McpToolsConfig;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.stereotype.Component;
 
 /**
- * Every tool in {@code mcp.tools} is published twice: {@code @McpTool}/{@code @McpToolParam} to
- * external MCP clients, and {@code @Tool}/{@code @ToolParam} to the in-app agentic catalogue (for a
- * {@code @ClientOnlyTools} class, {@code @Tool} is what builds its MCP-only callback instead). The
- * two are hand-maintained, sit on the same method, and nothing ties them together — so a parameter
- * annotated for one catalogue and not the other silently exists for one kind of caller and not the
- * other, with no compile or startup error.
+ * {@link McpToolsConfig} publishes annotation-driven tool classes in {@code mcp.tools} via
+ * {@code ToolCallbacks.from(bean)}, which reads {@code @Tool}/{@code @ToolParam}, while the classes
+ * in {@link McpToolsConfig#CALLBACK_PUBLISHED} ship hand-written {@code ContextAwareToolCallback}
+ * schemas instead. Annotation-published methods also carry {@code @McpTool}/{@code @McpToolParam}
+ * alongside {@code @Tool}/{@code @ToolParam}; keeping both annotation sets in lockstep prevents
+ * silent schema divergence across tool catalogues.
  *
  * <p>
- * This is pure reflection: no Spring context, so it cannot affect the TestContext cache.
+ * This is pure reflection and classpath metadata scanning: no Spring context, so it cannot affect
+ * the TestContext cache.
  */
 class McpToolCatalogueParityTest {
 
-    private static final List<Class<?>> TOOLS =
-        List.of(GetGraphNeighborsTool.class, GetJsonSchemaTool.class, GetSectionTool.class,
-            GetTocTool.class, ListDocumentsTool.class, PlaybookTools.class, ProfileTools.class,
-            QueryJsonObjectsTool.class, SearchCorpusTool.class, SearchGraphEntitiesTool.class,
-            VerifyCitationsTool.class, AreaTools.class, SubmitFeedbackTool.class);
-
-    /**
-     * Hand-registered via {@code ContextAwareToolCallback} in {@code McpToolsConfig}, so their tool
-     * classes deliberately carry no {@code @McpTool}/{@code @Tool} annotations.
-     */
-    private static final Set<Class<?>> CALLBACK_PUBLISHED =
-        Set.of(GetSectionTool.class, SearchCorpusTool.class);
+    private static final List<Class<?>> TOOLS = McpToolsConfig.scanToolClasses().stream()
+        .filter(c -> !McpToolsConfig.CALLBACK_PUBLISHED.contains(c)).toList();
 
     @Test
-    void everyAnnotationPublishedToolClassDeclaresAtLeastOneMcpTool() {
+    void everyAnnotationPublishedToolClassDeclaresAtLeastOneTool() {
+        assertThat(TOOLS).isNotEmpty();
         List<String> emptyTools = new ArrayList<>();
         for (Class<?> tool : TOOLS) {
-            if (CALLBACK_PUBLISHED.contains(tool)) {
-                continue;
-            }
             long count = 0;
             for (Method m : tool.getDeclaredMethods()) {
-                if (m.isAnnotationPresent(McpTool.class)) {
+                if (m.isAnnotationPresent(Tool.class)) {
                     count++;
                 }
             }
@@ -57,8 +51,37 @@ class McpToolCatalogueParityTest {
             }
         }
         assertThat(emptyTools)
-            .as("every annotation-published tool class must declare at least one @McpTool method")
+            .as("every annotation-published tool class must declare at least one @Tool method")
             .isEmpty();
+    }
+
+    @Test
+    void everyClientOnlyToolsClassIsPublishedThroughTheComponentScan()
+        throws ClassNotFoundException {
+        ClassPathScanningCandidateComponentProvider scanner =
+            new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(ClientOnlyTools.class));
+        List<Class<?>> clientOnlyClasses = new ArrayList<>();
+        for (BeanDefinition bd : scanner
+            .findCandidateComponents("de.palsoftware.yvoke.mcp.tools")) {
+            String className = bd.getBeanClassName();
+            if (className != null) {
+                clientOnlyClasses.add(Class.forName(className));
+            }
+        }
+        assertThat(clientOnlyClasses).isNotEmpty().contains(ProfileTools.class);
+        for (Class<?> clazz : clientOnlyClasses) {
+            assertThat(clazz.isAnnotationPresent(Component.class)).as(clazz.getSimpleName()
+                + " is @ClientOnlyTools so it must also carry @Component to be discovered by McpToolsConfig.scanToolClasses()")
+                .isTrue();
+            assertThat(McpToolsConfig.CALLBACK_PUBLISHED)
+                .as(clazz.getSimpleName()
+                    + " is @ClientOnlyTools and must not be skipped via CALLBACK_PUBLISHED")
+                .doesNotContain(clazz);
+            assertThat(TOOLS)
+                .as(clazz.getSimpleName() + " must be present in annotation-published TOOLS")
+                .contains(clazz);
+        }
     }
 
     @Test

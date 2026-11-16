@@ -801,9 +801,15 @@ public class McpServerEndpointsIT {
             orchestratorProfileRepository.upsert(seeded);
 
             try (McpSession session = establishSession()) {
+                Set<String> expectedKeys = new TreeSet<>(Set.of("name", "area", "prototype",
+                    "orchestratorPlaybook", "reviewerPlaybook", "specialistPlaybooks",
+                    "maxReviewRounds", "maxSpecialistCalls"));
+
                 // 1. list_profiles with empty {} args
-                JsonNode allProfiles =
-                    extractToolCallJson(callTool(session, "20", "list_profiles", "{}").body());
+                String rawListBody = callTool(session, "20", "list_profiles", "{}").body();
+                assertFalse(rawListBody.contains("DeepSeek-V4-Flash"),
+                    "list_profiles must not leak server-side model bindings — BODY=" + rawListBody);
+                JsonNode allProfiles = extractToolCallJson(rawListBody);
                 assertThat(allProfiles.isArray()).isTrue();
                 JsonNode listed = null;
                 for (JsonNode entry : allProfiles) {
@@ -813,14 +819,15 @@ public class McpServerEndpointsIT {
                     }
                 }
                 assertNotNull(listed, "list_profiles {} must include seeded profile");
+                Set<String> listedKeys = new TreeSet<>();
+                listed.fieldNames().forEachRemaining(listedKeys::add);
+                assertThat(listedKeys).isEqualTo(expectedKeys);
                 assertThat(listed.get("prototype").isBoolean()).isTrue();
                 assertThat(listed.get("prototype").booleanValue()).isTrue();
                 assertThat(listed.get("maxReviewRounds").isIntegralNumber()).isTrue();
-                assertThat(listed.get("maxReviewRounds").intValue()).isZero();
+                assertThat(listed.get("maxReviewRounds").intValue()).isEqualTo(3);
                 assertThat(listed.get("maxSpecialistCalls").isIntegralNumber()).isTrue();
                 assertThat(listed.get("maxSpecialistCalls").intValue()).isEqualTo(8);
-                assertThat(listed.get("orchestratorModel").asText()).isEqualTo("DeepSeek-V4-Flash");
-                assertThat(listed.get("orchestratorThinkingLevel").asText()).isEqualTo("high");
 
                 // 2. list_profiles with padded & case-insensitive area
                 JsonNode byArea = extractToolCallJson(callTool(session, "21", "list_profiles",
@@ -835,14 +842,12 @@ public class McpServerEndpointsIT {
                 assertThat(unknownArea.isArray()).isTrue();
                 assertThat(unknownArea).isEmpty();
 
-                // 4. get_profile for seeded profile -> exact 14-key JSON object
-                JsonNode got = extractToolCallJson(callTool(session, "23", "get_profile",
-                    "{ \"name\": \"" + profileName + "\" }").body());
-                Set<String> expectedKeys = new TreeSet<>(Set.of("name", "area", "prototype",
-                    "orchestratorPlaybook", "reviewerPlaybook", "specialistPlaybooks",
-                    "maxReviewRounds", "maxSpecialistCalls", "orchestratorModel",
-                    "orchestratorThinkingLevel", "reviewerModel", "reviewerThinkingLevel",
-                    "specialistModel", "specialistThinkingLevel"));
+                // 4. get_profile for seeded profile -> exact 8-key JSON object (no model/thinking)
+                String rawGetBody = callTool(session, "23", "get_profile",
+                    "{ \"name\": \"" + profileName + "\" }").body();
+                assertFalse(rawGetBody.contains("DeepSeek-V4-Flash"),
+                    "get_profile must not leak server-side model bindings — BODY=" + rawGetBody);
+                JsonNode got = extractToolCallJson(rawGetBody);
                 Set<String> actualKeys = new TreeSet<>();
                 Iterator<String> fieldNames = got.fieldNames();
                 fieldNames.forEachRemaining(actualKeys::add);
@@ -854,14 +859,8 @@ public class McpServerEndpointsIT {
                 assertThat(got.get("reviewerPlaybook").asText()).isEqualTo("oim-rev");
                 assertThat(objectMapper.convertValue(got.get("specialistPlaybooks"), List.class))
                     .containsExactly("oim-spec");
-                assertThat(got.get("maxReviewRounds").intValue()).isZero();
+                assertThat(got.get("maxReviewRounds").intValue()).isEqualTo(3);
                 assertThat(got.get("maxSpecialistCalls").intValue()).isEqualTo(8);
-                assertThat(got.get("orchestratorModel").asText()).isEqualTo("DeepSeek-V4-Flash");
-                assertThat(got.get("orchestratorThinkingLevel").asText()).isEqualTo("high");
-                assertThat(got.get("reviewerModel").isNull()).isTrue();
-                assertThat(got.get("reviewerThinkingLevel").isNull()).isTrue();
-                assertThat(got.get("specialistModel").isNull()).isTrue();
-                assertThat(got.get("specialistThinkingLevel").isNull()).isTrue();
 
                 // 5. get_profile unknown (DefaultToolCallResultConverter JSON-encodes plain strings)
                 JsonNode unknownProfile = extractToolCallJson(callTool(session, "24", "get_profile",
