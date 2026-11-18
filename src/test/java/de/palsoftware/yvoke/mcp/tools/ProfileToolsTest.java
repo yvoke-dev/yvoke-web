@@ -204,16 +204,23 @@ class ProfileToolsTest {
     void storedIdentifiersAreReturnedUnchangedWithoutTrimming() throws Exception {
         OrchestratorProfile untrimmed = new OrchestratorProfile("OIM ", 2, 6, "  orch-pb  ", "   ",
             List.of(" oim-a ", ""), null, null, null, null, null, null, false, NOW, NOW, " OIM ");
+        OrchestratorProfile trimmedCollision =
+            new OrchestratorProfile("OIM", 5, 10, "clean-orch", "clean-rev", List.of("clean-spec"),
+                null, null, null, null, null, null, false, NOW, NOW, "OIM");
         OrchestratorProfile nullSpecialists = new OrchestratorProfile("Bare", 1, 4, null, "", null,
             null, null, null, null, null, null, false, NOW, NOW, "OIM");
-        when(profileRepository.findAll()).thenReturn(List.of(untrimmed, nullSpecialists));
+        when(profileRepository.findAll())
+            .thenReturn(List.of(untrimmed, trimmedCollision, nullSpecialists));
+        when(profileRepository.findByName("OIM ")).thenReturn(Optional.of(untrimmed));
+        when(profileRepository.findByName("OIM")).thenReturn(Optional.of(trimmedCollision));
 
         JsonNode list = json.readTree(tools.listProfiles(null));
-        assertThat(list).hasSize(2);
+        assertThat(list).hasSize(3);
 
         JsonNode first = list.get(0);
         assertExactShapeAndTypes(first);
-        assertThat(first.get("name").asText()).isEqualTo("OIM ");
+        String listedName = first.get("name").asText();
+        assertThat(listedName).isEqualTo("OIM ");
         assertThat(first.get("area").asText()).isEqualTo(" OIM ");
         assertThat(first.get("orchestratorPlaybook").asText()).isEqualTo("  orch-pb  ");
         assertThat(first.get("reviewerPlaybook").isTextual()).isTrue();
@@ -221,13 +228,20 @@ class ProfileToolsTest {
         assertThat(json.convertValue(first.get("specialistPlaybooks"), List.class))
             .containsExactly(" oim-a ", "");
 
-        JsonNode second = list.get(1);
-        assertExactShapeAndTypes(second);
-        assertThat(second.get("name").asText()).isEqualTo("Bare");
-        assertThat(second.get("orchestratorPlaybook").isNull()).isTrue();
-        assertThat(second.get("reviewerPlaybook").isTextual()).isTrue();
-        assertThat(second.get("reviewerPlaybook").asText()).isEmpty();
-        assertThat(second.get("specialistPlaybooks")).isEmpty();
+        // Round-trip: passing the exact listed name ("OIM ") to get_profile must resolve "OIM "
+        // rather than colliding with "OIM" or failing with not-found.
+        JsonNode roundTrip = json.readTree(tools.getProfile(listedName));
+        assertExactShapeAndTypes(roundTrip);
+        assertThat(roundTrip.get("name").asText()).isEqualTo("OIM ");
+        assertThat(roundTrip).isEqualTo(first);
+
+        JsonNode third = list.get(2);
+        assertExactShapeAndTypes(third);
+        assertThat(third.get("name").asText()).isEqualTo("Bare");
+        assertThat(third.get("orchestratorPlaybook").isNull()).isTrue();
+        assertThat(third.get("reviewerPlaybook").isTextual()).isTrue();
+        assertThat(third.get("reviewerPlaybook").asText()).isEmpty();
+        assertThat(third.get("specialistPlaybooks")).isEmpty();
     }
 
     @Test
@@ -310,19 +324,27 @@ class ProfileToolsTest {
         assertThat(tools.getProfile("ping-prof"))
             .isEqualTo("ERROR: profile 'ping-prof' not found.");
         assertThat(tools.getProfile("  ping-prof  "))
-            .isEqualTo("ERROR: profile 'ping-prof' not found.");
+            .isEqualTo("ERROR: profile '  ping-prof  ' not found.");
         assertThat(tools.getProfile("null-area-prof"))
             .isEqualTo("ERROR: profile 'null-area-prof' not found.");
         assertThat(tools.getProfile("blank-area-prof"))
             .isEqualTo("ERROR: profile 'blank-area-prof' not found.");
 
-        // Byte-for-byte refusal symmetry when the same name is genuinely absent from DB
+        // Byte-for-byte refusal symmetry when the same name (exact or padded) is absent vs
+        // unauthorized in DB
         when(profileRepository.findByName("ping-prof")).thenReturn(Optional.empty());
         String absentReply = tools.getProfile("ping-prof");
         when(profileRepository.findByName("ping-prof")).thenReturn(Optional.of(pingProf));
-        String unauthorizedReply = tools.getProfile("  ping-prof  ");
+        String unauthorizedReply = tools.getProfile("ping-prof");
         assertThat(unauthorizedReply).isEqualTo(absentReply)
             .isEqualTo("ERROR: profile 'ping-prof' not found.");
+
+        String absentPaddedReply = tools.getProfile("  ping-prof  ");
+        when(profileRepository.findByName("  ping-prof  "))
+            .thenReturn(Optional.of(profileInArea("  ping-prof  ", "PingID")));
+        String unauthorizedPaddedReply = tools.getProfile("  ping-prof  ");
+        assertThat(unauthorizedPaddedReply).isEqualTo(absentPaddedReply)
+            .isEqualTo("ERROR: profile '  ping-prof  ' not found.");
 
         // 3. Zero-area caller (SCOPE_mcp.read only)
         authenticateAs("SCOPE_mcp.read");
@@ -346,15 +368,21 @@ class ProfileToolsTest {
     }
 
     @Test
-    void getProfileReReadsRepositoryOnEveryCallAndTrimsLookupName() throws Exception {
-        OrchestratorProfile oimProf = profileInArea("OIM", "OIM");
-        when(profileRepository.findByName("OIM")).thenReturn(Optional.of(oimProf),
+    void getProfileReReadsRepositoryOnEveryCallAndLooksUpExactNameWithoutTrimming()
+        throws Exception {
+        OrchestratorProfile oimProf = profileInArea("oim-default", "OIM");
+        when(profileRepository.findByName("oim-default")).thenReturn(Optional.of(oimProf),
             Optional.empty());
+        when(profileRepository.findByName("  oim-default  ")).thenReturn(Optional.empty());
 
-        assertThat(json.readTree(tools.getProfile("  OIM  ")).get("name").asText())
-            .isEqualTo("OIM");
-        assertThat(tools.getProfile("OIM")).isEqualTo("ERROR: profile 'OIM' not found.");
-        verify(profileRepository, times(2)).findByName("OIM");
+        assertThat(json.readTree(tools.getProfile("oim-default")).get("name").asText())
+            .isEqualTo("oim-default");
+        assertThat(tools.getProfile("oim-default"))
+            .isEqualTo("ERROR: profile 'oim-default' not found.");
+        assertThat(tools.getProfile("  oim-default  "))
+            .isEqualTo("ERROR: profile '  oim-default  ' not found.");
+        verify(profileRepository, times(2)).findByName("oim-default");
+        verify(profileRepository, times(1)).findByName("  oim-default  ");
     }
 
     @Test

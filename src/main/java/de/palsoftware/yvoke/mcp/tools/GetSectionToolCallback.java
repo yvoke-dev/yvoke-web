@@ -18,11 +18,12 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  * billed once per remaining turn rather than once.
  *
  * <p>
- * Because this replaces the scanned registration, {@code GetSectionTool} carries no
+ * Because this replaces the scanned registration ({@code GetSectionTool} is listed in
+ * {@code McpToolsConfig.CALLBACK_PUBLISHED}), {@code GetSectionTool} carries no
  * {@code @McpTool}/{@code @Tool} annotations any more and the schema below is the single
- * description both catalogues read — the same trade {@code SearchCorpusToolCallback} makes.
- * {@code McpToolCatalogueParityTest} requires a tool method to declare both catalogues or neither,
- * so dropping them in pairs keeps it satisfied rather than exempting anything.
+ * description both catalogues read — the same trade {@code SearchCorpusToolCallback},
+ * {@code ListDocumentsToolCallback} and {@code VerifyCitationsToolCallback} make, enforced by
+ * {@code McpToolCatalogueParityTest}.
  */
 public class GetSectionToolCallback implements ContextAwareToolCallback {
 

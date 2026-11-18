@@ -96,11 +96,10 @@ public class ProfileTools {
         if (name == null || name.isBlank()) {
             return "ERROR: 'name' is required for get_profile.";
         }
-        String trimmed = name.trim();
         try {
-            Optional<OrchestratorProfile> found = profileService.getProfile(trimmed);
+            Optional<OrchestratorProfile> found = profileService.getProfile(name);
             if (found.isEmpty() || !AreaAccessContext.canAccessUserArea(found.get().area())) {
-                return "ERROR: profile '" + trimmed + "' not found.";
+                return "ERROR: profile '" + name + "' not found.";
             }
             OrchestratorProfile profile = found.get();
             return objectMapper

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
@@ -17,6 +19,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -259,5 +262,19 @@ public class ListDocumentsToolTest {
         verify(documentRepository).countDocuments(isNull(), eq("manual"), isNull(), isNull(),
             isNull(), eq("Guide"), eq(Set.of("oim")));
         verify(documentRepository, never()).findDistinctKindsInCollection(anyString());
+    }
+
+    @Test
+    public void testPublishedCallbackSchemaExposesOffsetPaginationParameter() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolDefinition definition =
+            new ListDocumentsToolCallback(listDocumentsTool, mapper).getToolDefinition();
+        JsonNode schema = mapper.readTree(definition.inputSchema());
+
+        assertEquals("list_documents", definition.name());
+        assertEquals("integer", schema.at("/properties/offset/type").asText());
+        String offsetDescription = schema.at("/properties/offset/description").asText();
+        assertTrue(offsetDescription.contains("Pagination offset."));
+        assertTrue(offsetDescription.contains("set offset to (offset + limit)"));
     }
 }

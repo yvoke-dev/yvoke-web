@@ -4,16 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -115,29 +115,36 @@ public class VerifyCitationsToolTest {
     }
 
     @Test
-    public void testToolDescriptionStatesWhatItDoesNotVerify() throws Exception {
-        // The description is the only thing the model reads before trusting the verdict. Both
-        // annotations must carry the same text — they were two hand-copied strings.
-        Method method = VerifyCitationsTool.class.getMethod("verifyCitations", List.class);
-        String mcpDescription = method.getAnnotation(McpTool.class).description();
-        String toolDescription = method.getAnnotation(Tool.class).description();
+    public void testToolDescriptionStatesWhatItDoesNotVerify() {
+        // The description is the only thing the model reads before trusting the verdict.
+        // VerifyCitationsToolCallback is the single published schema for both MCP and in-app chat.
+        ToolDefinition definition =
+            new VerifyCitationsToolCallback(verifyCitationsTool, new ObjectMapper())
+                .getToolDefinition();
+        String description = definition.description();
 
-        assertEquals(VerifyCitationsTool.DESCRIPTION, mcpDescription);
-        assertEquals(VerifyCitationsTool.DESCRIPTION, toolDescription);
-        assertTrue(mcpDescription.contains("does not read the cited text"));
-        assertTrue(mcpDescription.contains("UNVERIFIED"));
+        assertEquals("verify_citations", definition.name());
+        assertEquals(VerifyCitationsTool.DESCRIPTION, description);
+        assertTrue(description.contains("does not read the cited text"));
+        assertTrue(description.contains("UNVERIFIED"));
         // The tool checks ids, not claims; selling it as blanket anti-hallucination is the
         // over-claim itself.
-        assertFalse(mcpDescription.contains("anti-hallucination"));
+        assertFalse(description.contains("anti-hallucination"));
     }
 
     @Test
-    public void testParameterDescriptionDoesNotAdvertiseATruncatedId() {
+    public void testParameterDescriptionDoesNotAdvertiseATruncatedId() throws Exception {
         // The old example was "[chunk_id=8f7c1a2b]" — a token this very tool then reported
-        // FABRICATED with "invalid chunk ID format".
-        assertFalse(
-            VerifyCitationsTool.CITATIONS_PARAM_DESCRIPTION.contains("[chunk_id=8f7c1a2b]"));
-        assertTrue(VerifyCitationsTool.CITATIONS_PARAM_DESCRIPTION.contains("full"));
+        // FABRICATED with "invalid chunk ID format". Inspect the shipped callback inputSchema.
+        ObjectMapper mapper = new ObjectMapper();
+        ToolDefinition definition =
+            new VerifyCitationsToolCallback(verifyCitationsTool, mapper).getToolDefinition();
+        JsonNode schema = mapper.readTree(definition.inputSchema());
+        String paramDescription = schema.at("/properties/citations/description").asText();
+
+        assertEquals(VerifyCitationsTool.CITATIONS_PARAM_DESCRIPTION, paramDescription);
+        assertFalse(paramDescription.contains("[chunk_id=8f7c1a2b]"));
+        assertTrue(paramDescription.contains("full"));
     }
 
     @Test

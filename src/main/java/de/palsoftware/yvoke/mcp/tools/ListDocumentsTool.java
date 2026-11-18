@@ -9,10 +9,6 @@ import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -32,47 +28,12 @@ public class ListDocumentsTool {
         this.collectionService = collectionService;
     }
 
-    @McpTool(name = "list_documents",
-        description = "List (catalog) the documents in a collection. Use to discover which documents exist, optionally filtering by an approximate title via 'query' (e.g. a process-chain or config-namespace name). The output displays the current page and total count (e.g., 'showing 1-100 of 150'); use the 'offset' parameter to fetch subsequent pages if the total count exceeds the limit. Returns a markdown table with columns: document_id, kind, title, chunk count.")
-    @Tool(name = "list_documents",
-        description = "List (catalog) the documents in a collection. Use to discover which documents exist, optionally filtering by an approximate title via 'query' (e.g. a process-chain or config-namespace name). The output displays the current page and total count (e.g., 'showing 1-100 of 150'); use the 'offset' parameter to fetch subsequent pages if the total count exceeds the limit. Returns a markdown table with columns: document_id, kind, title, chunk count.")
-    public String listDocuments(
-        @McpToolParam(description = "The collection to list.", required = true)
-        @ToolParam(description = "The collection to list.", required = true) String collection,
-        @McpToolParam(
-            description = "Filter by document kind (e.g. 'manual', 'table', 'procedure'). When nothing is specified all kinds are considered.",
-            required = false)
-        @ToolParam(
-            description = "Filter by document kind (e.g. 'manual', 'table', 'procedure'). When nothing is specified all kinds are considered.",
-            required = false)
-        @Nullable String kind,
-        @McpToolParam(
-            description = "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
-            required = false)
-        @ToolParam(
-            description = "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
-            required = false)
-        @Nullable String tag,
-        @McpToolParam(
-            description = "Max documents to return. When nothing is specified 100 is used.",
-            required = false)
-        @ToolParam(description = "Max documents to return. When nothing is specified 100 is used.",
-            required = false)
-        @Nullable Integer limit,
-        @McpToolParam(
-            description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
-            required = false)
-        @ToolParam(
-            description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
-            required = false)
-        @Nullable Integer offset,
-        @McpToolParam(
-            description = "Fuzzy document-title filter: finds documents by approximate title (e.g. a process-chain or config-namespace name). Matches case-insensitive substrings and close trigram matches, ranked best-first. When nothing is specified all titles are considered.",
-            required = false)
-        @ToolParam(
-            description = "Fuzzy document-title filter: finds documents by approximate title (e.g. a process-chain or config-namespace name). Matches case-insensitive substrings and close trigram matches, ranked best-first. When nothing is specified all titles are considered.",
-            required = false)
-        @Nullable String query) {
+    /**
+     * Context-free entry point delegating to the context-aware overload. Published to MCP and the
+     * in-app assistant via {@link ListDocumentsToolCallback} in {@code McpToolsConfig}.
+     */
+    public String listDocuments(String collection, @Nullable String kind, @Nullable String tag,
+        @Nullable Integer limit, @Nullable Integer offset, @Nullable String query) {
         return listDocuments(collection, kind, tag, limit, offset, query, null);
     }
 

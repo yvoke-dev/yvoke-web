@@ -56,6 +56,34 @@ class McpToolCatalogueParityTest {
     }
 
     @Test
+    void callbackPublishedToolClassesCarryNoDeadAnnotations() {
+        assertThat(McpToolsConfig.CALLBACK_PUBLISHED).containsExactlyInAnyOrder(
+            SearchCorpusTool.class, GetSectionTool.class, ListDocumentsTool.class,
+            VerifyCitationsTool.class);
+        List<String> deadAnnotations = new ArrayList<>();
+        for (Class<?> tool : McpToolsConfig.CALLBACK_PUBLISHED) {
+            for (Method m : tool.getDeclaredMethods()) {
+                if (m.isAnnotationPresent(McpTool.class) || m.isAnnotationPresent(Tool.class)) {
+                    deadAnnotations.add(tool.getSimpleName() + "." + m.getName()
+                        + " carries method-level @McpTool/@Tool");
+                }
+                for (Parameter p : m.getParameters()) {
+                    if (p.isAnnotationPresent(McpToolParam.class)
+                        || p.isAnnotationPresent(ToolParam.class)) {
+                        deadAnnotations.add(tool.getSimpleName() + "." + m.getName() + "("
+                            + p.getName() + ") carries @McpToolParam/@ToolParam");
+                    }
+                }
+            }
+        }
+        assertThat(deadAnnotations)
+            .as("CALLBACK_PUBLISHED classes ship hand-written ContextAwareToolCallback schemas; "
+                + "leaving @McpTool/@Tool/@McpToolParam/@ToolParam on the underlying bean leaves "
+                + "dead, unchecked schema annotations that never ship")
+            .isEmpty();
+    }
+
+    @Test
     void everyClientOnlyToolsClassIsPublishedThroughTheComponentScan()
         throws ClassNotFoundException {
         ClassPathScanningCandidateComponentProvider scanner =
