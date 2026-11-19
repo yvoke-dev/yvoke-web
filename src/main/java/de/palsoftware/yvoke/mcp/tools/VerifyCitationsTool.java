@@ -52,13 +52,9 @@ public class VerifyCitationsTool {
     }
 
     /**
-     * Context-free entry point delegating to the context-aware overload. Published to MCP and the
-     * in-app assistant via {@link VerifyCitationsToolCallback} in {@code McpToolsConfig}.
+     * Checks cited chunk and document IDs against the corpus. Published to MCP and the in-app
+     * assistant via {@link VerifyCitationsToolCallback} in {@code McpToolsConfig}.
      */
-    public String verifyCitations(List<String> citations) {
-        return verifyCitations(citations, null);
-    }
-
     public String verifyCitations(List<String> citations, @Nullable AgenticChatContext context) {
         log.info("VerifyCitationsTool: verifying {} citations",
             citations != null ? citations.size() : 0);

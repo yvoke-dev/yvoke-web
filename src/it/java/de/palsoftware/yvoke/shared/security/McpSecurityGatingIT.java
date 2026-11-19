@@ -596,7 +596,7 @@ public class McpSecurityGatingIT {
             assertThat(getSectionTool.getSection(null, null, pingChunkId.toString()))
                 .isEqualTo("Error: Chunk not found: " + pingChunkId);
             assertThat(verifyCitationsTool
-                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]")))
+                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]"), null))
                 .contains("1 cited, 1 FABRICATED");
         } finally {
             jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", pingChunkId);

@@ -50,7 +50,7 @@ public class VerifyCitationsToolTest {
             .thenReturn(List.of(result));
 
         String output = verifyCitationsTool
-            .verifyCitations(List.of("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]"));
+            .verifyCitations(List.of("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]"), null);
         assertTrue(output.contains("Citation check — 1 cited, 0 FABRICATED"));
         assertTrue(output.contains("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]"));
         assertTrue(output.contains("REAL"));
@@ -58,10 +58,10 @@ public class VerifyCitationsToolTest {
 
     @Test
     public void testVerifyCitationsValidation() {
-        String outputNull = verifyCitationsTool.verifyCitations(null);
+        String outputNull = verifyCitationsTool.verifyCitations(null, null);
         assertTrue(outputNull.contains("Error: 'citations' parameter is required."));
 
-        String outputEmpty = verifyCitationsTool.verifyCitations(List.of());
+        String outputEmpty = verifyCitationsTool.verifyCitations(List.of(), null);
         assertTrue(outputEmpty.contains("Error: 'citations' parameter is required."));
     }
 
@@ -77,7 +77,7 @@ public class VerifyCitationsToolTest {
         when(citationVerifier.checkCitations(anyList())).thenReturn(List.of(real));
 
         String output = verifyCitationsTool
-            .verifyCitations(List.of("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]"));
+            .verifyCitations(List.of("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]"), null);
 
         assertFalse(output.contains("All citations resolve to real corpus entries"));
         assertTrue(output.contains("Every cited id exists in the corpus."));
@@ -92,7 +92,7 @@ public class VerifyCitationsToolTest {
                 CitationVerifier.CitationStatus.UNVERIFIED, "truncated chunk id");
         when(citationVerifier.checkCitations(anyList())).thenReturn(List.of(unverified));
 
-        String output = verifyCitationsTool.verifyCitations(List.of("[chunk_id=8f7c1a2b]"));
+        String output = verifyCitationsTool.verifyCitations(List.of("[chunk_id=8f7c1a2b]"), null);
 
         assertTrue(output.contains("Citation check — 1 cited, 0 FABRICATED, 1 UNVERIFIED"));
         assertTrue(output.contains("UNVERIFIED means not checked, not wrong"));
@@ -107,7 +107,7 @@ public class VerifyCitationsToolTest {
         when(citationVerifier.checkCitations(anyList())).thenReturn(List.of(fake));
 
         String output = verifyCitationsTool
-            .verifyCitations(List.of("[chunk_id=00000000-0000-0000-0000-000000000000]"));
+            .verifyCitations(List.of("[chunk_id=00000000-0000-0000-0000-000000000000]"), null);
 
         assertTrue(output.contains("Citation check — 1 cited, 1 FABRICATED"));
         assertTrue(output.contains("**Remove or correct every FABRICATED citation"));
@@ -160,7 +160,7 @@ public class VerifyCitationsToolTest {
         when(citationVerifier.checkCitations(eq(List.of(cit)), eq(Set.of("oim"))))
             .thenReturn(List.of(fake));
 
-        String output = verifyCitationsTool.verifyCitations(List.of(cit));
+        String output = verifyCitationsTool.verifyCitations(List.of(cit), null);
         assertTrue(output.contains("Citation check — 1 cited, 1 FABRICATED"));
         verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of("oim")));
         verify(citationVerifier, never()).checkCitations(anyList());
@@ -176,7 +176,7 @@ public class VerifyCitationsToolTest {
         when(citationVerifier.checkCitations(eq(List.of(cit)), eq(Set.of())))
             .thenReturn(List.of(fake));
 
-        String output = verifyCitationsTool.verifyCitations(List.of(cit));
+        String output = verifyCitationsTool.verifyCitations(List.of(cit), null);
         assertTrue(output.contains("Citation check — 1 cited, 1 FABRICATED"));
         verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of()));
         verify(citationVerifier, never()).checkCitations(anyList());
@@ -185,7 +185,7 @@ public class VerifyCitationsToolTest {
         SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken("key",
             "anon", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
 
-        String anonOutput = verifyCitationsTool.verifyCitations(List.of(cit));
+        String anonOutput = verifyCitationsTool.verifyCitations(List.of(cit), null);
         assertTrue(anonOutput.contains("Citation check — 1 cited, 1 FABRICATED"));
         verify(citationVerifier).checkCitations(eq(List.of(cit)), eq(Set.of()));
         verify(citationVerifier, never()).checkCitations(anyList());

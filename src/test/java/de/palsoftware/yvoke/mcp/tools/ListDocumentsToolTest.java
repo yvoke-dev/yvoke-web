@@ -68,7 +68,7 @@ public class ListDocumentsToolTest {
         when(documentRepository.countDocuments(any(), any(), any(), any(), any(), any()))
             .thenReturn(0L);
 
-        listDocumentsTool.listDocuments("OIM - DB", "TABLE", "9.3", null, null, null);
+        listDocumentsTool.listDocuments("OIM - DB", "TABLE", "9.3", null, null, null, null);
 
         verify(documentRepository).listDocuments(any(), anyInt(), anyInt(), eq("table"), any(),
             any(), any(), any());
@@ -86,7 +86,7 @@ public class ListDocumentsToolTest {
             any())).thenReturn(1L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - Manuals", null, "9.3", null, null, null);
+            listDocumentsTool.listDocuments("OIM - Manuals", null, "9.3", null, null, null, null);
 
         assertTrue(output.contains("**OIM - Manuals**"));
         assertTrue(output.contains("showing 1–1 of 1"));
@@ -109,7 +109,7 @@ public class ListDocumentsToolTest {
             isNull(), eq("VI_Delete"))).thenReturn(1L);
 
         String output = listDocumentsTool.listDocuments("OIM - Manuals", null, "9.3", null, null,
-            "  VI_Delete  ");
+            "  VI_Delete  ", null);
 
         assertTrue(output.contains("VI_Delete Processes"));
         assertTrue(output.contains("showing 1–1 of 1"));
@@ -123,16 +123,18 @@ public class ListDocumentsToolTest {
             .thenReturn(0L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - DB", "table", "9.3", null, null, null);
+            listDocumentsTool.listDocuments("OIM - DB", "table", "9.3", null, null, null, null);
         assertTrue(output.contains("(no documents in **OIM - DB**"));
     }
 
     @Test
     public void testListDocumentsMissingCollections() {
-        String outputNull = listDocumentsTool.listDocuments(null, null, null, null, null, null);
+        String outputNull =
+            listDocumentsTool.listDocuments(null, null, null, null, null, null, null);
         assertTrue(outputNull.contains("Error: 'collection' parameter is required."));
 
-        String outputEmpty = listDocumentsTool.listDocuments("   ", null, null, null, null, null);
+        String outputEmpty =
+            listDocumentsTool.listDocuments("   ", null, null, null, null, null, null);
         assertTrue(outputEmpty.contains("Error: 'collection' parameter is required."));
     }
 
@@ -141,8 +143,8 @@ public class ListDocumentsToolTest {
         when(documentRepository.findDistinctKindsInCollection("OIM - Code"))
             .thenReturn(List.of("table", "view", "procedure"));
 
-        String output =
-            listDocumentsTool.listDocuments("OIM - Code", "invalid-kind", "9.3", null, null, null);
+        String output = listDocumentsTool.listDocuments("OIM - Code", "invalid-kind", "9.3", null,
+            null, null, null);
         assertTrue(output.contains(
             "Error: kind 'invalid-kind' is not valid or does not exist in collection 'OIM - Code'"));
         assertTrue(output.contains("Valid kinds in this collection are: [table, view, procedure]"));
@@ -164,7 +166,7 @@ public class ListDocumentsToolTest {
             any())).thenReturn(1L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - Code", "TABLE", "9.3", null, null, null);
+            listDocumentsTool.listDocuments("OIM - Code", "TABLE", "9.3", null, null, null, null);
         assertTrue(output.contains("**OIM - Code**"));
         assertTrue(output.contains("ADSAccount Table"),
             "the document must be listed, i.e. the case-insensitive kind actually matched rows");
@@ -173,21 +175,22 @@ public class ListDocumentsToolTest {
     @Test
     public void testListDocumentsCollectionDoesNotExist() {
         String output =
-            listDocumentsTool.listDocuments("Nonexistent-Col", null, null, null, null, null);
+            listDocumentsTool.listDocuments("Nonexistent-Col", null, null, null, null, null, null);
         assertTrue(output.contains("Error: Collection 'Nonexistent-Col' does not exist."));
     }
 
     @Test
     public void testListDocumentsTagDoesNotExist() {
         // Tag "11.0" doesn't exist in OIM - DB which only has tags "9.3" and "10.0"
-        String output = listDocumentsTool.listDocuments("OIM - DB", null, "11.0", null, null, null);
+        String output =
+            listDocumentsTool.listDocuments("OIM - DB", null, "11.0", null, null, null, null);
         assertTrue(output.contains("Error: Tag '11.0' does not exist in collection 'OIM - DB'."));
     }
 
     @Test
     public void testListDocumentsSuccessWithMultipleTags() {
         String output =
-            listDocumentsTool.listDocuments("OIM - DB", null, "9.3,10.0", null, null, null);
+            listDocumentsTool.listDocuments("OIM - DB", null, "9.3,10.0", null, null, null, null);
         assertTrue(
             output.contains("Error: Tag '9.3,10.0' does not exist in collection 'OIM - DB'."));
     }
@@ -195,7 +198,7 @@ public class ListDocumentsToolTest {
     @Test
     public void testUntaggedCallOnATagScopedCollectionIsRejected() {
         String output =
-            listDocumentsTool.listDocuments("OIM - Manuals", null, null, null, null, null);
+            listDocumentsTool.listDocuments("OIM - Manuals", null, null, null, null, null, null);
 
         assertTrue(output.startsWith("Error:"), "expected a hard error, got:\n" + output);
         assertTrue(output.contains("tag-scoped"));
@@ -212,7 +215,7 @@ public class ListDocumentsToolTest {
             .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
                 List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
 
-        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null);
+        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null, null);
         assertEquals("Error: Collection 'SEC' does not exist.", result);
     }
 
@@ -231,7 +234,7 @@ public class ListDocumentsToolTest {
         when(documentRepository.countDocuments(eq("SEC"), any(), any(), any(), any(), any()))
             .thenReturn(0L);
 
-        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null);
+        String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null, null);
         assertTrue(result.contains("(no documents in **SEC**)"));
     }
 

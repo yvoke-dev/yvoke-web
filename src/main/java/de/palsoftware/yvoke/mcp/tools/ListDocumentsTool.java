@@ -29,14 +29,9 @@ public class ListDocumentsTool {
     }
 
     /**
-     * Context-free entry point delegating to the context-aware overload. Published to MCP and the
-     * in-app assistant via {@link ListDocumentsToolCallback} in {@code McpToolsConfig}.
+     * Lists documents in a collection or across the context's allowed areas. Published to MCP and
+     * the in-app assistant via {@link ListDocumentsToolCallback} in {@code McpToolsConfig}.
      */
-    public String listDocuments(String collection, @Nullable String kind, @Nullable String tag,
-        @Nullable Integer limit, @Nullable Integer offset, @Nullable String query) {
-        return listDocuments(collection, kind, tag, limit, offset, query, null);
-    }
-
     public String listDocuments(@Nullable String collection, @Nullable String kind,
         @Nullable String tag, @Nullable Integer limit, @Nullable Integer offset,
         @Nullable String query, @Nullable AgenticChatContext context) {
