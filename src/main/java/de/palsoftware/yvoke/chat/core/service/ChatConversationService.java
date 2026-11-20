@@ -129,7 +129,9 @@ public class ChatConversationService {
         settings.put(ConversationSetting.SHOW_PROTOTYPES.getValue(), false);
 
         String title = "New Conversation";
-        UUID userId = userService.getCurrentUser().map(User::id).orElse(null);
+        UUID userId =
+            userService.getCurrentUser().map(User::id).orElseThrow(() -> new AccessDeniedException(
+                "Authenticated user is required to create a conversation."));
         conversationRepository.create(id, userId, title, settings);
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -248,7 +250,7 @@ public class ChatConversationService {
 
         for (Conversation conv : conversations) {
             boolean isPublic = (conv.tags() != null && conv.tags().contains("public"))
-                || !Objects.equals(conv.userId(), currentUserId);
+                || !isOwner(conv.userId(), currentUserId);
 
             if (isPublic) {
                 if (conv.tags() == null || conv.tags().isEmpty()) {
@@ -284,6 +286,31 @@ public class ChatConversationService {
             publicUntagged, publicCount, allTags, currentUserId);
     }
 
+    /** Null-safe ownership check: an orphaned (null userId) conversation has NO owner. */
+    public static boolean isOwner(UUID conversationUserId, UUID currentUserId) {
+        return conversationUserId != null && currentUserId != null
+            && conversationUserId.equals(currentUserId);
+    }
+
+    /**
+     * Checks that the caller may read the conversation and returns whether they are authorized to
+     * view private feedback comments (owner or an admin for the conversation's area — never a plain
+     * public viewer).
+     */
+    public boolean canViewFeedback(UUID conversationId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + conversationId));
+        verifyConversationOwnership(conversation, true);
+        UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
+        if (isOwner(conversation.userId(), currentUserId)) {
+            return true;
+        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (AreaAccessContext.isSuperAdmin(auth) || (conversation.area() != null
+            && AreaAccessContext.canAdministerArea(auth, conversation.area())));
+    }
+
     public void verifyConversationOwnership(Conversation conversation, boolean readOnlyAllowed) {
         if (conversation.area() != null && !conversation.area().isBlank()
             && !AreaAccessContext.canAccessUserArea(conversation.area())) {
@@ -291,7 +318,7 @@ public class ChatConversationService {
                 "Conversation not found: " + conversation.id());
         }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
-        if (Objects.equals(conversation.userId(), currentUserId)) {
+        if (isOwner(conversation.userId(), currentUserId)) {
             if (!readOnlyAllowed
                 && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
                 throw new AccessDeniedException(

@@ -62,7 +62,10 @@ public class ChatFeedbackService {
     }
 
     public Optional<Feedback> getFeedback(UUID messageId) {
-        resolveOwnedMessage(messageId, true);
+        Message message = resolveOwnedMessage(messageId, true);
+        if (!chatConversationService.canViewFeedback(message.conversationId())) {
+            return Optional.empty();
+        }
         return feedbackRepository.findByMessageId(messageId);
     }
 
@@ -70,19 +73,14 @@ public class ChatFeedbackService {
      * Every feedback row for a conversation, keyed by message id, in a single query.
      *
      * <p>
-     * The thread view renders a feedback widget per assistant message. Resolving those one id at a
-     * time costs three statements each — message lookup, ownership lookup, feedback select — so a
-     * long thread became dozens of round-trips. Ownership is checked once for the conversation with
-     * reads allowed, matching {@link #getFeedback}: an admin viewing another user's thread still
-     * sees its ratings.
-     *
-     * <p>
-     * {@code message_feedback} is unique per {@code message_id}, so the collector cannot see a
-     * duplicate key.
+     * Private feedback comments are returned only to the conversation owner or an authorized admin;
+     * non-owner viewers of a {@code public}-tagged conversation receive an empty map.
      */
     public Map<UUID, Feedback> getFeedbackByConversation(UUID conversationId) {
         chatConversationService.checkChatEnabled();
-        chatConversationService.verifyOwnership(conversationId, true);
+        if (!chatConversationService.canViewFeedback(conversationId)) {
+            return Map.of();
+        }
         return feedbackRepository.findByConversationId(conversationId).stream()
             .collect(Collectors.toMap(Feedback::messageId, Function.identity()));
     }

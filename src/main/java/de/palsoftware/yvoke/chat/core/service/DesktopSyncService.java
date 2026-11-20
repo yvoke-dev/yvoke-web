@@ -244,7 +244,7 @@ public class DesktopSyncService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + conversationId);
         }
-        if (!Objects.equals(conversation.userId(), user.id())) {
+        if (user == null || !ChatConversationService.isOwner(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);
         }
         return conversation;

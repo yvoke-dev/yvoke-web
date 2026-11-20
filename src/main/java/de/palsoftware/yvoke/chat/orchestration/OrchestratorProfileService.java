@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.shared.validation.SlugNames;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
 import java.util.List;
@@ -51,6 +52,8 @@ public class OrchestratorProfileService {
 
     /** Saves a profile into its area, which must exist. */
     public void saveProfile(OrchestratorProfile profile) {
+        Objects.requireNonNull(profile, "profile must not be null");
+        SlugNames.requireValidName(profile.name(), "Orchestrator profile");
         repository.upsert(profile.withArea(areaService.requireArea(profile.area())));
     }
 

@@ -191,12 +191,11 @@ public class JsonObjectAdminController {
         jsonObjectService.saveManualSchema(colOpt.get().id(), tag, schemaMap);
 
         redirectAttributes.addFlashAttribute("success", "Schema updated successfully.");
-
-        String redirectUrl = "redirect:/admin/json-objects?collection=" + collection;
+        redirectAttributes.addAttribute("collection", colOpt.get().name());
         if (tag != null && !tag.isBlank()) {
-            redirectUrl += "&tag=" + tag;
+            redirectAttributes.addAttribute("tag", tag.trim());
         }
-        return redirectUrl;
+        return "redirect:/admin/json-objects";
     }
 
     @PostMapping("/schema/rebuild")
@@ -216,11 +215,11 @@ public class JsonObjectAdminController {
                 "Schema is manually maintained; rebuild skipped. Switch it to inferred first.");
         }
 
-        String redirectUrl = "redirect:/admin/json-objects?collection=" + collection;
+        redirectAttributes.addAttribute("collection", colOpt.get().name());
         if (tag != null && !tag.isBlank()) {
-            redirectUrl += "&tag=" + tag;
+            redirectAttributes.addAttribute("tag", tag.trim());
         }
-        return redirectUrl;
+        return "redirect:/admin/json-objects";
     }
 
     private List<String> extractSchemaFieldPaths(Map<String, Object> schemaData) {

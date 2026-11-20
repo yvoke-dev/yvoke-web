@@ -476,21 +476,21 @@ class RagAdminControllerTest {
     }
 
     @Test
-    void getKgPromptOptions_filtersToAdministeredArea() {
+    void getKgPromptOptions_filtersToAdministeredAreaAndReturnsJsonData() {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        SystemPrompt finKg = new SystemPrompt("fin-kg", SystemPromptType.KG, "body", "Fin KG",
-            Instant.now(), Instant.now(), false, "Finance");
+        SystemPrompt finKg = new SystemPrompt("fin-kg", SystemPromptType.KG, "body",
+            "Fin <script>KG</script>", Instant.now(), Instant.now(), false, "Finance");
         SystemPrompt oimKg = new SystemPrompt("oim-kg", SystemPromptType.KG, "body", "OIM KG",
             Instant.now(), Instant.now(), false, "OIM");
         when(systemPromptService.listPromptsByType(SystemPromptType.KG))
             .thenReturn(List.of(finKg, oimKg));
 
-        String html = controller.getKgPromptOptions();
+        List<RagAdminController.KgPromptOption> options = controller.getKgPromptOptions();
 
-        assertThat(html).contains("fin-kg");
-        assertThat(html).doesNotContain("oim-kg");
+        assertThat(options).containsExactly(
+            new RagAdminController.KgPromptOption("fin-kg", "Fin <script>KG</script>"));
     }
 
     @Test

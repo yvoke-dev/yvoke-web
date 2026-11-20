@@ -152,6 +152,7 @@ import { createSseAccumulator } from './sse-accumulator.js';
             mermaid.initialize({
                 startOnLoad: false,
                 theme: 'dark',
+                securityLevel: 'strict',
                 suppressErrorAlerts: true
             });
         }

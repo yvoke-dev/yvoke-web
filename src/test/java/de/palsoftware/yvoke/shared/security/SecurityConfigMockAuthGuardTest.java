@@ -643,4 +643,29 @@ class SecurityConfigMockAuthGuardTest {
             "https://login.microsoftonline.com/common/v2.0", "http://localhost:8080/mcp"))
             .isNotNull();
     }
+
+    @Test
+    void everyRemoteCdnScriptAndStylesheetInTemplatesIsPinnedWithSriHash() throws Exception {
+        Path templatesRoot = Path.of("src/main/resources/templates");
+        Pattern remoteTag =
+            Pattern.compile("<(?:script|link)\\b[^>]*?(?:src|href)=\"https?://[^\"]+\"[^>]*>",
+                Pattern.CASE_INSENSITIVE);
+        try (var paths = Files.walk(templatesRoot)) {
+            for (Path file : paths.filter(p -> p.toString().endsWith(".html")).toList()) {
+                String html = Files.readString(file);
+                var matcher = remoteTag.matcher(html);
+                while (matcher.find()) {
+                    String tag = matcher.group();
+                    assertThat(tag).as("Remote CDN tag in %s must carry integrity SRI hash", file)
+                        .contains("integrity=\"sha384-");
+                    assertThat(tag)
+                        .as("Remote CDN tag in %s must carry crossorigin=\"anonymous\"", file)
+                        .contains("crossorigin=\"anonymous\"");
+                    assertThat(tag)
+                        .as("Remote CDN tag in %s must not use floating major version @10/", file)
+                        .doesNotContain("@10/");
+                }
+            }
+        }
+    }
 }

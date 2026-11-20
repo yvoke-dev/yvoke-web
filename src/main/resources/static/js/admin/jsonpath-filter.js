@@ -241,3 +241,36 @@ export function parseJsonPath(expr) {
 
     return parseExpression();
 }
+
+/**
+ * Safely populates a <select> element with enum options using DOM properties (no innerHTML),
+ * preventing stored XSS from attacker-controlled schema enum values.
+ */
+export function populateEnumSelect(select, enumValues, initialValue, createOption) {
+    select.replaceChildren();
+    const placeholder = createOption();
+    placeholder.value = '';
+    placeholder.textContent = 'Select a value...';
+    select.appendChild(placeholder);
+    for (const raw of enumValues || []) {
+        const str = String(raw);
+        const opt = createOption();
+        opt.value = str;
+        opt.textContent = str;
+        select.appendChild(opt);
+    }
+    select.value = initialValue ?? '';
+}
+
+/**
+ * Safely populates a <datalist> element with distinct field values using DOM properties (no
+ * innerHTML), preventing stored XSS from ingested JSON values.
+ */
+export function populateDatalist(datalist, values, createOption) {
+    datalist.replaceChildren();
+    for (const raw of values || []) {
+        const opt = createOption();
+        opt.value = String(raw);
+        datalist.appendChild(opt);
+    }
+}

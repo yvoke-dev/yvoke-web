@@ -106,13 +106,13 @@ public class ChatController {
         List<Message> messages = chatMessageService.getMessages(id);
         List<String> allowedModels = chatConversationService.getAllowedModels();
 
-        // One query for the whole thread. Resolving per message re-checked ownership and re-read
-        // the
-        // message row for every widget, so this scaled with thread length.
-        Map<UUID, Feedback> feedbacks = chatFeedbackService.getFeedbackByConversation(id);
+        boolean isReadOnly =
+            !ChatConversationService.isOwner(conversation.userId(), sidebar.currentUserId())
+                || ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source());
 
-        boolean isReadOnly = !Objects.equals(conversation.userId(), sidebar.currentUserId())
-            || ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source());
+        // One query for the whole thread, skipped when the viewer is a non-owner public reader
+        // (ChatFeedbackService also enforces owner/admin visibility).
+        Map<UUID, Feedback> feedbacks = chatFeedbackService.getFeedbackByConversation(id);
 
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(AreaAccessContext.filterByUserArea(

@@ -452,17 +452,15 @@ public class RagAdminController {
         return "redirect:/admin/prompts";
     }
 
-    @GetMapping("/prompts/kg-options")
+    public record KgPromptOption(String name, String description) {}
+
+    @GetMapping(value = "/prompts/kg-options", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public String getKgPromptOptions() {
+    public List<KgPromptOption> getKgPromptOptions() {
         List<SystemPrompt> prompts = AreaAccessContext.filterByAdminArea(
             systemPromptService.listPromptsByType(SystemPromptType.KG), SystemPrompt::area);
-        StringBuilder sb = new StringBuilder();
-        for (SystemPrompt p : prompts) {
-            sb.append("<option value=\"").append(p.name()).append("\" title=\"")
-                .append(p.description() != null ? p.description().replace("\"", "&quot;") : "")
-                .append("\">").append(p.name()).append("</option>");
-        }
-        return sb.toString();
+        return prompts.stream()
+            .map(p -> new KgPromptOption(p.name(), p.description() != null ? p.description() : ""))
+            .toList();
     }
 }
