@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.Profile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
@@ -192,6 +193,44 @@ public class OrchestratorProfileServiceTest {
 
         service.deleteProfile("NewProfile");
         verify(repository).delete("NewProfile");
+    }
+
+    @Test
+    void saveProfileEnforcesBoundsAllowedModelsAndThinkingLevels() {
+        ChatProperties chatProps =
+            new ChatProperties(true, List.of("gemini-3.8-flash", "gpt-5.4-mini"), true, false);
+        OrchestratorProfileService strictService = new OrchestratorProfileService(repository,
+            properties, TestAreas.withAreas("OIM"), chatProps);
+
+        // Excess review rounds rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 11, 8, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
+
+        // Excess specialist calls rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 3, 51, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxSpecialistCalls");
+
+        // Unlisted model rejected
+        assertThatThrownBy(() -> strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o",
+            "r", List.of("s"), "unapproved-expensive-model", "high", null, null, null, null, false,
+            null, null, "OIM"))).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("allowed-models");
+
+        // Invalid thinking level rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "ultra-max", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("thinking level");
+
+        // Valid whitelisted model + normalized thinking level accepted
+        strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
+            "gemini-3.8-flash", "HIGH", "gpt-5.4-mini", "Low", null, "", false, null, null, "OIM"));
+        verify(repository).upsert(any(OrchestratorProfile.class));
     }
 
     @Test

@@ -124,6 +124,14 @@ public class ChatMessageService {
         return messageRepository.findByConversationId(conversationId, 100, 0);
     }
 
+    private void validateMessageLength(String content) {
+        int maxChars = chatProperties.maxMessageChars();
+        if (content != null && maxChars > 0 && content.length() > maxChars) {
+            throw new IllegalArgumentException(
+                "Message exceeds maximum allowed length of " + maxChars + " characters.");
+        }
+    }
+
     public boolean hasMessages(UUID conversationId) {
         return messageRepository.countByConversationId(conversationId) > 0;
     }
@@ -161,6 +169,7 @@ public class ChatMessageService {
     public PreparedChat prepare(UUID conversationId, String userContent, String promptName) {
         chatCancellationService.reset(conversationId);
         chatConversationService.checkChatEnabled();
+        validateMessageLength(userContent);
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
         Map<String, Object> settings = conversation.settings();
@@ -265,6 +274,7 @@ public class ChatMessageService {
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName,
         Runnable onComplete) {
         chatConversationService.checkChatEnabled();
+        validateMessageLength(content);
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
         String orchestratorProfile = (String) conversation.settings()

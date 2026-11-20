@@ -138,6 +138,8 @@ app:
     # environment that sets a secret-key must also set its own APP_SECRET_SALT. Changing it (or the
     # key) invalidates previously encrypted secrets, which must then be re-encrypted.
     secret-salt: ${APP_SECRET_SALT:}
+    # Hard byte ceiling on JSON/API request bodies (/api/chat/**, /mcp/**) before Jackson parses.
+    max-json-body-bytes: 10485760
     roles:
       admin-claim: ${APP_SECURITY_ADMIN_CLAIM:Admin}
       user-claim: ${APP_SECURITY_USER_CLAIM:User}
@@ -236,6 +238,8 @@ app:
       # correct. The extra round is cheap now that a citation-only revision cannot delegate.
       max-review-rounds: 3
       max-specialist-calls: 8
+      max-review-rounds-limit: 10
+      max-specialist-calls-limit: 50
   retrieval:
     default-limit: 10
     # Ceiling on rows returned by any search. Both candidate pools are derived from the
@@ -285,6 +289,8 @@ app:
     enabled: ${APP_RATE_LIMIT_ENABLED:true}
     capacity: ${APP_RATE_LIMIT_CAPACITY:20}
     refill-period-seconds: ${APP_RATE_LIMIT_REFILL_SECONDS:60}
+    mcp-capacity: ${APP_RATE_LIMIT_MCP_CAPACITY:120}
+    mcp-refill-period-seconds: ${APP_RATE_LIMIT_MCP_REFILL_SECONDS:60}
   generation:
     # PRF-15: app-wide cap on concurrently-running SSE generations. Excess requests get 429 until a
     # slot frees. Set to 0 to disable.
@@ -301,6 +307,7 @@ app:
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     trace-tool-calls: ${APP_CHAT_TRACE_TOOL_CALLS:false}
     stale-generating-after: 15m
+    max-message-chars: 100000
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
       # cannot materialize the entire llm_call_logs table into heap.

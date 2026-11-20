@@ -110,6 +110,10 @@ public class ChatConversationService {
         return chatProperties.playbookValidationEnabled();
     }
 
+    public int getMaxMessageChars() {
+        return chatProperties.maxMessageChars();
+    }
+
     public Conversation createConversation() {
         checkChatEnabled();
         UUID id = UUID.randomUUID();

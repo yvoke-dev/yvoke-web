@@ -190,6 +190,9 @@ public class KgAdminController {
         int relationshipCount = kgReadRepository.getRelationshipCount(collection, tagParam);
         kgWriteRepository.deleteTagGraph(collection, tagParam);
 
+        auditLogRepository.log(getCurrentAdminOid(), "CLEAR_KG", collection, Map.of("tag", tagParam,
+            "entitiesDeleted", entityCount, "relationshipsDeleted", relationshipCount));
+
         redirectAttributes.addFlashAttribute("success",
             "Cleared knowledge graph for " + collection + " / " + tagParam + " — deleted "
                 + entityCount + " entities and " + relationshipCount + " relationships.");

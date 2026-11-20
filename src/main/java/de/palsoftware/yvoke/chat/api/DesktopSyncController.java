@@ -173,7 +173,7 @@ public class DesktopSyncController {
 
     @PutMapping("/messages/{messageId}/feedback")
     public FeedbackDto submitFeedback(User user, @PathVariable UUID messageId,
-        @RequestBody FeedbackRequest request) {
+        @Valid @RequestBody FeedbackRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }

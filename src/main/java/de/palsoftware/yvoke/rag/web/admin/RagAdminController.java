@@ -18,7 +18,9 @@ import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryRow;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -85,14 +87,17 @@ public class RagAdminController {
     private final int maxLimit;
 
     private final AreaService areaService;
+    private final AdminAuditLogger auditLogger;
 
+    @Autowired
     public RagAdminController(HybridSearch hybridSearch,
         RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
         CollectionService collectionService, PlaybookService playbookService,
         SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
         RetrievalTelemetryService telemetryService,
         @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars,
-        @Value("${app.retrieval.max-limit}") int maxLimit, AreaService areaService) {
+        @Value("${app.retrieval.max-limit}") int maxLimit, AreaService areaService,
+        AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.hybridSearch = hybridSearch;
         this.telemetryService = telemetryService;
@@ -105,6 +110,18 @@ public class RagAdminController {
         this.objectMapper = objectMapper;
         this.logQueryMaxChars = logQueryMaxChars;
         this.maxLimit = maxLimit;
+        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
+    }
+
+    public RagAdminController(HybridSearch hybridSearch,
+        RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
+        CollectionService collectionService, PlaybookService playbookService,
+        SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
+        RetrievalTelemetryService telemetryService, int logQueryMaxChars, int maxLimit,
+        AreaService areaService) {
+        this(hybridSearch, retrievalLogRepository, ragAdminViewService, collectionService,
+            playbookService, systemPromptService, ragService, objectMapper, telemetryService,
+            logQueryMaxChars, maxLimit, areaService, AdminAuditLogger.noop());
     }
 
     @SuppressWarnings("unchecked")
@@ -275,6 +292,8 @@ public class RagAdminController {
 
         playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
             targetAgent, prototype, area, version);
+        auditLogger.log("SAVE_PLAYBOOK", name.trim(), Map.of("area", area.trim(), "version",
+            version, "targetAgent", targetAgent != null ? targetAgent : ""));
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";
@@ -329,6 +348,8 @@ public class RagAdminController {
         }
 
         Playbook imported = playbookService.importPlaybookFromMarkdown(content, fallbackName, area);
+        auditLogger.log("IMPORT_PLAYBOOK", imported.name(), Map.of("area",
+            imported.area() != null ? imported.area() : "", "version", imported.version()));
         redirectAttributes.addFlashAttribute("success",
             "Playbook '" + imported.title() + "' imported successfully.");
         return "redirect:/admin/playbooks";
@@ -341,6 +362,8 @@ public class RagAdminController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Playbook not found: " + name);
         }
         playbookService.deletePlaybook(name);
+        auditLogger.log("DELETE_PLAYBOOK", pb.get().name(),
+            Map.of("area", pb.get().area() != null ? pb.get().area() : ""));
         redirectAttributes.addFlashAttribute("success", "Playbook deleted successfully.");
         return "redirect:/admin/playbooks";
     }
@@ -378,6 +401,8 @@ public class RagAdminController {
         }
 
         systemPromptService.savePrompt(name, type, systemPrompt, description, area);
+        auditLogger.log("SAVE_PROMPT", name.trim(),
+            Map.of("area", area.trim(), "type", type.name()));
         redirectAttributes.addFlashAttribute("success",
             "System prompt '" + name + "' saved successfully.");
         return "redirect:/admin/prompts";
@@ -391,6 +416,8 @@ public class RagAdminController {
                 "System prompt not found: " + name);
         }
         systemPromptService.deletePrompt(name);
+        auditLogger.log("DELETE_PROMPT", existing.get().name(),
+            Map.of("area", existing.get().area() != null ? existing.get().area() : ""));
         redirectAttributes.addFlashAttribute("success", "System prompt deleted successfully.");
         return "redirect:/admin/prompts";
     }
@@ -447,6 +474,9 @@ public class RagAdminController {
 
         SystemPrompt imported =
             systemPromptService.importPromptFromMarkdown(content, fallbackName, area);
+        auditLogger.log("IMPORT_PROMPT", imported.name(),
+            Map.of("area", imported.area() != null ? imported.area() : "", "type",
+                imported.type() != null ? imported.type().name() : ""));
         redirectAttributes.addFlashAttribute("success",
             "System prompt '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/prompts";

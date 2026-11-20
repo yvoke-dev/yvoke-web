@@ -27,7 +27,22 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
         Object handler) {
-        if (!rateLimiter.tryAcquire(resolvePrincipal(request))) {
+        String uri = request.getRequestURI();
+        if (uri != null && uri.equals("/admin/search")) {
+            // Only rate-limit searches that actually execute embedding/rerank calls (non-blank
+            // query); bare page loads of /admin/search cost nothing.
+            String query = request.getParameter("query");
+            if (query == null || query.isBlank()) {
+                return true;
+            }
+        }
+        String principal = resolvePrincipal(request);
+        if (uri != null && uri.endsWith("/validate-playbook")) {
+            // Separate bucket so a normal web turn (validate-playbook + send) does not burn 2
+            // chat-send tokens per question.
+            principal = "validate:" + principal;
+        }
+        if (!rateLimiter.tryAcquire(principal)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "Rate limit exceeded. Please wait before sending more requests.");
         }

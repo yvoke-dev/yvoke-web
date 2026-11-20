@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.orchestration;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Configuration for multi-agent orchestrator mode. Global {@code defaults} supply the model +
@@ -10,7 +11,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * (a knowledge base such as OIM or PingID) names its three playbooks and MAY override any role's
  * model/thinking. A profile that doesn't override inherits the defaults.
  */
-@ConfigurationProperties(prefix="app.ai.orchestrator")public record OrchestratorProperties(Integer maxReviewRounds,Integer maxSpecialistCalls,RoleDefaults defaults,List<Profile>profiles){
+@ConfigurationProperties(prefix="app.ai.orchestrator")public record OrchestratorProperties(Integer maxReviewRounds,Integer maxSpecialistCalls,Integer maxReviewRoundsLimit,Integer maxSpecialistCallsLimit,RoleDefaults defaults,List<Profile>profiles){
+
+public static final int DEFAULT_MAX_REVIEW_ROUNDS_LIMIT=10;public static final int DEFAULT_MAX_SPECIALIST_CALLS_LIMIT=50;
+
+@ConstructorBinding public OrchestratorProperties(Integer maxReviewRounds,Integer maxSpecialistCalls,Integer maxReviewRoundsLimit,Integer maxSpecialistCallsLimit,RoleDefaults defaults,List<Profile>profiles){this.maxReviewRounds=maxReviewRounds;this.maxSpecialistCalls=maxSpecialistCalls;this.maxReviewRoundsLimit=maxReviewRoundsLimit;this.maxSpecialistCallsLimit=maxSpecialistCallsLimit;this.defaults=defaults;this.profiles=profiles;}
+
+public OrchestratorProperties(Integer maxReviewRounds,Integer maxSpecialistCalls,RoleDefaults defaults,List<Profile>profiles){this(maxReviewRounds,maxSpecialistCalls,DEFAULT_MAX_REVIEW_ROUNDS_LIMIT,DEFAULT_MAX_SPECIALIST_CALLS_LIMIT,defaults,profiles);}
 
 /** Model + thinking level for one agent role. Either field may be null (inherit the default). */
 public record RoleConfig(String model,String thinkingLevel){RoleConfig mergeOver(RoleConfig fallback){RoleConfig base=fallback!=null?fallback:new RoleConfig(null,null);String m=(model!=null&&!model.isBlank())?model:base.model();String t=(thinkingLevel!=null&&!thinkingLevel.isBlank())?thinkingLevel:base.thinkingLevel();return new RoleConfig(m,t);}}
@@ -20,15 +27,13 @@ public record RoleDefaults(RoleConfig orchestrator,RoleConfig reviewer,RoleConfi
 /** One knowledge base: its three playbooks + optional per-role model/thinking overrides. */
 public record Profile(String name,String orchestratorPlaybook,String reviewerPlaybook,List<String>specialistPlaybooks,RoleConfig orchestrator,RoleConfig reviewer,RoleConfig specialist){}
 
-// 3 rather than 2 (zero-based, so four attempts). A reviewer restricted to the sources an answer
-// cites rejects mis-citations that a whole-evidence reviewer used to excuse by finding the fact
-// elsewhere, so rejections are more frequent AND more mechanical. A live run was still converging
-// when it ran out of rounds — 3 objections, then 3, then 2 — and was delivered flagged despite
-// being nearly correct. The extra round is cheap now that a citation-only revision is forbidden
-// from delegating; it was not cheap when every rejection triggered fresh research.
 public int resolvedMaxReviewRounds(){return maxReviewRounds!=null?maxReviewRounds:3;}
 
 public int resolvedMaxSpecialistCalls(){return maxSpecialistCalls!=null?maxSpecialistCalls:8;}
+
+public int resolvedMaxReviewRoundsLimit(){return(maxReviewRoundsLimit!=null&&maxReviewRoundsLimit>0)?maxReviewRoundsLimit:DEFAULT_MAX_REVIEW_ROUNDS_LIMIT;}
+
+public int resolvedMaxSpecialistCallsLimit(){return(maxSpecialistCallsLimit!=null&&maxSpecialistCallsLimit>0)?maxSpecialistCallsLimit:DEFAULT_MAX_SPECIALIST_CALLS_LIMIT;}
 
 public List<String>profileNames(){return profiles==null?List.of():profiles.stream().map(Profile::name).toList();}
 

@@ -6,9 +6,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.UsedModelPricingStatus;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -36,10 +39,18 @@ public class ModelPricingAdminController {
 
     private final CostCalculationService costCalculationService;
     private final ObjectMapper objectMapper;
+    private final AdminAuditLogger auditLogger;
 
-    public ModelPricingAdminController(CostCalculationService costCalculationService) {
+    @Autowired
+    public ModelPricingAdminController(CostCalculationService costCalculationService,
+        AdminAuditLogger auditLogger) {
         this.costCalculationService = costCalculationService;
         this.objectMapper = new ObjectMapper();
+        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
+    }
+
+    public ModelPricingAdminController(CostCalculationService costCalculationService) {
+        this(costCalculationService, AdminAuditLogger.noop());
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -158,6 +169,7 @@ public class ModelPricingAdminController {
                 importedCount++;
             }
         }
+        auditLogger.log("IMPORT_MODEL_PRICING", "batch", Map.of("importedCount", importedCount));
         redirectAttributes.addFlashAttribute("success",
             "Successfully imported pricing for " + importedCount + " model(s).");
         return "redirect:/admin/pricing";
@@ -173,6 +185,8 @@ public class ModelPricingAdminController {
             "Saving model pricing for model '{}': prompt={}, completion={}, cached={}, thought={}",
             modelName, prompt, completion, cached, thought);
         costCalculationService.updateModelPricing(modelName, prompt, completion, cached, thought);
+        auditLogger.log("SAVE_MODEL_PRICING", modelName.trim(), Map.of("prompt", prompt,
+            "completion", completion, "cached", cached, "thought", thought));
         return "redirect:/admin/pricing";
     }
 
@@ -180,6 +194,7 @@ public class ModelPricingAdminController {
     public String deleteModelPricing(@RequestParam String modelName) {
         log.info("Deleting model pricing for model '{}'", modelName);
         costCalculationService.deleteModelPricing(modelName);
+        auditLogger.log("DELETE_MODEL_PRICING", modelName.trim(), Map.of());
         return "redirect:/admin/pricing";
     }
 }

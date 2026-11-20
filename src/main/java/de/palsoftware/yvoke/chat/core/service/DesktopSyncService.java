@@ -226,6 +226,11 @@ public class DesktopSyncService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "comment is required for negative feedback");
         }
+        if (comment != null && comment.length() > ChatFeedbackService.MAX_COMMENT_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "comment exceeds maximum allowed length of " + ChatFeedbackService.MAX_COMMENT_CHARS
+                    + " characters");
+        }
         Message message = messageRepository.findById(messageId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Message not found: " + messageId));

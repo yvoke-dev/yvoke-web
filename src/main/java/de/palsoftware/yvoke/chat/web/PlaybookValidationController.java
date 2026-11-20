@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import java.util.Collections;
 import java.util.List;
@@ -19,11 +20,14 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/chat")
@@ -35,13 +39,23 @@ public class PlaybookValidationController {
     private final PlaybookService playbookService;
     private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
+    private final GenerationConcurrencyLimiter concurrencyLimiter;
 
+    @Autowired
     public PlaybookValidationController(ChatConversationService chatConversationService,
-        PlaybookService playbookService, LlmClient llmClient, ObjectMapper objectMapper) {
+        PlaybookService playbookService, LlmClient llmClient, ObjectMapper objectMapper,
+        GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatConversationService = chatConversationService;
         this.playbookService = playbookService;
         this.llmClient = llmClient;
         this.objectMapper = objectMapper;
+        this.concurrencyLimiter = concurrencyLimiter;
+    }
+
+    public PlaybookValidationController(ChatConversationService chatConversationService,
+        PlaybookService playbookService, LlmClient llmClient, ObjectMapper objectMapper) {
+        this(chatConversationService, playbookService, llmClient, objectMapper,
+            new GenerationConcurrencyLimiter(0));
     }
 
     @PostMapping("/{id}/validate-playbook")
@@ -56,9 +70,14 @@ public class PlaybookValidationController {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("Content cannot be blank");
         }
+        int maxMessageChars = chatConversationService.getMaxMessageChars();
+        if (maxMessageChars > 0 && content.length() > maxMessageChars) {
+            throw new IllegalArgumentException(
+                "Message exceeds maximum allowed length of " + maxMessageChars + " characters.");
+        }
 
         Conversation conversation = chatConversationService.verifyOwnership(id, false);
-
+        boolean acquired = false;
         try {
             Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
             if (promptName != null && !promptName.isBlank()) {
@@ -74,6 +93,12 @@ public class PlaybookValidationController {
                     return new ValidationResponse(false, "Playbook not found: " + promptName, null);
                 }
             }
+
+            if (!concurrencyLimiter.tryAcquire()) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Server is busy processing other requests. Please retry shortly.");
+            }
+            acquired = true;
 
             LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
                 "playbook_validator", "validator");
@@ -174,11 +199,16 @@ public class PlaybookValidationController {
                 }
             }
             return validationResponse;
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to validate playbook selection, returning fallback", e);
             return new ValidationResponse(true, "", null);
         } finally {
             LlmCallContextHolder.clear();
+            if (acquired) {
+                concurrencyLimiter.release();
+            }
         }
     }
 

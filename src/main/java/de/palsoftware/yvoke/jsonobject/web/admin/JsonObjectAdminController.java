@@ -23,7 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -38,12 +40,21 @@ public class JsonObjectAdminController {
     private final JsonObjectService jsonObjectService;
     private final CollectionService collectionService;
     private final ObjectMapper objectMapper;
+    private final AdminAuditLogger auditLogger;
 
+    @Autowired
     public JsonObjectAdminController(JsonObjectService jsonObjectService,
-        CollectionService collectionService, ObjectMapper objectMapper) {
+        CollectionService collectionService, ObjectMapper objectMapper,
+        AdminAuditLogger auditLogger) {
         this.jsonObjectService = jsonObjectService;
         this.collectionService = collectionService;
         this.objectMapper = objectMapper;
+        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
+    }
+
+    public JsonObjectAdminController(JsonObjectService jsonObjectService,
+        CollectionService collectionService, ObjectMapper objectMapper) {
+        this(jsonObjectService, collectionService, objectMapper, AdminAuditLogger.noop());
     }
 
     @GetMapping
@@ -189,6 +200,8 @@ public class JsonObjectAdminController {
         Map<String, Object> schemaMap =
             objectMapper.readValue(schemaJson, new TypeReference<Map<String, Object>>() {});
         jsonObjectService.saveManualSchema(colOpt.get().id(), tag, schemaMap);
+        auditLogger.log("EDIT_JSON_SCHEMA", colOpt.get().name(),
+            Map.of("tag", tag != null ? tag.trim() : ""));
 
         redirectAttributes.addFlashAttribute("success", "Schema updated successfully.");
         redirectAttributes.addAttribute("collection", colOpt.get().name());
@@ -208,6 +221,8 @@ public class JsonObjectAdminController {
         }
         boolean rebuilt = jsonObjectService.rebuildSchema(colOpt.get().id(), tag);
         if (rebuilt) {
+            auditLogger.log("REBUILD_JSON_SCHEMA", colOpt.get().name(),
+                Map.of("tag", tag != null ? tag.trim() : ""));
             redirectAttributes.addFlashAttribute("success",
                 "Schema re-inferred from current objects.");
         } else {

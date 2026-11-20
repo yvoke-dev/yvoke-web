@@ -48,10 +48,10 @@ public class WebMvcConfigTest {
         config.addInterceptors(registry);
 
         MappedInterceptor rateLimitMapping = registry.mappedInterceptorFor(rateLimitInterceptor);
-        assertThat(rateLimitMapping.getIncludePathPatterns())
-            .as("the rate limiter must cover BOTH generation entry points plus the ingest API, "
-                + "and nothing else")
-            .containsExactly("/chat/*/send", "/chat/*/send-async", "/api/ingest/**");
+        assertThat(rateLimitMapping.getIncludePathPatterns()).as(
+            "the rate limiter must cover generation, playbook validation, admin search, and ingest API")
+            .containsExactly("/chat/*/send", "/chat/*/send-async", "/chat/*/validate-playbook",
+                "/admin/search", "/api/ingest/**");
         assertThat(rateLimitMapping.getExcludePathPatterns())
             .as("an exclude pattern would silently punch a hole in the include list")
             .isNullOrEmpty();

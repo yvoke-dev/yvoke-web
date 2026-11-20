@@ -56,7 +56,13 @@ public class ChatFeedbackService {
         return feedbackRepository.findByMessageId(messageId);
     }
 
+    public static final int MAX_COMMENT_CHARS = 4_000;
+
     public void submitFeedback(UUID messageId, int rating, String comment) {
+        if (comment != null && comment.length() > MAX_COMMENT_CHARS) {
+            throw new IllegalArgumentException("Feedback comment exceeds maximum allowed length of "
+                + MAX_COMMENT_CHARS + " characters.");
+        }
         resolveOwnedMessage(messageId, false);
         feedbackRepository.upsert(messageId, rating, comment);
     }
