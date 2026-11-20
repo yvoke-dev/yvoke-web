@@ -6,10 +6,6 @@ import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -55,14 +51,10 @@ public class VerifyCitationsTool {
         this.citationVerifier = citationVerifier;
     }
 
-    @McpTool(name = "verify_citations", description = DESCRIPTION)
-    @Tool(name = "verify_citations", description = DESCRIPTION)
-    public String verifyCitations(
-        @McpToolParam(description = CITATIONS_PARAM_DESCRIPTION, required = true) @ToolParam(
-            description = CITATIONS_PARAM_DESCRIPTION, required = true) List<String> citations) {
-        return verifyCitations(citations, null);
-    }
-
+    /**
+     * Checks cited chunk and document IDs against the corpus. Published to MCP and the in-app
+     * assistant via {@link VerifyCitationsToolCallback} in {@code McpToolsConfig}.
+     */
     public String verifyCitations(List<String> citations, @Nullable AgenticChatContext context) {
         log.info("VerifyCitationsTool: verifying {} citations",
             citations != null ? citations.size() : 0);

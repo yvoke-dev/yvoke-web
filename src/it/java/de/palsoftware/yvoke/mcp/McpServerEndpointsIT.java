@@ -1,5 +1,9 @@
 package de.palsoftware.yvoke.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
+import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
@@ -15,6 +19,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -25,6 +34,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import org.springframework.boot.info.BuildProperties;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,6 +65,12 @@ public class McpServerEndpointsIT {
 
     @Autowired
     private AreaRepository areaRepository;
+
+    @Autowired
+    private OrchestratorProfileRepository orchestratorProfileRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     /**
      * Present only because the build-info goal writes META-INF/build-info.properties; the bean is
@@ -271,11 +287,11 @@ public class McpServerEndpointsIT {
      * <p>
      * {@code testListToolsRpc} above cannot catch this. It asserts {@code search_corpus}, which is
      * one of the three callbacks appended BY HAND before the classpath-scanning loop runs — so it
-     * stays green even if the scan registers nothing at all, i.e. if eleven of the fourteen tools
+     * stays green even if the scan registers nothing at all, i.e. if thirteen of the sixteen tools
      * are gone. This test is the end-to-end counterpart of
      * {@code JsonObjectsToolsIT.theTwoToolCataloguesAreSplitExactly}: that one proves the two beans
-     * hold the ten shared and four client-only callbacks, this one proves the MCP transport actually
-     * publishes all fourteen, which is the layer the annotation-scanner setting and the spring-ai wiring live in.
+     * hold the ten shared and six client-only callbacks, this one proves the MCP transport actually
+     * publishes all sixteen, which is the layer the annotation-scanner setting and the spring-ai wiring live in.
      */
     @Test
     public void toolsListPublishesTheWholeToolCatalogue() throws Exception {
@@ -302,19 +318,20 @@ public class McpServerEndpointsIT {
 
             String body = response.body();
             assertNotNull(body);
-            List<String> expected = List.of("search_corpus", "ask_clarifying_question", "get_toc",
-                    "get_section", "list_documents", "get_graph_neighbors", "search_graph_entities",
-                    "get_json_schema", "query_json_objects", "verify_citations",
-                    "list_playbooks", "get_playbook", "list_areas",
-                    "submit_feedback");
-            // Quoted, so a tool merely NAMED inside another tool's description cannot stand in for
-            // its own registration: the descriptions cross-reference each other in SINGLE quotes,
-            // and any double quote inside a JSON string arrives escaped as \" — so an unescaped
-            // "get_toc" can only be the name field of a genuinely registered tool.
-            List<String> missing =
-                    expected.stream().filter(name -> !body.contains("\"" + name + "\"")).toList();
-            assertTrue(missing.isEmpty(),
-                    "tools/list is missing " + missing + " — BODY=" + body);
+            JsonNode rpc = parseJsonRpc(body);
+            JsonNode toolsNode = rpc.path("result").path("tools");
+            assertThat(toolsNode.isArray()).isTrue();
+            assertThat(toolsNode).hasSize(16);
+
+            List<String> actualNames = new ArrayList<>();
+            toolsNode.forEach(toolNode -> actualNames.add(toolNode.path("name").asText()));
+
+            assertThat(actualNames).containsExactlyInAnyOrder("search_corpus",
+                "ask_clarifying_question", "get_toc", "get_section", "list_documents",
+                "get_graph_neighbors", "search_graph_entities", "get_json_schema",
+                "query_json_objects", "verify_citations", "list_playbooks", "get_playbook",
+                "list_areas", "list_profiles", "get_profile", "submit_feedback");
+
             for (String retired : List.of("calculate", "statistics", "date_diff")) {
                 assertFalse(body.contains("\"" + retired + "\""),
                         "retired compute tool '" + retired + "' must not be published in tools/list — BODY=" + body);
@@ -326,7 +343,7 @@ public class McpServerEndpointsIT {
      * The plugin-control tools (Claude plugin P1-13, D-23) are for MCP clients only. The web's own
      * assistant draws its tools from {@code RagService}'s registry, and the admin playbook editor
      * offers exactly that registry's names, so a tool in it can be granted to the web model by any
-     * playbook. These four must therefore be absent from the registry while
+     * playbook. These six must therefore be absent from the registry while
      * {@code toolsListPublishesTheWholeToolCatalogue} above still finds them on {@code /mcp}.
      */
     @Test
@@ -335,7 +352,7 @@ public class McpServerEndpointsIT {
         assertTrue(registry.contains("search_corpus"),
                 "the shared tools must still reach the web assistant — registry=" + registry);
         for (String clientOnly : List.of("list_areas", "list_playbooks",
-                "get_playbook", "submit_feedback")) {
+                "get_playbook", "list_profiles", "get_profile", "submit_feedback")) {
             assertFalse(registry.contains(clientOnly),
                     "'" + clientOnly + "' is for MCP clients only, but the web assistant's registry "
                             + "holds it — registry=" + registry);
@@ -767,5 +784,158 @@ public class McpServerEndpointsIT {
             assertTrue(negative.contains("\\\"status\\\":\\\"ok\\\"") && negative.contains("\\\"rating\\\":-1"),
                     "re-rating the same turn over MCP must succeed — BODY=" + negative);
         }
+    }
+
+    @Test
+    public void profileToolsServeTheLiveProfilesOverMcp() throws Exception {
+        String area = "IT_PROFILE_WIRE";
+        String profileName = "test-endpoints-it-profile";
+        Instant now = Instant.parse("2026-05-01T10:00:00Z");
+
+        areaRepository.upsert(new Area(area, "Profile Wire Area", null, false, null, null, null,
+            null));
+        try {
+            OrchestratorProfile seeded = new OrchestratorProfile(profileName, 0, 0, "oim-orch",
+                "oim-rev", List.of("oim-spec"), "DeepSeek-V4-Flash", "HIGH", null, null, null, null,
+                true, now, now, area);
+            orchestratorProfileRepository.upsert(seeded);
+
+            try (McpSession session = establishSession()) {
+                Set<String> expectedKeys = new TreeSet<>(Set.of("name", "area", "prototype",
+                    "orchestratorPlaybook", "reviewerPlaybook", "specialistPlaybooks",
+                    "maxReviewRounds", "maxSpecialistCalls"));
+
+                // 1. list_profiles with empty {} args
+                String rawListBody = callTool(session, "20", "list_profiles", "{}").body();
+                assertFalse(rawListBody.contains("DeepSeek-V4-Flash"),
+                    "list_profiles must not leak server-side model bindings — BODY=" + rawListBody);
+                JsonNode allProfiles = extractToolCallJson(rawListBody);
+                assertThat(allProfiles.isArray()).isTrue();
+                JsonNode listed = null;
+                for (JsonNode entry : allProfiles) {
+                    if (profileName.equals(entry.path("name").asText())) {
+                        listed = entry;
+                        break;
+                    }
+                }
+                assertNotNull(listed, "list_profiles {} must include seeded profile");
+                Set<String> listedKeys = new TreeSet<>();
+                listed.fieldNames().forEachRemaining(listedKeys::add);
+                assertThat(listedKeys).isEqualTo(expectedKeys);
+                assertThat(listed.get("prototype").isBoolean()).isTrue();
+                assertThat(listed.get("prototype").booleanValue()).isTrue();
+                assertThat(listed.get("maxReviewRounds").isIntegralNumber()).isTrue();
+                assertThat(listed.get("maxReviewRounds").intValue()).isEqualTo(3);
+                assertThat(listed.get("maxSpecialistCalls").isIntegralNumber()).isTrue();
+                assertThat(listed.get("maxSpecialistCalls").intValue()).isEqualTo(8);
+
+                // 2. list_profiles with padded & case-insensitive area
+                JsonNode byArea = extractToolCallJson(callTool(session, "21", "list_profiles",
+                    "{ \"area\": \" it_profile_wire \" }").body());
+                assertThat(byArea.isArray()).isTrue();
+                assertThat(byArea).hasSize(1);
+                assertThat(byArea.get(0).get("name").asText()).isEqualTo(profileName);
+
+                // 3. list_profiles with unknown area
+                JsonNode unknownArea = extractToolCallJson(callTool(session, "22", "list_profiles",
+                    "{ \"area\": \"no-such-area\" }").body());
+                assertThat(unknownArea.isArray()).isTrue();
+                assertThat(unknownArea).isEmpty();
+
+                // 4. get_profile for seeded profile -> exact 8-key JSON object (no model/thinking)
+                String rawGetBody = callTool(session, "23", "get_profile",
+                    "{ \"name\": \"" + profileName + "\" }").body();
+                assertFalse(rawGetBody.contains("DeepSeek-V4-Flash"),
+                    "get_profile must not leak server-side model bindings — BODY=" + rawGetBody);
+                JsonNode got = extractToolCallJson(rawGetBody);
+                Set<String> actualKeys = new TreeSet<>();
+                Iterator<String> fieldNames = got.fieldNames();
+                fieldNames.forEachRemaining(actualKeys::add);
+                assertThat(actualKeys).isEqualTo(expectedKeys);
+                assertThat(got.get("name").asText()).isEqualTo(profileName);
+                assertThat(got.get("area").asText()).isEqualTo(area);
+                assertThat(got.get("prototype").booleanValue()).isTrue();
+                assertThat(got.get("orchestratorPlaybook").asText()).isEqualTo("oim-orch");
+                assertThat(got.get("reviewerPlaybook").asText()).isEqualTo("oim-rev");
+                assertThat(objectMapper.convertValue(got.get("specialistPlaybooks"), List.class))
+                    .containsExactly("oim-spec");
+                assertThat(got.get("maxReviewRounds").intValue()).isEqualTo(3);
+                assertThat(got.get("maxSpecialistCalls").intValue()).isEqualTo(8);
+
+                // 5. get_profile unknown (DefaultToolCallResultConverter JSON-encodes plain strings)
+                JsonNode unknownProfile = extractToolCallJson(callTool(session, "24", "get_profile",
+                    "{ \"name\": \"no-such-profile\" }").body());
+                assertThat(unknownProfile.isTextual()).isTrue();
+                assertThat(unknownProfile.asText())
+                    .isEqualTo("ERROR: profile 'no-such-profile' not found.");
+
+                // 6. get_profile blank name
+                JsonNode blankName = extractToolCallJson(
+                    callTool(session, "25", "get_profile", "{ \"name\": \"   \" }").body());
+                assertThat(blankName.isTextual()).isTrue();
+                assertThat(blankName.asText())
+                    .isEqualTo("ERROR: 'name' is required for get_profile.");
+
+                // 7. Live update & live delete over the same open McpSession
+                OrchestratorProfile updated = new OrchestratorProfile(profileName, 4, 0, "oim-orch",
+                    "oim-rev", List.of("oim-spec"), "DeepSeek-V4-Flash", "HIGH", null, null, null,
+                    null, true, now, now, area);
+                orchestratorProfileRepository.upsert(updated);
+
+                JsonNode afterUpsert = extractToolCallJson(callTool(session, "26", "get_profile",
+                    "{ \"name\": \"" + profileName + "\" }").body());
+                assertThat(afterUpsert.get("maxReviewRounds").intValue()).isEqualTo(4);
+
+                orchestratorProfileRepository.delete(profileName);
+
+                JsonNode afterDeleteList =
+                    extractToolCallJson(callTool(session, "27", "list_profiles", "{}").body());
+                List<String> remainingNames = new ArrayList<>();
+                afterDeleteList.forEach(entry -> remainingNames.add(entry.path("name").asText()));
+                assertThat(remainingNames).doesNotContain(profileName);
+
+                JsonNode afterDeleteGet = extractToolCallJson(callTool(session, "28", "get_profile",
+                    "{ \"name\": \"" + profileName + "\" }").body());
+                assertThat(afterDeleteGet.isTextual()).isTrue();
+                assertThat(afterDeleteGet.asText())
+                    .isEqualTo("ERROR: profile '" + profileName + "' not found.");
+            }
+        } finally {
+            try {
+                orchestratorProfileRepository.delete(profileName);
+            } catch (Exception ignored) {
+            }
+            try {
+                areaRepository.delete(area);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private JsonNode parseJsonRpc(String rawBody) throws Exception {
+        String trimmed = rawBody.trim();
+        if (trimmed.startsWith("{")) {
+            return objectMapper.readTree(trimmed);
+        }
+        for (String line : rawBody.split("\\R")) {
+            if (line.startsWith("data:")) {
+                String payload = line.substring("data:".length()).trim();
+                if (!payload.isEmpty()) {
+                    return objectMapper.readTree(payload);
+                }
+            }
+        }
+        throw new IllegalStateException("No JSON-RPC payload found in response body: " + rawBody);
+    }
+
+    private JsonNode extractToolCallJson(String rawBody) throws Exception {
+        JsonNode rpc = parseJsonRpc(rawBody);
+        JsonNode result = rpc.path("result");
+        assertFalse(result.path("isError").asBoolean(false),
+            "tools/call must not set isError=true — BODY=" + rawBody);
+        JsonNode content = result.path("content");
+        assertTrue(content.isArray() && !content.isEmpty(),
+            "tools/call result.content must be a non-empty array — BODY=" + rawBody);
+        return objectMapper.readTree(content.get(0).path("text").asText());
     }
 }

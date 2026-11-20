@@ -100,7 +100,7 @@ public class JsonObjectsToolsIT {
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
      * invisible from every angle that is currently tested: {@code theTwoToolCataloguesAreSplitExactly}
-     * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists all fourteen tools
+     * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists all sixteen tools
      * over JSON-RPC, and the app still answers — it just answers without retrieval, because the
      * agent's registry is empty or partial, which reads as a quality regression rather than a
      * wiring bug.
@@ -218,7 +218,7 @@ public class JsonObjectsToolsIT {
             .map(c -> c.getToolDefinition().name()).toList();
 
         assertThat(clientOnlyNames).containsExactlyInAnyOrder("list_playbooks", "get_playbook",
-            "list_areas", "submit_feedback");
+            "list_areas", "list_profiles", "get_profile", "submit_feedback");
     }
 
     @Test

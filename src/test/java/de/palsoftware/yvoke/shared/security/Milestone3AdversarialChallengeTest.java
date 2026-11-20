@@ -470,9 +470,9 @@ public class Milestone3AdversarialChallengeTest {
 
         // ListDocuments: unauthorized vs nonexistent
         String listUnauthorized =
-            listDocumentsTool.listDocuments("OIM-Col", null, null, null, null, null);
+            listDocumentsTool.listDocuments("OIM-Col", null, null, null, null, null, null);
         String listNonexistent =
-            listDocumentsTool.listDocuments("Unknown-Col", null, null, null, null, null);
+            listDocumentsTool.listDocuments("Unknown-Col", null, null, null, null, null, null);
 
         assertThat(listUnauthorized).isEqualTo("Error: Collection 'OIM-Col' does not exist.");
         assertThat(listNonexistent).isEqualTo("Error: Collection 'Unknown-Col' does not exist.");

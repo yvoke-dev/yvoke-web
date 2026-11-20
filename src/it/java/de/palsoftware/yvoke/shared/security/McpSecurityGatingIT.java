@@ -18,6 +18,7 @@ import de.palsoftware.yvoke.mcp.tools.GetJsonSchemaTool;
 import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
 import de.palsoftware.yvoke.mcp.tools.GetTocTool;
 import de.palsoftware.yvoke.mcp.tools.PlaybookTools;
+import de.palsoftware.yvoke.mcp.tools.ProfileTools;
 import de.palsoftware.yvoke.mcp.tools.QueryJsonObjectsTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchGraphEntitiesTool;
@@ -58,6 +59,9 @@ public class McpSecurityGatingIT {
     private PlaybookTools playbookTools;
 
     @Autowired
+    private ProfileTools profileTools;
+
+    @Autowired
     private SearchCorpusTool searchCorpusTool;
 
     @Autowired
@@ -90,13 +94,17 @@ public class McpSecurityGatingIT {
                 .apply(springSecurity())
                 .build();
 
+        jdbcTemplate.update("INSERT INTO areas (name, title) VALUES ('OIM', 'OIM') ON CONFLICT DO NOTHING");
         jdbcTemplate.update("INSERT INTO areas (name, title) VALUES ('PingID', 'PingID') ON CONFLICT DO NOTHING");
         jdbcTemplate.update("INSERT INTO playbooks (name, area, title, template_text) VALUES ('ping-full', 'PingID', 'Ping Full', 'ping template') ON CONFLICT DO NOTHING");
         jdbcTemplate.update("INSERT INTO collections (id, name, area, tags) VALUES (?, 'Ping - Docs', 'PingID', '{}') ON CONFLICT DO NOTHING", UUID.randomUUID());
+        jdbcTemplate.update("INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook, specialist_playbooks, prototype) VALUES ('oim-profile', 'OIM', 3, 8, 'oim-orch', 'oim-rev', ARRAY['oim-spec'], false) ON CONFLICT DO NOTHING");
+        jdbcTemplate.update("INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls, orchestrator_playbook, reviewer_playbook, specialist_playbooks, prototype) VALUES ('ping-profile', 'PingID', 3, 8, 'ping-orch', 'ping-rev', ARRAY['ping-spec'], false) ON CONFLICT DO NOTHING");
     }
 
     @AfterEach
     public void tearDown() {
+        jdbcTemplate.update("DELETE FROM orchestrator_profiles WHERE name IN ('ping-profile', 'oim-profile')");
         jdbcTemplate.update("DELETE FROM collections WHERE name = 'Ping - Docs'");
         jdbcTemplate.update("DELETE FROM playbooks WHERE name = 'ping-full'");
         jdbcTemplate.update("DELETE FROM areas WHERE name = 'PingID'");
@@ -505,6 +513,46 @@ public class McpSecurityGatingIT {
     }
 
     @Test
+    public void testMcpProfileToolsScoping() {
+        // 1. Single-area OIM.User: sees only oim-profile, PingID is opaque-refused
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User"), "Admin", "User")));
+
+        String oimList = profileTools.listProfiles(null);
+        assertThat(oimList).contains("oim-profile").doesNotContain("ping-profile");
+        assertThat(profileTools.listProfiles("PingID")).isEqualTo("[]");
+        assertThat(profileTools.getProfile("oim-profile")).contains("oim-profile")
+            .doesNotStartWith("ERROR:");
+        assertThat(profileTools.getProfile("ping-profile"))
+            .isEqualTo("ERROR: profile 'ping-profile' not found.");
+        assertThat(profileTools.getProfile("non-existent-profile"))
+            .isEqualTo("ERROR: profile 'non-existent-profile' not found.");
+
+        // 2. Multi-area OIM.User + PingID.User (positive control): sees both profiles
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                AreaAccessContext.mapRoleClaimsToAuthorities(List.of("OIM.User", "PingID.User"),
+                    "Admin", "User")));
+
+        String unionList = profileTools.listProfiles(null);
+        assertThat(unionList).contains("oim-profile").contains("ping-profile");
+        assertThat(profileTools.getProfile("ping-profile")).contains("ping-profile")
+            .doesNotStartWith("ERROR:");
+
+        // 3. Zero-area SCOPE_mcp.read token: sees nothing, all get_profile calls opaque-refused
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("user", "pass",
+                List.of(new SimpleGrantedAuthority("SCOPE_mcp.read"))));
+
+        assertThat(profileTools.listProfiles(null)).isEqualTo("[]");
+        assertThat(profileTools.getProfile("oim-profile"))
+            .isEqualTo("ERROR: profile 'oim-profile' not found.");
+        assertThat(profileTools.getProfile("ping-profile"))
+            .isEqualTo("ERROR: profile 'ping-profile' not found.");
+    }
+
+    @Test
     public void testMcpSearchCorpusToolScoping() {
         SecurityContextHolder.getContext().setAuthentication(
             new UsernamePasswordAuthenticationToken("user", "pass",
@@ -548,7 +596,7 @@ public class McpSecurityGatingIT {
             assertThat(getSectionTool.getSection(null, null, pingChunkId.toString()))
                 .isEqualTo("Error: Chunk not found: " + pingChunkId);
             assertThat(verifyCitationsTool
-                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]")))
+                .verifyCitations(List.of("[chunk_id=" + pingChunkId + "]"), null))
                 .contains("1 cited, 1 FABRICATED");
         } finally {
             jdbcTemplate.update("DELETE FROM chunks WHERE id = ?", pingChunkId);

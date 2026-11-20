@@ -1,10 +1,15 @@
 package de.palsoftware.yvoke.mcp;
 
+import de.palsoftware.yvoke.area.core.Area;
+import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.shared.text.MarkdownTableFormatter;
 import jakarta.annotation.Nullable;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +28,21 @@ public class McpToolUtils {
     public static String toolError(String toolName, Throwable e) {
         log.error("MCP tool '{}' failed", toolName, e);
         return "ERROR: the '" + toolName + "' tool failed to complete the request.";
+    }
+
+    /**
+     * Builds an area filter for MCP list tools ({@code list_playbooks}, {@code list_profiles}).
+     * When {@code area} is null or blank every item passes; otherwise {@code area} is matched
+     * leniently via {@link AreaService#findArea(String)} and compared strictly against the stored
+     * area name, so an unknown area matches nothing.
+     */
+    public static <T> Predicate<T> inArea(AreaService areaService, @Nullable String area,
+        Function<T, String> areaExtractor) {
+        if (area == null || area.isBlank()) {
+            return item -> true;
+        }
+        Optional<String> stored = areaService.findArea(area).map(Area::name);
+        return item -> stored.isPresent() && stored.get().equals(areaExtractor.apply(item));
     }
 
     /**

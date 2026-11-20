@@ -80,7 +80,9 @@ public class QueryJsonObjectsTool {
         @McpToolParam(
             description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
             required = false)
-        @ToolParam(description = "Optional offset for pagination (default 0).", required = false)
+        @ToolParam(
+            description = "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
+            required = false)
         @Nullable Integer offset,
 
         @McpToolParam(
