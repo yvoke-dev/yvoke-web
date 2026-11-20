@@ -106,6 +106,13 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
   info:
     git:
       # /actuator/info is anonymous, and the build-info contributor deliberately publishes
@@ -252,6 +259,8 @@ app:
     enabled: true
     concurrency: 4
     poll-interval: 2s
+    heartbeat-interval: 30s
+    stale-after: 5m
   confluence:
     # Backoff for the Confluence body fetch: a full-space crawl issues one request per page at
     # `app.worker.concurrency`, so HTTP 429 is expected. `Retry-After` wins when the server sends
@@ -281,6 +290,7 @@ app:
     model-labels: '${AI_MODEL_LABELS:{"gemini-3.8-flash":"Gemini - 3.8 Flash","gemini-3.5-flash-lite":"Gemini - 3.5 Flash Lite","gpt-5.4-mini":"Azure - GPT 5.4 Mini","DeepSeek-V4-Flash":"Azure - DeepSeek V4 Flash","gpt-5.6-luna":"Azure - GPT 5.6 Luna","deepseek/deepseek-v4.1-flash-1017":"OpenRouter - DeepSeek 4.1 Flash"}}'
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     trace-tool-calls: ${APP_CHAT_TRACE_TOOL_CALLS:false}
+    stale-generating-after: 15m
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
       # cannot materialize the entire llm_call_logs table into heap.

@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResul
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -177,17 +178,20 @@ public class MessageRepository {
         }
     }
 
-    public void resetGeneratingMessages() {
+    public int resetStaleGeneratingMessages(Duration staleAfter) {
+        long staleSeconds = staleAfter == null ? 0L : Math.max(0L, staleAfter.toSeconds());
         String sql =
             """
                 UPDATE messages
                 SET status = 'error', content = '⚠️ *[Generation interrupted (system restart)]*', updated_at = CURRENT_TIMESTAMP
                 WHERE status = 'generating'
+                  AND updated_at < CURRENT_TIMESTAMP - make_interval(secs => :staleSeconds)
                 """;
-        int updated = jdbcClient.sql(sql).update();
+        int updated = jdbcClient.sql(sql).param("staleSeconds", staleSeconds).update();
         if (updated > 0) {
-            log.info("Reset {} messages stuck in 'generating' status to 'error'", updated);
+            log.info("Reset {} stale messages stuck in 'generating' status to 'error'", updated);
         }
+        return updated;
     }
 
     public long countByConversationId(UUID conversationId) {

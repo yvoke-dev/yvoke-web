@@ -74,6 +74,11 @@ public class JobService {
         return jobRepository.claimNext();
     }
 
+    @Transactional
+    public Optional<IngestionJob> claimNext(String workerId) {
+        return jobRepository.claimNext(workerId);
+    }
+
     public List<JobStep> getStepsForKind(String kind) {
         if (kind == null) {
             return List.of();

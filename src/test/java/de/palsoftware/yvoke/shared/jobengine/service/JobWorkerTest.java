@@ -56,7 +56,7 @@ class JobWorkerTest {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
-        when(jobService.claimNext()).thenReturn(Optional.of(job(UUID.randomUUID())),
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(UUID.randomUUID())),
             Optional.of(job(UUID.randomUUID())), Optional.of(job(UUID.randomUUID())),
             Optional.of(job(UUID.randomUUID())), Optional.empty());
 
@@ -65,7 +65,7 @@ class JobWorkerTest {
         worker.poll();
         worker.poll();
 
-        verify(jobService, times(2)).claimNext();
+        verify(jobService, times(2)).claimNext(worker.workerId());
         verify(jobExecutor, times(2)).execute(any(Runnable.class));
         verify(jobRepository, never()).requeueJob(any());
     }
@@ -90,29 +90,47 @@ class JobWorkerTest {
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
         UUID rejectedId = UUID.randomUUID();
 
-        when(jobService.claimNext()).thenReturn(Optional.of(job(rejectedId)), Optional.empty());
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(rejectedId)),
+            Optional.empty());
         doThrow(new RejectedExecutionException("executor is shutting down")).when(jobExecutor)
             .execute(any(Runnable.class));
 
         new JobWorker(jobRepository, jobService, jobExecutor, enabled()).poll();
 
         verify(jobRepository, times(1)).requeueJob(rejectedId);
-        verify(jobRepository, never()).requeueOrphans();
+        verify(jobRepository, never()).requeueStaleRunningJobs(any());
     }
 
     /**
-     * The startup recovery sweep is the one place a blanket re-queue IS correct: nothing is running
-     * yet, so every {@code running} row is genuinely orphaned by the previous process.
+     * Startup and periodic recovery must requeue only stale running jobs (whose heartbeat has
+     * expired) so an overlapping pod during deploy cannot hijack an active job.
      */
     @Test
-    void theStartupSweepStillUsesTheBlanketRequeue() {
+    void recoverySweepRequeuesOnlyStaleRunningJobsAndShutdownStopsClaims() {
         JobRepository jobRepository = mock(JobRepository.class);
-        when(jobRepository.requeueOrphans()).thenReturn(3);
+        JobService jobService = mock(JobService.class);
+        TaskExecutor jobExecutor = mock(TaskExecutor.class);
+        WorkerProperties props = enabled();
+        when(jobRepository.requeueStaleRunningJobs(props.staleAfter())).thenReturn(3);
 
-        new JobWorker(jobRepository, mock(JobService.class), mock(TaskExecutor.class), enabled())
-            .recoverOrphanedJobs();
+        JobWorker worker = new JobWorker(jobRepository, jobService, jobExecutor, props);
+        worker.recoverOrphanedJobs();
+        verify(jobRepository, times(1)).requeueStaleRunningJobs(props.staleAfter());
 
-        verify(jobRepository, times(1)).requeueOrphans();
+        // Claim a job (kept in-flight because mock executor doesn't run the runnable) and verify
+        // heartbeat refreshes it.
+        UUID activeId = UUID.randomUUID();
+        when(jobService.claimNext(worker.workerId())).thenReturn(Optional.of(job(activeId)),
+            Optional.empty());
+        worker.poll();
+        worker.heartbeatAndRecoverStale();
+        verify(jobRepository, times(1)).refreshHeartbeat(activeId, worker.workerId());
+        verify(jobRepository, times(2)).requeueStaleRunningJobs(props.staleAfter());
+
+        // Once shutting down (SIGTERM), poll() must not claim any new jobs.
+        worker.onShutdown();
+        worker.poll();
+        verify(jobService, times(2)).claimNext(worker.workerId());
     }
 
     /**
@@ -154,7 +172,7 @@ class JobWorkerTest {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
-        when(jobService.claimNext()).thenReturn(Optional.of(job(UUID.randomUUID())),
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(UUID.randomUUID())),
             Optional.empty());
 
         new JobWorker(jobRepository, jobService, jobExecutor, zero).poll();
@@ -174,9 +192,10 @@ class JobWorkerTest {
             new JobWorker(jobRepository, jobService, mock(TaskExecutor.class), disabled);
         worker.poll();
         worker.recoverOrphanedJobs();
+        worker.heartbeatAndRecoverStale();
 
-        verify(jobService, never()).claimNext();
-        verify(jobRepository, never()).requeueOrphans();
+        verify(jobService, never()).claimNext(any());
+        verify(jobRepository, never()).requeueStaleRunningJobs(any());
         verify(jobRepository, never()).requeueJob(any());
     }
 }

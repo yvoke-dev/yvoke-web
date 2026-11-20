@@ -502,7 +502,7 @@ public class ChatMessageService {
     public void onApplicationReady() {
         log.info("Checking for stale 'generating' messages to clean up on startup...");
         try {
-            messageRepository.resetGeneratingMessages();
+            messageRepository.resetStaleGeneratingMessages(chatProperties.staleGeneratingAfter());
         } catch (Exception e) {
             log.error("Failed to clean up stale generating messages", e);
         }

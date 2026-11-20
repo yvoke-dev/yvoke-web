@@ -93,17 +93,16 @@ public class CollectionRepository {
             .param("description", description != null ? description.trim() : null)
             .param("area", area).update();
 
-        return findByName(name.trim()).orElseThrow();
+        return findById(id).orElseThrow();
     }
 
-    /** Moves a collection to another area. */
-    public void updateArea(String name, String area) {
-        jdbcClient.sql("UPDATE collections SET area = :area WHERE LOWER(name) = LOWER(:name)")
-            .param("name", name.trim()).param("area", area).update();
+    /** Moves a collection to another area by primary key. */
+    public void updateArea(UUID id, String area) {
+        jdbcClient.sql("UPDATE collections SET area = :area WHERE id = :id").param("id", id)
+            .param("area", area).update();
     }
 
-    public void delete(String name) {
-        jdbcClient.sql("DELETE FROM collections WHERE LOWER(name) = LOWER(:name)")
-            .param("name", name.trim()).update();
+    public void deleteById(UUID id) {
+        jdbcClient.sql("DELETE FROM collections WHERE id = :id").param("id", id).update();
     }
 }

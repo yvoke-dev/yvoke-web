@@ -598,4 +598,49 @@ class SecurityConfigMockAuthGuardTest {
             .isLessThan(adminIdx);
         assertThat(traceIdx).as("Trace matcher must precede /chat/** matcher").isLessThan(chatIdx);
     }
+
+    @Test
+    void multiTenantEntraDefaultsAreRejectedOutsideDevProfilesWhenMockAuthIsOff() {
+        for (String badTenant : List.of("common", "organizations", "consumers")) {
+            MockEnvironment prodEnv = new MockEnvironment();
+            prodEnv.setActiveProfiles("prod");
+            String jwks = "https://login.microsoftonline.com/" + badTenant + "/discovery/v2.0/keys";
+            String issuer = "https://login.microsoftonline.com/" + badTenant + "/v2.0";
+
+            assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), prodEnv, false,
+                "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", jwks,
+                issuer, "http://localhost:8080/mcp"))
+                .as("non-dev startup with tenant '%s' must fail closed", badTenant)
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("ENTRA_TENANT_ID");
+        }
+
+        // Blank issuer/jwks outside dev must also fail closed
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), prodEnv, false,
+            "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "https://example/keys", "   ", "http://localhost:8080/mcp"))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("ENTRA_TENANT_ID");
+
+        // OAuth2 authorization-uri targeting /common/ must also fail closed outside dev
+        MockEnvironment authUriEnv = new MockEnvironment();
+        authUriEnv.setActiveProfiles("prod");
+        authUriEnv.setProperty("spring.security.oauth2.client.provider.entra.authorization-uri",
+            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
+        assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), authUriEnv, false,
+            "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/discovery/v2.0/keys",
+            "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+            "http://localhost:8080/mcp")).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("ENTRA_TENANT_ID");
+
+        // Dev profile allows /common/ even with mockAuth=false
+        MockEnvironment devEnv = new MockEnvironment();
+        devEnv.setActiveProfiles("local");
+        assertThat(new SecurityConfig(mock(UserService.class), devEnv, false, "dev-key-12345",
+            "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+            "https://login.microsoftonline.com/common/v2.0", "http://localhost:8080/mcp"))
+            .isNotNull();
+    }
 }

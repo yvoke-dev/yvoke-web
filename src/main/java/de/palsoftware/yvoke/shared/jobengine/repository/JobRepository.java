@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -125,6 +126,10 @@ public class JobRepository {
      * transaction boundary (transaction demarcation lives on the service layer).
      */
     public Optional<IngestionJob> claimNext() {
+        return claimNext("default");
+    }
+
+    public Optional<IngestionJob> claimNext(String workerId) {
         String selectSql = """
             SELECT id
             FROM ingestion_jobs
@@ -144,11 +149,13 @@ public class JobRepository {
                 step = NULL,
                 error = NULL,
                 started_at = CURRENT_TIMESTAMP,
+                worker_id = :workerId,
+                heartbeat_at = CURRENT_TIMESTAMP,
                 attempts = attempts + 1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :id
             """;
-        jdbcClient.sql(updateSql).param("id", claimedId.get()).update();
+        jdbcClient.sql(updateSql).param("id", claimedId.get()).param("workerId", workerId).update();
 
         return findById(claimedId.get());
     }
@@ -180,11 +187,21 @@ public class JobRepository {
             UPDATE ingestion_jobs
             SET step = :step,
                 progress = :progress,
+                heartbeat_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :id AND status <> 'cancelled'
             """;
         jdbcClient.sql(sql).param("id", id).param("step", step.dbValue())
             .param("progress", progress).update();
+    }
+
+    public int refreshHeartbeat(UUID id, String workerId) {
+        return jdbcClient.sql("""
+            UPDATE ingestion_jobs
+            SET heartbeat_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id AND status = 'running' AND worker_id = :workerId
+            """).param("id", id).param("workerId", workerId).update();
     }
 
     /**
@@ -244,12 +261,8 @@ public class JobRepository {
     }
 
     /**
-     * Re-queues ONE job that was reserved but never actually started (an executor rejection). It is
-     * deliberately not {@link #requeueOrphans()}: that has no id predicate, so using it here would
-     * flip every currently-executing job back to {@code queued} while its thread is still running,
-     * and the next poll tick would claim those rows a second time — two workers on one job, which
-     * the whole claim protocol exists to prevent. Scoped to {@code running} so it cannot resurrect
-     * a job an admin cancelled in the meantime.
+     * Re-queues ONE job that was reserved but never actually started (an executor rejection).
+     * Scoped to {@code running} so it cannot resurrect a job an admin cancelled in the meantime.
      */
     public int requeueJob(UUID id) {
         return jdbcClient.sql("""
@@ -257,21 +270,33 @@ public class JobRepository {
             SET status = 'queued',
                 step = NULL,
                 started_at = NULL,
+                worker_id = NULL,
+                heartbeat_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :id AND status = 'running'
             """).param("id", id).update();
     }
 
-    public int requeueOrphans() {
+    /**
+     * Re-queues only {@code running} jobs whose heartbeat is absent or older than
+     * {@code staleAfter}. Safe during rolling upgrades and multi-worker deployments because active
+     * workers continuously refresh {@code heartbeat_at}.
+     */
+    public int requeueStaleRunningJobs(Duration staleAfter) {
+        long staleSeconds = staleAfter == null ? 0L : Math.max(0L, staleAfter.toSeconds());
         String sql = """
             UPDATE ingestion_jobs
             SET status = 'queued',
                 step = NULL,
                 started_at = NULL,
+                worker_id = NULL,
+                heartbeat_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE status = 'running'
+              AND (heartbeat_at IS NULL
+                   OR heartbeat_at < CURRENT_TIMESTAMP - make_interval(secs => :staleSeconds))
             """;
-        return jdbcClient.sql(sql).update();
+        return jdbcClient.sql(sql).param("staleSeconds", staleSeconds).update();
     }
 
     public List<IngestionJob> listJobs(int limit, int offset) {

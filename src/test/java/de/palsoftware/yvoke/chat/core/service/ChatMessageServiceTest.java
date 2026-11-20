@@ -1739,9 +1739,9 @@ public class ChatMessageServiceTest {
             .containsExactly(ApplicationReadyEvent.class);
 
         doThrow(new RuntimeException("the connection pool is not up yet")).when(messageRepository)
-            .resetGeneratingMessages();
+            .resetStaleGeneratingMessages(any());
         chatMessageService.onApplicationReady();
-        verify(messageRepository).resetGeneratingMessages();
+        verify(messageRepository).resetStaleGeneratingMessages(any());
     }
 
     /**

@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -113,12 +114,22 @@ public class ChatThreadRenderingIT {
         messageRepository.save(new Message(cancelled, convId, "assistant", "stopped by the user",
             null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "cancelled", "m"));
 
-        messageRepository.resetGeneratingMessages();
+        UUID freshGenerating = UUID.randomUUID();
+        messageRepository.save(new Message(freshGenerating, convId, "assistant", "", null,
+            List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "generating", "m"));
+        jdbcClient.sql(
+            "UPDATE messages SET updated_at = CURRENT_TIMESTAMP - INTERVAL '20 minutes' WHERE id = :id")
+            .param("id", generating).update();
+
+        messageRepository.resetStaleGeneratingMessages(Duration.ofMinutes(15));
 
         assertThat(messageRepository.findById(generating).orElseThrow().status())
             .isEqualTo("error");
         assertThat(messageRepository.findById(generating).orElseThrow().content())
             .contains("Generation interrupted");
+        assertThat(messageRepository.findById(freshGenerating).orElseThrow().status())
+            .as("a fresh generating message must not be marked interrupted during rolling deploy")
+            .isEqualTo("generating");
 
         // Nothing terminal may be rewritten — not its status and not its content.
         assertThat(messageRepository.findById(done).orElseThrow())

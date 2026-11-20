@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -136,6 +137,47 @@ class K8sManifestContractTest {
         assertThat(shipped).as("cloudflare-gemini is rejected at startup; drop "
             + "these from the ConfigMap, and from the Secret with "
             + "`sops k8s/app/yvoke-app/secrets/secret.sops.yaml`").isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void deploymentUsesRecreateStrategySeparateHealthProbesNoDeadPrometheusAndJvmHeapSizing()
+        throws Exception {
+        Map<String, Object> dep = new Yaml().load(
+            Files.readString(Path.of("k8s/app/yvoke-app/deployment.yaml"), StandardCharsets.UTF_8));
+        Map<String, Object> spec = (Map<String, Object>) dep.get("spec");
+        Map<String, Object> strategy = (Map<String, Object>) spec.get("strategy");
+        assertThat(strategy)
+            .as("Deployment must declare strategy: Recreate for RWO PVC + single-replica safety")
+            .isNotNull();
+        assertThat(strategy.get("type")).isEqualTo("Recreate");
+
+        Map<String, Object> template = (Map<String, Object>) spec.get("template");
+        Map<String, Object> metadata = (Map<String, Object>) template.get("metadata");
+        Map<String, Object> annotations = (Map<String, Object>) metadata.get("annotations");
+        if (annotations != null) {
+            assertThat(annotations.keySet()).noneMatch(k -> k.startsWith("prometheus.io/"));
+        }
+
+        Map<String, Object> podSpec = (Map<String, Object>) template.get("spec");
+        var containers = (List<Map<String, Object>>) podSpec.get("containers");
+        Map<String, Object> app = containers.get(0);
+        assertThat(
+            ((Map<String, Object>) ((Map<String, Object>) app.get("livenessProbe")).get("httpGet"))
+                .get("path"))
+            .isEqualTo("/actuator/health/liveness");
+        assertThat(
+            ((Map<String, Object>) ((Map<String, Object>) app.get("readinessProbe")).get("httpGet"))
+                .get("path"))
+            .isEqualTo("/actuator/health/readiness");
+        assertThat(
+            ((Map<String, Object>) ((Map<String, Object>) app.get("startupProbe")).get("httpGet"))
+                .get("path"))
+            .isEqualTo("/actuator/health/liveness");
+
+        String dockerfile = Files.readString(Path.of("Dockerfile"), StandardCharsets.UTF_8);
+        assertThat(dockerfile).as("Dockerfile must configure JVM container heap ratio")
+            .contains("-XX:MaxRAMPercentage=");
     }
 
     /** The {@code data} / {@code stringData} block of a manifest, or an empty map. */

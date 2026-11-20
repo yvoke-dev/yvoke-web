@@ -149,6 +149,31 @@ public class SecurityConfig {
             log.warn("tokens are trusted. This is for LOCAL DEVELOPMENT ONLY — never enable");
             log.warn("it in a deployed/production environment.");
             log.warn("====================================================================");
+        } else if (!DevProfiles.anyActive(environment)) {
+            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.issuer-uri",
+                issuerUri);
+            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                jwkSetUri);
+            String authUri = environment
+                .getProperty("spring.security.oauth2.client.provider.entra.authorization-uri", "");
+            if (!authUri.isBlank()) {
+                assertPinnedEntraTenant(
+                    "spring.security.oauth2.client.provider.entra.authorization-uri", authUri);
+            }
+        }
+    }
+
+    private static void assertPinnedEntraTenant(String propertyName, String uri) {
+        if (uri == null || uri.isBlank()) {
+            throw new IllegalStateException(propertyName
+                + " must not be blank outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
+        }
+        String lower = uri.toLowerCase(Locale.ROOT);
+        if (lower.contains("/common/") || lower.contains("/organizations/")
+            || lower.contains("/consumers/")) {
+            throw new IllegalStateException(propertyName
+                + " targets a multi-tenant Entra endpoint (" + uri
+                + "), which is forbidden outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
         }
     }
 
