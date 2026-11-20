@@ -9,6 +9,7 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -175,10 +176,8 @@ public class OrchestratorAdminController {
     public String importProfile(@RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
         throws IOException {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty.");
-        }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        String content =
+            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         OrchestratorProfile parsed;
         try {
             parsed = objectMapper.readValue(content, OrchestratorProfile.class);

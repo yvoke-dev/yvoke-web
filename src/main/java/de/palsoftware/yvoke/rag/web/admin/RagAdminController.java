@@ -18,6 +18,7 @@ import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryRow;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
+import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -300,10 +301,8 @@ public class RagAdminController {
     public String importPlaybook(@RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
         throws IOException {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty.");
-        }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        String content =
+            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         String originalFilename = file.getOriginalFilename();
         String fallbackName = originalFilename != null && originalFilename.contains(".")
             ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
@@ -418,10 +417,8 @@ public class RagAdminController {
     public String importPrompt(@RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
         throws IOException {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty.");
-        }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        String content =
+            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         String originalFilename = file.getOriginalFilename();
         String fallbackName = originalFilename != null && originalFilename.contains(".")
             ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))

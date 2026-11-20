@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.UsedModelPricingStatus;
+import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -136,10 +137,8 @@ public class ModelPricingAdminController {
     public String importModelPricing(@RequestParam("file") MultipartFile file,
         RedirectAttributes redirectAttributes) throws IOException {
         log.info("Importing model pricing from file");
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty.");
-        }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        String content =
+            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         List<ModelPricingExportDto> items;
         if (content.trim().startsWith("[")) {
             items = objectMapper.readValue(content,

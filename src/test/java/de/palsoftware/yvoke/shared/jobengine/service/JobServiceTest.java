@@ -10,6 +10,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -412,6 +414,49 @@ class JobServiceTest {
 
         verify(jobRepository).markFailed(eq(id),
             contains("no handler for kind=confluence-page-import:icc-wiki"));
+    }
+
+    @Test
+    void executeCleansUpStagedUploadInsideUploadDirWhenNoOtherActiveJobReferencesIt()
+        throws Exception {
+        Path uploadRoot = Files.createTempDirectory("yvoke-job-cleanup-");
+        Path customDir = Files.createTempDirectory(uploadRoot, "custom_");
+        Path staged = customDir.resolve("export.zip");
+        Files.writeString(staged, "zip-bytes");
+        Path outside = Files.createTempFile("outside-", ".txt");
+        try {
+            JobHandler ok =
+                handler(ItTestJobHandler.KIND, false, ctx -> new JobCounts(1, 1, 0, 0, 0));
+            JobService svc = new JobService(jobRepository, progressBroker, List.of(ok), List.of(),
+                uploadRoot.toString());
+
+            // Active sibling job -> file must NOT be deleted
+            when(jobRepository.countActiveJobsBySourceRef(staged.toString())).thenReturn(1L);
+            IngestionJob sharedJob = new IngestionJob(UUID.randomUUID(), ItTestJobHandler.KIND,
+                staged.toString(), "1.0", "col", JobStatus.RUNNING, null, 0, 1, null, null,
+                OffsetDateTime.now(), null, null);
+            svc.execute(sharedJob);
+            assertThat(Files.exists(staged)).isTrue();
+
+            // No other active job -> staged file AND empty custom_* dir are deleted
+            when(jobRepository.countActiveJobsBySourceRef(staged.toString())).thenReturn(0L);
+            svc.execute(sharedJob);
+            assertThat(Files.exists(staged)).isFalse();
+            assertThat(Files.exists(customDir)).isFalse();
+
+            // Path outside uploadRoot -> never deleted
+            when(jobRepository.countActiveJobsBySourceRef(outside.toString())).thenReturn(0L);
+            IngestionJob outsideJob = new IngestionJob(UUID.randomUUID(), ItTestJobHandler.KIND,
+                outside.toString(), "1.0", "col", JobStatus.RUNNING, null, 0, 1, null, null,
+                OffsetDateTime.now(), null, null);
+            svc.execute(outsideJob);
+            assertThat(Files.exists(outside)).isTrue();
+        } finally {
+            Files.deleteIfExists(staged);
+            Files.deleteIfExists(customDir);
+            Files.deleteIfExists(uploadRoot);
+            Files.deleteIfExists(outside);
+        }
     }
 
     private static IngestionJob qualifiedJob(UUID id, String kind) {

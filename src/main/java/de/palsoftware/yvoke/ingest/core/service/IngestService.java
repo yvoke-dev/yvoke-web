@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -174,12 +175,13 @@ public class IngestService {
             }
         }
 
+        Path tempDir = null;
         try {
             // Stage inside app.upload-dir: the worker-side UploadPathGuard only accepts
             // sourceRefs under that root, so a system-temp staging dir can never be ingested.
             Path uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadRoot);
-            Path tempDir = Files.createTempDirectory(uploadRoot, "custom_");
+            tempDir = Files.createTempDirectory(uploadRoot, "custom_");
             // Never derive the staging path from the raw client filename: strip it to a bare
             // name component and confine it to tempDir, so a crafted filename (e.g. "../../x")
             // cannot escape the staging directory (CWE-22 arbitrary file write).
@@ -204,12 +206,22 @@ public class IngestService {
 
             EnqueueRequest request = new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
                 zipPath.toString(), tag, collection, settings);
-            return jobService.enqueue(request).jobId();
+            var enqueueResult = jobService.enqueue(request);
+            if (!enqueueResult.created()) {
+                deleteQuietly(zipPath);
+                deleteQuietly(tempDir);
+            }
+            return enqueueResult.jobId();
         } catch (IOException e) {
+            deleteDirectoryQuietly(tempDir);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Failed to save uploaded file", e);
         } catch (IllegalArgumentException e) {
+            deleteDirectoryQuietly(tempDir);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (RuntimeException e) {
+            deleteDirectoryQuietly(tempDir);
+            throw e;
         }
     }
 
@@ -238,6 +250,7 @@ public class IngestService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uploaded file is empty.");
         }
 
+        Path targetFile = null;
         try {
             // 1. Ensure collection exists
             String trimmedCollection = collectionName.trim();
@@ -262,8 +275,9 @@ public class IngestService {
             String uniqueFilename =
                 UUID.randomUUID().toString() + "-" + safeUploadName(file.getOriginalFilename());
             Path uploadRoot = uploadPath.toAbsolutePath().normalize();
-            Path targetFile = uploadRoot.resolve(uniqueFilename).normalize();
+            targetFile = uploadRoot.resolve(uniqueFilename).normalize();
             if (!targetFile.startsWith(uploadRoot)) {
+                targetFile = null;
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid uploaded file name");
             }
@@ -286,17 +300,45 @@ public class IngestService {
             }
 
             // 4. Enqueue job
-            return jobService.enqueue(new EnqueueRequest(normalizedKind,
+            var enqueueResult = jobService.enqueue(new EnqueueRequest(normalizedKind,
                 targetFile.toAbsolutePath().toString(),
-                (tag != null && !tag.isBlank()) ? tag.trim() : null, trimmedCollection, settings))
-                .jobId();
+                (tag != null && !tag.isBlank()) ? tag.trim() : null, trimmedCollection, settings));
+            if (!enqueueResult.created()) {
+                deleteQuietly(targetFile);
+            }
+            return enqueueResult.jobId();
 
         } catch (IOException e) {
+            deleteQuietly(targetFile);
             // Generic client message; the cause is attached for server-side logging only.
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Failed to save uploaded file.", e);
         } catch (IllegalArgumentException e) {
+            deleteQuietly(targetFile);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (RuntimeException e) {
+            deleteQuietly(targetFile);
+            throw e;
+        }
+    }
+
+    private static void deleteQuietly(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void deleteDirectoryQuietly(Path dir) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+        try (var stream = Files.walk(dir)) {
+            stream.sorted(Comparator.reverseOrder()).forEach(IngestService::deleteQuietly);
+        } catch (IOException ignored) {
         }
     }
 

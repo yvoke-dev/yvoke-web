@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -118,14 +119,18 @@ public class IngestAdminController {
                 "Collection not found: " + collection);
         }
 
-        Path uploadPath = Path.of(uploadDir);
-        if (!Files.exists(uploadPath)) {
-            Files.createDirectories(uploadPath);
+        Path uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();
+        if (!Files.exists(uploadRoot)) {
+            Files.createDirectories(uploadRoot);
         }
 
         String originalFilename = file.getOriginalFilename();
-        String uniqueFilename = UUID.randomUUID().toString() + "-" + originalFilename;
-        Path targetFile = uploadPath.resolve(uniqueFilename);
+        String safeName = BoundedUploadReader.safeUploadName(originalFilename);
+        String uniqueFilename = UUID.randomUUID().toString() + "-" + safeName;
+        Path targetFile = uploadRoot.resolve(uniqueFilename).normalize();
+        if (!targetFile.startsWith(uploadRoot)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid uploaded file name");
+        }
         Files.copy(file.getInputStream(), targetFile, StandardCopyOption.REPLACE_EXISTING);
 
         String jobKind = kind;
@@ -165,8 +170,17 @@ public class IngestAdminController {
             settings.put(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
         }
 
-        EnqueueResult result = jobService.enqueue(new EnqueueRequest(jobKind,
-            targetFile.toAbsolutePath().toString(), finalTag, collection, settings));
+        EnqueueResult result;
+        try {
+            result = jobService.enqueue(new EnqueueRequest(jobKind,
+                targetFile.toAbsolutePath().toString(), finalTag, collection, settings));
+        } catch (RuntimeException e) {
+            Files.deleteIfExists(targetFile);
+            throw e;
+        }
+        if (!result.created()) {
+            Files.deleteIfExists(targetFile);
+        }
         UUID jobId = result.jobId();
 
         auditLogRepository.log(getCurrentAdminOid(), "INGEST_DATA", jobId.toString(),

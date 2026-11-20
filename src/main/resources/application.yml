@@ -262,6 +262,10 @@ app:
     heartbeat-interval: 30s
     stale-after: 5m
   confluence:
+    # Optional comma-separated host allowlist (exact host or *.suffix, e.g. *.atlassian.net).
+    # Empty allows any public HTTPS host (still subject to SSRF IP filtering).
+    allowed-hosts: ${APP_CONFLUENCE_ALLOWED_HOSTS:}
+    attachment-parse-timeout-seconds: 30
     # Backoff for the Confluence body fetch: a full-space crawl issues one request per page at
     # `app.worker.concurrency`, so HTTP 429 is expected. `Retry-After` wins when the server sends
     # it, capped by max-backoff-ms so a hostile/large value cannot park a worker thread.
@@ -269,6 +273,12 @@ app:
       max-attempts: ${APP_CONFLUENCE_RETRY_MAX_ATTEMPTS:4}
       initial-backoff-ms: ${APP_CONFLUENCE_RETRY_INITIAL_BACKOFF_MS:1000}
       max-backoff-ms: ${APP_CONFLUENCE_RETRY_MAX_BACKOFF_MS:30000}
+  ingest:
+    zip:
+      max-entries: 50000
+      max-entry-bytes: 52428800
+      max-total-bytes: 524288000
+      max-compression-ratio: 100
   # SEC-03: per-principal token-bucket rate limiting for the generation/ingest endpoints. Each
   # principal may make up to `capacity` such requests per `refill-period-seconds` before receiving 429.
   rate-limit:

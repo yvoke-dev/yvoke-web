@@ -106,16 +106,16 @@
             <artifactId>flexmark-html2md-converter</artifactId>
             <version>0.62.2</version>
         </dependency>
-        <!-- Tika for Attachment Parsing -->
+        <!-- Tika for Attachment Parsing (3.2.3+ fixes CVE-2025-54988 / CVE-2025-66516) -->
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-core</artifactId>
-            <version>3.0.0</version>
+            <version>3.2.3</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-parsers-standard-package</artifactId>
-            <version>3.0.0</version>
+            <version>3.2.3</version>
         </dependency>
         <!-- Spring AI. NOTE: the OpenAI model starter's chat/embedding autoconfig is unused (chat goes
              through the custom LlmClient, embeddings through the Voyage-backed EmbeddingService), but it

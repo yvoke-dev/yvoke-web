@@ -561,6 +561,18 @@ public class JobRepository {
         return jdbcClient.sql(sql).param("documentId", documentId).query(String.class).optional();
     }
 
+    public long countActiveJobsBySourceRef(String sourceRef) {
+        if (sourceRef == null || sourceRef.isBlank()) {
+            return 0L;
+        }
+        return jdbcClient.sql("""
+            SELECT count(*)
+            FROM ingestion_jobs
+            WHERE source_ref = :sourceRef
+              AND status IN ('queued', 'running')
+            """).param("sourceRef", sourceRef).query(Long.class).single();
+    }
+
     private String serializeSettings(Map<String, Object> settings) {
         if (settings == null || settings.isEmpty()) {
             return "{}";
