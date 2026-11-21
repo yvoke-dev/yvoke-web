@@ -1,13 +1,11 @@
 package de.palsoftware.yvoke.llm.core.repository;
 
 import de.palsoftware.yvoke.llm.core.model.LlmCallLog;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
 
 @Repository
 public class LlmCallLogRepository {

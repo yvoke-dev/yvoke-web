@@ -1,12 +1,11 @@
 package de.palsoftware.yvoke.shared.user.repository;
 
-import de.palsoftware.yvoke.shared.user.model.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.shared.user.model.*;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;

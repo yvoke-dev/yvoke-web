@@ -8,6 +8,9 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +19,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,13 +28,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
-import de.palsoftware.yvoke.shared.web.PagingParams;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.jdbc.BadSqlGrammarException;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 
 @Controller
@@ -268,4 +268,3 @@ public class JsonObjectAdminController {
         }
     }
 }
-

@@ -27,19 +27,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Regression IT for the entity find-or-create race that V2 turned from silent duplication into a
  * hard failure.
  *
- * <p>{@code upsertEntitiesBatch} resolves ids with a SELECT and then inserts what it did not find.
+ * <p>
+ * {@code upsertEntitiesBatch} resolves ids with a SELECT and then inserts what it did not find.
  * Before V2 the {@code entities} table had no unique constraint, so two workers racing on the same
  * name produced duplicate rows (ugly, but the consolidator cleaned up). V2 added
- * {@code ux_entities_collection_kind_lower_name}, so the loser of that race now gets a duplicate-key
- * error instead — and with {@code app.ingest.kg.concurrency} defaulting to 8 workers over documents
- * of the same collection, a recurring entity name (a table mentioned in several manual sections) is
- * the common case, not a corner one.
+ * {@code ux_entities_collection_kind_lower_name}, so the loser of that race now gets a
+ * duplicate-key error instead — and with {@code app.ingest.kg.concurrency} defaulting to 8 workers
+ * over documents of the same collection, a recurring entity name (a table mentioned in several
+ * manual sections) is the common case, not a corner one.
  *
- * <p>The interleaving is forced deterministically rather than by racing threads: a second connection
+ * <p>
+ * The interleaving is forced deterministically rather than by racing threads: a second connection
  * inserts the row and holds its transaction open, so the repository's SELECT cannot see it and its
  * INSERT blocks on the unique index until the winner commits.
  *
- * <p>Uses a bare {@code @SpringBootTest} to reuse the context already cached by the other KG ITs (no
+ * <p>
+ * Uses a bare {@code @SpringBootTest} to reuse the context already cached by the other KG ITs (no
  * extra properties, no mock beans) — see the context-cache pitfall in CLAUDE.md.
  */
 @SpringBootTest
@@ -77,10 +80,11 @@ public class KgEntityUpsertRaceIT {
     }
 
     private int entityCount(String name) {
-        Integer n = jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM entities e JOIN collections c ON e.collection_id = c.id "
-                + "WHERE c.name = ? AND lower(e.name) = lower(?)",
-            Integer.class, COLLECTION, name);
+        Integer n =
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM entities e JOIN collections c ON e.collection_id = c.id "
+                    + "WHERE c.name = ? AND lower(e.name) = lower(?)",
+                Integer.class, COLLECTION, name);
         return n == null ? 0 : n;
     }
 
@@ -120,8 +124,8 @@ public class KgEntityUpsertRaceIT {
 
             // The repository sees no such row yet, so it generates its own id and inserts —
             // blocking on the unique index until the held transaction resolves.
-            Future<Map<String, UUID>> upsert = pool.submit(() -> kgWriteRepository
-                .upsertEntitiesBatch(COLLECTION, List.of(TAG),
+            Future<Map<String, UUID>> upsert =
+                pool.submit(() -> kgWriteRepository.upsertEntitiesBatch(COLLECTION, List.of(TAG),
                     List.of(new EntityUpsert("ADS", "module", "the ADS module"))));
             awaitBlockedEntityInsert();
 
@@ -141,8 +145,8 @@ public class KgEntityUpsertRaceIT {
         assertThat(entityCount("ADS")).isEqualTo(1);
         // The losing side must still contribute its tag, or the entity silently loses version
         // scoping for the document that lost the race.
-        List<String> tags = jdbcTemplate.queryForList(
-            "SELECT unnest(tags) FROM entities WHERE id = ?", String.class, winnerId);
+        List<String> tags = jdbcTemplate
+            .queryForList("SELECT unnest(tags) FROM entities WHERE id = ?", String.class, winnerId);
         assertThat(tags).contains(TAG);
     }
 }

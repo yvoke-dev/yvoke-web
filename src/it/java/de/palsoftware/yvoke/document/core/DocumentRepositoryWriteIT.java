@@ -1,8 +1,4 @@
 package de.palsoftware.yvoke.document.core;
-import de.palsoftware.yvoke.document.core.model.ChunkInsert;
-import de.palsoftware.yvoke.document.core.model.DocumentDetails;
-import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -11,6 +7,12 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.document.core.model.ChunkInsert;
+import de.palsoftware.yvoke.document.core.model.DocumentDetails;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,15 +31,9 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.tag.core.repository.TagRepository;
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 
-@SpringBootTest(
-        properties = {
-            "spring.flyway.enabled=true",
-            "spring.flyway.locations=filesystem:docker/db/migration"
-        })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class DocumentRepositoryWriteIT {
 
     private static final String COLLECTION = "OIM-DOCREPO-TEST";
@@ -62,7 +58,9 @@ public class DocumentRepositoryWriteIT {
     @Autowired
     private ChunkRepository chunkRepository;
 
-    /** What {@code collections.tags} holds — the one and only source of the corpus tag vocabulary. */
+    /**
+     * What {@code collections.tags} holds — the one and only source of the corpus tag vocabulary.
+     */
     private List<String> declaredTags() {
         return jdbcTemplate.queryForObject("SELECT tags FROM collections WHERE name = ?",
             (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()), COLLECTION);
@@ -73,8 +71,8 @@ public class DocumentRepositoryWriteIT {
         cleanup();
         // Collections are no longer auto-created by ingest writes; the target must pre-exist.
         jdbcTemplate.update(
-                "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-                UUID.randomUUID(), COLLECTION);
+            "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+            UUID.randomUUID(), COLLECTION);
     }
 
     @AfterEach
@@ -84,9 +82,12 @@ public class DocumentRepositoryWriteIT {
     }
 
     private void cleanup() {
-        jdbcTemplate.update("DELETE FROM chunks WHERE collection_id IN (SELECT id FROM collections WHERE name = ?)", COLLECTION);
         jdbcTemplate.update(
-                "DELETE FROM documents WHERE collection_id IN (SELECT id FROM collections WHERE name = ?)", COLLECTION);
+            "DELETE FROM chunks WHERE collection_id IN (SELECT id FROM collections WHERE name = ?)",
+            COLLECTION);
+        jdbcTemplate.update(
+            "DELETE FROM documents WHERE collection_id IN (SELECT id FROM collections WHERE name = ?)",
+            COLLECTION);
     }
 
     private static float[] embedding() {
@@ -94,29 +95,29 @@ public class DocumentRepositoryWriteIT {
     }
 
     private List<ChunkInsert> twoChunks() {
-        return List.of(
-                new ChunkInsert("chunk a", embedding(), List.of("A"), "A", 1, 0),
-                new ChunkInsert("chunk b", embedding(), List.of("A", "B"), "B", 2, 1));
+        return List.of(new ChunkInsert("chunk a", embedding(), List.of("A"), "A", 1, 0),
+            new ChunkInsert("chunk b", embedding(), List.of("A", "B"), "B", 2, 1));
     }
 
     @Test
     public void upsertIsIdempotentByKey() {
-        UUID first = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
-        UUID second = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID first =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID second =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
 
         assertThat(second).isEqualTo(first);
         Integer docCount = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM documents d " + "JOIN collections c ON d.collection_id = c.id "
-                        + "WHERE c.name = ? AND d.metadata->>'source_file' = ?",
-                Integer.class,
-                COLLECTION,
-                SOURCE);
+            "SELECT count(*) FROM documents d " + "JOIN collections c ON d.collection_id = c.id "
+                + "WHERE c.name = ? AND d.metadata->>'source_file' = ?",
+            Integer.class, COLLECTION, SOURCE);
         assertThat(docCount).isEqualTo(1);
     }
 
     @Test
     public void reingestReplacesChunksWithoutDuplicates() {
-        UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID docId =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
 
         // First ingest
         documentRepository.deleteContentForDocument(docId);
@@ -124,7 +125,8 @@ public class DocumentRepositoryWriteIT {
         assertThat(chunkCount(docId)).isEqualTo(2);
 
         // Re-ingest: same document id, replace chunk set
-        UUID again = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID again =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
         assertThat(again).isEqualTo(docId);
         int removed = documentRepository.deleteContentForDocument(again);
         assertThat(removed).isEqualTo(2);
@@ -137,9 +139,9 @@ public class DocumentRepositoryWriteIT {
      * Document identity includes the canonical TAG SET, so the same {@code source_file} under a
      * second tag is a SECOND document with its own chunks — that is what lets one collection hold
      * two product versions of the same file. If identity were tag-blind, ingesting 10.0 would
-     * resolve onto 9.3's row and {@code deleteContentForDocument} would then destroy 9.3's chunk set
-     * and replace it with 10.0's, reporting success the whole way: the older version would simply
-     * cease to exist with no error anywhere. (The same-tag duplicate stays rejected — see
+     * resolve onto 9.3's row and {@code deleteContentForDocument} would then destroy 9.3's chunk
+     * set and replace it with 10.0's, reporting success the whole way: the older version would
+     * simply cease to exist with no error anywhere. (The same-tag duplicate stays rejected — see
      * {@link #aSecondDocumentForTheSameSourceFileIsRejected()}.)
      */
     @Test
@@ -180,20 +182,19 @@ public class DocumentRepositoryWriteIT {
         String sourceFile = "https://wiki/pages/500";
         UUID docId = documentRepository.upsertDocumentBySourceFile(COLLECTION, "9.3", sourceFile,
             "confluence", "Page 500");
-        jdbcTemplate.update(
-            "UPDATE documents SET ingestion_status = 'completed', "
-                + "metadata = metadata || jsonb_build_object('confluence_page_version', '7') WHERE id = ?",
+        jdbcTemplate.update("UPDATE documents SET ingestion_status = 'completed', "
+            + "metadata = metadata || jsonb_build_object('confluence_page_version', '7') WHERE id = ?",
             docId);
 
         // Its own scope sees it (case-insensitively on the collection name).
         assertThat(documentRepository.getMetadataAndStatus(COLLECTION.toLowerCase(), "9.3",
-            sourceFile, "confluence")).isPresent()
-                .get()
-                .satisfies(m -> assertThat(m.pageVersionStr()).isEqualTo("7"));
+            sourceFile, "confluence")).isPresent().get()
+            .satisfies(m -> assertThat(m.pageVersionStr()).isEqualTo("7"));
 
         // A different TAG in the same collection is a different document — no skip.
-        assertThat(documentRepository.getMetadataAndStatus(COLLECTION, "10.0", sourceFile,
-            "confluence")).as("another version's crawl must not be skipped").isEmpty();
+        assertThat(
+            documentRepository.getMetadataAndStatus(COLLECTION, "10.0", sourceFile, "confluence"))
+            .as("another version's crawl must not be skipped").isEmpty();
 
         // A different COLLECTION must not see it either.
         String otherCollection = COLLECTION + "-OTHER";
@@ -216,10 +217,10 @@ public class DocumentRepositoryWriteIT {
      * {@code collections.tags} load-bearing rather than decorative: it is the ONLY place the admin
      * tag dropdowns, the corpus-browser filter and {@code getVersionOptions} learn that a tag
      * exists. If an ingest write stopped re-declaring its tag, a freshly ingested product version
-     * would be unfilterable and unsuggestable everywhere — and the tell is a dropdown that is
-     * SHORT rather than wrong, which reads as "there are only these tags", never as "this list is
-     * stale". Nothing errors, the job reports a normal count, and no other test looks at the
-     * collection row after an ingest write.
+     * would be unfilterable and unsuggestable everywhere — and the tell is a dropdown that is SHORT
+     * rather than wrong, which reads as "there are only these tags", never as "this list is stale".
+     * Nothing errors, the job reports a normal count, and no other test looks at the collection row
+     * after an ingest write.
      *
      * <p>
      * The second half pins the GUARD, not just the append. {@code insertChunks} resolves the same
@@ -232,7 +233,8 @@ public class DocumentRepositoryWriteIT {
     @Test
     public void anIngestWriteDeclaresItsTagOnTheCollectionSoTheDerivedVocabularySeesIt() {
         String tag = "9.9-derived-vocab";
-        jdbcTemplate.update("UPDATE collections SET tags = '{}'::text[] WHERE name = ?", COLLECTION);
+        jdbcTemplate.update("UPDATE collections SET tags = '{}'::text[] WHERE name = ?",
+            COLLECTION);
         assertThat(declaredTags()).as("the collection starts with no declared tags").isEmpty();
 
         UUID docId =
@@ -263,12 +265,13 @@ public class DocumentRepositoryWriteIT {
      * <p>
      * At ingest they mirror because a single caller hands the same tag list to both writes inside
      * one transaction ({@code DocumentIngestService.persistDocument}, {@code CustomIngestService},
-     * {@code ConfluenceIngestService} via the single-tag convenience overload) — {@code insertChunks}
-     * never reads the document row's stored tags, it stamps the batch's own list onto every chunk.
-     * Afterwards nothing reconciles them: {@code TagRepository.addTagToDocument} /
-     * {@code removeTagFromDocument} — the admin document-detail buttons — update {@code documents}
-     * alone, and {@code DocumentRepository.removeTagAndPurgeOrphans} detaches from {@code documents}
-     * alone (its DELETE branch only reaches chunks through the FK cascade).
+     * {@code ConfluenceIngestService} via the single-tag convenience overload) —
+     * {@code insertChunks} never reads the document row's stored tags, it stamps the batch's own
+     * list onto every chunk. Afterwards nothing reconciles them:
+     * {@code TagRepository.addTagToDocument} / {@code removeTagFromDocument} — the admin
+     * document-detail buttons — update {@code documents} alone, and
+     * {@code DocumentRepository.removeTagAndPurgeOrphans} detaches from {@code documents} alone
+     * (its DELETE branch only reaches chunks through the FK cascade).
      *
      * <p>
      * That divergence is not cosmetic, because the two retrieval lanes read DIFFERENT columns:
@@ -282,51 +285,51 @@ public class DocumentRepositoryWriteIT {
     @Test
     public void addingATagToADocumentLeavesItsChunksOnTheOldTagSet() {
         UUID docId = documentRepository.upsertManualDocument(COLLECTION, "9.3", "kit/tags.md",
-                "manual", "Tag Drift");
-        documentRepository.insertChunks(docId, COLLECTION, "9.3", "kit/tags.md", "manual", twoChunks());
+            "manual", "Tag Drift");
+        documentRepository.insertChunks(docId, COLLECTION, "9.3", "kit/tags.md", "manual",
+            twoChunks());
 
         // 1. At ingest the two columns MIRROR: one caller, one tag list, both writes.
         assertThat(tagsOf(docId)).containsExactly("9.3");
         assertThat(chunkTags(docId)).as("insertChunks stamps the batch's tags onto every chunk row")
-                .hasSize(2)
-                .allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
+            .hasSize(2).allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
 
         // 2. An admin add-tag rewrites the document only.
         tagRepository.addTagToDocument(docId, "10.0");
 
         assertThat(tagsOf(docId)).containsExactly("9.3", "10.0");
         assertThat(chunkTags(docId))
-                .as("chunks do NOT follow the document — the BM25 lane still filters on the old set")
-                .allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
+            .as("chunks do NOT follow the document — the BM25 lane still filters on the old set")
+            .allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
 
         // 3. ...and so does an admin remove-tag, which is where it becomes visibly wrong: the
         // chunks now carry a tag their own document no longer has.
         tagRepository.removeTagFromDocument(docId, "9.3");
 
         assertThat(tagsOf(docId)).containsExactly("10.0");
-        assertThat(chunkTags(docId))
-                .as("a 10.0 document whose chunks are still 9.3: invisible to the full-text lane at 10.0")
-                .allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
+        assertThat(chunkTags(docId)).as(
+            "a 10.0 document whose chunks are still 9.3: invisible to the full-text lane at 10.0")
+            .allSatisfy(tags -> assertThat(tags).containsExactly("9.3"));
     }
 
     /** Every chunk's tag array, in document reading order. */
     private List<List<String>> chunkTags(UUID docId) {
         return jdbcTemplate.query(
-                "SELECT tags FROM chunks WHERE document_id = ? ORDER BY sort_order",
-                (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()),
-                docId);
+            "SELECT tags FROM chunks WHERE document_id = ? ORDER BY sort_order",
+            (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()), docId);
     }
 
     @Test
     public void listDocumentsReportsCorrectChunkCountWithPartitionPruning() {
         // PRF-10: the chunk-count subqueries now include collection_id so the planner can prune to
         // the document's partition. This must not change the reported count.
-        UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID docId =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
         documentRepository.deleteContentForDocument(docId);
         documentRepository.insertChunks(docId, COLLECTION, VERSION, SOURCE, "manual", twoChunks());
 
-        DocumentDetails details = documentRepository.listDocuments(COLLECTION, 100, 0, null).stream()
-            .filter(d -> d.id().equals(docId)).findFirst().orElseThrow();
+        DocumentDetails details = documentRepository.listDocuments(COLLECTION, 100, 0, null)
+            .stream().filter(d -> d.id().equals(docId)).findFirst().orElseThrow();
 
         assertThat(details.chunkCount()).isEqualTo(2L);
     }
@@ -366,37 +369,39 @@ public class DocumentRepositoryWriteIT {
         assertThat(documentRepository.countDocuments(COLLECTION, null, "9.3")).isEqualTo(1);
 
         // Whitespace around the comma is an ordinary way to type this into the URL.
-        assertThat(documentRepository.countDocuments(COLLECTION, null, " 9.3 , 10.0 ")).isEqualTo(2);
+        assertThat(documentRepository.countDocuments(COLLECTION, null, " 9.3 , 10.0 "))
+            .isEqualTo(2);
     }
 
     /**
      * The corpus browser's page order is {@code created_at DESC, id ASC} and BOTH halves are
-     * load-bearing. Ingest stamps a whole batch inside ONE transaction, and {@code CURRENT_TIMESTAMP}
-     * is the TRANSACTION timestamp, so hundreds of freshly ingested documents routinely share one
-     * {@code created_at} to the microsecond. Without the {@code id ASC} tie-break the browser is then
-     * {@code ORDER BY <non-unique column>} + {@code LIMIT/OFFSET} — the unspecified-paging hazard that
-     * has already bitten {@code messages} (questions rendering below their answers, and that scrambled
-     * order feeding LLM history) and {@code json_objects}: the order among tied rows is whatever the
-     * plan happens to emit, so a row can appear on two pages and vanish from every other, with no
-     * error and nothing on screen to say the listing is incomplete.
+     * load-bearing. Ingest stamps a whole batch inside ONE transaction, and
+     * {@code CURRENT_TIMESTAMP} is the TRANSACTION timestamp, so hundreds of freshly ingested
+     * documents routinely share one {@code created_at} to the microsecond. Without the
+     * {@code id ASC} tie-break the browser is then {@code ORDER BY <non-unique column>} +
+     * {@code LIMIT/OFFSET} — the unspecified-paging hazard that has already bitten {@code messages}
+     * (questions rendering below their answers, and that scrambled order feeding LLM history) and
+     * {@code json_objects}: the order among tied rows is whatever the plan happens to emit, so a
+     * row can appear on two pages and vanish from every other, with no error and nothing on screen
+     * to say the listing is incomplete.
      *
      * <p>
-     * Nothing else in this file exercises it. Every other test inserts rows one statement at a time —
-     * so each row gets its own {@code CURRENT_TIMESTAMP} and no tie ever forms — and asserts set
+     * Nothing else in this file exercises it. Every other test inserts rows one statement at a time
+     * — so each row gets its own {@code CURRENT_TIMESTAMP} and no tie ever forms — and asserts set
      * membership or a single row, never a sequence. Here four rows deliberately share one timestamp
-     * and are inserted in DESCENDING id order, so the heap order an untied sort returns is the exact
-     * REVERSE of the contracted one: dropping the tie-break flips the assertion rather than merely
-     * failing to guarantee it.
+     * and are inserted in DESCENDING id order, so the heap order an untied sort returns is the
+     * exact REVERSE of the contracted one: dropping the tie-break flips the assertion rather than
+     * merely failing to guarantee it.
      *
      * <p>
      * The second half pins the other unasserted clause of the same statement,
-     * {@code LOWER(c.name) = LOWER(:collection)}. The collection arrives as a URL parameter an admin
-     * pastes from anywhere, and this app deliberately carries three different name-matching rules —
-     * exact {@code name IN (:names)} in {@code ChunkRepository}, {@code LOWER()} here, and the
-     * case-SENSITIVE {@code c.name = :collection} of the export query — so "how does this call site
-     * match names?" has to be asserted per call site. {@code ListDocumentsToolTest} mocks the
-     * repository and would not notice; the failure is the silent-empty shape, a confident error-free
-     * empty page for a collection holding thousands of documents.
+     * {@code LOWER(c.name) = LOWER(:collection)}. The collection arrives as a URL parameter an
+     * admin pastes from anywhere, and this app deliberately carries three different name-matching
+     * rules — exact {@code name IN (:names)} in {@code ChunkRepository}, {@code LOWER()} here, and
+     * the case-SENSITIVE {@code c.name = :collection} of the export query — so "how does this call
+     * site match names?" has to be asserted per call site. {@code ListDocumentsToolTest} mocks the
+     * repository and would not notice; the failure is the silent-empty shape, a confident
+     * error-free empty page for a collection holding thousands of documents.
      */
     @Test
     public void theCorpusBrowserPagesInATotalOrderAndMatchesTheCollectionNameCaseInsensitively() {
@@ -433,7 +438,8 @@ public class DocumentRepositoryWriteIT {
             .containsExactly(newer, d1, d2, d3, d4);
 
         // The pager slices that same order: consecutive pages must partition it exactly — no row
-        // repeated, none skipped. That is the property LIMIT/OFFSET cannot have without a total order.
+        // repeated, none skipped. That is the property LIMIT/OFFSET cannot have without a total
+        // order.
         assertThat(documentRepository.listDocuments(COLLECTION, 2, 0, null))
             .extracting(DocumentDetails::id).containsExactly(newer, d1);
         assertThat(documentRepository.listDocuments(COLLECTION, 2, 2, null))
@@ -476,8 +482,7 @@ public class DocumentRepositoryWriteIT {
         jdbcTemplate.update(
             "INSERT INTO documents (id, collection_id, kind, title, metadata, tags) "
                 + "VALUES (?, ?, 'manual', ?, jsonb_build_object('source_file', ?::text), ?::text[])",
-            docId, collectionId(), "kit/id-search.md", "kit/id-search.md",
-            new String[] {VERSION});
+            docId, collectionId(), "kit/id-search.md", "kit/id-search.md", new String[] {VERSION});
 
         // The second dashed group: deliberately not a prefix, and invisible to findByIdPrefix,
         // which removes the dashes and anchors at the start.
@@ -502,21 +507,20 @@ public class DocumentRepositoryWriteIT {
         // Two Confluence pages routinely share a title (and a blank title normalises to
         // "Untitled"): keying on the title collapsed them onto ONE row, so the last crawled page
         // destroyed the previous one. The Confluence path keys strictly on source_file.
-        UUID first = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/1", "confluence", "Shared Title");
-        UUID second = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/2", "confluence", "Shared Title");
-        UUID firstAgain = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/1", "confluence", "Renamed Since");
+        UUID first = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/1", "confluence", "Shared Title");
+        UUID second = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/2", "confluence", "Shared Title");
+        UUID firstAgain = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/1", "confluence", "Renamed Since");
 
         assertThat(second).isNotEqualTo(first);
         assertThat(firstAgain).isEqualTo(first); // still idempotent on source_file
 
         Integer docCount = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id "
-                        + "WHERE c.name = ? AND d.kind = 'confluence'",
-                Integer.class,
-                COLLECTION);
+            "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id "
+                + "WHERE c.name = ? AND d.kind = 'confluence'",
+            Integer.class, COLLECTION);
         assertThat(docCount).isEqualTo(2);
     }
 
@@ -528,8 +532,8 @@ public class DocumentRepositoryWriteIT {
      *
      * <p>
      * First, this is also the CONCURRENCY-LOSER path: when two jobs race for one source file the
-     * loser's INSERT is swallowed by {@code ON CONFLICT DO NOTHING} and it falls through to the very
-     * same lookup, adopting the WINNER's row (see
+     * loser's INSERT is swallowed by {@code ON CONFLICT DO NOTHING} and it falls through to the
+     * very same lookup, adopting the WINNER's row (see
      * {@link #aConcurrentUpsertOfTheSameSourceFileAdoptsTheWinnersRow()}). An UPDATE here means the
      * loser rewrites a row the winner is mid-ingest on. Second, the manuals variant resolves
      * identity by TITLE as well as source_file ({@code matchByTitle}), so a title write in this
@@ -537,9 +541,10 @@ public class DocumentRepositoryWriteIT {
      * identity, the next upsert then resolves differently than the last one did.
      *
      * <p>
-     * Nothing existing would catch the addition: {@code confluenceDocumentsWithTheSameTitleStaySeparate}
-     * already re-upserts page 1 as "Renamed Since" but asserts only that the ID is stable, which
-     * stays true whether or not the row was rewritten underneath it.
+     * Nothing existing would catch the addition:
+     * {@code confluenceDocumentsWithTheSameTitleStaySeparate} already re-upserts page 1 as "Renamed
+     * Since" but asserts only that the ID is stable, which stays true whether or not the row was
+     * rewritten underneath it.
      */
     @Test
     public void reIngestingUnderAChangedTitleAdoptsTheExistingRowWithoutRewritingIt() {
@@ -554,8 +559,8 @@ public class DocumentRepositoryWriteIT {
             .isEqualTo(first);
         assertThat(jdbcTemplate.queryForObject("SELECT title FROM documents WHERE id = ?",
             String.class, first))
-                .as("an adopted row is returned, never rewritten — the title is frozen at insert")
-                .isEqualTo("Title A");
+            .as("an adopted row is returned, never rewritten — the title is frozen at insert")
+            .isEqualTo("Title A");
 
         Integer docCount = jdbcTemplate.queryForObject(
             "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id "
@@ -566,10 +571,10 @@ public class DocumentRepositoryWriteIT {
 
     @Test
     public void confluenceDocumentsWithBlankTitlesStaySeparate() {
-        UUID first = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/10", "confluence", "");
-        UUID second = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/11", "confluence", null);
+        UUID first = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/10", "confluence", "");
+        UUID second = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/11", "confluence", null);
 
         assertThat(second).isNotEqualTo(first);
     }
@@ -578,10 +583,10 @@ public class DocumentRepositoryWriteIT {
     public void manualUpsertStillMatchesOnTitle() {
         // Unchanged identity semantics for the manuals paths: a re-ingest under a different
         // source_file but the same title still resolves to the same document row.
-        UUID first = documentRepository.upsertManualDocument(
-                COLLECTION, VERSION, "manual_a.md", "manual", "Same Title");
-        UUID second = documentRepository.upsertManualDocument(
-                COLLECTION, VERSION, "manual_b.md", "manual", "Same Title");
+        UUID first = documentRepository.upsertManualDocument(COLLECTION, VERSION, "manual_a.md",
+            "manual", "Same Title");
+        UUID second = documentRepository.upsertManualDocument(COLLECTION, VERSION, "manual_b.md",
+            "manual", "Same Title");
 
         assertThat(second).isEqualTo(first);
     }
@@ -593,28 +598,26 @@ public class DocumentRepositoryWriteIT {
 
     @Test
     public void aSecondDocumentForTheSameSourceFileIsRejected() {
-        UUID first = documentRepository.upsertDocumentBySourceFile(
-                COLLECTION, VERSION, "https://wiki/pages/77", "confluence", "Page");
+        UUID first = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+            "https://wiki/pages/77", "confluence", "Page");
         assertThat(first).isNotNull();
 
         assertThatThrownBy(() -> jdbcTemplate.update(
-                        "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata, tags) "
-                                + "SELECT ?, id, 'confluence', 'Copy', 'pending', "
-                                + "jsonb_build_object('source_file', 'https://wiki/pages/77'), ARRAY[?] "
-                                + "FROM collections WHERE name = ?",
-                        UUID.randomUUID(),
-                        VERSION,
-                        COLLECTION))
-                .isInstanceOf(DuplicateKeyException.class);
+            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata, tags) "
+                + "SELECT ?, id, 'confluence', 'Copy', 'pending', "
+                + "jsonb_build_object('source_file', 'https://wiki/pages/77'), ARRAY[?] "
+                + "FROM collections WHERE name = ?",
+            UUID.randomUUID(), VERSION, COLLECTION)).isInstanceOf(DuplicateKeyException.class);
     }
 
     /**
-     * The upsert is SELECT-then-INSERT under READ COMMITTED, so two page-import jobs for one page (a
-     * re-triggered crawl draining alongside the first) both see no row. Before ON CONFLICT that
+     * The upsert is SELECT-then-INSERT under READ COMMITTED, so two page-import jobs for one page
+     * (a re-triggered crawl draining alongside the first) both see no row. Before ON CONFLICT that
      * meant two documents and two full chunk sets for one URL; with the unique index alone it would
      * mean the loser throwing. The loser must ADOPT the winner's row.
      *
-     * <p>The race is forced rather than hoped for: the winner's transaction is held open while the
+     * <p>
+     * The race is forced rather than hoped for: the winner's transaction is held open while the
      * loser runs, so the loser's INSERT blocks on the index until the winner commits.
      */
     @Test
@@ -622,17 +625,18 @@ public class DocumentRepositoryWriteIT {
         String sourceFile = "https://wiki/pages/race";
         // Pre-register the tag on the collection: otherwise BOTH threads try to append it and the
         // loser blocks on the collections row instead of ever reaching the document INSERT.
-        jdbcTemplate.update(
-                "UPDATE collections SET tags = ARRAY[?] WHERE name = ?", VERSION, COLLECTION);
+        jdbcTemplate.update("UPDATE collections SET tags = ARRAY[?] WHERE name = ?", VERSION,
+            COLLECTION);
 
         ExecutorService pool = Executors.newSingleThreadExecutor();
         AtomicReference<Future<UUID>> loser = new AtomicReference<>();
         try {
             UUID winner = new TransactionTemplate(transactionManager).execute(status -> {
-                UUID id = documentRepository.upsertDocumentBySourceFile(
-                        COLLECTION, VERSION, sourceFile, "confluence", "Winner");
-                loser.set(pool.submit(() -> documentRepository.upsertDocumentBySourceFile(
-                        COLLECTION, VERSION, sourceFile, "confluence", "Loser")));
+                UUID id = documentRepository.upsertDocumentBySourceFile(COLLECTION, VERSION,
+                    sourceFile, "confluence", "Winner");
+                loser
+                    .set(pool.submit(() -> documentRepository.upsertDocumentBySourceFile(COLLECTION,
+                        VERSION, sourceFile, "confluence", "Loser")));
                 try {
                     // Long enough for the loser to reach its INSERT and block on the unique index.
                     Thread.sleep(750);
@@ -648,11 +652,9 @@ public class DocumentRepositoryWriteIT {
         }
 
         Integer docCount = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id "
-                        + "WHERE c.name = ? AND d.metadata->>'source_file' = ?",
-                Integer.class,
-                COLLECTION,
-                sourceFile);
+            "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id "
+                + "WHERE c.name = ? AND d.metadata->>'source_file' = ?",
+            Integer.class, COLLECTION, sourceFile);
         assertThat(docCount).isEqualTo(1);
     }
 
@@ -682,7 +684,7 @@ public class DocumentRepositoryWriteIT {
         ListAppender<ILoggingEvent> warnings = captureRepositoryLog();
         try {
             assertThat(documentRepository.removeTagAndPurgeOrphans(collectionId, "9.3.1"))
-                    .isEqualTo(1);
+                .isEqualTo(1);
         } finally {
             releaseRepositoryLog(warnings);
         }
@@ -698,17 +700,18 @@ public class DocumentRepositoryWriteIT {
 
         // The warning must count DOCUMENTS, not the deduplicated (and capped) source-file sample:
         // both blocked rows share one source file, so the old size-of-the-sample number reported 1.
-        String warning = warnings.list.stream()
-                .filter(e -> e.getLevel() == Level.WARN)
-                .map(ILoggingEvent::getFormattedMessage)
-                .filter(m -> m.contains("could not be detached"))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("no blocked-tag-removal warning was logged"));
+        String warning = warnings.list.stream().filter(e -> e.getLevel() == Level.WARN)
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("could not be detached")).findFirst()
+            .orElseThrow(() -> new AssertionError("no blocked-tag-removal warning was logged"));
         assertThat(warning).contains("from 2 document(s) across 1 source file(s)");
         assertThat(warning).contains("kit/install.md");
     }
 
-    /** Captures WARNs from the repository so the reported counts can be asserted, not just eyeballed. */
+    /**
+     * Captures WARNs from the repository so the reported counts can be asserted, not just
+     * eyeballed.
+     */
     private ListAppender<ILoggingEvent> captureRepositoryLog() {
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
@@ -727,15 +730,15 @@ public class DocumentRepositoryWriteIT {
      * FABRICATED. That verdict is destructive: {@code CitationVerifier.isFabricated} drives
      * {@code CitationStreamingFilter}, which deletes what it flags from the live SSE stream
      * character by character. So a probe that stopped resolving real ids would strip every citation
-     * out of every answer — no exception, no log, just answers whose sources have quietly vanished —
-     * and a probe that answered from the WRONG table would confirm a document id as a chunk,
+     * out of every answer — no exception, no log, just answers whose sources have quietly vanished
+     * — and a probe that answered from the WRONG table would confirm a document id as a chunk,
      * linkifying a citation whose popup then dead-ends in {@code CitationController}'s NOT_FOUND
      * branch.
      *
      * <p>
      * The cross-table assertion is the one a mock cannot make, and it is exactly the assertion no
-     * existing test makes: {@code CitationVerifierTest} and {@code CitationStreamingFilterTest} both
-     * stub {@code findExistingIds} with hand-written answer sets, so they confirm whichever
+     * existing test makes: {@code CitationVerifierTest} and {@code CitationStreamingFilterTest}
+     * both stub {@code findExistingIds} with hand-written answer sets, so they confirm whichever
      * classification the test author chose and this SQL has shipped unexecuted. Here the ids are
      * real rows: a chunk id, its own document's id, and a uuid that was never inserted at all.
      *
@@ -746,26 +749,27 @@ public class DocumentRepositoryWriteIT {
      */
     @Test
     public void citationExistenceProbesAreScopedToTheirOwnTableAndDropUnknownIds() {
-        UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID docId =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
         documentRepository.insertChunks(docId, COLLECTION, VERSION, SOURCE, "manual", twoChunks());
         List<UUID> chunkIds = jdbcTemplate.queryForList(
-                "SELECT id FROM chunks WHERE document_id = ? ORDER BY sort_order", UUID.class, docId);
+            "SELECT id FROM chunks WHERE document_id = ? ORDER BY sort_order", UUID.class, docId);
         assertThat(chunkIds).hasSize(2);
         UUID chunkId = chunkIds.get(0);
         UUID neverInserted = UUID.randomUUID();
 
         assertThat(chunkRepository.findExistingIds(List.of(chunkId, docId, neverInserted)))
-                .as("the chunk probe answers from chunks ONLY: a real document id is not a chunk, "
-                        + "and an invented id must not be confirmed")
-                .containsExactly(chunkId);
+            .as("the chunk probe answers from chunks ONLY: a real document id is not a chunk, "
+                + "and an invented id must not be confirmed")
+            .containsExactly(chunkId);
 
         assertThat(documentRepository.findExistingIds(List.of(docId, chunkId, neverInserted)))
-                .as("and the document probe mirrors it: a real chunk id is not a document")
-                .containsExactly(docId);
+            .as("and the document probe mirrors it: a real chunk id is not a document")
+            .containsExactly(docId);
 
         // Both chunks resolve, so the probe is a set membership test and not "the first row wins".
         assertThat(chunkRepository.findExistingIds(chunkIds))
-                .containsExactlyInAnyOrder(chunkIds.get(0), chunkIds.get(1));
+            .containsExactlyInAnyOrder(chunkIds.get(0), chunkIds.get(1));
 
         // Nothing to check resolves nothing — the guard, not the query.
         assertThat(chunkRepository.findExistingIds(List.of())).isEmpty();
@@ -774,11 +778,12 @@ public class DocumentRepositoryWriteIT {
 
     @Test
     public void updateIngestionStatusPersists() {
-        UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID docId =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
         documentRepository.updateIngestionStatus(docId, "completed");
 
-        String status =
-                jdbcTemplate.queryForObject("SELECT ingestion_status FROM documents WHERE id = ?", String.class, docId);
+        String status = jdbcTemplate.queryForObject(
+            "SELECT ingestion_status FROM documents WHERE id = ?", String.class, docId);
         assertThat(status).isEqualTo("completed");
     }
 
@@ -806,34 +811,33 @@ public class DocumentRepositoryWriteIT {
      */
     @Test
     public void metadataWritesMergeSoTheSourceFileThatIsIdentitySurvives() {
-        UUID docId = documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
+        UUID docId =
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title");
 
         documentRepository.updateMetadataKey(docId, "confluence_page_version", "7");
         documentRepository.markKgProcessed(docId, "2026-08-07T10:00:00Z", 12, 34);
 
-        Map<String, Object> md = jdbcTemplate.queryForMap(
-                "SELECT metadata->>'source_file' AS source_file,"
-                        + " metadata->>'confluence_page_version' AS page_version,"
-                        + " metadata->>'kg_processed_at' AS kg_at,"
-                        + " metadata->>'kg_entities' AS kg_entities,"
-                        + " metadata->>'kg_edges' AS kg_edges"
-                        + " FROM documents WHERE id = ?",
-                docId);
+        Map<String, Object> md =
+            jdbcTemplate.queryForMap("SELECT metadata->>'source_file' AS source_file,"
+                + " metadata->>'confluence_page_version' AS page_version,"
+                + " metadata->>'kg_processed_at' AS kg_at,"
+                + " metadata->>'kg_entities' AS kg_entities," + " metadata->>'kg_edges' AS kg_edges"
+                + " FROM documents WHERE id = ?", docId);
 
-        assertThat(md.get("source_file"))
-                .as("source_file is the unique-index / ON CONFLICT arbiter key — losing it duplicates the document on re-ingest")
-                .isEqualTo(SOURCE);
+        assertThat(md.get("source_file")).as(
+            "source_file is the unique-index / ON CONFLICT arbiter key — losing it duplicates the document on re-ingest")
+            .isEqualTo(SOURCE);
         assertThat(md.get("page_version"))
-                .as("markKgProcessed must not clobber what updateMetadataKey wrote")
-                .isEqualTo("7");
+            .as("markKgProcessed must not clobber what updateMetadataKey wrote").isEqualTo("7");
         assertThat(md.get("kg_at")).isEqualTo("2026-08-07T10:00:00Z");
         assertThat(md.get("kg_entities")).isEqualTo("12");
         assertThat(md.get("kg_edges")).isEqualTo("34");
 
         // The consequence, not just the column: with source_file intact the upsert still resolves
         // to the SAME row rather than inserting a second one.
-        assertThat(documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title"))
-                .isEqualTo(docId);
+        assertThat(
+            documentRepository.upsertManualDocument(COLLECTION, VERSION, SOURCE, "manual", "Title"))
+            .isEqualTo(docId);
     }
 
     /**
@@ -843,20 +847,21 @@ public class DocumentRepositoryWriteIT {
      * clauses have shipped unverified. Each fails silently and each corrupts a different consumer.
      *
      * <p>
-     * The ORDER BY is {@code metadata->>'source_file' ASC} because the endpoint is UNPAGINATED and its
-     * consumer diffs one export against another: any other order — {@code created_at DESC} is the
-     * reflex, and it is what every other listing here uses — makes a diff between two exports report
-     * churn nobody made, on every document, for as long as it takes someone to distrust the tool. The
-     * tag predicate is the version scope: hand a script the wrong product version's documents and it
-     * will happily rewrite 9.3 content from a 10.0 export. And {@code c.name = :collection} is exact,
-     * the ONE collection lookup in the app that does not {@code LOWER()} — an X-API-Key caller who
-     * passes {@code 'oim - db - history'} gets HTTP 200 with {@code []}, the silent-empty shape that
-     * reads as "the corpus does not contain this" rather than "you typed the name in the wrong case".
+     * The ORDER BY is {@code metadata->>'source_file' ASC} because the endpoint is UNPAGINATED and
+     * its consumer diffs one export against another: any other order — {@code created_at DESC} is
+     * the reflex, and it is what every other listing here uses — makes a diff between two exports
+     * report churn nobody made, on every document, for as long as it takes someone to distrust the
+     * tool. The tag predicate is the version scope: hand a script the wrong product version's
+     * documents and it will happily rewrite 9.3 content from a 10.0 export. And
+     * {@code c.name = :collection} is exact, the ONE collection lookup in the app that does not
+     * {@code LOWER()} — an X-API-Key caller who passes {@code 'oim - db - history'} gets HTTP 200
+     * with {@code []}, the silent-empty shape that reads as "the corpus does not contain this"
+     * rather than "you typed the name in the wrong case".
      *
      * <p>
-     * The seeded {@code created_at} values deliberately run OPPOSITE to the source-file order, so an
-     * order that fell back to the ingest clock comes back exactly reversed instead of coincidentally
-     * right.
+     * The seeded {@code created_at} values deliberately run OPPOSITE to the source-file order, so
+     * an order that fell back to the ingest clock comes back exactly reversed instead of
+     * coincidentally right.
      */
     @Test
     public void theExportApiListsOneTagsDocumentsOrderedBySourceFileAndOnlyUnderTheExactCollectionName() {
@@ -875,7 +880,8 @@ public class DocumentRepositoryWriteIT {
             "2026-01-02T00:00:00Z");
         jdbcTemplate.update(insert, bMd, collectionId, "kit/b.md", "kit/b.md", thisVersion,
             "2026-01-01T00:00:00Z");
-        // Same collection, the OTHER product version — and a source file that sorts FIRST, so a lost
+        // Same collection, the OTHER product version — and a source file that sorts FIRST, so a
+        // lost
         // tag predicate could not hide at the end of the list.
         UUID otherVersion = UUID.randomUUID();
         jdbcTemplate.update(insert, otherVersion, collectionId, "kit/0-ten.md", "kit/0-ten.md",
@@ -891,45 +897,41 @@ public class DocumentRepositoryWriteIT {
             .as("the tag predicate scopes the export to exactly one product version")
             .containsExactly(otherVersion);
 
-        // A null tag is the documented "everything in this collection" form, still source-file ordered.
+        // A null tag is the documented "everything in this collection" form, still source-file
+        // ordered.
         assertThat(documentRepository.listByCollectionAndTag(COLLECTION, null))
             .extracting(DocumentDetails::id).containsExactly(otherVersion, aMd, bMd, cMd);
 
         // ...and this is the one collection match in the app that is case-SENSITIVE.
-        assertThat(documentRepository.listByCollectionAndTag(COLLECTION.toLowerCase(), VERSION))
-            .as("c.name = :collection is exact here: a differently-cased name is 200 + [], not a 404")
+        assertThat(documentRepository.listByCollectionAndTag(COLLECTION.toLowerCase(), VERSION)).as(
+            "c.name = :collection is exact here: a differently-cased name is 200 + [], not a 404")
             .isEmpty();
     }
 
     private int chunkCount(UUID docId) {
-        Integer n = jdbcTemplate.queryForObject("SELECT count(*) FROM chunks WHERE document_id = ?", Integer.class, docId);
+        Integer n = jdbcTemplate.queryForObject("SELECT count(*) FROM chunks WHERE document_id = ?",
+            Integer.class, docId);
         return n == null ? 0 : n;
     }
 
     private UUID collectionId() {
-        return jdbcTemplate.queryForObject(
-                "SELECT id FROM collections WHERE name = ?", UUID.class, COLLECTION);
+        return jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?", UUID.class,
+            COLLECTION);
     }
 
     private UUID insertDocument(String sourceFile, String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-                "INSERT INTO documents (id, collection_id, kind, title, metadata, tags) "
-                        + "VALUES (?, ?, 'manual', ?, jsonb_build_object('source_file', ?::text), ?::text[])",
-                id,
-                collectionId(),
-                sourceFile,
-                sourceFile,
-                tags);
+            "INSERT INTO documents (id, collection_id, kind, title, metadata, tags) "
+                + "VALUES (?, ?, 'manual', ?, jsonb_build_object('source_file', ?::text), ?::text[])",
+            id, collectionId(), sourceFile, sourceFile, tags);
         return id;
     }
 
     /** The row's tags, or {@code null} if the row is gone. */
     private List<String> tagsOf(UUID docId) {
-        List<List<String>> rows = jdbcTemplate.query(
-                "SELECT tags FROM documents WHERE id = ?",
-                (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()),
-                docId);
+        List<List<String>> rows = jdbcTemplate.query("SELECT tags FROM documents WHERE id = ?",
+            (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()), docId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 }

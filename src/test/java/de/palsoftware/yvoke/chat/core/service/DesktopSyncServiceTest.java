@@ -1,12 +1,5 @@
 package de.palsoftware.yvoke.chat.core.service;
 
-import de.palsoftware.yvoke.chat.core.model.Conversation;
-import de.palsoftware.yvoke.chat.core.model.Feedback;
-import de.palsoftware.yvoke.chat.core.model.Message;
-import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
-import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
-import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,13 +7,22 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.Feedback;
+import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.chat.core.repository.FeedbackRepository;
+import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
 import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
+import de.palsoftware.yvoke.rag.prompt.Playbook;
+import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,9 +33,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
-import de.palsoftware.yvoke.rag.prompt.Playbook;
-import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import java.util.Set;
 
 public class DesktopSyncServiceTest {
 

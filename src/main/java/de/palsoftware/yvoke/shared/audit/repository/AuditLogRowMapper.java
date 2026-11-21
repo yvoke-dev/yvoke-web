@@ -1,9 +1,7 @@
 package de.palsoftware.yvoke.shared.audit.repository;
 
-import de.palsoftware.yvoke.shared.audit.model.AuditLog;
-
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.shared.audit.model.AuditLog;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.sql.ResultSet;
 import java.sql.SQLException;

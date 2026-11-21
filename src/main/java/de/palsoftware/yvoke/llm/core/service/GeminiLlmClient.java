@@ -1,5 +1,13 @@
 package de.palsoftware.yvoke.llm.core.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.google.genai.Client;
+import com.google.genai.ResponseStream;
+import com.google.genai.types.*;
+import com.google.genai.types.ClientOptions;
+import com.google.genai.types.HttpResponse;
 import de.palsoftware.yvoke.llm.core.EmptyTurnRetry;
 import de.palsoftware.yvoke.llm.core.LlmRetry;
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
@@ -13,24 +21,14 @@ import de.palsoftware.yvoke.llm.core.model.LlmTool;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
-
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.genai.Client;
-import com.google.genai.types.ClientOptions;
-import com.google.genai.types.HttpResponse;
-import com.google.genai.ResponseStream;
-import com.google.genai.types.*;
 import jakarta.annotation.PreDestroy;
-import okhttp3.OkHttpClient;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
+import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
 public class GeminiLlmClient implements LlmClient, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(GeminiLlmClient.class);

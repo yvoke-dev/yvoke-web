@@ -2,31 +2,31 @@ package de.palsoftware.yvoke.rag.retrieval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestClient;
-import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
-import org.springframework.context.ApplicationEventPublisher;
-import java.util.ArrayList;
 import org.mockito.Mockito;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.response.MockRestResponseCreators;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestClient;
 
 public class EmbeddingServiceTest {
 

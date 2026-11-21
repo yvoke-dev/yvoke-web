@@ -9,10 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class OrchestratorProfileRepositoryIT {
 
     @Autowired
@@ -24,23 +22,10 @@ public class OrchestratorProfileRepositoryIT {
     @Test
     void testUpsertAndFindByNameAndDelete() {
         String profileName = "IT_Test_Profile";
-        OrchestratorProfile profile = new OrchestratorProfile(
-            profileName,
-            4,
-            12,
-            "it-orch-playbook",
-            "it-rev-playbook",
-            List.of("it-spec-1", "it-spec-2"),
-            "gemini-3.1-pro-preview",
-            "high",
-            "gemini-3.1-pro-preview",
-            "high",
-            "gemini-3.1-flash-lite",
-            "medium",
-            false,
-            null,
-            null
-        ).withArea("OIM");
+        OrchestratorProfile profile = new OrchestratorProfile(profileName, 4, 12,
+            "it-orch-playbook", "it-rev-playbook", List.of("it-spec-1", "it-spec-2"),
+            "gemini-3.1-pro-preview", "high", "gemini-3.1-pro-preview", "high",
+            "gemini-3.1-flash-lite", "medium", false, null, null).withArea("OIM");
 
         repository.upsert(profile);
 
@@ -62,24 +47,26 @@ public class OrchestratorProfileRepositoryIT {
      * <p>
      * {@code upsert} is one statement whose {@code ON CONFLICT} branch lists the columns it
      * refreshes by hand, so a column left out of that list is written once on INSERT and then
-     * frozen: an admin could mark a profile prototype and never un-mark it, or edit any other
-     * field of a prototype profile and silently publish it to every user. Neither shows an error,
-     * and {@code findAll}/{@code findByName} both keep returning whatever the first insert put
-     * there. So both directions are re-written here, and both are read back.
+     * frozen: an admin could mark a profile prototype and never un-mark it, or edit any other field
+     * of a prototype profile and silently publish it to every user. Neither shows an error, and
+     * {@code findAll}/{@code findByName} both keep returning whatever the first insert put there.
+     * So both directions are re-written here, and both are read back.
      */
     @Test
     void thePrototypeFlagRoundTripsAndIsRefreshedByTheUpsertsConflictBranch() {
         String profileName = "IT_Prototype_Profile";
-        repository.upsert(new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev",
-            List.of("it-spec"), null, null, null, null, null, null, true, null, null).withArea("OIM"));
+        repository.upsert(
+            new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev", List.of("it-spec"),
+                null, null, null, null, null, null, true, null, null).withArea("OIM"));
 
         assertThat(repository.findByName(profileName)).get()
             .extracting(OrchestratorProfile::prototype).isEqualTo(true);
         assertThat(repository.findAll()).filteredOn(p -> profileName.equals(p.name()))
             .extracting(OrchestratorProfile::prototype).containsExactly(true);
 
-        repository.upsert(new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev",
-            List.of("it-spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
+        repository.upsert(
+            new OrchestratorProfile(profileName, 2, 8, "it-orch", "it-rev", List.of("it-spec"),
+                null, null, null, null, null, null, false, null, null).withArea("OIM"));
 
         assertThat(repository.findByName(profileName)).get()
             .extracting(OrchestratorProfile::prototype)
@@ -110,9 +97,9 @@ public class OrchestratorProfileRepositoryIT {
             VALUES (:name, 'it-orch', 'it-rev')
             """).param("name", profileName).update();
 
-        assertThat(jdbcClient
-            .sql("SELECT prototype IS NULL FROM orchestrator_profiles WHERE name = :name")
-            .param("name", profileName).query(Boolean.class).single())
+        assertThat(
+            jdbcClient.sql("SELECT prototype IS NULL FROM orchestrator_profiles WHERE name = :name")
+                .param("name", profileName).query(Boolean.class).single())
             .as("a NULL here is invisible to every WHERE clause that filters on the flag")
             .isFalse();
         assertThat(repository.findByName(profileName)).get()

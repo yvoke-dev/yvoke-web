@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViewService;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetail;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetailPage;
-import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunSummary;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

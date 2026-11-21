@@ -1,9 +1,9 @@
 package de.palsoftware.yvoke.chat.web;
 
-import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
-import de.palsoftware.yvoke.chat.core.service.ChatMessageService.PreparedChat;
 import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
+import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
+import de.palsoftware.yvoke.chat.core.service.ChatMessageService.PreparedChat;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.io.IOException;
 import java.util.UUID;

@@ -2,16 +2,16 @@ package de.palsoftware.yvoke.shared.jobengine.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import java.time.OffsetDateTime;
-import java.util.UUID;
-import org.junit.jupiter.api.Test;
-import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /**
  * The job engine puts THREE different JSON shapes of the same state on the wire, and the browser

@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.tag.core.service;
 
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

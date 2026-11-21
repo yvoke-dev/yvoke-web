@@ -1,13 +1,11 @@
 package de.palsoftware.yvoke.rag.core;
 
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
-import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
-
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;

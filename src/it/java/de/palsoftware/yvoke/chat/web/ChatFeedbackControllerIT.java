@@ -27,17 +27,19 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * Ownership regression tests for {@code POST /chat/message/{messageId}/feedback}. The endpoint takes a
- * message id straight from the path under a chain that only requires {@code hasRole("USER")}
- * (SecurityConfig), so the only thing standing between a user and another user's messages is the
- * service-level {@code verifyOwnership} call — which had no test at any tier, and which the
- * rating-only request path used to skip entirely by never reaching the service.
+ * Ownership regression tests for {@code POST /chat/message/{messageId}/feedback}. The endpoint
+ * takes a message id straight from the path under a chain that only requires
+ * {@code hasRole("USER")} (SecurityConfig), so the only thing standing between a user and another
+ * user's messages is the service-level {@code verifyOwnership} call — which had no test at any
+ * tier, and which the rating-only request path used to skip entirely by never reaching the service.
  *
- * <p>Feedback is a <em>write</em>, so the codebase's "admins may read but not write another user's
- * conversation" invariant applies: an admin is denied here exactly as on {@code /chat/{id}/send} and
- * {@code /chat/{id}/model} (see {@code ConversationsAdminIT}).
+ * <p>
+ * Feedback is a <em>write</em>, so the codebase's "admins may read but not write another user's
+ * conversation" invariant applies: an admin is denied here exactly as on {@code /chat/{id}/send}
+ * and {@code /chat/{id}/model} (see {@code ConversationsAdminIT}).
  *
- * <p>Deliberately annotated identically to {@code ConversationsAdminIT} so it reuses that cached
+ * <p>
+ * Deliberately annotated identically to {@code ConversationsAdminIT} so it reuses that cached
  * Spring context rather than minting a new one — see the context-cache pitfall in CLAUDE.md.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -114,7 +116,7 @@ public class ChatFeedbackControllerIT {
         assertThat(persistedFeedbackCount()).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT comment FROM message_feedback WHERE message_id = ?", String.class, messageId))
-                .isEqualTo("Answer was wrong.");
+            .isEqualTo("Answer was wrong.");
     }
 
     @Test
@@ -128,9 +130,9 @@ public class ChatFeedbackControllerIT {
     }
 
     /**
-     * The bare-rating request the thumbs buttons send. It persists nothing by design, but it used to
-     * bypass the service altogether — so it neither authorized the caller nor checked the message
-     * existed, and happily reflected a fragment for any id.
+     * The bare-rating request the thumbs buttons send. It persists nothing by design, but it used
+     * to bypass the service altogether — so it neither authorized the caller nor checked the
+     * message existed, and happily reflected a fragment for any id.
      */
     @Test
     public void anotherUserCannotEvenSubmitARatingOnSomeoneElsesMessage() throws Exception {
@@ -141,9 +143,9 @@ public class ChatFeedbackControllerIT {
     @Test
     public void adminCannotSubmitFeedbackOnAnotherUsersMessage() throws Exception {
         mockMvc
-            .perform(post("/chat/message/" + messageId + "/feedback").with(csrf())
-                .param("rating", "-1").param("comment", "Admins may read, not write.")
-                .with(admin(ADMIN_OID)))
+            .perform(
+                post("/chat/message/" + messageId + "/feedback").with(csrf()).param("rating", "-1")
+                    .param("comment", "Admins may read, not write.").with(admin(ADMIN_OID)))
             .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/chat/message/" + messageId + "/feedback").with(csrf())
@@ -175,10 +177,10 @@ public class ChatFeedbackControllerIT {
         assertThat(persistedFeedbackCount()).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT rating FROM message_feedback WHERE message_id = ?", Integer.class, messageId))
-                .isEqualTo(1);
+            .isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT comment FROM message_feedback WHERE message_id = ?", String.class, messageId))
-                .isEqualTo("Answer was wrong.");
+            .isEqualTo("Answer was wrong.");
     }
 
     /**
@@ -188,9 +190,9 @@ public class ChatFeedbackControllerIT {
      * It used to be discarded — the comment was what created the row — and the buttons rendered the
      * vote as transient UI state, so a user clicked the thumb, watched it light up, and lost it on
      * reload. The desktop API meanwhile stores exactly this case (it demands a comment only for a
-     * negative rating), so the single satisfaction ratio on the feedback dashboard was computed over
-     * two different collection rules and systematically undercounted web positives. Both surfaces
-     * now record a bare thumbs-up.
+     * negative rating), so the single satisfaction ratio on the feedback dashboard was computed
+     * over two different collection rules and systematically undercounted web positives. Both
+     * surfaces now record a bare thumbs-up.
      */
     @Test
     public void aFirstRatingWithNoCommentIsPersistedWithANullComment() throws Exception {
@@ -200,10 +202,10 @@ public class ChatFeedbackControllerIT {
         assertThat(persistedFeedbackCount()).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT rating FROM message_feedback WHERE message_id = ?", Integer.class, messageId))
-                .isEqualTo(1);
+            .isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT comment FROM message_feedback WHERE message_id = ?", String.class, messageId))
-                .as("no comment was given, so none must be invented").isNull();
+            .as("no comment was given, so none must be invented").isNull();
     }
 
     /**
@@ -217,7 +219,7 @@ public class ChatFeedbackControllerIT {
 
         assertThat(jdbcTemplate.queryForObject(
             "SELECT rating FROM message_feedback WHERE message_id = ?", Integer.class, messageId))
-                .isEqualTo(-1);
+            .isEqualTo(-1);
     }
 
     /**

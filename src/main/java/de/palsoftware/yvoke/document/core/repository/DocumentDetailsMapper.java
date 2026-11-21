@@ -1,9 +1,7 @@
 package de.palsoftware.yvoke.document.core.repository;
 
-import de.palsoftware.yvoke.document.core.model.DocumentDetails;
-
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.sql.ResultSet;
 import java.sql.SQLException;

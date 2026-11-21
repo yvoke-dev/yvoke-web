@@ -1,11 +1,9 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
-import de.palsoftware.yvoke.chat.core.model.Conversation;
-import de.palsoftware.yvoke.chat.core.model.ConversationSource;
-
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

@@ -5,8 +5,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import java.util.Map;
+
+import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.GeneralSummarizer;
 import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
+import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
+import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
+import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
+import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
+import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,7 +22,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.awaitility.Awaitility;
@@ -27,16 +38,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
-import de.palsoftware.yvoke.ingest.core.service.GeneralSummarizer;
-import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
-import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
-import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
-import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
-import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
-import de.palsoftware.yvoke.shared.jobengine.service.JobService;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=true",
@@ -78,9 +79,10 @@ public class SchemaIngestServiceIT {
             "INSERT INTO collections (id, name, description, tags) VALUES (?, ?, ?, ?)", collId,
             COLLECTION, "Test collection", new String[] {VERSION});
         // A custom job summarizes matched sections, so the prompt it names must be registered.
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
-            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-summarize", "SUMMARIZE",
-            "Write a concise summary.");
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt)"
+                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "it-summarize", "SUMMARIZE", "Write a concise summary.");
 
         // Setup mock Voyage embeddings
         when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
@@ -98,8 +100,7 @@ public class SchemaIngestServiceIT {
                 String userMsg = inv.getArgument(3);
                 String name = "unknown";
                 if (userMsg != null) {
-                    Matcher matcher =
-                        Pattern.compile("Object name: `([^`]+)`").matcher(userMsg);
+                    Matcher matcher = Pattern.compile("Object name: `([^`]+)`").matcher(userMsg);
                     if (matcher.find()) {
                         name = matcher.group(1);
                     }
@@ -210,15 +211,18 @@ public class SchemaIngestServiceIT {
             {"name": "QBM_Proc1", "type": "procedure", "description": "Populate Proc 1"}
             {"name": "VI_Script1", "type": "script", "description": "Script 1"}
             """;
-        Files.writeString(graphDir.resolve("entities.jsonl"), entitiesJsonl, StandardCharsets.UTF_8);
+        Files.writeString(graphDir.resolve("entities.jsonl"), entitiesJsonl,
+            StandardCharsets.UTF_8);
 
-        String relationshipsJsonl = """
-            {"source": "table:ADSAccount", "type": "FK", "target": "table:Person", "description": "Links to person"}
-            {"source": "procedure:QBM_Proc1", "type": "CALL", "target": "table:Person", "description": "Reference table Person"}
-            {"source": "script:VI_Script1", "type": "CALL", "target": "procedure:QBM_Proc1", "description": "Call procedure QBM_Proc1"}
-            {"source": "script:VI_Script1", "type": "CALL", "target": "table:ADSAccount", "description": "Reference table ADSAccount"}
-            """;
-        Files.writeString(graphDir.resolve("relationships.jsonl"), relationshipsJsonl, StandardCharsets.UTF_8);
+        String relationshipsJsonl =
+            """
+                {"source": "table:ADSAccount", "type": "FK", "target": "table:Person", "description": "Links to person"}
+                {"source": "procedure:QBM_Proc1", "type": "CALL", "target": "table:Person", "description": "Reference table Person"}
+                {"source": "script:VI_Script1", "type": "CALL", "target": "procedure:QBM_Proc1", "description": "Call procedure QBM_Proc1"}
+                {"source": "script:VI_Script1", "type": "CALL", "target": "table:ADSAccount", "description": "Reference table ADSAccount"}
+                """;
+        Files.writeString(graphDir.resolve("relationships.jsonl"), relationshipsJsonl,
+            StandardCharsets.UTF_8);
 
         // Package files into a ZIP
         zipPath = tempDir.resolve("db_extract.zip");
@@ -250,9 +254,11 @@ public class SchemaIngestServiceIT {
     @Test
     public void testSchemaIngestionFlowE2E() {
         // Enqueue the schema ingestion job
-        UUID id = jobService.enqueue(new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
-            zipPath.toString(), VERSION, COLLECTION,
-            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
+        UUID id = jobService
+            .enqueue(
+                new EnqueueRequest(IngestJobKind.CUSTOM.getValue(), zipPath.toString(), VERSION,
+                    COLLECTION, Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize")))
+            .jobId();
 
         // Await job completion
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -295,7 +301,8 @@ public class SchemaIngestServiceIT {
             String.class, COLLECTION);
         assertThat(entityDocumentIds).hasSize(5).doesNotContainNull();
 
-        // Verify that the custom heading summarization was executed and replaced the Source section's body while keeping the heading
+        // Verify that the custom heading summarization was executed and replaced the Source
+        // section's body while keeping the heading
         List<String> chunkTexts = jdbcTemplate.queryForList(
             "SELECT ch.text FROM chunks ch JOIN documents d ON ch.document_id = d.id JOIN collections c ON ch.collection_id = c.id WHERE c.name = ? AND d.metadata->>'source_file' = ?",
             String.class, COLLECTION, "procedures/QBM_Proc1.md");
@@ -307,9 +314,11 @@ public class SchemaIngestServiceIT {
 
         // Test idempotency: re-running on same collection and version should result in same counts,
         // no duplicates
-        UUID secondId = jobService.enqueue(new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
-            zipPath.toString(), VERSION, COLLECTION,
-            Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize"))).jobId();
+        UUID secondId = jobService
+            .enqueue(
+                new EnqueueRequest(IngestJobKind.CUSTOM.getValue(), zipPath.toString(), VERSION,
+                    COLLECTION, Map.of(IngestPrompts.SETTING_SUMMARIZE_PROMPT, "it-summarize")))
+            .jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(secondId).orElseThrow();

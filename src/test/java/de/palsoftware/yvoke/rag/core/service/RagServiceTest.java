@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.rag.core.service;
 
-import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -9,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import java.lang.reflect.Constructor;
 import java.util.Arrays;

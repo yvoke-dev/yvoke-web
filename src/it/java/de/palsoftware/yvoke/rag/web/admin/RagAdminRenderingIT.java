@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,14 +35,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.hamcrest.Matchers;
 
 /**
- * Full Thymeleaf render coverage for the RAG admin pages after the DTO-at-boundary refactor
- * (Wave 3.3). The retrieval collaborators are mocked to return canned domain objects (the real
- * search path hits embedding/rerank services), so the search-result and retrieval-log DTOs — the
- * former nesting a telemetry view, the latter with the derived truncation accessor — are exercised
- * through an actual render; a missing accessor would 500.
+ * Full Thymeleaf render coverage for the RAG admin pages after the DTO-at-boundary refactor (Wave
+ * 3.3). The retrieval collaborators are mocked to return canned domain objects (the real search
+ * path hits embedding/rerank services), so the search-result and retrieval-log DTOs — the former
+ * nesting a telemetry view, the latter with the derived truncation accessor — are exercised through
+ * an actual render; a missing accessor would 500.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -85,23 +85,26 @@ public class RagAdminRenderingIT {
     public void searchConsoleRendersSearchResultDtos() throws Exception {
         UUID chunkId = UUID.randomUUID();
         UUID otherId = UUID.randomUUID();
-        HybridSearchResult result = new HybridSearchResult(chunkId, UUID.randomUUID(),
-            "chunk body text for render", List.of("Introduction"), "Introduction", 1, 0, "9.3",
-            "Doc Title", "standard", COLLECTION, Map.of(), 0.9876, new TelemetryInfo(true, false, 5, 0, 1));
+        HybridSearchResult result =
+            new HybridSearchResult(chunkId, UUID.randomUUID(), "chunk body text for render",
+                List.of("Introduction"), "Introduction", 1, 0, "9.3", "Doc Title", "standard",
+                COLLECTION, Map.of(), 0.9876, new TelemetryInfo(true, false, 5, 0, 1));
         UUID searchId = UUID.randomUUID();
         when(hybridSearch.searchWithId(anyString(), any()))
             .thenReturn(new SearchWithId(List.of(result), searchId));
         // The telemetry panel renders alongside results and reads these keys — supply a realistic
         // row so the render exercises the SearchResultView section under test AND the lane-trace
         // block, whose stage snapshots must satisfy initial.length == sem + ft to produce a trace.
-        when(retrievalLogRepository.findTelemetryById(any())).thenReturn(Optional.of(
-            new RetrievalTelemetryRow("{\"sem\": 5, \"ft\": 3}",
+        when(retrievalLogRepository.findTelemetryById(any()))
+            .thenReturn(Optional.of(new RetrievalTelemetryRow("{\"sem\": 5, \"ft\": 3}",
                 "{\"n\": 8, \"both\": 2, \"sem_only\": 3, \"ft_only\": 3}",
                 "{\"promotions\": 1, \"top1_changed\": false, \"avg_disp\": 0.5, \"rrf_order\": \"[]\"}",
                 1, 1, List.of(chunkId, otherId), List.of(chunkId, otherId), List.of(chunkId))));
 
-        mockMvc.perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
-                .param("tag", "all").param("semantic", "true").param("fulltext", "true").with(admin()))
+        mockMvc
+            .perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
+                .param("tag", "all").param("semantic", "true").param("fulltext", "true")
+                .with(admin()))
             .andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("chunk body text for render")))
             .andExpect(content().string(Matchers.containsString("Returned Rows by Lane")))
@@ -116,13 +119,16 @@ public class RagAdminRenderingIT {
         // the whole page; the null-safe `== true` guard must let results still render.
         HybridSearchResult result = new HybridSearchResult(UUID.randomUUID(), UUID.randomUUID(),
             "results without telemetry", List.of("Introduction"), "Introduction", 1, 0, "9.3",
-            "Doc Title", "standard", COLLECTION, Map.of(), 0.5, new TelemetryInfo(false, false, 5, 0, 1));
+            "Doc Title", "standard", COLLECTION, Map.of(), 0.5,
+            new TelemetryInfo(false, false, 5, 0, 1));
         when(hybridSearch.searchWithId(anyString(), any()))
             .thenReturn(new SearchWithId(List.of(result), UUID.randomUUID()));
         when(retrievalLogRepository.findTelemetryById(any())).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
-                .param("tag", "all").param("semantic", "true").param("fulltext", "true").with(admin()))
+        mockMvc
+            .perform(get("/admin/search").param("query", "test").param("collection", COLLECTION)
+                .param("tag", "all").param("semantic", "true").param("fulltext", "true")
+                .with(admin()))
             .andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("results without telemetry")));
     }
@@ -132,11 +138,11 @@ public class RagAdminRenderingIT {
         RetrievalLogDetails logRow = new RetrievalLogDetails(UUID.randomUUID(), UUID.randomUUID(),
             COLLECTION, "9.3", "{}", "{}", "{}", Instant.now(), "the retrieval message content", 1,
             "great answer", List.of());
-        when(retrievalLogRepository.listLogs(anyInt(), anyInt(), any())).thenReturn(List.of(logRow));
+        when(retrievalLogRepository.listLogs(anyInt(), anyInt(), any()))
+            .thenReturn(List.of(logRow));
         when(retrievalLogRepository.countLogs(any())).thenReturn(1L);
 
         mockMvc.perform(get("/admin/logs").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(
-                Matchers.containsString("the retrieval message content")));
+            .andExpect(content().string(Matchers.containsString("the retrieval message content")));
     }
 }

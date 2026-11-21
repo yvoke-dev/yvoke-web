@@ -1,6 +1,17 @@
 package de.palsoftware.yvoke.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
+import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
+import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
+import de.palsoftware.yvoke.mcp.tools.GetJsonSchemaTool;
+import de.palsoftware.yvoke.mcp.tools.QueryJsonObjectsTool;
+import de.palsoftware.yvoke.rag.core.service.RagService;
+import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,25 +21,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
-import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.mcp.tools.QueryJsonObjectsTool;
-import de.palsoftware.yvoke.mcp.tools.GetJsonSchemaTool;
-import de.palsoftware.yvoke.tag.core.repository.TagRepository;
-import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
-import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import de.palsoftware.yvoke.rag.core.service.RagService;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration"})
@@ -86,12 +87,12 @@ public class JsonObjectsToolsIT {
     }
 
     /**
-     * The {@code sharedToolCallbacks} bean is ONE catalogue serving two consumers: the MCP server and
-     * {@link RagService}, which is the in-app chat agent, the orchestrator and every specialist.
-     * (The MCP server additionally serves {@code clientOnlyToolCallbacks}, which RagService must
-     * never hold; the exact-match assertion below pins that too.)
-     * That sharing is the reason a fix in {@code mcp/tools} reaches both at once — and it is held
-     * up by nothing more than a {@code List<ToolCallback>} constructor parameter.
+     * The {@code sharedToolCallbacks} bean is ONE catalogue serving two consumers: the MCP server
+     * and {@link RagService}, which is the in-app chat agent, the orchestrator and every
+     * specialist. (The MCP server additionally serves {@code clientOnlyToolCallbacks}, which
+     * RagService must never hold; the exact-match assertion below pins that too.) That sharing is
+     * the reason a fix in {@code mcp/tools} reaches both at once — and it is held up by nothing
+     * more than a {@code List<ToolCallback>} constructor parameter.
      *
      * <p>
      * Spring resolves a collection injection point against individual {@code ToolCallback} beans
@@ -99,11 +100,11 @@ public class JsonObjectsToolsIT {
      * anything contributes a single {@code ToolCallback} bean — spring-ai, or a well-meaning
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
-     * invisible from every angle that is currently tested: {@code theTwoToolCataloguesAreSplitExactly}
-     * reads the bean directly and stays green, {@code McpServerEndpointsIT} still lists all sixteen tools
-     * over JSON-RPC, and the app still answers — it just answers without retrieval, because the
-     * agent's registry is empty or partial, which reads as a quality regression rather than a
-     * wiring bug.
+     * invisible from every angle that is currently tested:
+     * {@code theTwoToolCataloguesAreSplitExactly} reads the bean directly and stays green,
+     * {@code McpServerEndpointsIT} still lists all sixteen tools over JSON-RPC, and the app still
+     * answers — it just answers without retrieval, because the agent's registry is empty or
+     * partial, which reads as a quality regression rather than a wiring bug.
      *
      * <p>
      * The instance identity assertion is the load-bearing half: equal NAMES would also hold for a
@@ -203,8 +204,8 @@ public class JsonObjectsToolsIT {
     public void theTwoToolCataloguesAreSplitExactly() {
         List<?> callbacks = applicationContext.getBean("sharedToolCallbacks", List.class);
 
-        List<String> names = callbacks.stream()
-            .map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
+        List<String> names =
+            callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
 
         assertThat(names).containsExactlyInAnyOrder("search_corpus", "ask_clarifying_question",
             "get_toc", "get_section", "list_documents", "get_graph_neighbors",
@@ -223,8 +224,10 @@ public class JsonObjectsToolsIT {
 
     @Test
     public void testGetSchemaTool() {
-        Map<String, Object> schemaData = Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string")));
-        JsonSchema schema = new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData, "manual", OffsetDateTime.now());
+        Map<String, Object> schemaData =
+            Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string")));
+        JsonSchema schema = new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData,
+            "manual", OffsetDateTime.now());
         jsonSchemaRepository.upsert(schema);
 
         String response = schemaTool.getJsonSchema(COLLECTION_NAME, null);

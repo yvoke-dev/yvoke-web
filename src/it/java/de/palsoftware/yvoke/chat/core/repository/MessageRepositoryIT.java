@@ -1,5 +1,8 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
 import de.palsoftware.yvoke.chat.core.model.Message;
 import java.time.Instant;
 import java.util.Collections;
@@ -18,14 +21,8 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-
-@SpringBootTest(
-    properties = {
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=filesystem:docker/db/migration"
-    })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class MessageRepositoryIT {
 
     @Autowired
@@ -47,12 +44,11 @@ public class MessageRepositoryIT {
     void setUp() {
         userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-            userId, "oid-" + userId, "user-" + userId + "@example.com", "Test User");
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
+            "oid-" + userId, "user-" + userId + "@example.com", "Test User");
 
         conversationId = UUID.randomUUID();
-        jdbcTemplate.update(
-            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
             conversationId, userId, "Test Conversation");
     }
 
@@ -95,8 +91,8 @@ public class MessageRepositoryIT {
     @Test
     void findInitialPlaybook_userMessageWithBlankPlaybook_isIgnored() {
         UUID msgId = UUID.randomUUID();
-        Message blankMsg = new Message(msgId, conversationId, "user", "Question",
-            "   ", Collections.emptyList(), Collections.emptyList(), Instant.now());
+        Message blankMsg = new Message(msgId, conversationId, "user", "Question", "   ",
+            Collections.emptyList(), Collections.emptyList(), Instant.now());
         messageRepository.save(blankMsg);
 
         Optional<String> initial = messageRepository.findInitialPlaybook(conversationId);
@@ -107,14 +103,14 @@ public class MessageRepositoryIT {
     void findInitialPlaybook_desktopMessageWithoutPlaybookThenPlaybookMessage_returnsInitialPlaybook() {
         UUID msg1Id = UUID.randomUUID();
         Instant t1 = Instant.now().minusSeconds(30);
-        Message desktopMsg = new Message(msg1Id, conversationId, "user", "Desktop question",
-            null, Collections.emptyList(), Collections.emptyList(), t1);
+        Message desktopMsg = new Message(msg1Id, conversationId, "user", "Desktop question", null,
+            Collections.emptyList(), Collections.emptyList(), t1);
         messageRepository.save(desktopMsg);
 
         UUID msg2Id = UUID.randomUUID();
         Instant t2 = Instant.now().minusSeconds(10);
-        Message webMsg = new Message(msg2Id, conversationId, "user", "Web question",
-            "pb-first", Collections.emptyList(), Collections.emptyList(), t2);
+        Message webMsg = new Message(msg2Id, conversationId, "user", "Web question", "pb-first",
+            Collections.emptyList(), Collections.emptyList(), t2);
         messageRepository.save(webMsg);
 
         UUID msg3Id = UUID.randomUUID();
@@ -151,8 +147,8 @@ public class MessageRepositoryIT {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 jdbcTemplate.queryForObject(
-                    "SELECT id FROM conversations WHERE id = ? FOR UPDATE NOWAIT",
-                    UUID.class, conversationId);
+                    "SELECT id FROM conversations WHERE id = ? FOR UPDATE NOWAIT", UUID.class,
+                    conversationId);
             });
         } catch (DataAccessException e) {
             secondAttemptFailed.set(true);
@@ -162,15 +158,14 @@ public class MessageRepositoryIT {
         }
 
         assertThat(secondAttemptFailed.get())
-            .as("Concurrent lock with NOWAIT should fail while row is locked FOR UPDATE")
-            .isTrue();
+            .as("Concurrent lock with NOWAIT should fail while row is locked FOR UPDATE").isTrue();
     }
 
     @Test
     void hasInDepthTurns_onlyPlaybookMessages_returnsFalse() {
         UUID msgId = UUID.randomUUID();
-        Message userMsg = new Message(msgId, conversationId, "user", "Question",
-            "pb-standard", Collections.emptyList(), Collections.emptyList(), Instant.now());
+        Message userMsg = new Message(msgId, conversationId, "user", "Question", "pb-standard",
+            Collections.emptyList(), Collections.emptyList(), Instant.now());
         messageRepository.save(userMsg);
 
         assertThat(messageRepository.hasInDepthTurns(conversationId)).isFalse();
@@ -190,9 +185,8 @@ public class MessageRepositoryIT {
     void saveIfAbsent_isIdempotentAndPreservesExplicitOrDefaultTimestamp() {
         UUID msg1Id = UUID.randomUUID();
         Instant explicitTime = Instant.parse("2026-11-02T10:15:30Z");
-        Message first = new Message(msg1Id, conversationId, "user", "Original Question",
-            "pb-1", 1, List.of(), List.of(), explicitTime, null, null, null, null, null, "done",
-            null);
+        Message first = new Message(msg1Id, conversationId, "user", "Original Question", "pb-1", 1,
+            List.of(), List.of(), explicitTime, null, null, null, null, null, "done", null);
         Message duplicate = new Message(msg1Id, conversationId, "user", "Overwritten Question",
             "pb-2", 2, List.of(), List.of(), explicitTime.plusSeconds(60), null, null, null, null,
             null, "done", null);
@@ -206,9 +200,9 @@ public class MessageRepositoryIT {
         assertThat(loaded1.createdAt()).isEqualTo(explicitTime);
 
         UUID msg2Id = UUID.randomUUID();
-        Message withNullTime = new Message(msg2Id, conversationId, "assistant", "Answer",
-            null, null, List.of(), List.of(), null, null, null, null, null, null, "done",
-            "claude-sonnet-4-5");
+        Message withNullTime =
+            new Message(msg2Id, conversationId, "assistant", "Answer", null, null, List.of(),
+                List.of(), null, null, null, null, null, null, "done", "claude-sonnet-4-5");
         messageRepository.saveIfAbsent(withNullTime);
         Message loaded2 = messageRepository.findById(msg2Id).orElseThrow();
         assertThat(loaded2.content()).isEqualTo("Answer");

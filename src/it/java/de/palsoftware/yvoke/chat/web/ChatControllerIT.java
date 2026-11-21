@@ -1,18 +1,18 @@
 package de.palsoftware.yvoke.chat.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
@@ -32,11 +32,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -76,7 +76,7 @@ public class ChatControllerIT {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
-        
+
         List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
             new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
@@ -86,7 +86,8 @@ public class ChatControllerIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(
+        String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
             .authorities(new SimpleGrantedAuthority("ROLE_USER"),
@@ -138,22 +139,25 @@ public class ChatControllerIT {
         setSecurityContext(userAOid, "user-a-test@local", "User A");
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        MvcResult result = mockMvc.perform(get("/chat").with(loginA))
-            .andExpect(status().isOk())
+        MvcResult result = mockMvc.perform(get("/chat").with(loginA)).andExpect(status().isOk())
             .andExpect(model().attributeExists("folders"))
             .andExpect(model().attributeExists("untagged"))
             .andExpect(model().attributeExists("publicFolders"))
-            .andExpect(model().attributeExists("publicUntagged"))
-            .andReturn();
+            .andExpect(model().attributeExists("publicUntagged")).andReturn();
 
-        Map<String, List<Conversation>> folders = (Map<String, List<Conversation>>) result.getModelAndView().getModel().get("folders");
-        List<Conversation> untagged = (List<Conversation>) result.getModelAndView().getModel().get("untagged");
-        Map<String, List<Conversation>> publicFolders = (Map<String, List<Conversation>>) result.getModelAndView().getModel().get("publicFolders");
-        List<Conversation> publicUntaggedList = (List<Conversation>) result.getModelAndView().getModel().get("publicUntagged");
+        Map<String, List<Conversation>> folders =
+            (Map<String, List<Conversation>>) result.getModelAndView().getModel().get("folders");
+        List<Conversation> untagged =
+            (List<Conversation>) result.getModelAndView().getModel().get("untagged");
+        Map<String, List<Conversation>> publicFolders = (Map<String, List<Conversation>>) result
+            .getModelAndView().getModel().get("publicFolders");
+        List<Conversation> publicUntaggedList =
+            (List<Conversation>) result.getModelAndView().getModel().get("publicUntagged");
 
         // Assertions on private/owned section:
         assertThat(folders).containsKey("private-tag");
-        assertThat(folders.get("private-tag")).extracting(Conversation::id).containsExactly(privateTaggedId);
+        assertThat(folders.get("private-tag")).extracting(Conversation::id)
+            .containsExactly(privateTaggedId);
         assertThat(folders).doesNotContainKey("public");
         assertThat(folders).doesNotContainKey("tutorial");
         assertThat(folders).doesNotContainKey("shared-tag");
@@ -162,9 +166,11 @@ public class ChatControllerIT {
 
         // Assertions on public section:
         assertThat(publicFolders).containsKey("tutorial");
-        assertThat(publicFolders.get("tutorial")).extracting(Conversation::id).containsExactly(publicTaggedId);
+        assertThat(publicFolders.get("tutorial")).extracting(Conversation::id)
+            .containsExactly(publicTaggedId);
         assertThat(publicFolders).containsKey("shared-tag");
-        assertThat(publicFolders.get("shared-tag")).extracting(Conversation::id).containsExactly(otherPublicId);
+        assertThat(publicFolders.get("shared-tag")).extracting(Conversation::id)
+            .containsExactly(otherPublicId);
 
         assertThat(publicUntaggedList).extracting(Conversation::id).contains(publicUntaggedId);
 
@@ -182,12 +188,13 @@ public class ChatControllerIT {
 
     /**
      * {@code MvcExceptionHandler} turns a failed request into a 302 + flash message, and whether it
-     * does so is decided by the SHAPE of the request, not by the endpoint. That decision has to keep
-     * working for {@code ChatController}, because {@code ChatController} is a plain {@code @Controller}
-     * (so the JSON {@code ApiExceptionHandler}, which is selected by {@code @RestController}, does not
-     * cover it) and several of its endpoints are {@code @ResponseBody void} handlers called from bare
-     * {@code fetch()} — {@code thread.js} posts {@code /chat/{id}/streaming} and
-     * {@code /chat/{id}/show-thinking} that way, with the default {@code Accept: *}{@code /*}.
+     * does so is decided by the SHAPE of the request, not by the endpoint. That decision has to
+     * keep working for {@code ChatController}, because {@code ChatController} is a plain
+     * {@code @Controller} (so the JSON {@code ApiExceptionHandler}, which is selected by
+     * {@code @RestController}, does not cover it) and several of its endpoints are
+     * {@code @ResponseBody void} handlers called from bare {@code fetch()} — {@code thread.js}
+     * posts {@code /chat/{id}/streaming} and {@code /chat/{id}/show-thinking} that way, with the
+     * default {@code Accept: *}{@code /*}.
      *
      * <p>
      * Widen {@code isNavigationalFormPost} — or just drop its call from {@code handleUnexpected},
@@ -205,8 +212,8 @@ public class ChatControllerIT {
      * synthetic probe controller, and asserts only that the exception PROPAGATES
      * ({@code fetchPostWithoutHtmlAcceptIsNotHijackedIntoARedirect} does
      * {@code hasRootCauseInstanceOf}); it never asserts the status the framework then produces, and
-     * it never runs against a real chat route, so the end-to-end "malformed flag reaches the browser
-     * as 400" contract is untested without this.
+     * it never runs against a real chat route, so the end-to-end "malformed flag reaches the
+     * browser as 400" contract is untested without this.
      */
     @Test
     public void aNonBooleanStreamingFlagIsAFourHundredAndIsNeverSwallowedIntoAFlashRedirect()
@@ -243,13 +250,11 @@ public class ChatControllerIT {
         UUID convId = conv.id();
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + convId + "/send")
-                .with(loginA)
-                .with(csrf())
-                .param("content", "Hello")
-                .param("promptName", ""))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("A playbook must be selected before asking a question."));
+        mockMvc
+            .perform(post("/chat/" + convId + "/send").with(loginA).with(csrf())
+                .param("content", "Hello").param("promptName", ""))
+            .andExpect(status().isBadRequest()).andExpect(
+                jsonPath("$.error").value("A playbook must be selected before asking a question."));
 
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");
@@ -266,13 +271,11 @@ public class ChatControllerIT {
         UUID convId = conv.id();
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + convId + "/send-async")
-                .with(loginA)
-                .with(csrf())
-                .param("content", "Hello")
-                .param("promptName", ""))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("A playbook must be selected before asking a question."));
+        mockMvc
+            .perform(post("/chat/" + convId + "/send-async").with(loginA).with(csrf())
+                .param("content", "Hello").param("promptName", ""))
+            .andExpect(status().isBadRequest()).andExpect(
+                jsonPath("$.error").value("A playbook must be selected before asking a question."));
 
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");

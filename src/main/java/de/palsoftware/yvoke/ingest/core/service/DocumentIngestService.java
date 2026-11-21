@@ -1,30 +1,5 @@
 package de.palsoftware.yvoke.ingest.core.service;
 
-import jakarta.annotation.Nullable;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-import java.time.OffsetDateTime;
-import java.util.Comparator;
-import java.util.Enumeration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
@@ -41,13 +16,34 @@ import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedRelationsh
 import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import de.palsoftware.yvoke.kg.core.service.DocumentKgExtractor;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
+import jakarta.annotation.Nullable;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class DocumentIngestService {

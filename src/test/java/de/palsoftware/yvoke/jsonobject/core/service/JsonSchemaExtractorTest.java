@@ -2,13 +2,13 @@ package de.palsoftware.yvoke.jsonobject.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import java.math.BigDecimal;
-import java.util.LinkedHashMap;
 
 public class JsonSchemaExtractorTest {
 

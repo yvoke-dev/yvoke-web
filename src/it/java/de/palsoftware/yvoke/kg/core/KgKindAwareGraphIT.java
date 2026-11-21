@@ -104,11 +104,10 @@ public class KgKindAwareGraphIT {
             .as("the database must not be left to absorb the surplus through ON CONFLICT")
             .isEqualTo(1);
 
-        Map<String, Object> stored = jdbcTemplate.queryForMap(
-            "SELECT e.name, e.description FROM entities e "
+        Map<String, Object> stored =
+            jdbcTemplate.queryForMap("SELECT e.name, e.description FROM entities e "
                 + "JOIN collections c ON e.collection_id = c.id "
-                + "WHERE c.name = ? AND lower(e.name) = 'person'",
-            COLLECTION);
+                + "WHERE c.name = ? AND lower(e.name) = 'person'", COLLECTION);
         assertThat(stored.get("name")).as("first occurrence wins, so its spelling is the row's")
             .isEqualTo("Person");
         assertThat(stored.get("description"))
@@ -117,10 +116,11 @@ public class KgKindAwareGraphIT {
     }
 
     private int entityCount(String name) {
-        Integer n = jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM entities e JOIN collections c ON e.collection_id = c.id "
-                + "WHERE c.name = ? AND lower(e.name) = lower(?)",
-            Integer.class, COLLECTION, name);
+        Integer n =
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM entities e JOIN collections c ON e.collection_id = c.id "
+                    + "WHERE c.name = ? AND lower(e.name) = lower(?)",
+                Integer.class, COLLECTION, name);
         return n == null ? 0 : n;
     }
 
@@ -194,8 +194,8 @@ public class KgKindAwareGraphIT {
         assertThat(edge.counterpartKind()).isEqualTo("module");
 
         // No kind: the name is ambiguous — both kinds are reported so callers can disambiguate.
-        KgNeighborEdges ambiguous =
-            kgReadRepository.getEntityRelationships("ADS", null, TAG, COLLECTION, null, "both", 200);
+        KgNeighborEdges ambiguous = kgReadRepository.getEntityRelationships("ADS", null, TAG,
+            COLLECTION, null, "both", 200);
         assertThat(ambiguous.matchedKinds()).containsExactlyInAnyOrder("module", "connector");
         assertThat(ambiguous.edges()).hasSize(1);
     }
@@ -224,15 +224,16 @@ public class KgKindAwareGraphIT {
         UUID dept = byKey.get(KgWriteRepository.entityKey("table", "Dept"));
         UUID legacy = byKey.get(KgWriteRepository.entityKey("table", "Legacy"));
 
-        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of(TAG), List.of(
-            new RelationshipUpsert("Person", "fk_to", "Org", personTable, org, "fk", null),
-            new RelationshipUpsert("Person", "fk_to", "Dept", personTable, dept, "fk", null),
-            new RelationshipUpsert("Org", "references_table", "Person", org, personTable, "ref",
-                null),
-            new RelationshipUpsert("Person", "shows", "Org", personForm, org, "form", null)));
-        // A 10.0-only edge of the same subject: the tag-append must leave the 9.3 edges above alone.
-        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of("10.0"), List
-            .of(new RelationshipUpsert("Person", "fk_to", "Legacy", personTable, legacy, "fk", null)));
+        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of(TAG),
+            List.of(new RelationshipUpsert("Person", "fk_to", "Org", personTable, org, "fk", null),
+                new RelationshipUpsert("Person", "fk_to", "Dept", personTable, dept, "fk", null),
+                new RelationshipUpsert("Org", "references_table", "Person", org, personTable, "ref",
+                    null),
+                new RelationshipUpsert("Person", "shows", "Org", personForm, org, "form", null)));
+        // A 10.0-only edge of the same subject: the tag-append must leave the 9.3 edges above
+        // alone.
+        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of("10.0"), List.of(
+            new RelationshipUpsert("Person", "fk_to", "Legacy", personTable, legacy, "fk", null)));
         return byKey;
     }
 
@@ -250,8 +251,8 @@ public class KgKindAwareGraphIT {
         String documentId = UUID.randomUUID().toString();
         seedCollidedPersonGraph(documentId);
 
-        List<KgEntityKindEdgeCount> rows = kgReadRepository.findEntityKindsWithEdgeCounts("person",
-            TAG, COLLECTION, null, "both");
+        List<KgEntityKindEdgeCount> rows =
+            kgReadRepository.findEntityKindsWithEdgeCounts("person", TAG, COLLECTION, null, "both");
 
         // One row per colliding kind, most-connected first, kind ASC on ties.
         assertThat(kinds(rows)).containsExactly("table", "ui_forms", "notification");
@@ -268,13 +269,10 @@ public class KgKindAwareGraphIT {
         seedCollidedPersonGraph(UUID.randomUUID().toString());
 
         // Tag: the 10.0 edge is invisible at 9.3 and vice versa; untagged sees both.
-        assertThat(edgesOf(
-            kgReadRepository.findEntityKindsWithEdgeCounts("Person", "10.0", COLLECTION, null,
-                "both"),
-            "table")).isEqualTo(1);
-        assertThat(edgesOf(
-            kgReadRepository.findEntityKindsWithEdgeCounts("Person", null, COLLECTION, null, "both"),
-            "table")).isEqualTo(4);
+        assertThat(edgesOf(kgReadRepository.findEntityKindsWithEdgeCounts("Person", "10.0",
+            COLLECTION, null, "both"), "table")).isEqualTo(1);
+        assertThat(edgesOf(kgReadRepository.findEntityKindsWithEdgeCounts("Person", null,
+            COLLECTION, null, "both"), "table")).isEqualTo(4);
 
         // Direction: 2 outgoing + 1 incoming at 9.3.
         assertThat(edgesOf(kgReadRepository.findEntityKindsWithEdgeCounts("Person", TAG, COLLECTION,
@@ -285,9 +283,8 @@ public class KgKindAwareGraphIT {
             null, "incoming"), "ui_forms")).isZero();
 
         // Relation type: only the two fk_to edges of the table remain.
-        List<KgEntityKindEdgeCount> fkOnly =
-            kgReadRepository.findEntityKindsWithEdgeCounts("Person", TAG, COLLECTION, "fk_to",
-                "both");
+        List<KgEntityKindEdgeCount> fkOnly = kgReadRepository
+            .findEntityKindsWithEdgeCounts("Person", TAG, COLLECTION, "fk_to", "both");
         assertThat(edgesOf(fkOnly, "table")).isEqualTo(2);
         assertThat(edgesOf(fkOnly, "ui_forms")).isZero();
 
@@ -303,8 +300,9 @@ public class KgKindAwareGraphIT {
 
         assertThat(kgReadRepository.findEntityKindsWithEdgeCounts("NoSuchEntity", TAG, COLLECTION,
             null, "both")).isEmpty();
-        assertThat(kinds(kgReadRepository.findEntityKindsWithEdgeCounts("Org", TAG, COLLECTION, null,
-            "both"))).containsExactly("table");
+        assertThat(kinds(
+            kgReadRepository.findEntityKindsWithEdgeCounts("Org", TAG, COLLECTION, null, "both")))
+            .containsExactly("table");
     }
 
     @Test
@@ -315,9 +313,9 @@ public class KgKindAwareGraphIT {
         // the winning row (and the document_id the model then reads) is arbitrary per call.
         List<String> first = null;
         for (int i = 0; i < 5; i++) {
-            List<String> kinds = kgReadRepository.fuzzySearchEntities("Person", 20, TAG, COLLECTION)
-                .stream().filter(e -> "Person".equalsIgnoreCase(e.name())).map(KgEntity::kind)
-                .toList();
+            List<String> kinds =
+                kgReadRepository.fuzzySearchEntities("Person", 20, TAG, COLLECTION).stream()
+                    .filter(e -> "Person".equalsIgnoreCase(e.name())).map(KgEntity::kind).toList();
             assertThat(kinds).containsExactly("notification", "table", "ui_forms");
             if (first == null) {
                 first = kinds;
@@ -404,8 +402,8 @@ public class KgKindAwareGraphIT {
     public void kindScopedNodeWithoutEdgesDoesNotBorrowAnotherKindsEdges() {
         seedCollidedPersonGraph(UUID.randomUUID().toString());
 
-        KgNeighborEdges view = kgReadRepository.getEntityRelationships("Person", "notification", TAG,
-            COLLECTION, null, "both", 200);
+        KgNeighborEdges view = kgReadRepository.getEntityRelationships("Person", "notification",
+            TAG, COLLECTION, null, "both", 200);
 
         assertThat(view.matchedKinds()).containsExactly("notification");
         assertThat(view.edges()).isEmpty();
@@ -424,8 +422,7 @@ public class KgKindAwareGraphIT {
                 new EntityUpsert("Person", "notification", "person notification"),
                 new EntityUpsert("Person", "object_methods", "person object methods")));
         UUID personTable = byKey.get(KgWriteRepository.entityKey("table", "Person"));
-        UUID personNotification =
-            byKey.get(KgWriteRepository.entityKey("notification", "Person"));
+        UUID personNotification = byKey.get(KgWriteRepository.entityKey("notification", "Person"));
         UUID personObjectMethods =
             byKey.get(KgWriteRepository.entityKey("object_methods", "Person"));
 
@@ -464,8 +461,8 @@ public class KgKindAwareGraphIT {
 
         // A later batch for a DIFFERENT edge that merely shares the subject must not retag the
         // first one.
-        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of("10.0"), List
-            .of(new RelationshipUpsert("Person", "fk_to", "Dept", person, dept, "10.0 only", null)));
+        kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of("10.0"), List.of(
+            new RelationshipUpsert("Person", "fk_to", "Dept", person, dept, "10.0 only", null)));
 
         assertThat(tagsOfEdge(person, org)).containsExactly(TAG);
         assertThat(tagsOfEdge(person, dept)).containsExactly("10.0");
@@ -498,13 +495,10 @@ public class KgKindAwareGraphIT {
         UUID person = byKey.get(KgWriteRepository.entityKey("table", "Person"));
         UUID org = byKey.get(KgWriteRepository.entityKey("table", "Org"));
 
-        int inserted = kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of(TAG),
-            List.of(
-                new RelationshipUpsert("Person", "fk_to", "Org", person, org, "a real edge", null),
-                new RelationshipUpsert("Person", "   ", "Org", person, org, "blank predicate",
-                    null),
-                new RelationshipUpsert("Person", null, "Org", person, org, "null predicate",
-                    null)));
+        int inserted = kgWriteRepository.insertRelationshipsBatch(COLLECTION, List.of(TAG), List.of(
+            new RelationshipUpsert("Person", "fk_to", "Org", person, org, "a real edge", null),
+            new RelationshipUpsert("Person", "   ", "Org", person, org, "blank predicate", null),
+            new RelationshipUpsert("Person", null, "Org", person, org, "null predicate", null)));
 
         assertThat(inserted).as("only the identifiable edge counts as written").isEqualTo(1);
         List<String> predicates = jdbcTemplate.queryForList(
@@ -544,15 +538,16 @@ public class KgKindAwareGraphIT {
      */
     @Test
     public void kindLessEntityIsRejectedByBothTheSchemaAndTheWriteRepository() {
-        assertThatThrownBy(() -> jdbcTemplate.update(
-            "INSERT INTO entities (id, collection_id, name, kind, tags) "
-                + "VALUES (?, ?, 'KindLess', NULL, ARRAY['9.3'])",
-            UUID.randomUUID(), collectionId)).isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("kind");
+        assertThatThrownBy(
+            () -> jdbcTemplate.update(
+                "INSERT INTO entities (id, collection_id, name, kind, tags) "
+                    + "VALUES (?, ?, 'KindLess', NULL, ARRAY['9.3'])",
+                UUID.randomUUID(), collectionId))
+            .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("kind");
 
         assertThatThrownBy(() -> kgWriteRepository.upsertEntitiesBatch(COLLECTION, List.of(TAG),
             List.of(new EntityUpsert("KindLess", null, "no kind at all"))))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("KindLess");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("KindLess");
 
         assertThat(entityCount("KindLess")).isZero();
     }

@@ -1,37 +1,31 @@
 package de.palsoftware.yvoke.ingest.api;
 
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.collection.core.service.CollectionService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
-
-import java.util.UUID;
-import jakarta.servlet.http.Part;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import org.assertj.core.api.Assertions;
 
-@SpringBootTest(properties = {
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=filesystem:docker/db/migration",
-        "app.worker.enabled=false",
-        "app.security.mock=true"
-})
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import jakarta.servlet.http.Part;
+import java.util.UUID;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=false",
+    "app.security.mock=true"})
 public class IngestApiControllerIT {
 
     @Autowired
@@ -47,15 +41,13 @@ public class IngestApiControllerIT {
 
     @BeforeEach
     public void setup() {
-        mockMvc = MockMvcBuilders
-                .webAppContextSetup(context)
-                .apply(springSecurity())
-                .build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         cleanup();
         // The KG prompt the requests name; seeded here so the class does not depend on running
         // after another IT that happens to insert it.
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt) VALUES (?, ?, ?)"
-            + " ON CONFLICT (name) DO NOTHING", "it-kg", "KG", "Return STRICT JSON only.");
+        jdbcTemplate
+            .update("INSERT INTO system_prompts (name, type, system_prompt) VALUES (?, ?, ?)"
+                + " ON CONFLICT (name) DO NOTHING", "it-kg", "KG", "Return STRICT JSON only.");
     }
 
     private void cleanup() {
@@ -68,23 +60,23 @@ public class IngestApiControllerIT {
     @Test
     public void testProcessDocumentKgWithDocumentId() throws Exception {
         UUID sourceColId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])", sourceColId, "source-col");
-        
-        UUID docId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata)
-            VALUES (?, ?, 'manual', 'doc.md', 'completed', '{"source_file": "doc.md", "tag": "v1.0"}')
-            """, docId, sourceColId);
+        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])",
+            sourceColId, "source-col");
 
-        mockMvc.perform(post("/api/ingest/v1/process-kg")
-                        .param("documentId", docId.toString())
-                        .param("collection", "target-col")
-                        .param("area", "OIM")
-                        .param("tag", "v2.0")
-                        .param("kgPrompt", "it-kg")
-                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.id", notNullValue()));
+        UUID docId = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata)
+                VALUES (?, ?, 'manual', 'doc.md', 'completed', '{"source_file": "doc.md", "tag": "v1.0"}')
+                """,
+            docId, sourceColId);
+
+        mockMvc
+            .perform(post("/api/ingest/v1/process-kg").param("documentId", docId.toString())
+                .param("collection", "target-col").param("area", "OIM").param("tag", "v2.0")
+                .param("kgPrompt", "it-kg")
+                .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.id", notNullValue()));
 
         Collection targetCol = collectionService.getCollection("target-col").orElseThrow();
         Assertions.assertThat(targetCol.tags()).contains("v2.0");
@@ -98,33 +90,30 @@ public class IngestApiControllerIT {
     @Test
     public void testProcessDocumentKgTwiceReportsTheInFlightJobAsAConflict() throws Exception {
         UUID sourceColId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])", sourceColId, "source-col");
+        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])",
+            sourceColId, "source-col");
 
         UUID docId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata)
-            VALUES (?, ?, 'manual', 'doc.md', 'completed', '{"source_file": "doc.md", "tag": "v1.0"}')
-            """, docId, sourceColId);
+        jdbcTemplate.update(
+            """
+                INSERT INTO documents (id, collection_id, kind, title, ingestion_status, metadata)
+                VALUES (?, ?, 'manual', 'doc.md', 'completed', '{"source_file": "doc.md", "tag": "v1.0"}')
+                """,
+            docId, sourceColId);
 
-        String firstBody = mockMvc.perform(post("/api/ingest/v1/process-kg")
-                        .param("documentId", docId.toString())
-                        .param("collection", "target-col")
-                        .param("area", "OIM")
-                        .param("tag", "v2.0")
-                        .param("kgPrompt", "it-kg")
-                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-                .andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
+        String firstBody = mockMvc
+            .perform(post("/api/ingest/v1/process-kg").param("documentId", docId.toString())
+                .param("collection", "target-col").param("area", "OIM").param("tag", "v2.0")
+                .param("kgPrompt", "it-kg")
+                .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+            .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
 
-        mockMvc.perform(post("/api/ingest/v1/process-kg")
-                        .param("documentId", docId.toString())
-                        .param("collection", "target-col")
-                        .param("area", "OIM")
-                        .param("tag", "v2.0")
-                        .param("kgPrompt", "it-kg")
-                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-                .andExpect(status().isConflict())
-                .andExpect(content().json(firstBody));
+        mockMvc
+            .perform(post("/api/ingest/v1/process-kg").param("documentId", docId.toString())
+                .param("collection", "target-col").param("area", "OIM").param("tag", "v2.0")
+                .param("kgPrompt", "it-kg")
+                .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+            .andExpect(status().isConflict()).andExpect(content().json(firstBody));
     }
 
     /**
@@ -150,81 +139,75 @@ public class IngestApiControllerIT {
      * <p>
      * Every link in that chain is one edit from breaking, and none of them looks like it touches
      * uploads. Setting {@code spring.servlet.multipart.resolve-lazily=true} defers parsing into the
-     * handler, at which point the handler is no longer null, {@code ApiExceptionHandler} DOES apply,
-     * and its generic {@code Exception} branch turns a routine oversized file into a 500 with a
-     * server-error log entry — an operator uploading a 300 MB corpus is told the service is broken
-     * rather than that their file is too big, and the platform's own retry logic treats it as
-     * retryable. Adding an {@code @ExceptionHandler} for {@code MultipartException} to either advice
-     * has the mirror effect. Nothing else in the suite issues a multipart request that fails
+     * handler, at which point the handler is no longer null, {@code ApiExceptionHandler} DOES
+     * apply, and its generic {@code Exception} branch turns a routine oversized file into a 500
+     * with a server-error log entry — an operator uploading a 300 MB corpus is told the service is
+     * broken rather than that their file is too big, and the platform's own retry logic treats it
+     * as retryable. Adding an {@code @ExceptionHandler} for {@code MultipartException} to either
+     * advice has the mirror effect. Nothing else in the suite issues a multipart request that fails
      * parsing, so today all of that is unobserved.
      *
      * <p>
-     * The refusal is injected rather than uploaded: MockMvc never runs a real container, so the only
-     * way to reach this path is to reproduce the shape the container produces — a
-     * {@code getParts()} that throws with Tomcat's "…exceeds…size…" wording, which is precisely what
-     * {@code handleParseFailure} matches on. That keeps the test at milliseconds instead of pushing
-     * 200 MB through it, and it exercises the REAL resolver chain of the REAL application context,
-     * both advices included.
+     * The refusal is injected rather than uploaded: MockMvc never runs a real container, so the
+     * only way to reach this path is to reproduce the shape the container produces — a
+     * {@code getParts()} that throws with Tomcat's "…exceeds…size…" wording, which is precisely
+     * what {@code handleParseFailure} matches on. That keeps the test at milliseconds instead of
+     * pushing 200 MB through it, and it exercises the REAL resolver chain of the REAL application
+     * context, both advices included.
      */
     @Test
     public void anOverSizedMultipartUploadIsA413NotAFiveHundred() throws Exception {
-        String body = mockMvc
-                .perform(post("/api/ingest/v1/upload")
-                        .contentType("multipart/form-data")
-                        // Tomcat refuses the body itself and surfaces the refusal out of getParts();
-                        // handleParseFailure matches on that wording, so the wording IS the fixture.
-                        // java.util.Collection is spelled out because this file already imports a
-                        // domain type named Collection.
-                        .with(request -> {
-                            MockHttpServletRequest oversized =
-                                    new MockHttpServletRequest(
-                                            request.getServletContext(), request.getMethod(),
-                                            request.getRequestURI()) {
-                                        @Override
-                                        public java.util.Collection<Part> getParts() {
-                                            throw new IllegalStateException(
-                                                    "org.apache.tomcat.util.http.fileupload.impl."
-                                                            + "SizeLimitExceededException: the request was "
-                                                            + "rejected because its size (629145600) "
-                                                            + "exceeds the configured maximum (209715200)");
-                                        }
-                                    };
-                            oversized.setContentType("multipart/form-data");
-                            return oversized;
-                        })
-                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-                .andExpect(status().isContentTooLarge())
-                .andReturn().getResponse().getContentAsString();
+        String body =
+            mockMvc.perform(post("/api/ingest/v1/upload").contentType("multipart/form-data")
+                // Tomcat refuses the body itself and surfaces the refusal out of getParts();
+                // handleParseFailure matches on that wording, so the wording IS the fixture.
+                // java.util.Collection is spelled out because this file already imports a
+                // domain type named Collection.
+                .with(request -> {
+                    MockHttpServletRequest oversized = new MockHttpServletRequest(
+                        request.getServletContext(), request.getMethod(), request.getRequestURI()) {
+                        @Override
+                        public java.util.Collection<Part> getParts() {
+                            throw new IllegalStateException(
+                                "org.apache.tomcat.util.http.fileupload.impl."
+                                    + "SizeLimitExceededException: the request was "
+                                    + "rejected because its size (629145600) "
+                                    + "exceeds the configured maximum (209715200)");
+                        }
+                    };
+                    oversized.setContentType("multipart/form-data");
+                    return oversized;
+                }).with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+                .andExpect(status().isContentTooLarge()).andReturn().getResponse()
+                .getContentAsString();
 
         // sendError() writes no body. An advice-rendered payload here would mean the exception
         // reached a handler-scoped advice, i.e. that parsing moved into the handler.
         Assertions.assertThat(body)
-                .as("413 must come from the framework's sendError path, not from an advice")
-                .isEmpty();
+            .as("413 must come from the framework's sendError path, not from an advice").isEmpty();
     }
 
     @Test
     public void testProcessDocumentKgWithSourceInfo() throws Exception {
         UUID sourceColId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])", sourceColId, "source-col");
+        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['v1.0'])",
+            sourceColId, "source-col");
 
         UUID docId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata)
-            VALUES (?, ?, 'manual', 'doc.md', 'completed', ARRAY['v1.0'], '{"source_file": "doc.md"}')
-            """, docId, sourceColId);
+        jdbcTemplate.update(
+            """
+                INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata)
+                VALUES (?, ?, 'manual', 'doc.md', 'completed', ARRAY['v1.0'], '{"source_file": "doc.md"}')
+                """,
+            docId, sourceColId);
 
-        mockMvc.perform(post("/api/ingest/v1/process-kg")
-                        .param("sourceFile", "doc.md")
-                        .param("sourceCollection", "source-col")
-                        .param("sourceTag", "v1.0")
-                        .param("collection", "target-col")
-                        .param("area", "OIM")
-                        .param("tag", "v2.0")
-                        .param("kgPrompt", "it-kg")
-                        .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.id", notNullValue()));
+        mockMvc
+            .perform(post("/api/ingest/v1/process-kg").param("sourceFile", "doc.md")
+                .param("sourceCollection", "source-col").param("sourceTag", "v1.0")
+                .param("collection", "target-col").param("area", "OIM").param("tag", "v2.0")
+                .param("kgPrompt", "it-kg")
+                .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.id", notNullValue()));
 
         Collection targetCol = collectionService.getCollection("target-col").orElseThrow();
         Assertions.assertThat(targetCol.tags()).contains("v2.0");

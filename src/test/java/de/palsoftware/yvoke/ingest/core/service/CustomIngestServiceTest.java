@@ -7,24 +7,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import de.palsoftware.yvoke.ingest.core.UploadPathGuard;
+import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
-import java.lang.reflect.Method;
 
 class CustomIngestServiceTest {
 

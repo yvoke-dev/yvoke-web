@@ -15,10 +15,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * The areas table and the foreign keys that tie every system prompt, collection, playbook and
  * profile to one area. These rules live in the schema, so only a real database can show them.
  */
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 class AreaRepositoryIT {
 
     @Autowired
@@ -46,8 +44,8 @@ class AreaRepositoryIT {
     @Test
     void anAreaRoundTripsAndIsRefreshedByTheUpsert() {
         insertPlaybook("it-area-pb", "OIM");
-        repository.upsert(new Area("IT_AREA_A", "Area A", "first", true, "it-area-pb", null,
-            null, null));
+        repository
+            .upsert(new Area("IT_AREA_A", "Area A", "first", true, "it-area-pb", null, null, null));
         assertThat(repository.findByName("IT_AREA_A")).get().satisfies(a -> {
             assertThat(a.title()).isEqualTo("Area A");
             assertThat(a.description()).isEqualTo("first");
@@ -55,8 +53,7 @@ class AreaRepositoryIT {
             assertThat(a.defaultPlaybook()).isEqualTo("it-area-pb");
         });
 
-        repository.upsert(
-            new Area("IT_AREA_A", "Area A2", null, false, null, null, null, null));
+        repository.upsert(new Area("IT_AREA_A", "Area A2", null, false, null, null, null, null));
         assertThat(repository.findByName("IT_AREA_A")).get().satisfies(a -> {
             assertThat(a.title()).isEqualTo("Area A2");
             assertThat(a.prototype()).isFalse();
@@ -123,8 +120,8 @@ class AreaRepositoryIT {
     @Test
     void deletingTheDefaultPlaybookClearsTheDefault() {
         insertPlaybook("it-area-default", "OIM");
-        repository.upsert(new Area("IT_AREA_D", "D", null, false, "it-area-default", null,
-            null, null));
+        repository
+            .upsert(new Area("IT_AREA_D", "D", null, false, "it-area-default", null, null, null));
 
         jdbcClient.sql("DELETE FROM playbooks WHERE name = 'it-area-default'").update();
 
@@ -152,8 +149,7 @@ class AreaRepositoryIT {
      */
     @Test
     void aSaveWhoseSecondStatementFailsLeavesTheAreaAsItWas() {
-        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null,
-            null));
+        repository.upsert(new Area("IT_AREA_OLD", "Old", null, false, null, null, null, null));
         jdbcClient.sql("""
             CREATE FUNCTION it_area_refuse_title() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN

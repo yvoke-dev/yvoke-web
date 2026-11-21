@@ -4,25 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
-import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import org.awaitility.Awaitility;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedEntity;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedRelationship;
@@ -33,9 +17,26 @@ import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
@@ -89,12 +90,14 @@ public class StandardDocumentJobHandlerIT {
             COLLECTION, "Test collection", new String[] {VERSION});
         // Prompts are required job settings now, so the rows the jobs name must exist -- exactly
         // as in a real deployment, where an operator picks them from a list of registered prompts.
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
-            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-kg", "KG",
-            "Return STRICT JSON only.");
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
-            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-summarize", "SUMMARIZE",
-            "Write a concise summary.");
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt)"
+                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "it-kg", "KG", "Return STRICT JSON only.");
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt)"
+                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "it-summarize", "SUMMARIZE", "Write a concise summary.");
 
         manualPath = tempDir.resolve("auth_guide.md");
         Files.writeString(manualPath, MARKDOWN, StandardCharsets.UTF_8);
@@ -146,9 +149,12 @@ public class StandardDocumentJobHandlerIT {
             "SELECT d.id FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ?",
             UUID.class, COLLECTION);
 
-        UUID kgId = jobService.enqueue(new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(),
-            documentId.toString(), VERSION, COLLECTION,
-            Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"))).jobId();
+        UUID kgId =
+            jobService
+                .enqueue(
+                    new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(),
+                        VERSION, COLLECTION, Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg")))
+                .jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(kgId).orElseThrow();
@@ -256,9 +262,12 @@ public class StandardDocumentJobHandlerIT {
         when(kgExtractor.extract(anyList(), any(), any(), any()))
             .thenReturn(new KgExtractionResult(List.of(), List.of(), 0));
 
-        UUID kgId = jobService.enqueue(new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(),
-            documentId.toString(), VERSION, COLLECTION,
-            Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg"))).jobId();
+        UUID kgId =
+            jobService
+                .enqueue(
+                    new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(), documentId.toString(),
+                        VERSION, COLLECTION, Map.of(IngestPrompts.SETTING_KG_PROMPT, "it-kg")))
+                .jobId();
 
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             IngestionJob job = jobRepository.findById(kgId).orElseThrow();

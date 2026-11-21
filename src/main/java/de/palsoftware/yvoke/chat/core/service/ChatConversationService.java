@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.chat.core.service;
 
 import de.palsoftware.yvoke.chat.core.ChatProperties;
-import jakarta.annotation.Nullable;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
@@ -12,6 +11,7 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,9 +29,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ChatConversationService {
@@ -388,4 +387,3 @@ public class ChatConversationService {
         }
     }
 }
-

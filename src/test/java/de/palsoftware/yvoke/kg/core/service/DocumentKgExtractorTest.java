@@ -1,30 +1,33 @@
 package de.palsoftware.yvoke.kg.core.service;
 
-import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.startsWith;
-import static org.mockito.Mockito.atLeastOnce;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,14 +38,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import java.util.concurrent.atomic.AtomicReference;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 
 public class DocumentKgExtractorTest {
 

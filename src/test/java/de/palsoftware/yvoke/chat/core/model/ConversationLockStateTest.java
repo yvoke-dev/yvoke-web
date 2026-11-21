@@ -110,4 +110,3 @@ class ConversationLockStateTest {
         assertThat(nonPositiveVersionCleared.lockedPlaybookVersion()).isNull();
     }
 }
-

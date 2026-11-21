@@ -59,8 +59,10 @@ public class ConversationsAdminIT {
     }
 
     private void cleanup() {
-        jdbcTemplate.update("DELETE FROM message_feedback WHERE message_id IN (SELECT id FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%'))");
-        jdbcTemplate.update("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%')");
+        jdbcTemplate.update(
+            "DELETE FROM message_feedback WHERE message_id IN (SELECT id FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%'))");
+        jdbcTemplate.update(
+            "DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE title LIKE 'CAIT-%')");
         jdbcTemplate.update("DELETE FROM conversations WHERE title LIKE 'CAIT-%'");
         jdbcTemplate.update("DELETE FROM users WHERE entra_oid LIKE 'cait-%'");
     }
@@ -137,11 +139,10 @@ public class ConversationsAdminIT {
     public void testConversationsAdminHtmlElements_FiltersAndColspan() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
 
-        mockMvc.perform(get("/admin/conversations")
-                .param("userIds", UUID.randomUUID().toString())
+        mockMvc
+            .perform(get("/admin/conversations").param("userIds", UUID.randomUUID().toString())
                 .with(adminUser()))
-            .andExpect(status().isOk())
-            .andExpect(content().string(containsString("filters-panel")))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("filters-panel")))
             .andExpect(content().string(containsString("name=\"userIds\"")))
             .andExpect(content().string(containsString("value=\"anonymous\"")))
             .andExpect(content().string(containsString("name=\"timeRange\"")))
@@ -163,23 +164,21 @@ public class ConversationsAdminIT {
         UUID userBId = createUser("cait-user-e2-oid", "user-e2@local", "User E2");
 
         for (int i = 0; i < 15; i++) {
-            conversationRepository.create(UUID.randomUUID(), userAId, "CAIT-Pagination-" + i, Map.of(), "web");
+            conversationRepository.create(UUID.randomUUID(), userAId, "CAIT-Pagination-" + i,
+                Map.of(), "web");
         }
         for (int i = 15; i < 25; i++) {
-            conversationRepository.create(UUID.randomUUID(), userBId, "CAIT-Pagination-" + i, Map.of(), "web");
+            conversationRepository.create(UUID.randomUUID(), userBId, "CAIT-Pagination-" + i,
+                Map.of(), "web");
         }
 
-        mockMvc.perform(get("/admin/conversations")
-                .param("userIds", userAId.toString(), userBId.toString())
-                .param("timeRange", "custom")
-                .param("fromDate", "2026-01-01")
-                .param("toDate", "2026-12-31")
-                .param("feedback", "all")
-                .param("size", "20")
-                .param("page", "0")
-                .with(adminUser()))
-            .andExpect(status().isOk())
-            .andExpect(content().string(containsString("page=1")))
+        mockMvc
+            .perform(
+                get("/admin/conversations").param("userIds", userAId.toString(), userBId.toString())
+                    .param("timeRange", "custom").param("fromDate", "2026-01-01")
+                    .param("toDate", "2026-12-31").param("feedback", "all").param("size", "20")
+                    .param("page", "0").with(adminUser()))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("page=1")))
             .andExpect(content().string(containsString("size=20")))
             .andExpect(content().string(containsString("userIds=" + userAId)))
             .andExpect(content().string(containsString("userIds=" + userBId)))
@@ -193,16 +192,24 @@ public class ConversationsAdminIT {
     public void testMalformedFilterParametersRejectedWith400() throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
 
-        mockMvc.perform(get("/admin/conversations").param("fromDate", "not-a-valid-date").with(adminUser()))
+        mockMvc
+            .perform(
+                get("/admin/conversations").param("fromDate", "not-a-valid-date").with(adminUser()))
             .andExpect(status().isBadRequest());
 
-        mockMvc.perform(get("/admin/conversations").param("userIds", "not-a-valid-uuid").with(adminUser()))
+        mockMvc
+            .perform(
+                get("/admin/conversations").param("userIds", "not-a-valid-uuid").with(adminUser()))
             .andExpect(status().isBadRequest());
 
-        mockMvc.perform(get("/admin/conversations").param("feedback", "unknown-rating").with(adminUser()))
+        mockMvc
+            .perform(
+                get("/admin/conversations").param("feedback", "unknown-rating").with(adminUser()))
             .andExpect(status().isBadRequest());
 
-        mockMvc.perform(get("/admin/conversations").param("timeRange", "unknown-range").with(adminUser()))
+        mockMvc
+            .perform(
+                get("/admin/conversations").param("timeRange", "unknown-range").with(adminUser()))
             .andExpect(status().isBadRequest());
     }
 
@@ -211,53 +218,48 @@ public class ConversationsAdminIT {
         createUser("mock-admin-oid", "admin@local", "Admin User");
         OffsetDateTime statsTime = OffsetDateTime.of(2037, 2, 20, 12, 0, 0, 0, ZoneOffset.UTC);
         for (int i = 1; i <= 50; i++) {
-            UUID uid = createUser("cait-stats50-" + i + "-oid", "cait-stats50-" + i + "@local", "CAIT User " + i);
+            UUID uid = createUser("cait-stats50-" + i + "-oid", "cait-stats50-" + i + "@local",
+                "CAIT User " + i);
             UUID convId = UUID.randomUUID();
             conversationRepository.create(convId, uid, "CAIT-Stats50-" + i, Map.of(), "web");
             jdbcTemplate.update(
                 "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
-                Timestamp.from(statsTime.toInstant()),
-                Timestamp.from(statsTime.toInstant()),
+                Timestamp.from(statsTime.toInstant()), Timestamp.from(statsTime.toInstant()),
                 convId);
         }
         // 50 registered users + 1 anonymous conversation = 51 groups total
         UUID anonConvId = UUID.randomUUID();
         conversationRepository.create(anonConvId, null, "CAIT-Stats50-Anon", Map.of(), "web");
-        jdbcTemplate.update(
-            "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
-            Timestamp.from(statsTime.toInstant()),
-            Timestamp.from(statsTime.toInstant()),
+        jdbcTemplate.update("UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
+            Timestamp.from(statsTime.toInstant()), Timestamp.from(statsTime.toInstant()),
             anonConvId);
 
-        mockMvc.perform(get("/admin/conversations")
-                .param("timeRange", "custom")
-                .param("fromDate", "2037-02-20")
-                .param("toDate", "2037-02-20")
-                .with(adminUser()))
+        mockMvc
+            .perform(get("/admin/conversations").param("timeRange", "custom")
+                .param("fromDate", "2037-02-20").param("toDate", "2037-02-20").with(adminUser()))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("(Top 50 of 51 users incl. anonymous)")));
     }
 
     @Test
-    public void testConversationsAdminPerUserStatsTruncationHint_noAnonymousUsers() throws Exception {
+    public void testConversationsAdminPerUserStatsTruncationHint_noAnonymousUsers()
+        throws Exception {
         createUser("mock-admin-oid", "admin@local", "Admin User");
         OffsetDateTime statsTime = OffsetDateTime.of(2037, 2, 21, 12, 0, 0, 0, ZoneOffset.UTC);
         for (int i = 1; i <= 51; i++) {
-            UUID uid = createUser("cait-stats51-" + i + "-oid", "cait-stats51-" + i + "@local", "CAIT User 51-" + i);
+            UUID uid = createUser("cait-stats51-" + i + "-oid", "cait-stats51-" + i + "@local",
+                "CAIT User 51-" + i);
             UUID convId = UUID.randomUUID();
             conversationRepository.create(convId, uid, "CAIT-Stats51-" + i, Map.of(), "web");
             jdbcTemplate.update(
                 "UPDATE conversations SET created_at = ?, updated_at = ? WHERE id = ?",
-                Timestamp.from(statsTime.toInstant()),
-                Timestamp.from(statsTime.toInstant()),
+                Timestamp.from(statsTime.toInstant()), Timestamp.from(statsTime.toInstant()),
                 convId);
         }
 
-        mockMvc.perform(get("/admin/conversations")
-                .param("timeRange", "custom")
-                .param("fromDate", "2037-02-21")
-                .param("toDate", "2037-02-21")
-                .with(adminUser()))
+        mockMvc
+            .perform(get("/admin/conversations").param("timeRange", "custom")
+                .param("fromDate", "2037-02-21").param("toDate", "2037-02-21").with(adminUser()))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("(Top 50 of 51 users)")))
             .andExpect(content().string(not(containsString("incl. anonymous"))));

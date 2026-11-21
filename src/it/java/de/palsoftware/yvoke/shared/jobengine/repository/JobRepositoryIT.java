@@ -1,19 +1,10 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Map;
-import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
+
+import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
+import de.palsoftware.yvoke.shared.jobengine.JobHandler;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -22,13 +13,23 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.jobengine.model.QueuedKindSummary;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
-import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
-import de.palsoftware.yvoke.shared.jobengine.JobHandler;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 
 @SpringBootTest(properties = {"app.worker.enabled=false", "spring.flyway.enabled=true",
@@ -44,8 +45,8 @@ public class JobRepositoryIT {
     private JobRepository jobRepository;
 
     /**
-     * Every registered handler bean, so the kind vocabulary can be checked against the routing table
-     * the engine actually dispatches on.
+     * Every registered handler bean, so the kind vocabulary can be checked against the routing
+     * table the engine actually dispatches on.
      */
     @Autowired
     private List<JobHandler> jobHandlers;
@@ -242,8 +243,8 @@ public class JobRepositoryIT {
      */
     @Test
     public void enqueueOfWorkAlreadyQueuedAdoptsTheActiveJob() {
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION);
+        EnqueueRequest req =
+            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
 
         EnqueueResult first = jobRepository.enqueue(req);
         EnqueueResult second = jobRepository.enqueue(req);
@@ -261,7 +262,8 @@ public class JobRepositoryIT {
      * asserts only the id and the row count, so nothing observes which settings survive — and both
      * directions of a regression are invisible in production.
      *
-     * <p>As it stands, a client that spots a wrong setting, corrects it and re-POSTs the same work
+     * <p>
+     * As it stands, a client that spots a wrong setting, corrects it and re-POSTs the same work
      * gets HTTP 200 with a job id back and believes the correction took effect, while the job runs
      * on the originals — e.g. a re-ingest whose {@code jsonUniqueField} was fixed still INSERTs
      * instead of upserting and duplicates the whole corpus, reporting an entirely normal count.
@@ -306,8 +308,8 @@ public class JobRepositoryIT {
     /** The slot is held while the job RUNS too, not only while it waits. */
     @Test
     public void enqueueOfWorkAlreadyRunningAdoptsTheRunningJob() {
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION);
+        EnqueueRequest req =
+            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobService.claimNext().orElseThrow();
 
@@ -320,8 +322,8 @@ public class JobRepositoryIT {
     /** History must never block new work: the index is partial on the active statuses. */
     @Test
     public void enqueueAfterTheEarlierJobFinishedCreatesANewJob() {
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION);
+        EnqueueRequest req =
+            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobService.claimNext();
         jobRepository.markCompleted(first, new JobCounts(1, 1, 0, 0, 0));
@@ -413,8 +415,8 @@ public class JobRepositoryIT {
     /**
      * The PROGRESS side of the same guard. The handler keeps running to its next checkpoint after
      * the stop, so it reports once more; without the guard that tick writes progress=100 and a
-     * final step onto the cancelled row, and the job detail page shows a full green bar and "insert"
-     * next to a CANCELLED status.
+     * final step onto the cancelled row, and the job detail page shows a full green bar and
+     * "insert" next to a CANCELLED status.
      */
     @Test
     public void updateProgressDoesNotWriteOntoACancelledJob() {
@@ -435,8 +437,8 @@ public class JobRepositoryIT {
     /** A cancelled job frees the admission slot, so the same work can be re-enqueued at once. */
     @Test
     public void cancellingAJobReleasesItsAdmissionSlot() {
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION);
+        EnqueueRequest req =
+            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobRepository.stopJob(first);
 
@@ -470,16 +472,18 @@ public class JobRepositoryIT {
     }
 
     /**
-     * A bare kind sweeps every instance; a qualified one sweeps exactly that instance, which is what
-     * makes "cancel this connector's backlog" possible without touching the other connector's.
+     * A bare kind sweeps every instance; a qualified one sweeps exactly that instance, which is
+     * what makes "cancel this connector's backlog" possible without touching the other connector's.
      */
     @Test
     public void cancelQueuedIsInstanceScopedWhenTheKindIsQualified() {
         UUID wiki = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":wiki", "ref-a", "1.0", COLLECTION))
+            .enqueue(
+                new EnqueueRequest(ItTestJobHandler.KIND + ":wiki", "ref-a", "1.0", COLLECTION))
             .jobId();
         UUID docs = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":docs", "ref-b", "1.0", COLLECTION))
+            .enqueue(
+                new EnqueueRequest(ItTestJobHandler.KIND + ":docs", "ref-b", "1.0", COLLECTION))
             .jobId();
 
         assertThat(jobRepository.cancelQueued(ItTestJobHandler.KIND + ":wiki")).hasSize(1);
@@ -507,9 +511,9 @@ public class JobRepositoryIT {
         UUID current = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":new-slug",
             "ref-b", "1.0", COLLECTION, Map.of("instanceId", instanceId))).jobId();
         // A different instance, and a job with no settings at all — neither may be touched.
-        UUID otherInstance = jobRepository.enqueue(new EnqueueRequest(
-            ItTestJobHandler.KIND + ":other", "ref-c", "1.0", COLLECTION,
-            Map.of("instanceId", UUID.randomUUID().toString()))).jobId();
+        UUID otherInstance =
+            jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":other", "ref-c",
+                "1.0", COLLECTION, Map.of("instanceId", UUID.randomUUID().toString()))).jobId();
         UUID noSettings = jobRepository
             .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-d", "1.0", COLLECTION)).jobId();
 
@@ -521,7 +525,9 @@ public class JobRepositoryIT {
         assertThat(statusOf(noSettings)).isEqualTo(JobStatus.QUEUED);
     }
 
-    /** Running jobs are mid-write and stop cooperatively, so a settings sweep must not touch them. */
+    /**
+     * Running jobs are mid-write and stop cooperatively, so a settings sweep must not touch them.
+     */
     @Test
     public void cancelQueuedBySettingLeavesRunningJobsAlone() {
         String instanceId = UUID.randomUUID().toString();
@@ -540,8 +546,10 @@ public class JobRepositoryIT {
         UUID running = jobRepository
             .enqueue(new EnqueueRequest(OTHER_KIND, "ref-c", "1.0", COLLECTION)).jobId();
         jobService.claimNext().orElseThrow();
-        jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION));
-        jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION));
+        jobRepository
+            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION));
+        jobRepository
+            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION));
 
         assertThat(jobRepository.listQueuedKinds())
             .containsExactly(new QueuedKindSummary(ItTestJobHandler.KIND, 2L));
@@ -597,8 +605,8 @@ public class JobRepositoryIT {
     }
 
     private int countJobs() {
-        Integer n = jdbcTemplate.queryForObject("SELECT count(*) FROM ingestion_jobs",
-            Integer.class);
+        Integer n =
+            jdbcTemplate.queryForObject("SELECT count(*) FROM ingestion_jobs", Integer.class);
         return n == null ? 0 : n;
     }
 

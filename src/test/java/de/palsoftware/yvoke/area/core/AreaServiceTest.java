@@ -1,35 +1,24 @@
 package de.palsoftware.yvoke.area.core;
 
-import org.springframework.dao.DataIntegrityViolationException;
-
-import org.mockito.InOrder;
-
-import java.util.Map;
-
-import java.util.List;
-
-import static org.mockito.Mockito.when;
-
-import static org.mockito.Mockito.verify;
-
-import static org.mockito.Mockito.never;
-
-import static org.mockito.Mockito.mock;
-
-import static org.mockito.Mockito.inOrder;
-
-import static org.mockito.Mockito.doThrow;
-
-import static org.mockito.ArgumentMatchers.any;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;

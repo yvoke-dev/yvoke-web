@@ -1,15 +1,25 @@
 package de.palsoftware.yvoke.chat;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
-import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -17,22 +27,8 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-
-import org.springframework.security.access.AccessDeniedException;
-import java.util.Objects;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class ChatConversationTagsIT {
 
     @Autowired
@@ -202,12 +198,12 @@ public class ChatConversationTagsIT {
 
         conversationRepository.updateAreaIfAbsent(convId, "OIM");
 
-        // 3. User B lists conversations and sees User A's public conversation under the "Public Conversations" tag "tutorial"
+        // 3. User B lists conversations and sees User A's public conversation under the "Public
+        // Conversations" tag "tutorial"
         List<Conversation> bConversations = chatConversationService.listAllConversations(100, 0);
-        Conversation retrievedByB = bConversations.stream()
-            .filter(c -> c.id().equals(convId))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("User A's public conversation not visible to User B"));
+        Conversation retrievedByB =
+            bConversations.stream().filter(c -> c.id().equals(convId)).findFirst().orElseThrow(
+                () -> new AssertionError("User A's public conversation not visible to User B"));
 
         assertThat(retrievedByB.tags()).containsExactlyInAnyOrder("public", "tutorial");
 
@@ -216,9 +212,12 @@ public class ChatConversationTagsIT {
         assertThat(readByB).isPresent();
         assertThat(readByB.get().id()).isEqualTo(convId);
 
-        // 5. User B cannot add a tag or delete User A's public conversation (throws AccessDeniedException)
-        assertThrows(AccessDeniedException.class, () -> chatConversationService.addTag(convId, "hacker"));
-        assertThrows(AccessDeniedException.class, () -> chatConversationService.deleteConversation(convId));
+        // 5. User B cannot add a tag or delete User A's public conversation (throws
+        // AccessDeniedException)
+        assertThrows(AccessDeniedException.class,
+            () -> chatConversationService.addTag(convId, "hacker"));
+        assertThrows(AccessDeniedException.class,
+            () -> chatConversationService.deleteConversation(convId));
 
         // Switch back to User A for cleanup
         setUp();
@@ -237,8 +236,7 @@ public class ChatConversationTagsIT {
         conversationRepository.createIfAbsent(pluginConvId, userId, "Overwritten Title",
             Map.of("turnId", "t-2"), "claude-plugin", "OIM");
 
-        Conversation storedPluginConv =
-            conversationRepository.findById(pluginConvId).orElseThrow();
+        Conversation storedPluginConv = conversationRepository.findById(pluginConvId).orElseThrow();
         assertThat(storedPluginConv.title()).isEqualTo("First Title");
         assertThat(storedPluginConv.source()).isEqualTo("claude-plugin");
 
@@ -247,7 +245,8 @@ public class ChatConversationTagsIT {
         assertThat(visible).extracting(Conversation::id).contains(webConv.id())
             .doesNotContain(pluginConvId);
 
-        // Owner can still read the claude-plugin conversation directly, but cannot mutate/delete it via service
+        // Owner can still read the claude-plugin conversation directly, but cannot mutate/delete it
+        // via service
         assertThat(chatConversationService.getConversation(pluginConvId)).isPresent();
         assertThrows(AccessDeniedException.class,
             () -> chatConversationService.deleteConversation(pluginConvId));

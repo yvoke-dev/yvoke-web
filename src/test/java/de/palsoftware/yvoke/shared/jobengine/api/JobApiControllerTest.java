@@ -6,22 +6,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
 import de.palsoftware.yvoke.shared.jobengine.api.dto.JobDto;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
-import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
-import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
-import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
-import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
+import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
+import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -30,10 +34,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
-import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
-import java.util.stream.Collectors;
-import org.mockito.ArgumentCaptor;
-import java.util.Arrays;
 
 class JobApiControllerTest {
 

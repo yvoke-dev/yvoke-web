@@ -1,17 +1,16 @@
 package de.palsoftware.yvoke.llm.core;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-
-import java.util.Optional;
-import com.openai.errors.OpenAIInvalidDataException;
-import com.openai.errors.OpenAIServiceException;
-import com.openai.core.http.Headers;
-import com.openai.core.JsonValue;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.genai.errors.ClientException;
+import com.openai.core.JsonValue;
+import com.openai.core.http.Headers;
+import com.openai.errors.OpenAIInvalidDataException;
+import com.openai.errors.OpenAIServiceException;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
 

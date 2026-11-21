@@ -1,32 +1,30 @@
 package de.palsoftware.yvoke.rag.core.service;
 
-import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
-import de.palsoftware.yvoke.rag.core.CitationStreamingFilter;
-import de.palsoftware.yvoke.shared.security.TurnAreaScopeHolder;
-import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
-import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
-import de.palsoftware.yvoke.rag.core.model.RagResult;
-
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
-import de.palsoftware.yvoke.llm.core.model.LlmRequest;
-import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
-import de.palsoftware.yvoke.llm.core.model.LlmTool;
-import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
+import de.palsoftware.yvoke.llm.core.model.LlmRequest;
+import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
+import de.palsoftware.yvoke.llm.core.model.LlmTool;
+import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.rag.core.CitationStreamingFilter;
+import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
+import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.websearch.WebSearchService;
 import de.palsoftware.yvoke.rag.core.websearch.WebSearchToolCallback;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
+import de.palsoftware.yvoke.shared.security.TurnAreaScopeHolder;
 import de.palsoftware.yvoke.shared.text.AssistantTranscript;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;

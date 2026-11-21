@@ -2,13 +2,13 @@ package de.palsoftware.yvoke.ingest.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
@@ -23,24 +23,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.mockito.ArgumentCaptor;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
@@ -98,13 +97,14 @@ public class CustomIngestServiceIT {
                 + " ON CONFLICT (name) DO NOTHING",
             SUMMARIZE_PROMPT, "SUMMARIZE", "Write a concise summary.");
 
-        zipPath = writeZip("custom.zip", Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"),
-            "docs/other.md", markdown("table", "OTHER_TABLE"), "graph/entities.jsonl", """
-                {"type":"table","name":"DEMO_TABLE","description":"the demo table"}
-                {"type":"table","name":"OTHER_TABLE","description":"another table"}
-                """, "graph/relationships.jsonl",
-            "{\"source\":\"table:DEMO_TABLE\",\"type\":\"references\","
-                + "\"target\":\"table:OTHER_TABLE\",\"description\":\"demo refs other\"}\n"));
+        zipPath = writeZip("custom.zip",
+            Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"), "docs/other.md",
+                markdown("table", "OTHER_TABLE"), "graph/entities.jsonl", """
+                    {"type":"table","name":"DEMO_TABLE","description":"the demo table"}
+                    {"type":"table","name":"OTHER_TABLE","description":"another table"}
+                    """, "graph/relationships.jsonl",
+                "{\"source\":\"table:DEMO_TABLE\",\"type\":\"references\","
+                    + "\"target\":\"table:OTHER_TABLE\",\"description\":\"demo refs other\"}\n"));
 
         // Deterministic embedding: one 1024-dim zero vector per input (chunks and entity descs).
         when(embeddingService.embedBatch(anyList())).thenAnswer(inv -> {
@@ -202,10 +202,12 @@ public class CustomIngestServiceIT {
         assertThat(counts.edges()).isEqualTo(1);
 
         assertThat(count(DOC_COUNT_SQL)).isEqualTo(2);
-        assertThat(count("SELECT count(*) FROM chunks ch JOIN collections c ON ch.collection_id = c.id WHERE c.name = ?"))
+        assertThat(count(
+            "SELECT count(*) FROM chunks ch JOIN collections c ON ch.collection_id = c.id WHERE c.name = ?"))
             .isEqualTo(2);
         assertThat(count(ENTITY_COUNT_SQL)).isEqualTo(2);
-        assertThat(count("SELECT count(*) FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ?"))
+        assertThat(count(
+            "SELECT count(*) FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ?"))
             .isEqualTo(1);
 
         List<String> statuses = jdbcTemplate.queryForList(
@@ -232,8 +234,8 @@ public class CustomIngestServiceIT {
      * re-ingest under a new file name is recognised as the same document. Under a rename those two
      * rules point at different rows: the DELETE matches nothing (the stored row still holds the old
      * file name), the title match then adopts that very row, and {@code insertChunks} appends to it
-     * — this path calls no {@code deleteContentForDocument}, because the DELETE was supposed to have
-     * removed the document entirely.
+     * — this path calls no {@code deleteContentForDocument}, because the DELETE was supposed to
+     * have removed the document entirely.
      *
      * <p>
      * Nothing reports it. The job counts one document and one chunk, exactly as a clean run does;
@@ -321,12 +323,12 @@ public class CustomIngestServiceIT {
         assertThat(count(DOC_COUNT_SQL)).as("re-ingest must replace, never append").isEqualTo(2);
         assertThat(count(
             "SELECT count(*) FROM chunks ch JOIN collections c ON ch.collection_id = c.id WHERE c.name = ?"))
-                .as("duplicated chunks would silently corrupt retrieval and BM25 stats")
-                .isEqualTo(2);
-        assertThat(count(ENTITY_COUNT_SQL)).as("entities are upserted, not duplicated").isEqualTo(2);
+            .as("duplicated chunks would silently corrupt retrieval and BM25 stats").isEqualTo(2);
+        assertThat(count(ENTITY_COUNT_SQL)).as("entities are upserted, not duplicated")
+            .isEqualTo(2);
         assertThat(count(
             "SELECT count(*) FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ?"))
-                .isEqualTo(1);
+            .isEqualTo(1);
 
         // The documents really were recreated (new uuids) ...
         List<String> secondDocIds = jdbcTemplate.queryForList(
@@ -397,21 +399,21 @@ public class CustomIngestServiceIT {
      * {@code parseAndChunk} submits one parse task per file to a virtual-thread executor and drains
      * the futures in SUBMISSION order, appending each document's chunk texts to one flat
      * {@code allChunkTexts}; {@code embedAndPersistDocuments} then issues a single
-     * {@code embedBatch(allChunkTexts)} and walks the result with one running {@code embeddingIndex}
-     * in document order. The only guard is a SIZE check, which passes just as happily when the
-     * vectors are shuffled. Draining via a {@code CompletionService} (completion order), or
-     * reordering {@code docs} anywhere between parse and persist, would give every chunk a different
-     * chunk's vector — no exception, normal job counts, and retrieval quietly returning the wrong
-     * passages for every query.
+     * {@code embedBatch(allChunkTexts)} and walks the result with one running
+     * {@code embeddingIndex} in document order. The only guard is a SIZE check, which passes just
+     * as happily when the vectors are shuffled. Draining via a {@code CompletionService}
+     * (completion order), or reordering {@code docs} anywhere between parse and persist, would give
+     * every chunk a different chunk's vector — no exception, normal job counts, and retrieval
+     * quietly returning the wrong passages for every query.
      *
      * <p>
-     * Note the scope precisely: on THIS path {@code processFile} ends with
-     * {@code List.of(body)} — one document is always exactly one chunk — so the running index
-     * advances by one per document and the exposure is document ORDER, not a within-document
-     * offset. That is also why the test uses several documents of differing sizes: their parse
-     * durations diverge, so completion order is not submission order, and a drain that took
-     * whichever future finished first would scramble them. Should the custom path ever start
-     * splitting documents, this test keeps holding without modification.
+     * Note the scope precisely: on THIS path {@code processFile} ends with {@code List.of(body)} —
+     * one document is always exactly one chunk — so the running index advances by one per document
+     * and the exposure is document ORDER, not a within-document offset. That is also why the test
+     * uses several documents of differing sizes: their parse durations diverge, so completion order
+     * is not submission order, and a drain that took whichever future finished first would scramble
+     * them. Should the custom path ever start splitting documents, this test keeps holding without
+     * modification.
      *
      * <p>
      * The other tests in this class cannot see any of that: their {@code embedBatch} stub returns
@@ -540,13 +542,13 @@ public class CustomIngestServiceIT {
         assertThat(count(DOC_COUNT_SQL)).isZero();
         assertThat(count(
             "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ? AND d.kind = 'other'"))
-                .isZero();
+            .isZero();
         assertThat(count(ENTITY_COUNT_SQL)).isZero();
     }
 
     /**
-     * The {@code needs_summary} branch that carries NO {@code summarize_headings}: the model must be
-     * handed the EXTRACTED sql/vbnet code, and the document that lands must be the prose summary
+     * The {@code needs_summary} branch that carries NO {@code summarize_headings}: the model must
+     * be handed the EXTRACTED sql/vbnet code, and the document that lands must be the prose summary
      * with {@code ## Source} REPLACED — not appended to, not left in place.
      *
      * <p>
@@ -560,8 +562,8 @@ public class CustomIngestServiceIT {
      * Nothing exercised this path before. {@code SchemaIngestServiceIT}'s procedure fixture uses
      * {@code summarize_headings} (and asserts {@code ## Summary} is ABSENT, which is the OTHER
      * branch), its script fixture requests no summary at all, and every fixture in this class
-     * declares neither flag — so {@code extractCodeBlocks} and {@code replaceSourceWithSummary}
-     * had no witness whatsoever.
+     * declares neither flag — so {@code extractCodeBlocks} and {@code replaceSourceWithSummary} had
+     * no witness whatsoever.
      *
      * <p>
      * The job also names a summarize prompt that is not registered. That resolves to {@code null}
@@ -595,9 +597,8 @@ public class CustomIngestServiceIT {
         // An unregistered prompt is now a hard error, not a null that summarizes unguided. This
         // test previously asserted the opposite ("resolves to null — no default fallback here"),
         // which is the behaviour that let a whole collection be summarized with no prompt.
-        IngestionJob unresolvable = job(zip,
-            Map.of("enableGraph", false, IngestPrompts.SETTING_SUMMARIZE_PROMPT,
-                "no-such-summarize-prompt"));
+        IngestionJob unresolvable = job(zip, Map.of("enableGraph", false,
+            IngestPrompts.SETTING_SUMMARIZE_PROMPT, "no-such-summarize-prompt"));
         assertThatThrownBy(() -> customIngestService.ingest(unresolvable, ctxFor(unresolvable)))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("no-such-summarize-prompt");
@@ -615,20 +616,20 @@ public class CustomIngestServiceIT {
         assertThat(content.getValue().strip())
             .as("the model must receive the extracted code block, not the whole markdown document")
             .isEqualTo("CREATE PROCEDURE dbo.QBM_PWatchOperation AS BEGIN SELECT 1 END");
-        assertThat(systemPrompt.getValue())
-            .as("the resolved prompt body reaches the summarizer")
+        assertThat(systemPrompt.getValue()).as("the resolved prompt body reaches the summarizer")
             .isEqualTo("Write a concise summary.");
     }
 
     /**
      * The custom path's contract is "fail loudly on loss" — unparseable frontmatter, an entity with
-     * no document and an unresolvable edge endpoint each abort the job and name the offenders. There
-     * are exactly THREE losses it stays silent about, and this pins two of them so the asymmetry is
-     * written down somewhere executable instead of being an accident of which branch returns null.
+     * no document and an unresolvable edge endpoint each abort the job and name the offenders.
+     * There are exactly THREE losses it stays silent about, and this pins two of them so the
+     * asymmetry is written down somewhere executable instead of being an accident of which branch
+     * returns null.
      *
      * <ul>
-     * <li>A file with NO {@code ---} block at all: {@code readMd} returns null before any frontmatter
-     * is parsed, so nothing is collected as a failure.</li>
+     * <li>A file with NO {@code ---} block at all: {@code readMd} returns null before any
+     * frontmatter is parsed, so nothing is collected as a failure.</li>
      * <li>A file whose body is empty once frontmatter (and, on the summarize branch, summarisation)
      * is done: {@code chunks} comes out empty and the document is dropped.</li>
      * </ul>
@@ -642,9 +643,9 @@ public class CustomIngestServiceIT {
      * simply SMALLER, which is invisible unless someone already knows how many files the zip held.
      * The document never appears in the corpus, so every later retrieval and every MCP tool answers
      * "this is not in the corpus" for content that was uploaded. That is exactly the outcome this
-     * section forbids everywhere else, so it needs to be a deliberate, visible decision — if a future
-     * change starts failing the job on these, this test is where that gets discussed rather than
-     * discovered.
+     * section forbids everywhere else, so it needs to be a deliberate, visible decision — if a
+     * future change starts failing the job on these, this test is where that gets discussed rather
+     * than discovered.
      *
      * <p>
      * No fixture in this class or in {@code SchemaIngestServiceIT} has ever contained a
@@ -652,10 +653,10 @@ public class CustomIngestServiceIT {
      */
     @Test
     public void aFileWithNoFrontmatterOrNoBodyIsDroppedSilentlyAndUncounted() throws IOException {
-        Path zip = writeZip("silent-losses.zip", Map.of("docs/demo.md",
-            markdown("table", "DEMO_TABLE"), "docs/plain.md",
-            "# Plain\n\nA document with no frontmatter block at all.\n", "docs/empty.md",
-            "---\nkind: table\nname: EMPTY_DOC\ntitle: Empty\n---\n"));
+        Path zip = writeZip("silent-losses.zip",
+            Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"), "docs/plain.md",
+                "# Plain\n\nA document with no frontmatter block at all.\n", "docs/empty.md",
+                "---\nkind: table\nname: EMPTY_DOC\ntitle: Empty\n---\n"));
         IngestionJob job = job(zip, Map.of("enableGraph", false));
 
         JobCounts counts = customIngestService.ingest(job, ctxFor(job));
@@ -674,17 +675,17 @@ public class CustomIngestServiceIT {
         // that is the degradation the strict parser exists to prevent on the OTHER branch.
         assertThat(count(
             "SELECT count(*) FROM documents d JOIN collections c ON d.collection_id = c.id WHERE c.name = ? AND d.kind = 'other'"))
-                .isZero();
+            .isZero();
     }
 
     /** Every entity must be backed by a document of the same (kind, name) — no exception. */
     @Test
     public void entityWithoutAMatchingDocumentFailsTheJobNamingTheEntity() throws IOException {
-        Path zip = writeZip("orphan-entity.zip",
-            Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"), "graph/entities.jsonl",
-                "{\"type\":\"table\",\"name\":\"DEMO_TABLE\",\"description\":\"demo\"}\n"
-                    + "{\"type\":\"table\",\"name\":\"QERVPersonAndAERoles\",\"description\":\"orphan\"}\n",
-                "graph/relationships.jsonl", ""));
+        Path zip = writeZip("orphan-entity.zip", Map.of("docs/demo.md",
+            markdown("table", "DEMO_TABLE"), "graph/entities.jsonl",
+            "{\"type\":\"table\",\"name\":\"DEMO_TABLE\",\"description\":\"demo\"}\n"
+                + "{\"type\":\"table\",\"name\":\"QERVPersonAndAERoles\",\"description\":\"orphan\"}\n",
+            "graph/relationships.jsonl", ""));
         IngestionJob job = job(zip, Map.of());
 
         assertThatThrownBy(() -> customIngestService.ingest(job, ctxFor(job)))
@@ -733,11 +734,11 @@ public class CustomIngestServiceIT {
     /** An edge endpoint no entity carries is a dropped link; the job must stop and say so. */
     @Test
     public void unknownEdgeEndpointFailsTheJob() throws IOException {
-        Path zip = writeZip("unknown-endpoint.zip",
-            Map.of("docs/demo.md", markdown("table", "DEMO_TABLE"), "graph/entities.jsonl",
-                "{\"type\":\"table\",\"name\":\"DEMO_TABLE\",\"description\":\"demo\"}\n",
-                "graph/relationships.jsonl",
-                "{\"source\":\"table:DEMO_TABLE\",\"type\":\"references\",\"target\":\"table:GHOST\"}\n"));
+        Path zip = writeZip("unknown-endpoint.zip", Map.of("docs/demo.md",
+            markdown("table", "DEMO_TABLE"), "graph/entities.jsonl",
+            "{\"type\":\"table\",\"name\":\"DEMO_TABLE\",\"description\":\"demo\"}\n",
+            "graph/relationships.jsonl",
+            "{\"source\":\"table:DEMO_TABLE\",\"type\":\"references\",\"target\":\"table:GHOST\"}\n"));
         IngestionJob job = job(zip, Map.of());
 
         assertThatThrownBy(() -> customIngestService.ingest(job, ctxFor(job)))
@@ -771,9 +772,9 @@ public class CustomIngestServiceIT {
      * {@code embedBatch} is a multi-second call to a remote provider over the whole chunk set. Held
      * inside a {@code TransactionTemplate} it pins a pooled connection for its entire duration:
      * with {@code app.worker.concurrency} ingests in flight the pool is exhausted by calls that are
-     * doing nothing but waiting on HTTP, and Postgres fills with idle-in-transaction sessions. There
-     * is no error to read afterwards — unrelated requests simply block on connection acquisition,
-     * and nothing points at the ingest that caused it.
+     * doing nothing but waiting on HTTP, and Postgres fills with idle-in-transaction sessions.
+     * There is no error to read afterwards — unrelated requests simply block on connection
+     * acquisition, and nothing points at the ingest that caused it.
      *
      * <p>
      * The separation is expressed only by WHERE the call sits: {@code embedAndPersistDocuments}

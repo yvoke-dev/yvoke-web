@@ -18,10 +18,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * only detached from the tag and MUST survive; only content whose sole tag was the removed one is
  * deleted. A destructive hard-delete (the previous behaviour) would wipe multi-tagged content.
  */
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class LifecycleTagRemovalIT {
 
     private static final String COLLECTION_NAME = "LIFECYCLE-TAG-REMOVAL-IT";
@@ -117,15 +115,16 @@ public class LifecycleTagRemovalIT {
      *
      * <p>
      * First, {@code JsonObjectRepository.removeTagAndPurgeOrphans} is TWO statements — a DELETE for
-     * sole-tag rows and an UPDATE that {@code array_remove}s the tag from everything else — and only
-     * the DELETE is pinned today. {@link #removeTagKeepsMultiTaggedContentAndDeletesOnlyExclusiveContent()}
-     * asserts that the multi-tagged json object still EXISTS but never looks at what it is tagged
-     * with, unlike its documents/entities assertions which do check {@code tagsOf}. So copying the
-     * DELETE's {@code cardinality(tags) = 1} guard onto the UPDATE — a one-line, entirely
-     * plausible-looking tidy-up — leaves every shared row still carrying the removed tag, and the
-     * whole suite stays green. That is not cosmetic: {@code json_objects} is read with
-     * {@code :tag = ANY(tags)}, so a stale tag makes a removed product version keep answering
-     * {@code query_json_objects} and {@code get_json_schema} as if it were still installed.
+     * sole-tag rows and an UPDATE that {@code array_remove}s the tag from everything else — and
+     * only the DELETE is pinned today.
+     * {@link #removeTagKeepsMultiTaggedContentAndDeletesOnlyExclusiveContent()} asserts that the
+     * multi-tagged json object still EXISTS but never looks at what it is tagged with, unlike its
+     * documents/entities assertions which do check {@code tagsOf}. So copying the DELETE's
+     * {@code cardinality(tags) = 1} guard onto the UPDATE — a one-line, entirely plausible-looking
+     * tidy-up — leaves every shared row still carrying the removed tag, and the whole suite stays
+     * green. That is not cosmetic: {@code json_objects} is read with {@code :tag = ANY(tags)}, so a
+     * stale tag makes a removed product version keep answering {@code query_json_objects} and
+     * {@code get_json_schema} as if it were still installed.
      *
      * <p>
      * Second, the cascade does NOT touch {@code json_schemas}, and that is easy to assume wrong
@@ -153,14 +152,15 @@ public class LifecycleTagRemovalIT {
             .as("the array_remove must run on json_objects too, not only on documents/entities")
             .isEqualTo("v2");
 
-        // A row that never carried the tag is untouched — the UPDATE is scoped, not collection-wide.
+        // A row that never carried the tag is untouched — the UPDATE is scoped, not
+        // collection-wide.
         assertThat(exists("json_objects", jsonV2Only)).isTrue();
         assertThat(tagsOf("json_objects", jsonV2Only)).isEqualTo("v2");
 
         // Characterisation: the schema declarations are outside the cascade entirely, so the 'v1'
         // declaration outlives every 'v1' object. Change this expectation only on purpose.
-        assertThat(schemaCount("v1"))
-            .as("removeTagAndPurgeOrphans does not reach json_schemas — the declaration is orphaned")
+        assertThat(schemaCount("v1")).as(
+            "removeTagAndPurgeOrphans does not reach json_schemas — the declaration is orphaned")
             .isEqualTo(1);
         assertThat(schemaCount("v2")).isEqualTo(1);
     }
@@ -181,8 +181,8 @@ public class LifecycleTagRemovalIT {
     }
 
     private boolean exists(String table, UUID id) {
-        Integer c = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM " + table + " WHERE id = ?", Integer.class, id);
+        Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE id = ?",
+            Integer.class, id);
         return c != null && c > 0;
     }
 

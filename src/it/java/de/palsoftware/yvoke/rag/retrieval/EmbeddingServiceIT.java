@@ -1,5 +1,10 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -7,12 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
-
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 public class EmbeddingServiceIT {
@@ -33,10 +32,12 @@ public class EmbeddingServiceIT {
     public void testEmbeddingServiceIntegration() throws Exception {
         // Retrieve API key to verify if it is real
         String apiKey = environment.getProperty("app.ai.embedding.api-key");
-        boolean isRealKey = apiKey != null && !apiKey.isBlank() && !apiKey.equals("mock-key-for-skeleton") && !apiKey.equals("placeholder-voyage-api-key");
+        boolean isRealKey =
+            apiKey != null && !apiKey.isBlank() && !apiKey.equals("mock-key-for-skeleton")
+                && !apiKey.equals("placeholder-voyage-api-key");
 
         Assumptions.assumeTrue(isRealKey,
-                "Skipping Voyage AI embedding integration test: no real VOYAGE_API_KEY configured.");
+            "Skipping Voyage AI embedding integration test: no real VOYAGE_API_KEY configured.");
 
         // Embed single text
         float[] vector = embeddingService.embed(KNOWN_TEXT);
@@ -50,20 +51,21 @@ public class EmbeddingServiceIT {
         // Calculate cosine similarity
         double similarity = calculateCosineSimilarity(vector, referenceVector);
         log.info("Calculated cosine similarity: {}", similarity);
-        
-        assertThat(similarity)
-            .withFailMessage("Cosine similarity %.4f is below threshold %.2f", similarity, COSINE_THRESHOLD)
-            .isGreaterThanOrEqualTo(COSINE_THRESHOLD);
+
+        assertThat(similarity).withFailMessage("Cosine similarity %.4f is below threshold %.2f",
+            similarity, COSINE_THRESHOLD).isGreaterThanOrEqualTo(COSINE_THRESHOLD);
 
         // Embed batch text
-        List<float[]> batchVectors = embeddingService.embedBatch(List.of(KNOWN_TEXT, "Another piece of documentation"));
+        List<float[]> batchVectors =
+            embeddingService.embedBatch(List.of(KNOWN_TEXT, "Another piece of documentation"));
         assertThat(batchVectors).hasSize(2);
         assertThat(batchVectors.get(0).length).isEqualTo(EXPECTED_DIMENSION);
         assertThat(batchVectors.get(1).length).isEqualTo(EXPECTED_DIMENSION);
     }
 
     private float[] loadReferenceVector() throws Exception {
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream("reference_vector.txt")) {
+        try (InputStream is =
+            getClass().getClassLoader().getResourceAsStream("reference_vector.txt")) {
             if (is == null) {
                 throw new IllegalStateException("reference_vector.txt not found in classpath");
             }

@@ -3,7 +3,6 @@ package de.palsoftware.yvoke.llm.core.service;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
-
 import java.util.function.Consumer;
 
 public interface LlmClient {

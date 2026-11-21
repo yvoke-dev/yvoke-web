@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.shared.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,7 +29,6 @@ import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetai
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.DocumentAdminViewService;
 import de.palsoftware.yvoke.document.web.admin.DocumentAdminController;
-import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.jsonobject.web.admin.JsonObjectAdminController;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
@@ -46,7 +44,6 @@ import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;

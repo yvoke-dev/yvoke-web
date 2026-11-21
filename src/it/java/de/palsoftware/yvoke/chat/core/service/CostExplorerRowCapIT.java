@@ -3,8 +3,8 @@ package de.palsoftware.yvoke.chat.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.FilteredCostExplorerReport;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -13,15 +13,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * PRF-01: the per-call cost-explorer view must never fetch the whole {@code llm_call_logs} table. It
- * is capped at {@code app.chat.cost-explorer.max-rows}; here we set the cap low and seed more rows to
- * prove the fetch is bounded.
+ * PRF-01: the per-call cost-explorer view must never fetch the whole {@code llm_call_logs} table.
+ * It is capped at {@code app.chat.cost-explorer.max-rows}; here we set the cap low and seed more
+ * rows to prove the fetch is bounded.
  */
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration",
-    "app.chat.cost-explorer.max-rows=3"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration", "app.chat.cost-explorer.max-rows=3"})
 public class CostExplorerRowCapIT {
 
     private static final String MODEL = "CAP-IT-MODEL";
@@ -46,8 +43,8 @@ public class CostExplorerRowCapIT {
                 UUID.randomUUID(), MODEL);
         }
 
-        FilteredCostExplorerReport report = costCalculationService.getFilteredExplorerReport(
-            "RAW", null, null, List.of(MODEL), List.of(), List.of());
+        FilteredCostExplorerReport report = costCalculationService.getFilteredExplorerReport("RAW",
+            null, null, List.of(MODEL), List.of(), List.of());
 
         // 10 rows seeded, cap is 3 → the view returns at most the cap, never the full set.
         assertThat(report.messages()).hasSize(3);

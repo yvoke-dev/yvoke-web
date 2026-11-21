@@ -3,9 +3,9 @@ package de.palsoftware.yvoke.chat.web;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,7 +35,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = { "app.security.mock=true", "app.chat.playbook-validation-enabled=false" })
+    properties = {"app.security.mock=true", "app.chat.playbook-validation-enabled=false"})
 public class PlaybookValidationDisabledIT {
 
     @Autowired
@@ -81,7 +81,7 @@ public class PlaybookValidationDisabledIT {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
-        
+
         List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
@@ -90,7 +90,8 @@ public class PlaybookValidationDisabledIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email,
+        String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
             .authorities(new SimpleGrantedAuthority("ROLE_USER"));
@@ -105,10 +106,10 @@ public class PlaybookValidationDisabledIT {
      *
      * <p>
      * {@code verifyOwnership} throws {@code ResponseStatusException(404)} for an id it cannot find,
-     * and it is called OUTSIDE the controller's try/catch, so it is not caught by the
-     * "return the optimistic fallback" handler at the bottom of the method: sinking the flag check
-     * below it turns the disabled path into one that issues a DB read and can answer 404 or 403.
-     * The composer then shows a preflight error for a feature the operator switched off. Moving the
+     * and it is called OUTSIDE the controller's try/catch, so it is not caught by the "return the
+     * optimistic fallback" handler at the bottom of the method: sinking the flag check below it
+     * turns the disabled path into one that issues a DB read and can answer 404 or 403. The
+     * composer then shows a preflight error for a feature the operator switched off. Moving the
      * check is a natural-looking tidy-up — the ownership call reads like a precondition that ought
      * to come first — and the sibling test cannot see it, because it validates against a REAL,
      * OWNED conversation, which passes ownership verification whichever order the two run in. Only
@@ -124,13 +125,11 @@ public class PlaybookValidationDisabledIT {
         var login = testUserLogin(userBOid, "user-b-disabled@local", "User B");
 
         // A conversation id that exists nowhere: reaching the ownership lookup at all is a 404.
-        mockMvc.perform(post("/chat/" + UUID.randomUUID() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "How do I query database?")
+        mockMvc
+            .perform(post("/chat/" + UUID.randomUUID() + "/validate-playbook").with(login)
+                .with(csrf()).param("content", "How do I query database?")
                 .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
 
@@ -148,13 +147,11 @@ public class PlaybookValidationDisabledIT {
 
         var login = testUserLogin(userAOid, "user-a-disabled@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
                 .param("content", "How do I query database?")
                 .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
 

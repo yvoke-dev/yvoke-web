@@ -1,6 +1,13 @@
 package de.palsoftware.yvoke.shared.jobengine.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
+import de.palsoftware.yvoke.shared.jobengine.WorkerConfig;
+import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
+import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
+import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,12 +22,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
-import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
-import de.palsoftware.yvoke.shared.jobengine.WorkerConfig;
-import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
-import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
-import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
-import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 
 
 @SpringBootTest(properties = {"app.worker.enabled=true", "app.worker.concurrency=4",

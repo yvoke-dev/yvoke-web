@@ -20,40 +20,23 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class SchemaPresenceIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private static final List<String> EXPECTED_TABLES = List.of(
-        "documents",
-        "chunks",
-        "entities",
-        "relationships",
-        "ingestion_jobs",
-        "users",
-        "conversations",
-        "messages",
-        "message_feedback",
-        "retrieval_logs",
-        "summary_cache",
-        "section_summaries",
-        "audit_log",
-        "agent_runs",
-        "agent_steps",
-        "message_tool_calls"
-    );
+    private static final List<String> EXPECTED_TABLES =
+        List.of("documents", "chunks", "entities", "relationships", "ingestion_jobs", "users",
+            "conversations", "messages", "message_feedback", "retrieval_logs", "summary_cache",
+            "section_summaries", "audit_log", "agent_runs", "agent_steps", "message_tool_calls");
 
     @Test
     public void testAllTablesExist() {
         for (String table : EXPECTED_TABLES) {
             assertThat(tableExists(table))
-                .withFailMessage("Table '%s' should exist in the schema", table)
-                .isTrue();
+                .withFailMessage("Table '%s' should exist in the schema", table).isTrue();
         }
     }
 
@@ -61,28 +44,23 @@ public class SchemaPresenceIT {
     public void testCriticalIndexesExist() {
         // HNSW index on chunks.embedding
         assertThat(indexExists("chunks", "chunks_embedding_hnsw_idx"))
-            .withFailMessage("HNSW index chunks_embedding_hnsw_idx should exist")
-            .isTrue();
+            .withFailMessage("HNSW index chunks_embedding_hnsw_idx should exist").isTrue();
 
         // BM25 index on chunks(id, text)
         assertThat(indexExists("chunks", "chunks_bm25_idx"))
-            .withFailMessage("BM25 index chunks_bm25_idx should exist")
-            .isTrue();
+            .withFailMessage("BM25 index chunks_bm25_idx should exist").isTrue();
 
         // Trigram index on entities.name
         assertThat(indexExists("entities", "entities_name_trgm_idx"))
-            .withFailMessage("Trigram index entities_name_trgm_idx should exist")
-            .isTrue();
+            .withFailMessage("Trigram index entities_name_trgm_idx should exist").isTrue();
 
         // BTree index on chunks(document_id, sort_order)
         assertThat(indexExists("chunks", "chunks_document_id_sort_order_idx"))
-            .withFailMessage("BTree index chunks_document_id_sort_order_idx should exist")
-            .isTrue();
+            .withFailMessage("BTree index chunks_document_id_sort_order_idx should exist").isTrue();
 
         // Partial index supporting the queued-job claim query (M10)
         assertThat(indexExists("ingestion_jobs", "ingestion_jobs_queued_idx"))
-            .withFailMessage("Partial index ingestion_jobs_queued_idx should exist")
-            .isTrue();
+            .withFailMessage("Partial index ingestion_jobs_queued_idx should exist").isTrue();
     }
 
     @Test
@@ -92,14 +70,12 @@ public class SchemaPresenceIT {
             .withFailMessage("Index idx_llm_call_logs_user_id_created_at should exist (PRF-04)")
             .isTrue();
         assertThat(indexExists("audit_log", "idx_audit_log_created_at"))
-            .withFailMessage("Index idx_audit_log_created_at should exist (PRF-06)")
-            .isTrue();
+            .withFailMessage("Index idx_audit_log_created_at should exist (PRF-06)").isTrue();
         assertThat(indexExists("retrieval_logs", "idx_retrieval_logs_collection_id"))
             .withFailMessage("Index idx_retrieval_logs_collection_id should exist (PRF-07)")
             .isTrue();
         assertThat(indexExists("agent_runs", "idx_agent_runs_started_at"))
-            .withFailMessage("Index idx_agent_runs_started_at should exist (PRF-08)")
-            .isTrue();
+            .withFailMessage("Index idx_agent_runs_started_at should exist (PRF-08)").isTrue();
         assertThat(indexExists("messages", "idx_messages_retrieved_chunk_ids_gin"))
             .withFailMessage("GIN index idx_messages_retrieved_chunk_ids_gin should exist (PRF-09)")
             .isTrue();
@@ -129,8 +105,8 @@ public class SchemaPresenceIT {
     public void testMigrationV11PartitionIndexPropagationAndCascadeBehavior() {
         UUID collectionId = UUID.randomUUID();
         String partition = "chunks_p_" + collectionId.toString().replace("-", "");
-        jdbcTemplate.update(
-            "INSERT INTO collections (id, name) VALUES (?, ?)", collectionId, "v11-partition-test");
+        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", collectionId,
+            "v11-partition-test");
         try {
             assertThat(tableExists(partition)).isTrue();
 
@@ -138,13 +114,13 @@ public class SchemaPresenceIT {
             List<String> partitionIndexDefs = jdbcTemplate.queryForList(
                 "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?",
                 String.class, partition);
-            assertThat(partitionIndexDefs)
-                .as("Partition %s must inherit an index on (collection_id) from idx_chunks_collection_id", partition)
-                .anyMatch(def -> def.contains("(collection_id)"));
+            assertThat(partitionIndexDefs).as(
+                "Partition %s must inherit an index on (collection_id) from idx_chunks_collection_id",
+                partition).anyMatch(def -> def.contains("(collection_id)"));
 
-            // Verify the partition index is attached to parent index idx_chunks_collection_id in pg_inherits / pg_index
-            Integer attachedParentIndexCount = jdbcTemplate.queryForObject(
-                """
+            // Verify the partition index is attached to parent index idx_chunks_collection_id in
+            // pg_inherits / pg_index
+            Integer attachedParentIndexCount = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM pg_index child_idx
                 JOIN pg_class child_cls ON child_cls.oid = child_idx.indexrelid
@@ -152,18 +128,16 @@ public class SchemaPresenceIT {
                 JOIN pg_class parent_cls ON parent_cls.oid = inh.inhparent
                 WHERE parent_cls.relname = 'idx_chunks_collection_id'
                   AND child_idx.indrelid = ?::regclass
-                """,
-                Integer.class,
-                partition);
-            assertThat(attachedParentIndexCount)
-                .as("Partition %s must have an index partition attached to parent idx_chunks_collection_id", partition)
-                .isEqualTo(1);
+                """, Integer.class, partition);
+            assertThat(attachedParentIndexCount).as(
+                "Partition %s must have an index partition attached to parent idx_chunks_collection_id",
+                partition).isEqualTo(1);
 
             // Insert a document and a chunk
             UUID docId = UUID.randomUUID();
             jdbcTemplate.update(
-                "INSERT INTO documents (id, collection_id, kind, title) VALUES (?, ?, ?, ?)",
-                docId, collectionId, "manual", "Doc 1");
+                "INSERT INTO documents (id, collection_id, kind, title) VALUES (?, ?, ?, ?)", docId,
+                collectionId, "manual", "Doc 1");
             UUID chunkId = UUID.randomUUID();
             jdbcTemplate.update(
                 "INSERT INTO chunks (id, collection_id, document_id, text) VALUES (?, ?, ?, ?)",
@@ -176,7 +150,8 @@ public class SchemaPresenceIT {
                 jobId, collectionId, "manual", "ref", "queued");
 
             Integer jobCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class, collectionId);
+                "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class,
+                collectionId);
             assertThat(jobCount).isEqualTo(1);
         } finally {
             // Delete collection - test cascade and trigger without deadlock
@@ -186,7 +161,8 @@ public class SchemaPresenceIT {
         // Verify partition dropped and jobs cascaded
         assertThat(tableExists(partition)).isFalse();
         Integer remainingJobs = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class, collectionId);
+            "SELECT COUNT(*) FROM ingestion_jobs WHERE collection_id = ?", Integer.class,
+            collectionId);
         assertThat(remainingJobs).isEqualTo(0);
     }
 
@@ -194,11 +170,10 @@ public class SchemaPresenceIT {
     public void testMigrationV11MessageDeletionAndLlmCallLogsIndexIntegrity() {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-            userId, "oid-" + userId, "v11-" + userId + "@example.com", "User 11");
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
+            "oid-" + userId, "v11-" + userId + "@example.com", "User 11");
         UUID convId = UUID.randomUUID();
-        jdbcTemplate.update(
-            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
             convId, userId, "v11-conv");
         UUID messageId = UUID.randomUUID();
         jdbcTemplate.update(
@@ -207,12 +182,12 @@ public class SchemaPresenceIT {
 
         UUID logId1 = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)",
-            logId1, messageId, "chat", "gpt-4");
+            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)", logId1,
+            messageId, "chat", "gpt-4");
         UUID logId2 = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)",
-            logId2, null, "background", "gpt-4");
+            "INSERT INTO llm_call_logs (id, message_id, source, model) VALUES (?, ?, ?, ?)", logId2,
+            null, "background", "gpt-4");
 
         try {
             // Delete message and verify ON DELETE SET NULL works cleanly without error or deadlock
@@ -231,15 +206,15 @@ public class SchemaPresenceIT {
     @Test
     public void testMigrationV12MessageToolCallsTableAndCascadeDeletion() {
         assertThat(tableExists("message_tool_calls")).isTrue();
-        assertThat(indexExists("message_tool_calls", "idx_message_tool_calls_created_at")).isFalse();
+        assertThat(indexExists("message_tool_calls", "idx_message_tool_calls_created_at"))
+            .isFalse();
 
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-            userId, "oid-" + userId, "v12-" + userId + "@example.com", "User 12");
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
+            "oid-" + userId, "v12-" + userId + "@example.com", "User 12");
         UUID convId = UUID.randomUUID();
-        jdbcTemplate.update(
-            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
             convId, userId, "v12-conv");
         UUID messageId = UUID.randomUUID();
         jdbcTemplate.update(
@@ -249,14 +224,16 @@ public class SchemaPresenceIT {
         UUID toolCallId = UUID.randomUUID();
         jdbcTemplate.update(
             """
-            INSERT INTO message_tool_calls (id, message_id, seq, tool_call_id, tool_name, arguments, result, is_error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            toolCallId, messageId, 0, "call_123", "search_corpus", "{\"q\":\"test\"}", "found items", false);
+                INSERT INTO message_tool_calls (id, message_id, seq, tool_call_id, tool_name, arguments, result, is_error)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            toolCallId, messageId, 0, "call_123", "search_corpus", "{\"q\":\"test\"}",
+            "found items", false);
 
         try {
             Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM message_tool_calls WHERE message_id = ?", Integer.class, messageId);
+                "SELECT COUNT(*) FROM message_tool_calls WHERE message_id = ?", Integer.class,
+                messageId);
             assertThat(count).isEqualTo(1);
 
             // Delete message and verify ON DELETE CASCADE deletes message_tool_calls
@@ -287,7 +264,8 @@ public class SchemaPresenceIT {
             .withFailMessage("Column playbooks.system_prompt must remain during expand phase (V17)")
             .isTrue();
         assertThat(columnExists("areas", "default_system_prompt"))
-            .withFailMessage("Column areas.default_system_prompt must remain during expand phase (V17)")
+            .withFailMessage(
+                "Column areas.default_system_prompt must remain during expand phase (V17)")
             .isTrue();
     }
 
@@ -349,10 +327,9 @@ public class SchemaPresenceIT {
         UUID stepNulls = UUID.randomUUID();
 
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-            userId, "oid-" + userId, "v15-" + userId + "@example.com", "User 15");
-        jdbcTemplate.update(
-            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
+            "oid-" + userId, "v15-" + userId + "@example.com", "User 15");
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
             convId, userId, "v15-conv");
         jdbcTemplate.update(
             "INSERT INTO agent_runs (id, conversation_id, profile_name, status) VALUES (?, ?, ?, ?)",
@@ -365,11 +342,10 @@ public class SchemaPresenceIT {
                 playbookOk);
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO playbooks (name, title, description, template_text, version) VALUES (?, 'title', 'desc', 'template', 0)",
-                playbookBad))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                playbookBad)).isInstanceOf(DataIntegrityViolationException.class);
 
             // 2. messages.playbook_version: ('x', 2) and (NULL, NULL) accepted;
-            // ('x', 0), (NULL, 2), and ('   ', 2) rejected
+            // ('x', 0), (NULL, 2), and (' ', 2) rejected
             jdbcTemplate.update(
                 "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'q1', 'x', 2)",
                 msgWithPb, convId);
@@ -379,19 +355,16 @@ public class SchemaPresenceIT {
 
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-v0', 'x', 0)",
-                UUID.randomUUID(), convId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), convId)).isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-null-pb', NULL, 2)",
-                UUID.randomUUID(), convId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), convId)).isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version) VALUES (?, ?, 'user', 'bad-blank-pb', '   ', 2)",
-                UUID.randomUUID(), convId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), convId)).isInstanceOf(DataIntegrityViolationException.class);
 
             // 3. agent_steps.playbook_version: ('x', 2) and (NULL, NULL) accepted;
-            // ('x', 0), (NULL, 2), and ('   ', 2) rejected
+            // ('x', 0), (NULL, 2), and (' ', 2) rejected
             jdbcTemplate.update(
                 "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 0, 'specialist', 0, 'x', 2)",
                 stepWithPb, runId);
@@ -401,23 +374,21 @@ public class SchemaPresenceIT {
 
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 2, 'specialist', 0, 'x', 0)",
-                UUID.randomUUID(), runId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), runId)).isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 3, 'specialist', 0, NULL, 2)",
-                UUID.randomUUID(), runId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), runId)).isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(() -> jdbcTemplate.update(
                 "INSERT INTO agent_steps (id, agent_run_id, seq, role, round, playbook_name, playbook_version) VALUES (?, ?, 4, 'specialist', 0, '   ', 2)",
-                UUID.randomUUID(), runId))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                UUID.randomUUID(), runId)).isInstanceOf(DataIntegrityViolationException.class);
         } finally {
             jdbcTemplate.update("DELETE FROM agent_steps WHERE agent_run_id = ?", runId);
             jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", runId);
             jdbcTemplate.update("DELETE FROM messages WHERE conversation_id = ?", convId);
             jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", convId);
             jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
-            jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?)", playbookOk, playbookBad);
+            jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?)", playbookOk,
+                playbookBad);
         }
     }
 
@@ -449,10 +420,11 @@ public class SchemaPresenceIT {
         String area2 = "v16-area-renamed-" + UUID.randomUUID();
 
         jdbcTemplate.update("INSERT INTO areas (name, title) VALUES (?, ?)", area1, area1);
-        jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)",
-            userId, "oid-" + userId, userId + "@test.com");
-        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, ?, ?)",
-            convId, userId, "Title", area1);
+        jdbcTemplate.update("INSERT INTO users (id, entra_oid, email) VALUES (?, ?, ?)", userId,
+            "oid-" + userId, userId + "@test.com");
+        jdbcTemplate.update(
+            "INSERT INTO conversations (id, user_id, title, area) VALUES (?, ?, ?, ?)", convId,
+            userId, "Title", area1);
 
         try {
             // 1. Verify CASCADE on area rename
@@ -601,15 +573,15 @@ public class SchemaPresenceIT {
             "SELECT relkind FROM pg_class WHERE relname = 'chunks' AND relnamespace = 'public'::regnamespace",
             String.class);
         assertThat(relkind)
-            .withFailMessage("chunks should be a partitioned table (relkind 'p') but was '%s'", relkind)
+            .withFailMessage("chunks should be a partitioned table (relkind 'p') but was '%s'",
+                relkind)
             .isEqualTo("p");
 
         for (String trigger : List.of("trg_collections_create_chunks_partition",
-                "trg_collections_drop_chunks_partition")) {
+            "trg_collections_drop_chunks_partition")) {
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM pg_trigger WHERE tgname = ?", Integer.class, trigger);
-            assertThat(count)
-                .withFailMessage("Trigger %s should exist on collections", trigger)
+            assertThat(count).withFailMessage("Trigger %s should exist on collections", trigger)
                 .isEqualTo(1);
         }
     }
@@ -618,8 +590,8 @@ public class SchemaPresenceIT {
     public void testCollectionInsertAndDeleteManagePartition() {
         UUID id = UUID.randomUUID();
         String partition = "chunks_p_" + id.toString().replace("-", "");
-        jdbcTemplate.update(
-            "INSERT INTO collections (id, name) VALUES (?, ?)", id, "partition-roundtrip-test");
+        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", id,
+            "partition-roundtrip-test");
         try {
             assertThat(tableExists(partition))
                 .withFailMessage("Inserting a collection should create partition %s", partition)
@@ -628,8 +600,7 @@ public class SchemaPresenceIT {
             jdbcTemplate.update("DELETE FROM collections WHERE id = ?", id);
         }
         assertThat(tableExists(partition))
-            .withFailMessage("Deleting a collection should drop partition %s", partition)
-            .isFalse();
+            .withFailMessage("Deleting a collection should drop partition %s", partition).isFalse();
     }
 
     @Test
@@ -641,42 +612,43 @@ public class SchemaPresenceIT {
         UUID id = UUID.randomUUID();
         String partition = "chunks_p_" + id.toString().replace("-", "");
 
-        Boolean partitionCreated = jdbcTemplate.execute((ConnectionCallback<Boolean>) connection -> {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try (Statement session = connection.createStatement()) {
-                // SET LOCAL: reverts with the rollback below, so the pooled connection is handed
-                // back with its normal search_path.
-                session.execute("SET LOCAL search_path = ''");
+        Boolean partitionCreated =
+            jdbcTemplate.execute((ConnectionCallback<Boolean>) connection -> {
+                boolean previousAutoCommit = connection.getAutoCommit();
+                connection.setAutoCommit(false);
+                try (Statement session = connection.createStatement()) {
+                    // SET LOCAL: reverts with the rollback below, so the pooled connection is
+                    // handed
+                    // back with its normal search_path.
+                    session.execute("SET LOCAL search_path = ''");
 
-                try (PreparedStatement insert = connection.prepareStatement(
+                    try (PreparedStatement insert = connection.prepareStatement(
                         "INSERT INTO public.collections (id, name) VALUES (?, ?)")) {
-                    insert.setObject(1, id);
-                    insert.setString(2, "empty-search-path-partition-test");
-                    insert.executeUpdate();
-                }
-
-                try (PreparedStatement lookup = connection.prepareStatement(
-                        "SELECT COUNT(*) FROM information_schema.tables "
-                            + "WHERE table_schema = 'public' AND table_name = ?")) {
-                    lookup.setString(1, partition);
-                    try (ResultSet rs = lookup.executeQuery()) {
-                        rs.next();
-                        return rs.getInt(1) > 0;
+                        insert.setObject(1, id);
+                        insert.setString(2, "empty-search-path-partition-test");
+                        insert.executeUpdate();
                     }
-                }
-            } finally {
-                // CREATE TABLE is transactional in Postgres, so this undoes the row and the
-                // partition together.
-                connection.rollback();
-                connection.setAutoCommit(previousAutoCommit);
-            }
-        });
 
-        assertThat(partitionCreated)
-            .withFailMessage("Inserting a collection under an empty search_path should still create partition %s",
-                partition)
-            .isTrue();
+                    try (PreparedStatement lookup = connection
+                        .prepareStatement("SELECT COUNT(*) FROM information_schema.tables "
+                            + "WHERE table_schema = 'public' AND table_name = ?")) {
+                        lookup.setString(1, partition);
+                        try (ResultSet rs = lookup.executeQuery()) {
+                            rs.next();
+                            return rs.getInt(1) > 0;
+                        }
+                    }
+                } finally {
+                    // CREATE TABLE is transactional in Postgres, so this undoes the row and the
+                    // partition together.
+                    connection.rollback();
+                    connection.setAutoCommit(previousAutoCommit);
+                }
+            });
+
+        assertThat(partitionCreated).withFailMessage(
+            "Inserting a collection under an empty search_path should still create partition %s",
+            partition).isTrue();
     }
 
     @Test
@@ -685,20 +657,19 @@ public class SchemaPresenceIT {
             List<String> config = jdbcTemplate.queryForList(
                 "SELECT unnest(proconfig) FROM pg_proc WHERE proname = ?", String.class, function);
             assertThat(config)
-                .withFailMessage("Function %s should pin its search_path (proconfig was %s)", function, config)
+                .withFailMessage("Function %s should pin its search_path (proconfig was %s)",
+                    function, config)
                 .anyMatch(entry -> entry.startsWith("search_path="));
         }
     }
 
     @Test
     public void testJobQueueColumnsExist() {
-        List<String> jobColumns = List.of(
-            "step", "attempts", "doc_count", "chunk_count", "entity_count", "edge_count"
-        );
+        List<String> jobColumns =
+            List.of("step", "attempts", "doc_count", "chunk_count", "entity_count", "edge_count");
         for (String column : jobColumns) {
             assertThat(columnExists("ingestion_jobs", column))
-                .withFailMessage("Column ingestion_jobs.%s should exist", column)
-                .isTrue();
+                .withFailMessage("Column ingestion_jobs.%s should exist", column).isTrue();
         }
     }
 
@@ -707,18 +678,18 @@ public class SchemaPresenceIT {
      *
      * <p>
      * Every one of them is invisible when it disappears: the query still returns exactly the right
-     * rows, just sequentially, so no test fails, no error is logged and the only symptom is that the
-     * app gets slower as the corpus grows. That is the whole reason to assert them by name — a
+     * rows, just sequentially, so no test fails, no error is logged and the only symptom is that
+     * the app gets slower as the corpus grows. That is the whole reason to assert them by name — a
      * migration that renames or drops one is indistinguishable from a correct one at the row level.
      *
      * <p>
      * They are not interchangeable filler. {@code idx_documents_metadata_source_file} serves the
      * per-page Confluence version-skip ({@code DocumentRepository.getMetadataAndStatus} and
-     * {@code findIdByFile} both probe {@code metadata->>'source_file'}) once per crawled page over a
-     * 22k-row table — losing it turns a sync into tens of thousands of sequential scans.
-     * {@code idx_collections_tags} / {@code idx_documents_tags} back the {@code &&} overlap that the
-     * whole two-versions-in-one-collection design filters on, {@code idx_documents_id_nodash} and
-     * {@code idx_chunks_id_nodash} back the dash-stripped prefix lookup that resolves every
+     * {@code findIdByFile} both probe {@code metadata->>'source_file'}) once per crawled page over
+     * a 22k-row table — losing it turns a sync into tens of thousands of sequential scans.
+     * {@code idx_collections_tags} / {@code idx_documents_tags} back the {@code &&} overlap that
+     * the whole two-versions-in-one-collection design filters on, {@code idx_documents_id_nodash}
+     * and {@code idx_chunks_id_nodash} back the dash-stripped prefix lookup that resolves every
      * citation, {@code idx_documents_title_trgm} backs the fuzzy title search's
      * {@code similarity()} ranking, and {@code idx_chunks_document_id_kg_ok} backs the per-row
      * kg-status subqueries the corpus browser runs for every document on the page.
@@ -837,12 +808,12 @@ public class SchemaPresenceIT {
      *
      * <p>
      * The line looks like tuning, which is exactly why it disappears: it sits among
-     * {@code maximum-pool-size}/{@code idle-timeout}/{@code connection-timeout} in a block that gets
-     * rewritten whenever someone tunes the pool, and removing it changes nothing observable — every
-     * query this suite runs finishes in milliseconds. Asserting it here, on a connection actually
-     * handed out by the pool, is what makes the setting's absence visible; asserting the YAML text
-     * would only prove the string is present, not that Hikari applied it to the connections the
-     * application uses.
+     * {@code maximum-pool-size}/{@code idle-timeout}/{@code connection-timeout} in a block that
+     * gets rewritten whenever someone tunes the pool, and removing it changes nothing observable —
+     * every query this suite runs finishes in milliseconds. Asserting it here, on a connection
+     * actually handed out by the pool, is what makes the setting's absence visible; asserting the
+     * YAML text would only prove the string is present, not that Hikari applied it to the
+     * connections the application uses.
      *
      * <p>
      * The comparison is made as an {@code interval} rather than against the text {@code SHOW}
@@ -858,8 +829,10 @@ public class SchemaPresenceIT {
         Boolean unbounded = jdbcTemplate.queryForObject(
             "SELECT current_setting('statement_timeout')::interval = interval '0'", Boolean.class);
         assertThat(unbounded)
-            .withFailMessage("pooled connections must carry a statement_timeout, but it was '%s': "
-                + "an unbounded query can hold one of the 20 pooled connections forever", rendered)
+            .withFailMessage(
+                "pooled connections must carry a statement_timeout, but it was '%s': "
+                    + "an unbounded query can hold one of the 20 pooled connections forever",
+                rendered)
             .isFalse();
 
         Boolean sixtySeconds = jdbcTemplate.queryForObject(
@@ -872,29 +845,21 @@ public class SchemaPresenceIT {
     private boolean tableExists(String tableName) {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
-            Integer.class,
-            tableName
-        );
+            Integer.class, tableName);
         return count != null && count > 0;
     }
 
     private boolean indexExists(String tableName, String indexName) {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = ? AND indexname = ?",
-            Integer.class,
-            tableName,
-            indexName
-        );
+            Integer.class, tableName, indexName);
         return count != null && count > 0;
     }
 
     private boolean columnExists(String tableName, String columnName) {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
-            Integer.class,
-            tableName,
-            columnName
-        );
+            Integer.class, tableName, columnName);
         return count != null && count > 0;
     }
 }

@@ -3,11 +3,6 @@ package de.palsoftware.yvoke.chat.core.service;
 import de.palsoftware.yvoke.chat.core.model.ModelPricing;
 import de.palsoftware.yvoke.chat.core.repository.CostQueryRepository;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -23,6 +18,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service

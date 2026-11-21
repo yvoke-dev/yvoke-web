@@ -1,6 +1,13 @@
 package de.palsoftware.yvoke.ingest.worker;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
+import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
+import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
+import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,12 +22,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
-import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
-import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
-import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
-import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
-import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
-import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=true",

@@ -2,8 +2,8 @@ package de.palsoftware.yvoke.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.tool.definition.ToolDefinition;

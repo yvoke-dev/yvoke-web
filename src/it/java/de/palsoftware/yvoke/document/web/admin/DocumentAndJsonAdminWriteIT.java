@@ -10,6 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,22 +23,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
-import java.util.List;
-import java.util.Map;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 /**
  * Document tag editing and the JSON-object schema writes, plus the corpus-browser filters and
  * pagination that no test had ever supplied.
  *
- * <p>Tags are version scoping: a document's tags decide which release's answers can cite it, so the
- * add/remove endpoints are how an admin can silently make content invisible to retrieval — or visible
- * to the wrong version. {@code JsonObjectAdminController} had no test at all, and its schema writes
- * both branch on a collection lookup whose failure path only redirects with a flash, which is precisely
- * the sort of thing that rots unnoticed.
+ * <p>
+ * Tags are version scoping: a document's tags decide which release's answers can cite it, so the
+ * add/remove endpoints are how an admin can silently make content invisible to retrieval — or
+ * visible to the wrong version. {@code JsonObjectAdminController} had no test at all, and its
+ * schema writes both branch on a collection lookup whose failure path only redirects with a flash,
+ * which is precisely the sort of thing that rots unnoticed.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -130,21 +131,21 @@ public class DocumentAndJsonAdminWriteIT {
      *
      * <p>
      * FIRST, a no-op must be SILENT. Both tag statements are guarded UPDATEs, so "changed nothing"
-     * is ambiguous: it means either an ordinary no-op (the tag is already there / already absent, or
-     * the row is gone) or a genuine collision with a sibling document holding the resulting tag
-     * scope. Only the second is an error, and {@code rejectIfSiblingBlocks} is the single place that
-     * tells them apart. If it stops distinguishing them, an admin who double-clicks "add tag", or
-     * clicks it on a tag the document already carries — the ordinary way to use a datalist that
+     * is ambiguous: it means either an ordinary no-op (the tag is already there / already absent,
+     * or the row is gone) or a genuine collision with a sibling document holding the resulting tag
+     * scope. Only the second is an error, and {@code rejectIfSiblingBlocks} is the single place
+     * that tells them apart. If it stops distinguishing them, an admin who double-clicks "add tag",
+     * or clicks it on a tag the document already carries — the ordinary way to use a datalist that
      * offers exactly the tags in play — gets an error flash or a 500 for an operation that
      * legitimately did nothing. {@code addingAndRemovingADocumentTagChangesItsVersionScope} only
-     * ever posts changes that actually apply, and {@code TagRepositoryIT} covers the collision half,
-     * so the {@code updated == 0}-and-innocent path has never executed.
+     * ever posts changes that actually apply, and {@code TagRepositoryIT} covers the collision
+     * half, so the {@code updated == 0}-and-innocent path has never executed.
      *
      * <p>
      * SECOND, the tag arrives as a raw request parameter and is interpolated into nothing. Both
      * TagRepository literals bind it, and the diagnostic query is one of two fixed strings — so a
-     * value carrying a quote and a statement terminator must round-trip byte for byte and the schema
-     * must be untouched. Concatenating it instead would be first-order SQL injection on an
+     * value carrying a quote and a statement terminator must round-trip byte for byte and the
+     * schema must be untouched. Concatenating it instead would be first-order SQL injection on an
      * admin-authenticated surface, and "sanitize the quotes out" is the tempting non-fix: it leaves
      * the tag silently mangled, so the document is scoped to a version nobody can select. The proof
      * that both statements bind is that the same literal REMOVES the tag again; asserting only the
@@ -178,7 +179,8 @@ public class DocumentAndJsonAdminWriteIT {
             .as("the tag is BOUND, so it is stored exactly as typed — not escaped, not stripped")
             .containsExactlyInAnyOrder(TAG, hostile);
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM documents WHERE id = ?",
-            Integer.class, documentId)).as("the row — and the table — are still there").isEqualTo(1);
+            Integer.class, documentId)).as("the row — and the table — are still there")
+            .isEqualTo(1);
 
         // 4. The same literal removes it again: the second statement binds it too.
         mockMvc.perform(post(removeUrl).with(csrf()).with(admin()).param("tag", hostile))
@@ -187,24 +189,18 @@ public class DocumentAndJsonAdminWriteIT {
     }
 
     /**
-     * The corpus browser's kind/tag filters and its pagination, none of which was ever driven — every
-     * covering test issued a parameterless GET, so the hidden inputs that carry the current selection
-     * across a page change were never rendered.
+     * The corpus browser's kind/tag filters and its pagination, none of which was ever driven —
+     * every covering test issued a parameterless GET, so the hidden inputs that carry the current
+     * selection across a page change were never rendered.
      */
     @Test
     public void corpusBrowserFiltersAndPaginationRender() throws Exception {
-        mockMvc
-            .perform(get("/admin/documents").param("collection", COLLECTION).param("tag", TAG)
-                .param("kind", "manual").with(admin()))
-            .andExpect(status().isOk());
-        mockMvc
-            .perform(get("/admin/documents").param("collection", COLLECTION)
-                .param("searchTitle", "IT Doc").with(admin()))
-            .andExpect(status().isOk());
-        mockMvc
-            .perform(get("/admin/documents").param("collection", COLLECTION).param("page", "1")
-                .param("size", "1").with(admin()))
-            .andExpect(status().isOk());
+        mockMvc.perform(get("/admin/documents").param("collection", COLLECTION).param("tag", TAG)
+            .param("kind", "manual").with(admin())).andExpect(status().isOk());
+        mockMvc.perform(get("/admin/documents").param("collection", COLLECTION)
+            .param("searchTitle", "IT Doc").with(admin())).andExpect(status().isOk());
+        mockMvc.perform(get("/admin/documents").param("collection", COLLECTION).param("page", "1")
+            .param("size", "1").with(admin())).andExpect(status().isOk());
     }
 
     // ---------- JSON object schema ----------
@@ -241,13 +237,14 @@ public class DocumentAndJsonAdminWriteIT {
     }
 
     /**
-     * Rebuild refuses to run over a manually maintained schema. That guard is the only thing stopping
-     * a re-inference from silently discarding hand-written field documentation.
+     * Rebuild refuses to run over a manually maintained schema. That guard is the only thing
+     * stopping a re-inference from silently discarding hand-written field documentation.
      */
     @Test
     public void rebuildIsRefusedWhileTheSchemaIsManuallyMaintained() throws Exception {
-        mockMvc.perform(post("/admin/json-objects/schema/edit").with(csrf()).with(admin())
-            .param("collection", COLLECTION).param("schemaJson", "{\"type\":\"object\"}"))
+        mockMvc
+            .perform(post("/admin/json-objects/schema/edit").with(csrf()).with(admin())
+                .param("collection", COLLECTION).param("schemaJson", "{\"type\":\"object\"}"))
             .andExpect(status().is3xxRedirection());
 
         mockMvc
@@ -258,36 +255,32 @@ public class DocumentAndJsonAdminWriteIT {
 
     @Test
     public void distinctValuesReturnsAnEmptyListForAnUnknownCollection() throws Exception {
-        mockMvc
-            .perform(get("/admin/json-objects/distinct-values")
-                .param("collection", "NOPE-DOES-NOT-EXIST").param("fieldName", "name")
-                .with(admin()))
-            .andExpect(status().isOk())
-            .andExpect(MockMvcResultMatchers.content()
-                .json("[]"));
+        mockMvc.perform(get("/admin/json-objects/distinct-values")
+            .param("collection", "NOPE-DOES-NOT-EXIST").param("fieldName", "name").with(admin()))
+            .andExpect(status().isOk()).andExpect(MockMvcResultMatchers.content().json("[]"));
     }
 
     /**
-     * The JSON-object browser's search box takes RAW jsonpath, and the admin filter builder emits it
-     * straight into that box, so malformed input is routine traffic on this page — an unquoted string
-     * literal is the common one, because {@code @.name == AAD} is what the expression looks like
-     * everywhere else in the product. Postgres rejects it while PARSING the {@code ::jsonpath} cast
-     * (SQLSTATE 42601), which Spring translates to {@code BadSqlGrammarException}, and the only thing
-     * standing between that and {@code MvcExceptionHandler}'s generic 500 is one narrowly-typed catch
-     * on this route.
+     * The JSON-object browser's search box takes RAW jsonpath, and the admin filter builder emits
+     * it straight into that box, so malformed input is routine traffic on this page — an unquoted
+     * string literal is the common one, because {@code @.name == AAD} is what the expression looks
+     * like everywhere else in the product. Postgres rejects it while PARSING the {@code ::jsonpath}
+     * cast (SQLSTATE 42601), which Spring translates to {@code BadSqlGrammarException}, and the
+     * only thing standing between that and {@code MvcExceptionHandler}'s generic 500 is one
+     * narrowly-typed catch on this route.
      *
      * <p>
      * Nothing pins it: the literal "Invalid JSON Path" appears nowhere under {@code src/test} or
-     * {@code src/it}. Narrow the catch, move it, or let the exception type drift and the admin loses
-     * the filter they were mid-way through building, gets no hint that the fix is double quotes, and
-     * sees an error page that looks like the corpus is broken rather than the query.
+     * {@code src/it}. Narrow the catch, move it, or let the exception type drift and the admin
+     * loses the filter they were mid-way through building, gets no hint that the fix is double
+     * quotes, and sees an error page that looks like the corpus is broken rather than the query.
      *
      * <p>
-     * The correctly-quoted control request is what makes the empty page meaningful: it proves the same
-     * box against the same collection really does match the seeded row, so the second request's zero
-     * is the caught parse error and not an empty collection. The retained {@code searchQuery} is
-     * asserted because the template re-renders it into the input — losing it is how the admin's work
-     * disappears even when the page itself survives.
+     * The correctly-quoted control request is what makes the empty page meaningful: it proves the
+     * same box against the same collection really does match the seeded row, so the second
+     * request's zero is the caught parse error and not an empty collection. The retained
+     * {@code searchQuery} is asserted because the template re-renders it into the input — losing it
+     * is how the admin's work disappears even when the page itself survives.
      */
     @Test
     public void aMalformedJsonPathRendersTheFilterHelpInsteadOfAServerError() throws Exception {
@@ -302,7 +295,8 @@ public class DocumentAndJsonAdminWriteIT {
             .perform(get("/admin/json-objects").param("collection", COLLECTION)
                 .param("search", "$ ? (@.name == \"AAD\")").with(admin()))
             .andExpect(status().isOk()).andReturn().getModelAndView().getModel();
-        assertThat(ok.get("error")).as("a well-formed jsonpath must not raise the help card").isNull();
+        assertThat(ok.get("error")).as("a well-formed jsonpath must not raise the help card")
+            .isNull();
         assertThat(ok.get("totalElements")).isEqualTo(1L);
         assertThat((List<?>) ok.get("jsonObjects")).hasSize(1);
 
@@ -324,11 +318,12 @@ public class DocumentAndJsonAdminWriteIT {
         assertThat(model.get("selectedCollection")).isEqualTo(COLLECTION);
     }
 
-        /**
+    /**
      * The corpus browser's field suggestions must be DOTTED paths, and its pager must stay inside
      * the selected tag.
      *
-     * <p>{@code JsonObjectAdminController.collectSchemaFieldPaths} is the only producer of the
+     * <p>
+     * {@code JsonObjectAdminController.collectSchemaFieldPaths} is the only producer of the
      * {@code schemaFields} model attribute, and that list is what the admin picks a display field
      * from and what the filter builder offers as rule keys. If the recursion loses its prefix, a
      * nested {@code Customer.id} is offered as a bare {@code id}: the template resolves the chosen
@@ -337,10 +332,11 @@ public class DocumentAndJsonAdminWriteIT {
      * the same list targets a key no row has, so it matches nothing. Nothing errors; the page just
      * quietly stops being usable.
      *
-     * <p>The same request pins the count half. The identical object exists under both {@code 9.3}
-     * and {@code 10.0}, so a pager that dropped the tag filter would report two elements over a
-     * one-row page and offer a page 2 that is empty — the classic "the version filter is on but the
-     * numbers are from everywhere" failure.
+     * <p>
+     * The same request pins the count half. The identical object exists under both {@code 9.3} and
+     * {@code 10.0}, so a pager that dropped the tag filter would report two elements over a one-row
+     * page and offer a page 2 that is empty — the classic "the version filter is on but the numbers
+     * are from everywhere" failure.
      */
     @Test
     public void theCorpusBrowserSuggestsNestedSchemaPathsAndCountsWithinTheSelectedTag()
@@ -371,14 +367,13 @@ public class DocumentAndJsonAdminWriteIT {
     @Test
 
     public void jsonObjectWritesAndLookupsRequireAdmin() throws Exception {
-        mockMvc.perform(post("/admin/json-objects/schema/edit").with(csrf()).with(plainUser())
-            .param("collection", COLLECTION).param("schemaJson", "{}"))
+        mockMvc
+            .perform(post("/admin/json-objects/schema/edit").with(csrf()).with(plainUser())
+                .param("collection", COLLECTION).param("schemaJson", "{}"))
             .andExpect(status().isForbidden());
         mockMvc.perform(post("/admin/json-objects/schema/rebuild").with(csrf()).with(plainUser())
             .param("collection", COLLECTION)).andExpect(status().isForbidden());
-        mockMvc
-            .perform(get("/admin/json-objects/distinct-values").param("collection", COLLECTION)
-                .param("fieldName", "name").with(plainUser()))
-            .andExpect(status().isForbidden());
+        mockMvc.perform(get("/admin/json-objects/distinct-values").param("collection", COLLECTION)
+            .param("fieldName", "name").with(plainUser())).andExpect(status().isForbidden());
     }
 }

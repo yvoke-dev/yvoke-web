@@ -15,9 +15,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.ingest.core.model.Section;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

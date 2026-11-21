@@ -3,7 +3,6 @@ package de.palsoftware.yvoke.chat.api.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.orchestration.AgentRun;
-import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import java.util.List;
 import java.util.UUID;
 

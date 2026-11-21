@@ -1,5 +1,8 @@
 package de.palsoftware.yvoke.document.core;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionChunks;
@@ -9,6 +12,8 @@ import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.SectionService;
 import de.palsoftware.yvoke.document.core.service.TocService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.sql.PreparedStatement;
+import java.util.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,12 +24,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-
-import java.sql.PreparedStatement;
-import java.util.*;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 public class HierarchicalRetrievalIT {
@@ -211,12 +210,12 @@ public class HierarchicalRetrievalIT {
      * caller could detect it.
      *
      * <p>
-     * The load-bearing assertion is that the SIBLING PART is absent. Part 1 and part 2 of
-     * "Section 1.1" are one heading split at ingest, so they are the closest thing to the cited
-     * passage that still is not it; a test that only checked "not the whole document" would pass
-     * with them both present, which is the exact regression this replaces. The input is an
-     * 8-character PREFIX because that is the production input shape — a shortened citation link
-     * carries a truncated id.
+     * The load-bearing assertion is that the SIBLING PART is absent. Part 1 and part 2 of "Section
+     * 1.1" are one heading split at ingest, so they are the closest thing to the cited passage that
+     * still is not it; a test that only checked "not the whole document" would pass with them both
+     * present, which is the exact regression this replaces. The input is an 8-character PREFIX
+     * because that is the production input shape — a shortened citation link carries a truncated
+     * id.
      *
      * <p>
      * Nothing else covers this. {@code GetSectionToolTest} and {@code CitationControllerTest} both

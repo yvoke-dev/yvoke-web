@@ -20,7 +20,6 @@ import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.Conversat
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

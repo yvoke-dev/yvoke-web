@@ -1,11 +1,10 @@
 package de.palsoftware.yvoke.shared.jobengine.service;
 
-import de.palsoftware.yvoke.shared.jobengine.model.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.shared.jobengine.model.*;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;

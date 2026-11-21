@@ -1,7 +1,11 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -11,11 +15,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.RowMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.chat.core.model.Message;
-import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
 
 public class MessageRowMapper implements RowMapper<Message> {
     private static final Logger log = LoggerFactory.getLogger(MessageRowMapper.class);

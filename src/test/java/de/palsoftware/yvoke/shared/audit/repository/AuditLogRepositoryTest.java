@@ -1,13 +1,14 @@
 package de.palsoftware.yvoke.shared.audit.repository;
 
-import de.palsoftware.yvoke.shared.audit.model.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.shared.audit.model.*;
+import java.io.Closeable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import java.io.Closeable;
 
 public class AuditLogRepositoryTest {
 

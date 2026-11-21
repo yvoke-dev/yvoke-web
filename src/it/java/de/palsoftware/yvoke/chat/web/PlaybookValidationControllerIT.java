@@ -3,17 +3,16 @@ package de.palsoftware.yvoke.chat.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.never;
 
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
@@ -31,6 +30,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.Authentication;
@@ -43,7 +43,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.mockito.ArgumentCaptor;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -89,21 +88,25 @@ public class PlaybookValidationControllerIT {
         }
         try {
             areaService.findArea("OIM").ifPresent(oim -> areaService.saveArea("OIM", "OIM",
-                oim.title(), oim.description(), oim.prototype(), null,
-                oim.defaultProfile()));
-        } catch (Exception e) {}
+                oim.title(), oim.description(), oim.prototype(), null, oim.defaultProfile()));
+        } catch (Exception e) {
+        }
         try {
             playbookService.deletePlaybook("oim-full");
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
         try {
             playbookService.deletePlaybook("correct-playbook");
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
         try {
             playbookService.deletePlaybook("wrong-playbook");
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
         try {
             playbookService.deletePlaybook("suggested-playbook");
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
     }
 
     private void setSecurityContext(String oid, String email, String name) {
@@ -115,9 +118,8 @@ public class PlaybookValidationControllerIT {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
-        
-        List<GrantedAuthority> authorities = List.of(
-            new SimpleGrantedAuthority("ROLE_USER"),
+
+        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
             new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
@@ -126,11 +128,11 @@ public class PlaybookValidationControllerIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email,
+        String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(
-                new SimpleGrantedAuthority("ROLE_USER"),
+            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
                 new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
@@ -143,20 +145,20 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title",
+            "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
                 .param("content", "How do I query database?")
                 .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
     }
@@ -170,21 +172,21 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
-        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook", "Suggested Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc",
+            "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("suggested-playbook", "Suggested Playbook",
+            "Suggested Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"This question is about user setup.\", \"suggestedPlaybookName\": \"suggested-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": false, \"reason\": \"This question is about user setup.\", \"suggestedPlaybookName\": \"suggested-playbook\"}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "Setup a new user")
-                .param("promptName", "wrong-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(false))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+                .param("content", "Setup a new user").param("promptName", "wrong-playbook"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(false))
             .andExpect(jsonPath("$.reason").value("This question is about user setup."))
             .andExpect(jsonPath("$.suggestedPlaybookName").value("suggested-playbook"));
     }
@@ -198,22 +200,22 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook",
+            "template", List.of(), false, "specialist", false, "OIM", 1);
         Area oim = areaService.findArea("OIM").orElseThrow();
-        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), "oim-full", oim.defaultProfile());
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(),
+            "oim-full", oim.defaultProfile());
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Should not be called\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": false, \"reason\": \"Should not be called\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "How do I query database?")
-                .param("promptName", "oim-full"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+                .param("content", "How do I query database?").param("promptName", "oim-full"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
 
@@ -229,20 +231,20 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title",
+            "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Synchronization issues are handled here.\", \"suggestedPlaybookName\": \"correct-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": false, \"reason\": \"Synchronization issues are handled here.\", \"suggestedPlaybookName\": \"correct-playbook\"}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
                 .param("content", "How do I query database?")
                 .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
     }
@@ -273,11 +275,9 @@ public class PlaybookValidationControllerIT {
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", " ")
-                .param("promptName", "correct-playbook"))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+                .param("content", " ").param("promptName", "correct-playbook"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error").value("Content cannot be blank"));
 
@@ -293,26 +293,24 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-full", "OIM Full", "Default full OIM playbook",
+            "template", List.of(), false, "specialist", false, "OIM", 1);
         Area oim = areaService.findArea("OIM").orElseThrow();
-        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(), "oim-full", oim.defaultProfile());
+        areaService.saveArea("OIM", "OIM", oim.title(), oim.description(), oim.prototype(),
+            "oim-full", oim.defaultProfile());
 
         String userBOid = "user-b-validate-test-oid";
         userRepository.upsert(userBOid, "user-b-test@local", "User B");
         var loginB = testUserLogin(userBOid, "user-b-test@local", "User B");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(loginB)
-                .with(csrf())
-                .param("content", "Hello")
-                .param("promptName", "some-playbook"))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(loginB).with(csrf())
+                .param("content", "Hello").param("promptName", "some-playbook"))
             .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(loginB)
-                .with(csrf())
-                .param("content", "Hello")
-                .param("promptName", "oim-full"))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(loginB).with(csrf())
+                .param("content", "Hello").param("promptName", "oim-full"))
             .andExpect(status().isForbidden());
     }
 
@@ -341,18 +339,17 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title", "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title",
+            "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "How do I query database?")
-                .param("promptName", "correct-playbook"))
+        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+            .param("content", "How do I query database?").param("promptName", "correct-playbook"))
             .andExpect(status().isOk());
 
         ArgumentCaptor<LlmRequest> sent = ArgumentCaptor.forClass(LlmRequest.class);
@@ -364,8 +361,8 @@ public class PlaybookValidationControllerIT {
             .isEqualTo("application/json");
         assertThat(request.temperature())
             .as("the same question must not get a different verdict on a re-ask").isEqualTo(0.0);
-        assertThat(request.maxTokens())
-            .as("a check that runs before every message must stay cheap").isEqualTo(500);
+        assertThat(request.maxTokens()).as("a check that runs before every message must stay cheap")
+            .isEqualTo(500);
         assertThat(request.thinkingLevel()).isEqualTo("low");
         assertThat(request.tools())
             .as("a validator must not search, and any tool would disable JSON mode").isEmpty();
@@ -385,13 +382,10 @@ public class PlaybookValidationControllerIT {
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "Testing fallback")
-                .param("promptName", "some-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(true))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+                .param("content", "Testing fallback").param("promptName", "some-playbook"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
             .andExpect(jsonPath("$.reason").value(""))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
     }
@@ -405,20 +399,19 @@ public class PlaybookValidationControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("wrong-playbook", "Wrong Playbook", "Wrong Playbook Desc",
+            "template", List.of(), false, "specialist", false, "OIM", 1);
 
-        when(llmClient.generate(any(LlmRequest.class)))
-            .thenReturn(new LlmResponse("{\"plausible\": false, \"reason\": \"Bad selection.\", \"suggestedPlaybookName\": \"non-existent-playbook\"}", new LlmUsage(0, 0, 0, 0, 0)));
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": false, \"reason\": \"Bad selection.\", \"suggestedPlaybookName\": \"non-existent-playbook\"}",
+            new LlmUsage(0, 0, 0, 0, 0)));
 
         var login = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc.perform(post("/chat/" + conv.id() + "/validate-playbook")
-                .with(login)
-                .with(csrf())
-                .param("content", "Hello")
-                .param("promptName", "wrong-playbook"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.plausible").value(false))
+        mockMvc
+            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
+                .param("content", "Hello").param("promptName", "wrong-playbook"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(false))
             .andExpect(jsonPath("$.reason").value("Bad selection."))
             .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
     }

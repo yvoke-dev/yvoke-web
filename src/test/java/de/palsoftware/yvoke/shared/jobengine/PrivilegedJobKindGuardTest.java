@@ -1,8 +1,8 @@
 package de.palsoftware.yvoke.shared.jobengine;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
 import org.junit.jupiter.api.AfterEach;

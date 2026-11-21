@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.shared.user.repository;
 
 import de.palsoftware.yvoke.shared.user.model.*;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;

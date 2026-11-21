@@ -1,22 +1,19 @@
 package de.palsoftware.yvoke.llm.core.repository;
 
-import de.palsoftware.yvoke.llm.core.model.LlmCallLog;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.llm.core.model.LlmCallLog;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class LlmCallLogRepositoryIT {
 
     @Autowired
@@ -25,28 +22,10 @@ public class LlmCallLogRepositoryIT {
     @Test
     void testInsertAndGetModelUsageSummaries() {
         String modelName = "it-test-llm-call-log";
-        LlmCallLog logEntry = new LlmCallLog(
-            UUID.randomUUID(),
-            null,
-            null,
-            null,
-            null,
-            "test_source",
-            "test_role",
-            modelName,
-            100,
-            50,
-            10,
-            0,
-            160,
-            BigDecimal.valueOf(1.50),
-            BigDecimal.valueOf(10.00),
-            BigDecimal.valueOf(0.20),
-            BigDecimal.ZERO,
-            BigDecimal.valueOf(0.000650),
-            120,
-            Instant.now()
-        );
+        LlmCallLog logEntry = new LlmCallLog(UUID.randomUUID(), null, null, null, null,
+            "test_source", "test_role", modelName, 100, 50, 10, 0, 160, BigDecimal.valueOf(1.50),
+            BigDecimal.valueOf(10.00), BigDecimal.valueOf(0.20), BigDecimal.ZERO,
+            BigDecimal.valueOf(0.000650), 120, Instant.now());
 
         repository.insert(logEntry);
 

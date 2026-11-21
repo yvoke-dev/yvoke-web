@@ -1,18 +1,14 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
-import org.mockito.ArgumentCaptor;
-
-import static org.mockito.Mockito.never;
-
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.Profile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
@@ -22,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 public class OrchestratorProfileServiceTest {
 

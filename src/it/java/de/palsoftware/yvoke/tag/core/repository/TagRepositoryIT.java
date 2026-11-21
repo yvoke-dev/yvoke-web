@@ -3,6 +3,8 @@ package de.palsoftware.yvoke.tag.core.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -11,14 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 
-@SpringBootTest(
-        properties = {
-            "spring.flyway.enabled=true",
-            "spring.flyway.locations=filesystem:docker/db/migration"
-        })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class TagRepositoryIT {
 
     private static final String COLLECTION_NAME = "TAG-DELETE-TEST-COLL";
@@ -38,8 +35,9 @@ public class TagRepositoryIT {
     public void setUp() {
         cleanup();
         collectionRepository.create(COLLECTION_NAME, "Test Collection for Tag Deletion", "OIM");
-        collectionId = collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
-        
+        collectionId =
+            collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
+
         // Add tags to the collection
         tagRepository.addTagToCollection(collectionId, "v1");
         tagRepository.addTagToCollection(collectionId, "release");
@@ -66,63 +64,64 @@ public class TagRepositoryIT {
         UUID docId1 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO documents (id, collection_id, kind, title, tags) VALUES (?, ?, ?, ?, ?::text[])",
-            docId1, collectionId, "manual", "doc-tagged", new String[]{"release"}
-        );
+            docId1, collectionId, "manual", "doc-tagged", new String[] {"release"});
 
         // Insert a document with 'v1' tag (should not be deleted)
         UUID docId2 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO documents (id, collection_id, kind, title, tags) VALUES (?, ?, ?, ?, ?::text[])",
-            docId2, collectionId, "manual", "doc-untagged", new String[]{"v1"}
-        );
+            docId2, collectionId, "manual", "doc-untagged", new String[] {"v1"});
 
         // Insert a JSON object with 'release' tag
         UUID jsonObjId1 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO json_objects (id, collection_id, data, tags) VALUES (?, ?, ?::jsonb, ?::text[])",
-            jsonObjId1, collectionId, "{\"key\": \"value\"}", new String[]{"release"}
-        );
+            jsonObjId1, collectionId, "{\"key\": \"value\"}", new String[] {"release"});
 
         // Insert a JSON object with 'v1' tag (should not be deleted)
         UUID jsonObjId2 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO json_objects (id, collection_id, data, tags) VALUES (?, ?, ?::jsonb, ?::text[])",
-            jsonObjId2, collectionId, "{\"key\": \"other\"}", new String[]{"v1"}
-        );
+            jsonObjId2, collectionId, "{\"key\": \"other\"}", new String[] {"v1"});
 
         // Insert an entity with 'release' tag
         UUID entityId1 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO entities (id, collection_id, name, kind, tags) VALUES (?, ?, ?, 'table', ?::text[])",
-            entityId1, collectionId, "Entity1", new String[]{"release"}
-        );
+            entityId1, collectionId, "Entity1", new String[] {"release"});
 
         // Insert an entity with 'v1' tag (should not be deleted)
         UUID entityId2 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO entities (id, collection_id, name, kind, tags) VALUES (?, ?, ?, 'table', ?::text[])",
-            entityId2, collectionId, "Entity2", new String[]{"v1"}
-        );
+            entityId2, collectionId, "Entity2", new String[] {"v1"});
 
         // Insert a relationship with 'release' tag
         UUID relId1 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO relationships (id, collection_id, subject, predicate, object, tags) VALUES (?, ?, ?, ?, ?, ?::text[])",
-            relId1, collectionId, "Entity1", "links", "Entity2", new String[]{"release"}
-        );
+            relId1, collectionId, "Entity1", "links", "Entity2", new String[] {"release"});
 
         // Insert a relationship with 'v1' tag (should not be deleted)
         UUID relId2 = UUID.randomUUID();
         jdbcTemplate.update(
             "INSERT INTO relationships (id, collection_id, subject, predicate, object, tags) VALUES (?, ?, ?, ?, ?, ?::text[])",
-            relId2, collectionId, "Entity2", "links", "Entity1", new String[]{"v1"}
-        );
+            relId2, collectionId, "Entity2", "links", "Entity1", new String[] {"v1"});
 
         // Ensure everything is present before removing the tag
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documents WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM json_objects WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM entities WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM relationships WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM documents WHERE collection_id = ?", Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM json_objects WHERE collection_id = ?",
+                Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM entities WHERE collection_id = ?", Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM relationships WHERE collection_id = ?", Integer.class,
+            collectionId)).isEqualTo(2);
 
         // Remove the 'release' tag from the collection. TagRepository now ONLY detaches the tag
         // from the collection's own tags array; the cross-domain content cascade moved to
@@ -134,10 +133,19 @@ public class TagRepositoryIT {
         assertThat(col.tags()).containsExactly("v1");
 
         // Content is NOT deleted by the repository method (no cross-domain cascade any more).
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documents WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM json_objects WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM entities WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM relationships WHERE collection_id = ?", Integer.class, collectionId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM documents WHERE collection_id = ?", Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM json_objects WHERE collection_id = ?",
+                Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM entities WHERE collection_id = ?", Integer.class, collectionId))
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM relationships WHERE collection_id = ?", Integer.class,
+            collectionId)).isEqualTo(2);
     }
 
     // ---------------------------------------------------------------------
@@ -153,9 +161,8 @@ public class TagRepositoryIT {
         UUID tagged = insertDocument("kit/install.md", "release");
 
         assertThatThrownBy(() -> tagRepository.addTagToDocument(untagged, "release"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("kit/install.md")
-                .hasMessageContaining("release");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("kit/install.md")
+            .hasMessageContaining("release");
 
         // Neither row moved.
         assertThat(tagsOf(untagged)).isEmpty();
@@ -177,8 +184,7 @@ public class TagRepositoryIT {
         UUID v1Only = insertDocument("kit/install.md", "v1");
 
         assertThatThrownBy(() -> tagRepository.removeTagFromDocument(both, "release"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("kit/install.md");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("kit/install.md");
 
         assertThat(tagsOf(both)).containsExactly("release", "v1");
         assertThat(tagsOf(v1Only)).containsExactly("v1");
@@ -196,17 +202,15 @@ public class TagRepositoryIT {
     private UUID insertDocument(String sourceFile, String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-                "INSERT INTO documents (id, collection_id, kind, title, metadata, tags) "
-                        + "VALUES (?, ?, 'manual', ?, jsonb_build_object('source_file', ?::text), ?::text[])",
-                id, collectionId, sourceFile, sourceFile, tags);
+            "INSERT INTO documents (id, collection_id, kind, title, metadata, tags) "
+                + "VALUES (?, ?, 'manual', ?, jsonb_build_object('source_file', ?::text), ?::text[])",
+            id, collectionId, sourceFile, sourceFile, tags);
         return id;
     }
 
     private List<String> tagsOf(UUID docId) {
-        return jdbcTemplate.queryForObject(
-                "SELECT tags FROM documents WHERE id = ?",
-                (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()),
-                docId);
+        return jdbcTemplate.queryForObject("SELECT tags FROM documents WHERE id = ?",
+            (rs, rowNum) -> List.of((String[]) rs.getArray("tags").getArray()), docId);
     }
 
     /**
@@ -227,8 +231,7 @@ public class TagRepositoryIT {
         UUID permutedSibling = insertDocument("kit/install.md", "9.3.1", "10.0");
 
         assertThatThrownBy(() -> tagRepository.addTagToDocument(target, "9.3.1"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("kit/install.md");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("kit/install.md");
 
         assertThat(tagsOf(target)).containsExactly("10.0");
         assertThat(tagsOf(permutedSibling)).containsExactlyInAnyOrder("9.3.1", "10.0");
@@ -240,8 +243,7 @@ public class TagRepositoryIT {
         UUID permutedSibling = insertDocument("kit/install.md", "9.3.1", "10.0");
 
         assertThatThrownBy(() -> tagRepository.removeTagFromDocument(target, "beta"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("kit/install.md");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("kit/install.md");
 
         assertThat(tagsOf(target)).containsExactlyInAnyOrder("10.0", "9.3.1", "beta");
         assertThat(tagsOf(permutedSibling)).containsExactlyInAnyOrder("9.3.1", "10.0");

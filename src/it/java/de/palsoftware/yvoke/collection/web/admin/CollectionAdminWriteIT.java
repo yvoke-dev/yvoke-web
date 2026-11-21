@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,21 +20,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.hamcrest.Matchers;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 /**
  * Collection creation and tag lifecycle, plus the tag/version dropdown fragment — none of which was
  * requested by any test before.
  *
- * <p>The fragment endpoint is the interesting one: four URLs map to one handler that picks between
+ * <p>
+ * The fragment endpoint is the interesting one: four URLs map to one handler that picks between
  * <em>three different templates</em> by sniffing the {@code HX-Current-URL} header. Returning the
  * wrong one breaks the tag dropdown on the ingest and connectors pages, where the tag is a required
- * field — and per the documented pitfall, an ingest that runs untagged silently replaces the previous
- * version's documents. A whole-page GET smoke test cannot reach any of this, because the fragment is
- * only ever rendered as a sub-tree of a partially populated model.
+ * field — and per the documented pitfall, an ingest that runs untagged silently replaces the
+ * previous version's documents. A whole-page GET smoke test cannot reach any of this, because the
+ * fragment is only ever rendered as a sub-tree of a partially populated model.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -76,11 +77,9 @@ public class CollectionAdminWriteIT {
 
     private UUID createCollection() throws Exception {
         mockMvc
-            .perform(post("/admin/collections").with(csrf()).with(admin())
-                .param("name", COLLECTION).param("description", "created by IT")
-                .param("area", "OIM"))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/admin/collections"));
+            .perform(post("/admin/collections").with(csrf()).with(admin()).param("name", COLLECTION)
+                .param("description", "created by IT").param("area", "OIM"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/collections"));
         return jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?", UUID.class,
             COLLECTION);
     }
@@ -101,18 +100,17 @@ public class CollectionAdminWriteIT {
         mockMvc
             .perform(post("/admin/collections/add-tag").with(csrf()).with(admin())
                 .param("collectionId", id.toString()).param("tag", "9.3"))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/admin/collections"));
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/collections"));
         assertThat(jdbcTemplate.queryForList("SELECT unnest(tags) FROM collections WHERE id = ?",
             String.class, id)).containsExactly("9.3");
 
-        // Removal is the destructive one — it lives on the lifecycle controller because it may purge
+        // Removal is the destructive one — it lives on the lifecycle controller because it may
+        // purge
         // content whose only tag was this.
         mockMvc
             .perform(post("/admin/collections/remove-tag").with(csrf()).with(admin())
                 .param("collectionId", id.toString()).param("tag", "9.3"))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/admin/collections"));
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/collections"));
         assertThat(jdbcTemplate.queryForList("SELECT unnest(tags) FROM collections WHERE id = ?",
             String.class, id)).isEmpty();
     }
@@ -125,16 +123,15 @@ public class CollectionAdminWriteIT {
             .param("collectionId", id.toString()).param("tag", "10.0"));
 
         mockMvc
-            .perform(get("/admin/collections/tag-options").param("collection", COLLECTION)
-                .with(admin()))
+            .perform(
+                get("/admin/collections/tag-options").param("collection", COLLECTION).with(admin()))
             .andExpect(status().isOk())
-            .andExpect(MockMvcResultMatchers.content()
-                .string(Matchers.containsString("10.0")));
+            .andExpect(MockMvcResultMatchers.content().string(Matchers.containsString("10.0")));
     }
 
     /**
-     * One endpoint, three possible fragments, chosen by a request header. Each host page has its own
-     * {@code tag-container}, so a mis-branch silently swaps foreign markup into the page.
+     * One endpoint, three possible fragments, chosen by a request header. Each host page has its
+     * own {@code tag-container}, so a mis-branch silently swaps foreign markup into the page.
      */
     @Test
     public void theFragmentChosenDependsOnTheCallingPage() throws Exception {
@@ -160,16 +157,16 @@ public class CollectionAdminWriteIT {
     @Test
     public void anUnknownCollectionYieldsAnEmptyDropdown() throws Exception {
         mockMvc
-            .perform(get("/admin/collections/tag-options").param("collection", "NOPE-DOES-NOT-EXIST")
-                .with(admin()))
+            .perform(get("/admin/collections/tag-options")
+                .param("collection", "NOPE-DOES-NOT-EXIST").with(admin()))
             .andExpect(status().isOk());
     }
 
     @Test
     public void collectionWritesAndTheFragmentRequireAdmin() throws Exception {
         mockMvc
-            .perform(post("/admin/collections").with(csrf()).with(plainUser()).param("name",
-                COLLECTION))
+            .perform(
+                post("/admin/collections").with(csrf()).with(plainUser()).param("name", COLLECTION))
             .andExpect(status().isForbidden());
         mockMvc
             .perform(post("/admin/collections/add-tag").with(csrf()).with(plainUser())
@@ -179,9 +176,8 @@ public class CollectionAdminWriteIT {
             .perform(post("/admin/collections/remove-tag").with(csrf()).with(plainUser())
                 .param("collectionId", UUID.randomUUID().toString()).param("tag", "9.3"))
             .andExpect(status().isForbidden());
-        mockMvc
-            .perform(get("/admin/collections/tag-options").param("collection", COLLECTION)
-                .with(plainUser()))
+        mockMvc.perform(
+            get("/admin/collections/tag-options").param("collection", COLLECTION).with(plainUser()))
             .andExpect(status().isForbidden());
 
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM collections WHERE name = ?",

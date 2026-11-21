@@ -188,4 +188,3 @@ class DesktopSyncDtoValidationTest {
         assertThat(validator.validate(validVer)).isEmpty();
     }
 }
-

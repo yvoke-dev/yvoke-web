@@ -544,4 +544,3 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         }
     }
 }
-

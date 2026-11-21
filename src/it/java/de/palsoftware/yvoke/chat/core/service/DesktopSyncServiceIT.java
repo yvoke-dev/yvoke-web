@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest;
 import de.palsoftware.yvoke.chat.api.model.OrchestratorRunRequest.Step;
-import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.service.DesktopSyncService.NewMessage;
+import de.palsoftware.yvoke.chat.orchestration.DesktopOrchestratorRunService;
 import de.palsoftware.yvoke.shared.user.model.User;
-import org.springframework.security.access.AccessDeniedException;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.HashMap;
@@ -22,22 +22,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
-import de.palsoftware.yvoke.chat.core.model.Feedback;
 
 /**
  * PRF-11 / ARC-02: {@link DesktopSyncService#appendMessages} performs several writes (per-message
- * inserts + title/touch). A failure part-way through the batch must roll the whole thing back rather
- * than leaving orphaned messages.
+ * inserts + title/touch). A failure part-way through the batch must roll the whole thing back
+ * rather than leaving orphaned messages.
  */
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class DesktopSyncServiceIT {
 
     private static final String ENTRA_OID = "dss-it-oid";
@@ -83,10 +81,11 @@ public class DesktopSyncServiceIT {
      * pinned playbook.
      *
      * <p>
-     * The opposite half is that a settings map which IS supplied replaces the stored jsonb wholesale
-     * — {@code ConversationRepository.updateSettings} writes {@code SET settings = :settings::jsonb}
-     * — because replacement is the only way a desktop client can REMOVE a setting (a stuck
-     * playbook override, say). {@code ChatConversationServiceTest#updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt}
+     * The opposite half is that a settings map which IS supplied replaces the stored jsonb
+     * wholesale — {@code ConversationRepository.updateSettings} writes
+     * {@code SET settings = :settings::jsonb} — because replacement is the only way a desktop
+     * client can REMOVE a setting (a stuck playbook override, say).
+     * {@code ChatConversationServiceTest#updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt}
      * pins merging in the WEB service, which sits on top of this same repository method, so if the
      * merge were pushed down into the repository that test would stay green while the desktop lost
      * the ability to delete a key forever.
@@ -174,7 +173,7 @@ public class DesktopSyncServiceIT {
                 .isInstanceOf(AccessDeniedException.class);
             assertThatThrownBy(() -> service.appendMessages(conversationId, intruder,
                 List.of(new NewMessage("user", "injected", null, null, null, null, null))))
-                    .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class);
             assertThatThrownBy(() -> service.getFeedbackByMessageId(conversationId, intruder))
                 .isInstanceOf(AccessDeniedException.class);
 
@@ -236,9 +235,9 @@ public class DesktopSyncServiceIT {
         assertThat(conversationRows).as("the conversation row must be gone, not merely flagged")
             .isZero();
 
-        Integer messageRows = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM messages WHERE conversation_id = ?", Integer.class,
-            conversationId);
+        Integer messageRows =
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+                Integer.class, conversationId);
         assertThat(messageRows).as("the user's verbatim questions must not survive the delete")
             .isZero();
 
@@ -261,24 +260,25 @@ public class DesktopSyncServiceIT {
         conversationId = conv.id();
 
         // First message is valid (gets saved), the second has blank content and fails mid-batch.
-        List<NewMessage> batch = List.of(
-            new NewMessage("user", "valid first message", null, null, null, null, null),
-            new NewMessage("assistant", "   ", null, null, null, null, null));
+        List<NewMessage> batch =
+            List.of(new NewMessage("user", "valid first message", null, null, null, null, null),
+                new NewMessage("assistant", "   ", null, null, null, null, null));
 
         assertThatThrownBy(() -> service.appendMessages(conversationId, user, batch))
             .isInstanceOf(ResponseStatusException.class);
 
         // Atomic: the already-saved first message must have been rolled back too.
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM messages WHERE conversation_id = ?", Integer.class, conversationId);
+        Integer count =
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+                Integer.class, conversationId);
         assertThat(count).isZero();
     }
 
     /**
      * The map {@code getFeedbackByMessageId} returns is the sole source of thumbs-up/down state in
      * the desktop client, which looks each row up by the id of the MESSAGE it rendered. Keying it
-     * by the feedback row's own id is a one-token slip that compiles — both are {@code UUID} —
-     * and it fails completely silently: every message would come back with null feedback over a 200
+     * by the feedback row's own id is a one-token slip that compiles — both are {@code UUID} — and
+     * it fails completely silently: every message would come back with null feedback over a 200
      * response, so users would watch their past ratings vanish, re-rate answers they had already
      * rated, and fill the review queue with duplicates, with no exception and no log line.
      * {@code containsOnlyKeys} rather than {@code containsKey} is what makes the keying observable
@@ -300,12 +300,16 @@ public class DesktopSyncServiceIT {
         UUID otherConversationId = convB.id();
 
         try {
-            UUID ratedInA = service.appendMessages(conversationId, owner,
-                List.of(new NewMessage("assistant", "A's answer", null, null, null, null, null)))
-                    .getFirst();
-            UUID ratedInB = service.appendMessages(otherConversationId, owner,
-                List.of(new NewMessage("assistant", "B's answer", null, null, null, null, null)))
-                    .getFirst();
+            UUID ratedInA = service
+                .appendMessages(conversationId, owner,
+                    List.of(
+                        new NewMessage("assistant", "A's answer", null, null, null, null, null)))
+                .getFirst();
+            UUID ratedInB = service
+                .appendMessages(otherConversationId, owner,
+                    List.of(
+                        new NewMessage("assistant", "B's answer", null, null, null, null, null)))
+                .getFirst();
             service.submitFeedback(ratedInA, owner, 1, "spot on");
             service.submitFeedback(ratedInB, owner, -1, "B-only, must not leak into A");
 
@@ -334,15 +338,16 @@ public class DesktopSyncServiceIT {
         Conversation conv = service.createConversation(user, "Title", Map.of());
         conversationId = conv.id();
 
-        List<NewMessage> batch = List.of(
-            new NewMessage("user", "first", null, null, null, null, null),
-            new NewMessage("assistant", "second", null, null, null, null, null));
+        List<NewMessage> batch =
+            List.of(new NewMessage("user", "first", null, null, null, null, null),
+                new NewMessage("assistant", "second", null, null, null, null, null));
 
         List<UUID> ids = service.appendMessages(conversationId, user, batch);
 
         assertThat(ids).hasSize(2);
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM messages WHERE conversation_id = ?", Integer.class, conversationId);
+        Integer count =
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+                Integer.class, conversationId);
         assertThat(count).isEqualTo(2);
     }
 
@@ -350,14 +355,13 @@ public class DesktopSyncServiceIT {
      * A desktop row is a FINISHED answer — the desktop app generated it, showed it to the user and
      * is posting the transcript afterwards — and its {@code status} is what says so. That column is
      * not decoration: {@code ChatMessageService.onApplicationReady} runs
-     * {@code MessageRepository.resetGeneratingMessages()} on every
-     * {@code ApplicationReadyEvent}, and that statement REPLACES the content of every
-     * {@code status = 'generating'} row with "⚠️ *[Generation interrupted (system restart)]*". So if
-     * desktop-appended rows ever landed as anything but {@code done}, the next restart would
-     * silently overwrite real answers with an interruption notice — and this is the only
-     * server-side copy of that text, the one {@code getMessages} rehydrates onto a reinstall or a
-     * second device. The user's local copy and the server's would diverge with nothing failing
-     * anywhere.
+     * {@code MessageRepository.resetGeneratingMessages()} on every {@code ApplicationReadyEvent},
+     * and that statement REPLACES the content of every {@code status = 'generating'} row with "⚠️
+     * *[Generation interrupted (system restart)]*". So if desktop-appended rows ever landed as
+     * anything but {@code done}, the next restart would silently overwrite real answers with an
+     * interruption notice — and this is the only server-side copy of that text, the one
+     * {@code getMessages} rehydrates onto a reinstall or a second device. The user's local copy and
+     * the server's would diverge with nothing failing anywhere.
      *
      * <p>
      * The provenance of both values is a convenience constructor's defaults, not a route:
@@ -368,8 +372,8 @@ public class DesktopSyncServiceIT {
      * status — moves this contract without touching {@code DesktopSyncService} at all. The
      * {@code model} half is the complement and is asserted so the null is on record as intentional:
      * {@code MessageDto.model} is always null for desktop rows (only the web path sets it, via
-     * {@code updateContentAndStatus}'s {@code COALESCE(:model, model)}), so any consumer that starts
-     * treating it as populated is reading a field this route cannot fill.
+     * {@code updateContentAndStatus}'s {@code COALESCE(:model, model)}), so any consumer that
+     * starts treating it as populated is reading a field this route cannot fill.
      *
      * <p>
      * The five existing tests here cover ownership, atomicity, batch persistence and ordering; none
@@ -385,8 +389,8 @@ public class DesktopSyncServiceIT {
         // Tokens are supplied so the assistant row is as fully populated as this route ever gets —
         // the point is that even then it carries no model name.
         service.appendMessages(conversationId, user,
-            List.of(new NewMessage("user", "which table holds a Person?", null, null, null, null,
-                null),
+            List.of(
+                new NewMessage("user", "which table holds a Person?", null, null, null, null, null),
                 new NewMessage("assistant", "the answer the desktop app already showed", 11, 22, 33,
                     null, null)));
 
@@ -410,12 +414,13 @@ public class DesktopSyncServiceIT {
 
     /**
      * Regression: the desktop client posts a whole turn as one batch, and {@code appendMessages} is
-     * {@code @Transactional} — so every row was stamped with the same {@code CURRENT_TIMESTAMP} (the
-     * <em>transaction</em> start time in Postgres, not the statement time). The read path's
+     * {@code @Transactional} — so every row was stamped with the same {@code CURRENT_TIMESTAMP}
+     * (the <em>transaction</em> start time in Postgres, not the statement time). The read path's
      * {@code ORDER BY created_at ASC, id ASC} then fell through to its tie-break on a random v4
      * {@code UUID}, so each turn rendered user-first or assistant-first by coin flip.
      *
-     * <p>The batch is deliberately eight messages rather than two: the order assertion alone would
+     * <p>
+     * The batch is deliberately eight messages rather than two: the order assertion alone would
      * pass ~50% of the time on a two-row turn, but only 1-in-8! of the time here. The strictly
      * increasing {@code createdAt} assertion below is the deterministic anchor — it fails on every
      * run against {@code CURRENT_TIMESTAMP}.
@@ -427,8 +432,7 @@ public class DesktopSyncServiceIT {
         Conversation conv = service.createConversation(user, "Title", Map.of());
         conversationId = conv.id();
 
-        List<NewMessage> batch = List.of(
-            new NewMessage("user", "q1", null, null, null, null, null),
+        List<NewMessage> batch = List.of(new NewMessage("user", "q1", null, null, null, null, null),
             new NewMessage("assistant", "a1", null, null, null, null, null),
             new NewMessage("user", "q2", null, null, null, null, null),
             new NewMessage("assistant", "a2", null, null, null, null, null),
@@ -441,8 +445,8 @@ public class DesktopSyncServiceIT {
 
         List<Message> stored = service.getMessages(conversationId, user, 100, 0);
 
-        assertThat(stored).extracting(Message::content).containsExactly("q1", "a1", "q2", "a2", "q3",
-            "a3", "q4", "a4");
+        assertThat(stored).extracting(Message::content).containsExactly("q1", "a1", "q2", "a2",
+            "q3", "a3", "q4", "a4");
         assertThat(stored).extracting(Message::role).containsExactly("user", "assistant", "user",
             "assistant", "user", "assistant", "user", "assistant");
 
@@ -458,18 +462,20 @@ public class DesktopSyncServiceIT {
         conversationId = conv.id();
 
         // Step 1 is valid, Step 2 contains PostgreSQL-invalid NUL character (\u0000)
-        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20, 30, 0, 0);
-        Step s2 = new Step(1, "specialist", 0, "pb", "m", "high", "in2\u0000bad", "out2", null, null, 10, 20, 30, 0, 0);
+        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20,
+            30, 0, 0);
+        Step s2 = new Step(1, "specialist", 0, "pb", "m", "high", "in2\u0000bad", "out2", null,
+            null, 10, 20, 30, 0, 0);
 
-        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, null, "OIM", "done", null,
-            1, null, 20, 40, 60, 0, 0, null, List.of(s1, s2));
+        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, null, "OIM", "done",
+            null, 1, null, 20, 40, 60, 0, 0, null, List.of(s1, s2));
 
-        assertThatThrownBy(() -> orchestratorRunService.record(user, req))
-            .isNotNull();
+        assertThatThrownBy(() -> orchestratorRunService.record(user, req)).isNotNull();
 
         // Transaction rollback must have removed the agent_runs row
-        Integer runCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM agent_runs WHERE conversation_id = ?", Integer.class, conversationId);
+        Integer runCount =
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM agent_runs WHERE conversation_id = ?",
+                Integer.class, conversationId);
         assertThat(runCount).as("agent_runs row must be rolled back on step failure").isZero();
     }
 
@@ -482,17 +488,18 @@ public class DesktopSyncServiceIT {
         conversationId = convA.id();
 
         // Create message in convB
-        service.appendMessages(convB.id(), user, List.of(
-            new NewMessage("assistant", "answer in B", null, null, null, null, null)));
+        service.appendMessages(convB.id(), user,
+            List.of(new NewMessage("assistant", "answer in B", null, null, null, null, null)));
         UUID messageIdInB = service.getMessages(convB.id(), user, 10, 0).get(0).id();
 
         // Try to record run for convA pointing to message in convB
-        OrchestratorRunRequest req = new OrchestratorRunRequest(convA.id(), messageIdInB, "OIM", "done",
-            null, 1, null, 10, 10, 20, 0, 0, null, List.of());
+        OrchestratorRunRequest req = new OrchestratorRunRequest(convA.id(), messageIdInB, "OIM",
+            "done", null, 1, null, 10, 10, 20, 0, 0, null, List.of());
 
         assertThatThrownBy(() -> orchestratorRunService.record(user, req))
             .isInstanceOf(ResponseStatusException.class)
-            .satisfies(t -> assertThat(((ResponseStatusException) t).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+            .satisfies(t -> assertThat(((ResponseStatusException) t).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
@@ -502,19 +509,20 @@ public class DesktopSyncServiceIT {
         Conversation conv = service.createConversation(user, "Conv Happy", Map.of());
         conversationId = conv.id();
 
-        service.appendMessages(conv.id(), user, List.of(
-            new NewMessage("assistant", "answer in conv", null, null, null, null, null)));
+        service.appendMessages(conv.id(), user,
+            List.of(new NewMessage("assistant", "answer in conv", null, null, null, null, null)));
         UUID messageId = service.getMessages(conv.id(), user, 10, 0).get(0).id();
 
-        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20, 30, 0, 0);
+        Step s1 = new Step(0, "specialist", 0, "pb", "m", "high", "in1", "out1", null, null, 10, 20,
+            30, 0, 0);
         OrchestratorRunRequest req = new OrchestratorRunRequest(conv.id(), messageId, "OIM", "done",
             null, 1, null, 10, 20, 30, 0, 0, null, List.of(s1));
 
         UUID runId = orchestratorRunService.record(user, req);
         assertThat(runId).isNotNull();
 
-        Integer runCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM agent_runs WHERE id = ?", Integer.class, runId);
+        Integer runCount = jdbcTemplate
+            .queryForObject("SELECT COUNT(*) FROM agent_runs WHERE id = ?", Integer.class, runId);
         assertThat(runCount).isEqualTo(1);
 
         Integer stepCount = jdbcTemplate.queryForObject(
@@ -528,8 +536,8 @@ public class DesktopSyncServiceIT {
         User owner = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
 
         // 400 rejection on non-string or >256-char desktopVersion
-        assertThatThrownBy(() -> service.createConversation(owner, "Invalid Type",
-            Map.of("desktopVersion", 42)))
+        assertThatThrownBy(
+            () -> service.createConversation(owner, "Invalid Type", Map.of("desktopVersion", 42)))
             .isInstanceOfSatisfying(ResponseStatusException.class,
                 e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
         assertThatThrownBy(() -> service.createConversation(owner, "Oversized",
@@ -546,7 +554,8 @@ public class DesktopSyncServiceIT {
             "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("1.3.0");
 
-        // Attempt to overwrite with "1.4.0" alongside other settings -> original "1.3.0" preserved in JSONB
+        // Attempt to overwrite with "1.4.0" alongside other settings -> original "1.3.0" preserved
+        // in JSONB
         service.updateConversation(conversationId, owner, null,
             Map.of("desktopVersion", "1.4.0", "thinkingLevel", "high"));
         assertThat(jdbcTemplate.queryForObject(
@@ -557,8 +566,7 @@ public class DesktopSyncServiceIT {
             conversationId)).isEqualTo("high");
 
         // Update omitting desktopVersion -> original "1.3.0" preserved in JSONB
-        service.updateConversation(conversationId, owner, null,
-            Map.of("model", "claude-opus-4-6"));
+        service.updateConversation(conversationId, owner, null, Map.of("model", "claude-opus-4-6"));
         assertThat(jdbcTemplate.queryForObject(
             "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("1.3.0");
@@ -566,9 +574,9 @@ public class DesktopSyncServiceIT {
             "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("claude-opus-4-6");
 
-        // PATCH with Map.of("desktopVersion", "1.4.0") replaces the settings map as usual while keeping creation version
-        service.updateConversation(conversationId, owner, null,
-            Map.of("desktopVersion", "1.4.0"));
+        // PATCH with Map.of("desktopVersion", "1.4.0") replaces the settings map as usual while
+        // keeping creation version
+        service.updateConversation(conversationId, owner, null, Map.of("desktopVersion", "1.4.0"));
         assertThat(jdbcTemplate.queryForObject(
             "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?", String.class,
             conversationId)).isEqualTo("1.3.0");
@@ -576,7 +584,8 @@ public class DesktopSyncServiceIT {
             "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
             conversationId)).isNull();
 
-        // 400 rejection on update with non-string or >256-char desktopVersion leaves stored title unchanged
+        // 400 rejection on update with non-string or >256-char desktopVersion leaves stored title
+        // unchanged
         assertThatThrownBy(() -> service.updateConversation(conversationId, owner,
             "Should Not Stick", Map.of("desktopVersion", List.of("1.4.0"))))
             .isInstanceOfSatisfying(ResponseStatusException.class,
@@ -585,9 +594,8 @@ public class DesktopSyncServiceIT {
             "Should Not Stick", Map.of("desktopVersion", "1".repeat(257))))
             .isInstanceOfSatisfying(ResponseStatusException.class,
                 e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
-            .isEqualTo("Versioned Thread");
+        assertThat(jdbcTemplate.queryForObject("SELECT title FROM conversations WHERE id = ?",
+            String.class, conversationId)).isEqualTo("Versioned Thread");
     }
 
     @Test
@@ -602,13 +610,13 @@ public class DesktopSyncServiceIT {
         Map<String, Object> nullVersionMap = new HashMap<>();
         nullVersionMap.put("desktopVersion", null);
 
-        // 1. Blank/null desktopVersion PATCHes on unversioned conversation update title and keep "model"
+        // 1. Blank/null desktopVersion PATCHes on unversioned conversation update title and keep
+        // "model"
         for (Map<String, Object> blankPatch : List.of(Map.<String, Object>of("desktopVersion", ""),
             Map.<String, Object>of("desktopVersion", "\u2003"), nullVersionMap)) {
             service.updateConversation(conversationId, owner, "Renamed Unversioned", blankPatch);
-            assertThat(jdbcTemplate.queryForObject(
-                "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
-                .isEqualTo("Renamed Unversioned");
+            assertThat(jdbcTemplate.queryForObject("SELECT title FROM conversations WHERE id = ?",
+                String.class, conversationId)).isEqualTo("Renamed Unversioned");
             assertThat(jdbcTemplate.queryForObject(
                 "SELECT settings ->> 'model' FROM conversations WHERE id = ?", String.class,
                 conversationId)).isEqualTo("claude-sonnet-4-6");
@@ -617,15 +625,15 @@ public class DesktopSyncServiceIT {
                 String.class, conversationId)).isNull();
         }
 
-        // 2. Record a desktopVersion on the conversation, then verify blank/null PATCHes keep both desktopVersion and model
+        // 2. Record a desktopVersion on the conversation, then verify blank/null PATCHes keep both
+        // desktopVersion and model
         service.updateConversation(conversationId, owner, null,
             Map.of("desktopVersion", "1.3.1", "model", "claude-sonnet-4-6"));
         for (Map<String, Object> blankPatch : List.of(Map.<String, Object>of("desktopVersion", ""),
             Map.<String, Object>of("desktopVersion", "\u2003"), nullVersionMap)) {
             service.updateConversation(conversationId, owner, "Renamed Versioned", blankPatch);
-            assertThat(jdbcTemplate.queryForObject(
-                "SELECT title FROM conversations WHERE id = ?", String.class, conversationId))
-                .isEqualTo("Renamed Versioned");
+            assertThat(jdbcTemplate.queryForObject("SELECT title FROM conversations WHERE id = ?",
+                String.class, conversationId)).isEqualTo("Renamed Versioned");
             assertThat(jdbcTemplate.queryForObject(
                 "SELECT settings ->> 'desktopVersion' FROM conversations WHERE id = ?",
                 String.class, conversationId)).isEqualTo("1.3.1");

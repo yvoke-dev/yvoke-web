@@ -1,10 +1,8 @@
 package de.palsoftware.yvoke.shared.audit.repository;
 
-import de.palsoftware.yvoke.shared.audit.model.AuditLog;
-
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.shared.audit.model.AuditLog;
 import jakarta.annotation.Nullable;
 import java.util.List;
 import java.util.Map;

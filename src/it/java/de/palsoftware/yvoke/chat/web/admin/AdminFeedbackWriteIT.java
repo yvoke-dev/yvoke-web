@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,17 +29,17 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.hamcrest.Matchers;
 
 /**
  * The feedback dashboard's two htmx write cells and its filter/sort controls.
  *
- * <p>{@code AdminFeedbackController} and {@code ChatAdminQueryRepository} had no tests whatsoever, so
+ * <p>
+ * {@code AdminFeedbackController} and {@code ChatAdminQueryRepository} had no tests whatsoever, so
  * the {@code sort} and {@code timeRange} SQL branches were dead to the suite and the two write
  * endpoints were never called. The writes return <em>fragments</em> ({@code :: reviewed-cell},
- * {@code :: notes-cell}), which is exactly what a whole-page GET can never exercise: a fragment renders
- * a sub-tree against a model containing only two attributes, so a stale expression in it fails here
- * and nowhere else.
+ * {@code :: notes-cell}), which is exactly what a whole-page GET can never exercise: a fragment
+ * renders a sub-tree against a model containing only two attributes, so a stale expression in it
+ * fails here and nowhere else.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -79,10 +80,8 @@ public class AdminFeedbackWriteIT {
         messageRepository.save(new Message(messageId, conversationId, "assistant", "An answer.",
             List.of(), List.of(), Instant.now()));
         feedbackId = UUID.randomUUID();
-        jdbcTemplate.update(
-            "INSERT INTO message_feedback (id, message_id, rating, comment) "
-                + "VALUES (?, ?, -1, 'Needs work.')",
-            feedbackId, messageId);
+        jdbcTemplate.update("INSERT INTO message_feedback (id, message_id, rating, comment) "
+            + "VALUES (?, ?, -1, 'Needs work.')", feedbackId, messageId);
     }
 
     @AfterEach
@@ -164,17 +163,16 @@ public class AdminFeedbackWriteIT {
 
     /**
      * Every non-default value of the dashboard's filter and sort controls, which no test had ever
-     * supplied — so the {@code oldest} ordering and all three {@code timeRange} cutoffs were unreached
-     * SQL. A dropped bind or a typo'd column name only surfaces when the branch actually runs.
+     * supplied — so the {@code oldest} ordering and all three {@code timeRange} cutoffs were
+     * unreached SQL. A dropped bind or a typo'd column name only surfaces when the branch actually
+     * runs.
      */
     @Test
     public void everyFilterAndSortCombinationRenders() throws Exception {
         for (String sort : new String[] {"newest", "oldest"}) {
             for (String timeRange : new String[] {"all", "day", "week", "month"}) {
-                mockMvc
-                    .perform(get("/admin/feedback").param("sort", sort)
-                        .param("timeRange", timeRange).with(admin()))
-                    .andExpect(status().isOk());
+                mockMvc.perform(get("/admin/feedback").param("sort", sort)
+                    .param("timeRange", timeRange).with(admin())).andExpect(status().isOk());
             }
         }
         for (String rating : new String[] {"1", "-1"}) {
@@ -188,8 +186,8 @@ public class AdminFeedbackWriteIT {
     }
 
     /**
-     * Pagination past page 0 — the offset arithmetic and the {@code totalPages > 1} block were never
-     * rendered by any test, on any admin list.
+     * Pagination past page 0 — the offset arithmetic and the {@code totalPages > 1} block were
+     * never rendered by any test, on any admin list.
      */
     @Test
     public void theSecondPageOfTheDashboardRenders() throws Exception {

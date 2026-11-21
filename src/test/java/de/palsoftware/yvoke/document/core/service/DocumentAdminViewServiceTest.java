@@ -8,11 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetailPage;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import java.time.Instant;
 import java.util.List;

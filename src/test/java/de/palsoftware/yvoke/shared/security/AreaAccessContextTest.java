@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
@@ -428,4 +427,3 @@ class AreaAccessContextTest {
         assertThat(filteredAdmin).extracting(Item::id).containsExactly("valid-oim", "valid-oim-spaces");
     }
 }
-

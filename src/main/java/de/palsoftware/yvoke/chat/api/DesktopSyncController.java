@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.chat.api;
 
 import de.palsoftware.yvoke.area.core.AreaService;
-import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.chat.api.model.*;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -21,8 +20,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;

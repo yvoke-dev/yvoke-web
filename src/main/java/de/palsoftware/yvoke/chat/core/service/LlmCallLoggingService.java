@@ -5,14 +5,13 @@ import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
 import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
 import de.palsoftware.yvoke.llm.core.model.LlmCallLog;
 import de.palsoftware.yvoke.llm.core.repository.LlmCallLogRepository;
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class LlmCallLoggingService {

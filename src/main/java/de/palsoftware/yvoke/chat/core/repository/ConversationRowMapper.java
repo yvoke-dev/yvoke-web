@@ -1,11 +1,9 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
-import de.palsoftware.yvoke.chat.core.model.Conversation;
-
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -50,4 +48,3 @@ public class ConversationRowMapper implements RowMapper<Conversation> {
             rs.getString("area"));
     }
 }
-

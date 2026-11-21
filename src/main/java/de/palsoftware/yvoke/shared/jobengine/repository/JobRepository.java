@@ -1,14 +1,5 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
@@ -19,7 +10,16 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.jobengine.model.QueuedKindSummary;
 import jakarta.annotation.Nullable;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
 
 @Repository
 public class JobRepository {

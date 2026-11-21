@@ -11,8 +11,10 @@ import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,8 +26,6 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import java.time.OffsetDateTime;
-import org.hamcrest.Matchers;
 
 /**
  * Full Thymeleaf render coverage for the document admin pages after the DTO-at-boundary refactor
@@ -105,8 +105,9 @@ public class DocumentAdminRenderingIT {
      *
      * <p>
      * {@code thread.js} drops the fetched fragment into the dialog with {@code innerHTML} and then
-     * runs {@code contentContainer.querySelectorAll('.citation-content-md:not([data-md-rendered])')}
-     * to markdown-render the body (thread.js:658). That class is carried by exactly one element —
+     * runs
+     * {@code contentContainer.querySelectorAll('.citation-content-md:not([data-md-rendered])')} to
+     * markdown-render the body (thread.js:658). That class is carried by exactly one element —
      * {@code class="citation-expander-body citation-content-md"} — and it looks redundant next to
      * {@code citation-expander-body}, which has its own CSS rules. Drop it, and the dialog renders
      * the section's RAW MARKDOWN: pipes and asterisks and fence markers where a formatted section
@@ -121,9 +122,10 @@ public class DocumentAdminRenderingIT {
      * at the model: they assert the view name plus the {@code section}/{@code error} attributes and
      * never render a line of HTML, so {@code th:if="${error != null}"} — the branch that shows a
      * user MISSING_PARAMS / UNRESOLVABLE / NOT_FOUND / UNAVAILABLE — is only ever checked as a
-     * string in a map. If the two {@code th:if}s ever both evaluate true (or the error div loses its
-     * class), the user gets a blank card, or an empty {@code .citation-content-md} that thread.js
-     * dutifully markdown-renders into nothing, with the real explanation nowhere on screen.
+     * string in a map. If the two {@code th:if}s ever both evaluate true (or the error div loses
+     * its class), the user gets a blank card, or an empty {@code .citation-content-md} that
+     * thread.js dutifully markdown-renders into nothing, with the real explanation nowhere on
+     * screen.
      *
      * <p>
      * Lives in this class because its {@code @BeforeEach} already seeds the collection + document +
@@ -138,8 +140,7 @@ public class DocumentAdminRenderingIT {
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
         assertThat(resolved).contains("class=\"citation-expander-card\"")
-            .contains("class=\"citation-source-info\"")
-            .contains("class=\"citation-scope-badge\"")
+            .contains("class=\"citation-source-info\"").contains("class=\"citation-scope-badge\"")
             // thread.js selects EXACTLY this class to markdown-render the body; without it the
             // dialog shows raw markdown while every text-level assertion still passes.
             .contains("class=\"citation-expander-body citation-content-md\"")
@@ -148,11 +149,13 @@ public class DocumentAdminRenderingIT {
         String failed = mockMvc.perform(get("/document/citation").with(admin()))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
-        assertThat(failed).as("the error branch is what a user reads when a citation cannot be "
-            + "resolved; it renders in no other test").contains("class=\"citation-error\"")
-            .contains("Either chunkId or documentId must be provided.");
         assertThat(failed)
-            .as("the branches are mutually exclusive: an error must not also emit an empty body div "
+            .as("the error branch is what a user reads when a citation cannot be "
+                + "resolved; it renders in no other test")
+            .contains("class=\"citation-error\"")
+            .contains("Either chunkId or documentId must be provided.");
+        assertThat(failed).as(
+            "the branches are mutually exclusive: an error must not also emit an empty body div "
                 + "for thread.js to markdown-render into nothing")
             .doesNotContain("citation-content-md");
     }
@@ -209,8 +212,9 @@ public class DocumentAdminRenderingIT {
             String body = mockMvc.perform(get("/admin/chunks/" + chunkId).with(admin()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
-            assertThat(body).as("conversation_title, conversation_id, role, content and created_at"
-                + " must all reach the template under those exact keys")
+            assertThat(body)
+                .as("conversation_title, conversation_id, role, content and created_at"
+                    + " must all reach the template under those exact keys")
                 .contains("Chunk Surfacing Chat")
                 .contains(conversationId.toString().substring(0, 8)).contains("badge-info")
                 .contains("2024-03-0");
@@ -235,14 +239,14 @@ public class DocumentAdminRenderingIT {
      * blind to {@code List<String>} and fed through {@code HierarchyUtils.normalizeSegment}), while
      * {@code pathStr}, {@code depth} and {@code summary} are read ONLY by
      * {@code admin/document-detail.html}. The two halves fail in opposite ways — {@code depth} is
-     * used in ARITHMETIC ({@code (summary.depth - 1) * 1.5} rem of indent), so losing it is a 500 on
-     * the page, whereas losing {@code path} is completely silent.
+     * used in ARITHMETIC ({@code (summary.depth - 1) * 1.5} rem of indent), so losing it is a 500
+     * on the page, whereas losing {@code path} is completely silent.
      *
      * <p>
      * The SELECT has no {@code ORDER BY}, deliberately: the intended order is PHYSICAL document
-     * order, which only the chunk rows know. So ordering is entirely the caller's job and works only
-     * if this method emits a {@code path} the sorter can normalize and find in the chunk-derived
-     * {@code pathSortOrders} map. Emit the wrong thing and every row falls back to
+     * order, which only the chunk rows know. So ordering is entirely the caller's job and works
+     * only if this method emits a {@code path} the sorter can normalize and find in the
+     * chunk-derived {@code pathSortOrders} map. Emit the wrong thing and every row falls back to
      * {@code Integer.MAX_VALUE}, the comparator returns 0 for every pair, {@code List.sort} is
      * stable, and the operator reading a manual's summaries top-to-bottom is silently reading them
      * in whatever order the summarizer happened to INSERT them — which for a re-summarized document
@@ -261,14 +265,15 @@ public class DocumentAdminRenderingIT {
      * case — so this test is no longer the sorter's only witness, only its ordering one.
      *
      * <p>
-     * Lives in this class because its {@code @BeforeEach} already provides the collection, the admin
-     * OIDC login and MockMvc; a second document mints no new Spring context, and it is cleaned up by
-     * the existing {@code deleteByCollection} teardown (section_summaries cascade with the document).
+     * Lives in this class because its {@code @BeforeEach} already provides the collection, the
+     * admin OIDC login and MockMvc; a second document mints no new Spring context, and it is
+     * cleaned up by the existing {@code deleteByCollection} teardown (section_summaries cascade
+     * with the document).
      */
     @Test
     public void sectionSummariesOnAHierarchicalDocumentRenderInDocumentOrder() throws Exception {
-        UUID hierarchicalId = documentRepository.upsertManualDocument(COLLECTION, "9.3", "manual.md",
-            "hierarchical", "Hierarchical Render Manual");
+        UUID hierarchicalId = documentRepository.upsertManualDocument(COLLECTION, "9.3",
+            "manual.md", "hierarchical", "Hierarchical Render Manual");
         documentRepository.insertChunks(hierarchicalId, COLLECTION, "9.3", "manual.md",
             "hierarchical",
             List.of(
@@ -297,8 +302,9 @@ public class DocumentAdminRenderingIT {
         int installation = body.indexOf("Zeta summary: what to install first.");
         int rollback = body.indexOf("Alpha summary: how to restore a backup.");
 
-        assertThat(installation).as("the Section Summaries card renders at all for a hierarchical "
-            + "document").isNotNegative();
+        assertThat(installation)
+            .as("the Section Summaries card renders at all for a hierarchical " + "document")
+            .isNotNegative();
         assertThat(rollback).as("both summary rows reach the template under the 'summary' key")
             .isNotNegative();
         assertThat(installation).as(
@@ -365,14 +371,13 @@ public class DocumentAdminRenderingIT {
 
 
     /**
-     * A link to a document or chunk that no longer exists must be a 404 — not a 500 and not a
-     * blank page. Stale links are the NORMAL state right after any delete cascade: the corpus
-     * browser, the citation cards and every admin bookmark keep pointing at rows a re-ingest or a
-     * collection delete removed. So this is one of the most frequently walked paths in the admin
-     * UI, and it is the one path nothing executes — every other test in this class renders a row it
-     * created in {@code setUp}, and {@code MvcExceptionHandlerTest} exercises
-     * {@code ResponseStatusException} against synthetic controllers, never against these two
-     * handlers.
+     * A link to a document or chunk that no longer exists must be a 404 — not a 500 and not a blank
+     * page. Stale links are the NORMAL state right after any delete cascade: the corpus browser,
+     * the citation cards and every admin bookmark keep pointing at rows a re-ingest or a collection
+     * delete removed. So this is one of the most frequently walked paths in the admin UI, and it is
+     * the one path nothing executes — every other test in this class renders a row it created in
+     * {@code setUp}, and {@code MvcExceptionHandlerTest} exercises {@code ResponseStatusException}
+     * against synthetic controllers, never against these two handlers.
      *
      * <p>
      * Losing either {@code orElseThrow} turns the missing row into a template evaluation over a
@@ -402,8 +407,7 @@ public class DocumentAdminRenderingIT {
 
     @Test
     public void chunkDetailRendersWithDtoChunk() throws Exception {
-        mockMvc.perform(get("/admin/chunks/" + chunkId).with(admin()))
-            .andExpect(status().isOk())
+        mockMvc.perform(get("/admin/chunks/" + chunkId).with(admin())).andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("First chunk body text.")));
     }
 }

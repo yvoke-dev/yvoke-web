@@ -5,6 +5,7 @@
 - **Java 25**: Primary language.
 - **Spring Boot 4.1.0**: Core framework — the version is pinned by the `spring-boot-starter-parent` in `pom.xml`. Data access is `JdbcClient`, a constructor-injected class rather than an annotation; Testcontainers is wired by a hand-written `ApplicationContextInitializer` (`PostgresTestContainerInitializer`, registered for the whole IT suite via `src/it/resources/META-INF/spring.factories`), **not** `@ServiceConnection`, which appears nowhere in this repository.
 - **Maven**: Dependency management and build tool.
+- **Spotless (`spotless-maven-plugin` 2.45.0)**: Java formatting enforced at `verify` (`spotless:check`; run `./mvnw spotless:apply` to fix). Configured with explicit `<includes>` covering `src/main/java/**/*.java`, `src/test/java/**/*.java`, and `src/it/java/**/*.java` (Spotless's default excludes `src/it/java`), `<removeUnusedImports/>`, `<importOrder>` (`\#,` — static imports first, then non-static alphabetically), and `<eclipse>` using `config/eclipse-java-google-style.xml`.
 
 ## Core Dependencies
 

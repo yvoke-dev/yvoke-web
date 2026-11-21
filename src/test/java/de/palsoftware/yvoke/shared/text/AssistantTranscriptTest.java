@@ -147,4 +147,3 @@ class AssistantTranscriptTest {
         assertThat(AssistantTranscript.toModelText(banner)).isEqualTo("Answer text");
     }
 }
-

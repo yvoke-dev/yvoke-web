@@ -1,35 +1,34 @@
 package de.palsoftware.yvoke.shared.security;
 
-import org.junit.jupiter.api.BeforeEach;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
-
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = {"app.security.mock=false", "app.security.api-key=it-security-gating-api-key"})
@@ -54,10 +53,7 @@ public class SecurityGatingIT {
 
     @BeforeEach
     public void setup() {
-        mockMvc = MockMvcBuilders
-                .webAppContextSetup(context)
-                .apply(springSecurity())
-                .build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
@@ -65,43 +61,43 @@ public class SecurityGatingIT {
         // Actuator runs on the dedicated management port (9090), so it is not mapped on the main
         // servlet context under test. A 404 (rather than 401/403/redirect-to-login) confirms the
         // security chain permits /actuator/** without authentication.
-        mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/health")).andExpect(status().isNotFound());
 
         // Permit static files without auth
-        mockMvc.perform(get("/css/index.css"))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/css/index.css")).andExpect(status().isOk());
     }
 
     @Test
     public void testProtectedEndpointsRedirectOr401Unauthenticated() throws Exception {
-        mockMvc.perform(get("/chat"))
-                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/chat")).andExpect(status().is3xxRedirection());
 
-        mockMvc.perform(get("/admin/documents"))
-                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/admin/documents")).andExpect(status().is3xxRedirection());
     }
 
     @Test
     public void testUserAccessGating() throws Exception {
-        mockMvc.perform(get("/chat")
-                        .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isOk());
+        mockMvc
+            .perform(
+                get("/chat").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+            .andExpect(status().isOk());
 
-        mockMvc.perform(get("/admin/documents")
-                        .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isForbidden());
+        mockMvc
+            .perform(get("/admin/documents")
+                .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+            .andExpect(status().isForbidden());
     }
 
     @Test
     public void testAdminAccessGating() throws Exception {
-        mockMvc.perform(get("/admin/documents")
-                        .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                .andExpect(status().isOk());
+        mockMvc
+            .perform(get("/admin/documents")
+                .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+            .andExpect(status().isOk());
 
-        mockMvc.perform(get("/chat")
-                        .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isOk());
+        mockMvc.perform(
+            get("/chat").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"),
+                new SimpleGrantedAuthority("ROLE_USER"))))
+            .andExpect(status().isOk());
     }
 
     /**
@@ -111,26 +107,27 @@ public class SecurityGatingIT {
      * <p>
      * With {@code app.security.mock=false} — i.e. everywhere real — {@code GET /login} is the whole
      * sign-in flow: {@code LoginController} bounces the browser to
-     * {@code /oauth2/authorization/entra}, which is what starts the authorization-code exchange with
-     * Entra. There is no other way in; {@code oauth2Login().loginPage("/login")} means Spring
-     * Security's own generated login page is not registered, and the entry point for every gated URL
-     * is {@code /login} itself. Lose the redirect — the natural shape of the edit is "just render
-     * the login template in both modes", which compiles, starts and looks right — and the mock login
-     * FORM is served in production instead: a username/password box wired to a
+     * {@code /oauth2/authorization/entra}, which is what starts the authorization-code exchange
+     * with Entra. There is no other way in; {@code oauth2Login().loginPage("/login")} means Spring
+     * Security's own generated login page is not registered, and the entry point for every gated
+     * URL is {@code /login} itself. Lose the redirect — the natural shape of the edit is "just
+     * render the login template in both modes", which compiles, starts and looks right — and the
+     * mock login FORM is served in production instead: a username/password box wired to a
      * {@code MockAuthenticationProvider} that is not even on this chain, so nobody can sign in at
      * all. Every existing test of {@code /login} runs under {@code app.security.mock=true}
      * ({@code SecurityMockGatingIT} asserts it renders 200) and would stay green through exactly
      * that regression, because 200-with-a-form is what mock mode is supposed to do.
      *
      * <p>
-     * {@code GET /} is the URL people bookmark, the one an ingress or uptime check hits, and the one
-     * a browser lands on after any redirect that drops the path. It is not on any permit-list, so it
-     * is authenticated first and then handed to {@code LoginController.index}. Nothing anywhere
-     * requests it: {@code AllPagesRenderSmokeIT}'s path list omits it, and the one place it appears
-     * in this class ({@code anApiKeyIsInertOutsideTheThreeApiPathFamilies}) only compares two
-     * statuses to each other and would be equally happy with two 404s. Drop the mapping and the
-     * origin URL becomes a 404 for every signed-in user, with the application still perfectly
-     * reachable at {@code /chat}, so it reads as "the bookmark is stale" rather than as a bug.
+     * {@code GET /} is the URL people bookmark, the one an ingress or uptime check hits, and the
+     * one a browser lands on after any redirect that drops the path. It is not on any permit-list,
+     * so it is authenticated first and then handed to {@code LoginController.index}. Nothing
+     * anywhere requests it: {@code AllPagesRenderSmokeIT}'s path list omits it, and the one place
+     * it appears in this class ({@code anApiKeyIsInertOutsideTheThreeApiPathFamilies}) only
+     * compares two statuses to each other and would be equally happy with two 404s. Drop the
+     * mapping and the origin URL becomes a 404 for every signed-in user, with the application still
+     * perfectly reachable at {@code /chat}, so it reads as "the bookmark is stale" rather than as a
+     * bug.
      *
      * <p>
      * The anonymous stanza in the middle is what ties the two halves together: it proves {@code /}
@@ -149,7 +146,8 @@ public class SecurityGatingIT {
                 .endsWith("/login"));
 
         mockMvc
-            .perform(get("/").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+            .perform(
+                get("/").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/chat"));
     }
 
@@ -195,11 +193,10 @@ public class SecurityGatingIT {
             "/actuator/heapdump", "/actuator/prometheus", "/actuator/beans"}) {
             mockMvc.perform(get(path)).andExpect(result -> {
                 int status = result.getResponse().getStatus();
-                assertThat(status)
-                    .as("anonymous %s must be rejected by the actuator chain; a 404 would mean"
+                assertThat(status).as(
+                    "anonymous %s must be rejected by the actuator chain; a 404 would mean"
                         + " security permitted it and only the exposure list is still hiding it",
-                        path)
-                    .isIn(401, 403);
+                    path).isIn(401, 403);
             });
         }
     }
@@ -215,20 +212,20 @@ public class SecurityGatingIT {
      */
     @Test
     public void theApiKeyChainsDenyAnonymousCallersButStillAdmitASessionRole() throws Exception {
-        for (String path : new String[] {"/api/jobs/v1/" + UUID.randomUUID(),
-            "/api/document/v1", "/api/ingest/v1/upload"}) {
+        for (String path : new String[] {"/api/jobs/v1/" + UUID.randomUUID(), "/api/document/v1",
+            "/api/ingest/v1/upload"}) {
             mockMvc.perform(get(path)).andExpect(result -> {
                 int status = result.getResponse().getStatus();
-                assertThat(status).as("anonymous %s must be denied outright, not redirected",
-                        path)
+                assertThat(status).as("anonymous %s must be denied outright, not redirected", path)
                     .isIn(401, 403);
             });
         }
 
         // A cookie session carrying ROLE_ADMIN gets past the gate (the endpoint may then 404/400 on
         // its own terms — what matters is that it is no longer an auth rejection).
-        mockMvc.perform(get("/api/document/v1")
-            .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+        mockMvc
+            .perform(get("/api/document/v1")
+                .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
             .andExpect(result -> assertThat(result.getResponse().getStatus())
                 .as("a session role must still reach the endpoint").isNotIn(401, 403));
     }
@@ -255,14 +252,14 @@ public class SecurityGatingIT {
      * {@code Http403ForbiddenEntryPoint} and an anonymous caller gets a bare 403 with no challenge.
      * That is the right answer here and must stay: an {@code X-API-Key} client (the corpus scripts,
      * the eval harness) has no token endpoint to visit, so adding anything that contributes a 401
-     * challenge — {@code httpBasic}, {@code formLogin}, an {@code exceptionHandling} customisation —
-     * sends them into an auth flow that cannot succeed, and some HTTP clients will chase it.
+     * challenge — {@code httpBasic}, {@code formLogin}, an {@code exceptionHandling} customisation
+     * — sends them into an auth flow that cannot succeed, and some HTTP clients will chase it.
      *
      * <p>
      * Worth knowing before someone "improves" this: 403 is also what a signed-in {@code ROLE_USER}
      * gets (see the sibling test below), so on these chains "not authenticated" and "authenticated
-     * but wrong role" are indistinguishable from outside. Nothing pinned the exact codes until now —
-     * {@code theApiKeyChainsDenyAnonymousCallersButStillAdmitASessionRole} deliberately asserts
+     * but wrong role" are indistinguishable from outside. Nothing pinned the exact codes until now
+     * — {@code theApiKeyChainsDenyAnonymousCallersButStillAdmitASessionRole} deliberately asserts
      * {@code isIn(401, 403)} because it is about denial rather than about which code.
      */
     @Test
@@ -280,7 +277,8 @@ public class SecurityGatingIT {
             });
         }
 
-        // The bearer chain answers the SAME anonymous request the other way, and must keep doing so.
+        // The bearer chain answers the SAME anonymous request the other way, and must keep doing
+        // so.
         mockMvc.perform(get("/api/chat/v1/conversations")).andExpect(status().isUnauthorized())
             .andExpect(result -> assertThat(result.getResponse().getHeader("WWW-Authenticate"))
                 .as("oauth2ResourceServer contributes BearerTokenAuthenticationEntryPoint")
@@ -302,14 +300,14 @@ public class SecurityGatingIT {
      *
      * <p>
      * Lose either half — {@code requireExplicitSave(false)} on this chain, or a
-     * {@code saveContext(...)} added to the filter to "make the key stick so the client doesn't have
-     * to resend it" — and the effect is not a leak of authority but a THEFT of it: the browser's
-     * stored {@code ROLE_ADMIN} context is overwritten in the session by the key's
+     * {@code saveContext(...)} added to the filter to "make the key stick so the client doesn't
+     * have to resend it" — and the effect is not a leak of authority but a THEFT of it: the
+     * browser's stored {@code ROLE_ADMIN} context is overwritten in the session by the key's
      * {@code ROLE_INGEST}, so the admin's own subsequent page loads are 403ed by a chain that
      * believes they are a machine client, and every audited action from then on is attributed to
      * {@code api-user} rather than to the person at the keyboard. In the other direction, a
-     * long-lived {@code ROLE_INGEST} cookie now exists that was minted by a header the browser never
-     * has to send again.
+     * long-lived {@code ROLE_INGEST} cookie now exists that was minted by a header the browser
+     * never has to send again.
      *
      * <p>
      * {@code ApiKeyAuthenticationFilterTest.aValidApiKeyDowngradesAnAmbientAdminSessionToRoleIngest}
@@ -334,8 +332,8 @@ public class SecurityGatingIT {
 
         assertThat(
             session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY))
-                .as("the key authenticates one request; nothing may be written back to the session")
-                .isNull();
+            .as("the key authenticates one request; nothing may be written back to the session")
+            .isNull();
 
         // The behavioural half: the very next request on the SAME session, without the header, must
         // be an anonymous one again.
@@ -356,8 +354,9 @@ public class SecurityGatingIT {
      * meant any signed-in person could upload files and queue import jobs into ANY knowledge area
      * from their ordinary browser session — content that then becomes searchable by everyone and is
      * cited as authoritative, that spends money on summarisation and embedding, and that is not
-     * written to the audit trail (only admin-screen imports are). The web UI never exposed it, so it
-     * was reachable only by calling the endpoints directly, which is exactly why it went unnoticed.
+     * written to the audit trail (only admin-screen imports are). The web UI never exposed it, so
+     * it was reachable only by calling the endpoints directly, which is exactly why it went
+     * unnoticed.
      *
      * <p>
      * Nothing in the UI depends on the {@code USER} grant: {@code /api/document/**} has no browser
@@ -393,8 +392,8 @@ public class SecurityGatingIT {
         throws Exception {
         mockMvc.perform(get("/api/document/v1").header("X-API-Key", "not-the-configured-key"))
             .andExpect(status().isUnauthorized())
-            .andExpect(result -> assertThat(result.getResponse().getContentAsString())
-                .as("the filter writes its own body, so a client can tell a bad key from a bad role")
+            .andExpect(result -> assertThat(result.getResponse().getContentAsString()).as(
+                "the filter writes its own body, so a client can tell a bad key from a bad role")
                 .isEqualTo("Invalid API Key"));
 
         // The same wrong key, now on a request that WOULD have been admitted on its session alone.
@@ -443,7 +442,8 @@ public class SecurityGatingIT {
                 .perform(get("/api/document/v1").header("X-API-Key", blank)
                     .param("collection", "no-such-collection").param("tag", "no-such-tag")
                     .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                // A 404 is the handler answering, so the chain authorised the request; an auth failure
+                // A 404 is the handler answering, so the chain authorised the request; an auth
+                // failure
                 // on this chain is 401 or 403, never 404. The endpoint now refuses an unknown area
                 // instead of returning an empty list, so 404 is the positive proof this test wants.
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
@@ -494,16 +494,17 @@ public class SecurityGatingIT {
      * Exactly ONE chain may carry an {@code ApiKeyAuthenticationFilter}, and its securityMatcher
      * must cover the three corpus-write families and refuse everything else — in particular the
      * bearer chains ({@code /mcp/**}, {@code /api/chat/**}), whose callers authenticate with an
-     * Entra token and must never be reachable with a static shared string, and the browser chain.
-     * A URL-by-URL test can only sample; this reads the matcher itself, so a securityMatcher
-     * widened to {@code /api/**} fails here even for a path nobody thought to probe.
+     * Entra token and must never be reachable with a static shared string, and the browser chain. A
+     * URL-by-URL test can only sample; this reads the matcher itself, so a securityMatcher widened
+     * to {@code /api/**} fails here even for a path nobody thought to probe.
      */
     @Test
     public void exactlyOneChainCarriesTheApiKeyFilterAndItsMatcherIsTheCorpusWriteSurface() {
-        FilterChainProxy proxy = context.getBean("springSecurityFilterChain", FilterChainProxy.class);
+        FilterChainProxy proxy =
+            context.getBean("springSecurityFilterChain", FilterChainProxy.class);
         List<SecurityFilterChain> carrying = proxy.getFilterChains().stream()
-            .filter(c -> c.getFilters().stream()
-                .anyMatch(f -> f instanceof ApiKeyAuthenticationFilter))
+            .filter(
+                c -> c.getFilters().stream().anyMatch(f -> f instanceof ApiKeyAuthenticationFilter))
             .toList();
         assertThat(carrying).as("the API key must be honoured on exactly one chain").hasSize(1);
 
@@ -527,10 +528,11 @@ public class SecurityGatingIT {
      * {@code ExceptionTranslationFilter.sendStartAuthentication} saves the request into a
      * {@code RequestCache} before commencing the entry point, and this chain — alone among the
      * machine-facing ones — never configures one, so it inherits the default
-     * {@code HttpSessionRequestCache}: {@code AnyRequestMatcher}, {@code createSessionAllowed=true}.
-     * The stateless chains are immune ({@code SessionManagementConfigurer} installs a
-     * {@code NullRequestCache} for them); this one is deliberately session-capable because the
-     * admin UI's job-progress EventSource arrives with a cookie.
+     * {@code HttpSessionRequestCache}: {@code AnyRequestMatcher},
+     * {@code createSessionAllowed=true}. The stateless chains are immune
+     * ({@code SessionManagementConfigurer} installs a {@code NullRequestCache} for them); this one
+     * is deliberately session-capable because the admin UI's job-progress EventSource arrives with
+     * a cookie.
      *
      * <p>
      * The consequence is that every unauthenticated hit on {@code /api/ingest/**},
@@ -542,8 +544,8 @@ public class SecurityGatingIT {
      */
     @Test
     public void aDeniedAnonymousCallToTheMachineApiDoesNotMintAnHttpSession() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/document/v1")).andExpect(status().isForbidden())
-            .andReturn();
+        MvcResult result =
+            mockMvc.perform(get("/api/document/v1")).andExpect(status().isForbidden()).andReturn();
 
         assertThat(result.getRequest().getSession(false))
             .as("a denial on a machine API must not allocate a session for an anonymous caller")
@@ -558,8 +560,8 @@ public class SecurityGatingIT {
      * {@code GET /api/jobs/v1/{id}/progress} returns an {@code SseEmitter}, so the container
      * re-dispatches the request with {@code DispatcherType.ASYNC}. Three framework facts collide
      * there: {@code OncePerRequestFilter.shouldNotFilterAsyncDispatch()} is {@code true}, so
-     * {@code ApiKeyAuthenticationFilter} is SKIPPED on that dispatch; {@code AuthorizationFilter} is
-     * built with {@code filterAsyncDispatch=true}, so it authorizes it anyway; and
+     * {@code ApiKeyAuthenticationFilter} is SKIPPED on that dispatch; {@code AuthorizationFilter}
+     * is built with {@code filterAsyncDispatch=true}, so it authorizes it anyway; and
      * {@code SecurityContextHolderFilter} re-runs and reloads the context from the repository —
      * which is empty, because the filter's only write is a bare
      * {@code SecurityContextHolder.getContext().setAuthentication(auth)} that no repository ever
@@ -574,9 +576,9 @@ public class SecurityGatingIT {
      *
      * <p>
      * The fix is for the filter to persist the context it just authenticated into a
-     * {@code RequestAttributeSecurityContextRepository} — the request-scoped one specifically, since
-     * {@code anApiKeyRequestLeavesNoIngestAuthenticationBehindInTheSession} correctly forbids a
-     * session write.
+     * {@code RequestAttributeSecurityContextRepository} — the request-scoped one specifically,
+     * since {@code anApiKeyRequestLeavesNoIngestAuthenticationBehindInTheSession} correctly forbids
+     * a session write.
      */
     @Test
     public void anApiKeyAuthenticatedSseSubscriptionSurvivesTheAsyncDispatch() throws Exception {
@@ -619,11 +621,10 @@ public class SecurityGatingIT {
      * would fail on the admin's job page only, so nobody running the API scripts would notice.
      *
      * <p>
-     * This drives a REAL {@code JSESSIONID}-backed context rather than
-     * {@code oidcLogin()}: the MockMvc post-processor injects authentication through
-     * {@code TestSecurityContextHolder}, bypassing the {@code SecurityContextRepository} entirely,
-     * so every existing session test in this class would keep passing after the chain went
-     * stateless.
+     * This drives a REAL {@code JSESSIONID}-backed context rather than {@code oidcLogin()}: the
+     * MockMvc post-processor injects authentication through {@code TestSecurityContextHolder},
+     * bypassing the {@code SecurityContextRepository} entirely, so every existing session test in
+     * this class would keep passing after the chain went stateless.
      */
     @Test
     public void theApiKeyChainStillReadsAuthenticationFromARealBrowserSessionCookie()
@@ -632,8 +633,8 @@ public class SecurityGatingIT {
         stored.setAuthentication(new UsernamePasswordAuthenticationToken("browser-admin", "n/a",
             List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         MockHttpSession session = new MockHttpSession();
-        session.setAttribute(
-            HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, stored);
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+            stored);
 
         mockMvc
             .perform(get("/api/document/v1").session(session)
@@ -654,25 +655,27 @@ public class SecurityGatingIT {
      *
      * <p>
      * The MCP chain spells the bare form out ({@code securityMatcher("/mcp/**", "/mcp")}); the chat
-     * API chain does not ({@code securityMatcher("/api/chat/**")}), and neither do the three API-key
-     * families. Tighten any of them to something that requires a segment — {@code /api/chat/&#42;/&#42;&#42;},
-     * or a version-scoped {@code /api/chat/v1/**} — and the bare path silently falls through to the
+     * API chain does not ({@code securityMatcher("/api/chat/**")}), and neither do the three
+     * API-key families. Tighten any of them to something that requires a segment —
+     * {@code /api/chat/&#42;/&#42;&#42;}, or a version-scoped {@code /api/chat/v1/**} — and the
+     * bare path silently falls through to the
+     * 
      * @Order default browser chain. That chain is cookie-authenticated, which means an ambient
-     * signed-in browser session starts authenticating the desktop-sync API surface, and a machine
-     * client gets an opaque 302 into an HTML login page (which some HTTP clients follow and report
-     * as success) instead of the 401 that tells it to refresh its token.
+     *        signed-in browser session starts authenticating the desktop-sync API surface, and a
+     *        machine client gets an opaque 302 into an HTML login page (which some HTTP clients
+     *        follow and report as success) instead of the 401 that tells it to refresh its token.
      *
-     * <p>
-     * The status codes are the discriminator, not decoration, and each family answers differently
-     * on purpose: the two bearer chains contribute an entry point that returns 401 with a
-     * {@code Bearer} challenge, while the three API-key chains contribute none and fall back to
-     * {@code Http403ForbiddenEntryPoint}. A fall-through to the browser chain is neither — it is a
-     * 3xx, which is exactly what the control stanza at the end shows the same anonymous GET
-     * produces there.
+     *        <p>
+     *        The status codes are the discriminator, not decoration, and each family answers
+     *        differently on purpose: the two bearer chains contribute an entry point that returns
+     *        401 with a {@code Bearer} challenge, while the three API-key chains contribute none
+     *        and fall back to {@code Http403ForbiddenEntryPoint}. A fall-through to the browser
+     *        chain is neither — it is a 3xx, which is exactly what the control stanza at the end
+     *        shows the same anonymous GET produces there.
      *
-     * <p>
-     * {@code exactlyOneChainCarriesTheApiKeyFilterAndItsMatcherIsTheCorpusWriteSurface} asserts
-     * which chain must NOT match the bare paths; nothing asserts which one must.
+     *        <p>
+     *        {@code exactlyOneChainCarriesTheApiKeyFilterAndItsMatcherIsTheCorpusWriteSurface}
+     *        asserts which chain must NOT match the bare paths; nothing asserts which one must.
      */
     @Test
     public void aBarePrefixPathStaysOnItsOwnChainInsteadOfFallingThroughToTheBrowserChain()
@@ -708,8 +711,8 @@ public class SecurityGatingIT {
 
     @Test
     public void aPlainUserSessionCannotReachTheCorpusWriteApis() throws Exception {
-        for (String path : new String[] {"/api/jobs/v1/" + UUID.randomUUID(),
-            "/api/document/v1", "/api/ingest/v1/upload"}) {
+        for (String path : new String[] {"/api/jobs/v1/" + UUID.randomUUID(), "/api/document/v1",
+            "/api/ingest/v1/upload"}) {
             mockMvc
                 .perform(get(path)
                     .with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
@@ -720,12 +723,12 @@ public class SecurityGatingIT {
 
     /**
      * The Claude Code plugin's dev-mode header is public (the plugin repository is), so it must be
-     * worth nothing outside mock mode: with mock off, the MCP chain never reads it and the request is
-     * as anonymous as one with no header.
+     * worth nothing outside mock mode: with mock off, the MCP chain never reads it and the request
+     * is as anonymous as one with no header.
      */
     @Test
     public void thePluginDevModeHeaderIsIgnoredOutsideMockMode() throws Exception {
         mockMvc.perform(get("/mcp").header("X-Yvoke-Dev-Mode", "true"))
-                .andExpect(status().isUnauthorized());
+            .andExpect(status().isUnauthorized());
     }
 }

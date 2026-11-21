@@ -2,16 +2,16 @@ package de.palsoftware.yvoke.ingest.core.model;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.yaml.snakeyaml.Yaml;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
 
 public final class MarkdownTree {
 

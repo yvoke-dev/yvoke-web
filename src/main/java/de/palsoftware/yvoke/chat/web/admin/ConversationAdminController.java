@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.ConversationFilter;
-import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository.TimeFilter;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService;
 import de.palsoftware.yvoke.chat.core.service.ConversationAdminService.ConversationAdminView;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;

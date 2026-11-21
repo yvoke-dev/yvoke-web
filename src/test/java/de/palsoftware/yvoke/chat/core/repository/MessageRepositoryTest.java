@@ -1,24 +1,23 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
-import de.palsoftware.yvoke.chat.core.model.Message;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationStatus;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.junit.jupiter.api.Assertions;
 
 public class MessageRepositoryTest {
 
@@ -127,4 +126,3 @@ public class MessageRepositoryTest {
         assertThat(messageRepository.findInitialPlaybookVersion(conversationId)).isEmpty();
     }
 }
-

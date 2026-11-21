@@ -1,5 +1,8 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
 import java.time.Instant;
 import java.util.List;
@@ -12,13 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class MessageToolCallRepositoryIT {
 
     @Autowired
@@ -35,12 +33,11 @@ public class MessageToolCallRepositoryIT {
     void setUp() {
         userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-            userId, "oid-" + userId, "user-" + userId + "@example.com", "Test User");
+            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
+            "oid-" + userId, "user-" + userId + "@example.com", "Test User");
 
         conversationId = UUID.randomUUID();
-        jdbcTemplate.update(
-            "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
             conversationId, userId, "Test Conversation");
 
         messageId = UUID.randomUUID();
@@ -59,12 +56,12 @@ public class MessageToolCallRepositoryIT {
 
     @Test
     void testBatchInsertAndFindByMessageIdOrderedBySeq() {
-        ToolCallRecord call2 = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 2, "call_2", "get_toc", "{\"doc\":\"1\"}", "toc", false, Instant.now());
-        ToolCallRecord call0 = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 0, "call_0", "search_corpus", "{\"q\":\"search\"}", "results", false, Instant.now());
-        ToolCallRecord call1 = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 1, "call_1", "get_section", "{\"sec\":1}", "content", true, Instant.now());
+        ToolCallRecord call2 = new ToolCallRecord(UUID.randomUUID(), messageId, 2, "call_2",
+            "get_toc", "{\"doc\":\"1\"}", "toc", false, Instant.now());
+        ToolCallRecord call0 = new ToolCallRecord(UUID.randomUUID(), messageId, 0, "call_0",
+            "search_corpus", "{\"q\":\"search\"}", "results", false, Instant.now());
+        ToolCallRecord call1 = new ToolCallRecord(UUID.randomUUID(), messageId, 1, "call_1",
+            "get_section", "{\"sec\":1}", "content", true, Instant.now());
 
         // Insert in arbitrary order: 2, 0, 1
         repository.insertAll(messageId, List.of(call2, call0, call1));
@@ -106,10 +103,10 @@ public class MessageToolCallRepositoryIT {
 
     @Test
     void testDuplicateKeyException() {
-        ToolCallRecord callA = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 0, "call_a", "search_corpus", "{}", "res_a", false, Instant.now());
-        ToolCallRecord callB = new ToolCallRecord(
-            UUID.randomUUID(), messageId, 0, "call_b", "search_corpus", "{}", "res_b", false, Instant.now());
+        ToolCallRecord callA = new ToolCallRecord(UUID.randomUUID(), messageId, 0, "call_a",
+            "search_corpus", "{}", "res_a", false, Instant.now());
+        ToolCallRecord callB = new ToolCallRecord(UUID.randomUUID(), messageId, 0, "call_b",
+            "search_corpus", "{}", "res_b", false, Instant.now());
 
         // Same message and same seq: must throw DataIntegrityViolationException
         assertThatThrownBy(() -> repository.insertAll(messageId, List.of(callA, callB)))
@@ -119,17 +116,9 @@ public class MessageToolCallRepositoryIT {
     @Test
     void testNullByteSanitization() {
         // Postgres text columns reject null byte \u0000. Sanitization must remove it cleanly.
-        ToolCallRecord callWithNullBytes = new ToolCallRecord(
-            UUID.randomUUID(),
-            messageId,
-            0,
-            "call\u0000_id",
-            "tool\u0000_name",
-            "{\"arg\": \"val\u0000ue\"}",
-            "res\u0000ult",
-            false,
-            Instant.now()
-        );
+        ToolCallRecord callWithNullBytes =
+            new ToolCallRecord(UUID.randomUUID(), messageId, 0, "call\u0000_id", "tool\u0000_name",
+                "{\"arg\": \"val\u0000ue\"}", "res\u0000ult", false, Instant.now());
 
         repository.insertAll(messageId, List.of(callWithNullBytes));
 
@@ -148,17 +137,8 @@ public class MessageToolCallRepositoryIT {
         String largeArguments = "{\"data\":\"" + "a".repeat(100_000) + "\"}";
         String largeResult = "result-payload-" + "x".repeat(200_000);
 
-        ToolCallRecord largeRecord = new ToolCallRecord(
-            UUID.randomUUID(),
-            messageId,
-            0,
-            "call_large",
-            "search_large",
-            largeArguments,
-            largeResult,
-            false,
-            Instant.now()
-        );
+        ToolCallRecord largeRecord = new ToolCallRecord(UUID.randomUUID(), messageId, 0,
+            "call_large", "search_large", largeArguments, largeResult, false, Instant.now());
 
         repository.insertAll(messageId, List.of(largeRecord));
 

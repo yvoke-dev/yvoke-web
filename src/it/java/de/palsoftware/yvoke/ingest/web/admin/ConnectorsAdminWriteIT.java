@@ -33,15 +33,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * The connectors admin page as a BROWSER drives it: the form post goes through {@code WebDataBinder}
- * and the instance list is rendered with rows in it.
+ * The connectors admin page as a BROWSER drives it: the form post goes through
+ * {@code WebDataBinder} and the instance list is rendered with rows in it.
  *
  * <p>
  * Both of those were the coverage gap that let two page-breaking defects ship.
  * {@code ConfluenceConnectorControllerTest} calls the controller method directly with a
  * hand-constructed {@code BindingResult}, so no request ever reached the binder — and an unchecked
- * checkbox submits no parameter at all, which a primitive {@code boolean} record component cannot be
- * constructed from, so the very first "Save Instance" failed 100% of the time. Meanwhile
+ * checkbox submits no parameter at all, which a primitive {@code boolean} record component cannot
+ * be constructed from, so the very first "Save Instance" failed 100% of the time. Meanwhile
  * {@code AllPagesRenderSmokeIT} and the browser e2e all render {@code /admin/connectors} against an
  * EMPTY database, leaving the entire {@code th:each} row branch — the token-health badges, the 13
  * {@code data-*} attributes the Edit button copies into the form, the delete form, the target/label
@@ -89,9 +89,10 @@ public class ConnectorsAdminWriteIT {
     @BeforeEach
     public void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        jdbcTemplate.update("INSERT INTO collections (id, name, description, tags) "
-            + "VALUES (?, ?, ?, string_to_array(?, ','))", UUID.randomUUID(), COLLECTION,
-            "connector write IT", OTHER_TAG + "," + TAG);
+        jdbcTemplate.update(
+            "INSERT INTO collections (id, name, description, tags) "
+                + "VALUES (?, ?, ?, string_to_array(?, ','))",
+            UUID.randomUUID(), COLLECTION, "connector write IT", OTHER_TAG + "," + TAG);
     }
 
     private static OidcLoginRequestPostProcessor admin() {
@@ -107,8 +108,9 @@ public class ConnectorsAdminWriteIT {
     /**
      * Exactly the parameters the rendered form submits — including Spring's two hidden checkbox
      * field markers, and NOT including {@code processAttachments}, because that box is unchecked
-     * when the form opens. The {@code Accept}/{@code Referer} headers make it a classic navigational
-     * form post, which is what {@code MvcExceptionHandler} keys its redirect-with-flash on.
+     * when the form opens. The {@code Accept}/{@code Referer} headers make it a classic
+     * navigational form post, which is what {@code MvcExceptionHandler} keys its
+     * redirect-with-flash on.
      */
     private static Map<String, String> formFields() {
         Map<String, String> fields = new LinkedHashMap<>();
@@ -132,8 +134,7 @@ public class ConnectorsAdminWriteIT {
 
     private MockHttpServletRequestBuilder browserPost(String url, Map<String, String> fields) {
         MockHttpServletRequestBuilder request = post(url).with(csrf()).with(admin())
-            .header("Accept", "text/html,application/xhtml+xml")
-            .header("Referer", CONNECTORS_URL);
+            .header("Accept", "text/html,application/xhtml+xml").header("Referer", CONNECTORS_URL);
         fields.forEach(request::param);
         return request;
     }
@@ -232,9 +233,8 @@ public class ConnectorsAdminWriteIT {
         Map<String, String> fields = formFields();
         fields.put("targetCollection", "IT-NO-SUCH-COLLECTION");
 
-        mockMvc.perform(browserSave(fields)).andExpect(status().is3xxRedirection())
-            .andExpect(
-                flash().attribute("error", Matchers.containsString("IT-NO-SUCH-COLLECTION")));
+        mockMvc.perform(browserSave(fields)).andExpect(status().is3xxRedirection()).andExpect(
+            flash().attribute("error", Matchers.containsString("IT-NO-SUCH-COLLECTION")));
 
         assertThat(instanceRepository.findBySlug(SLUG)).isEmpty();
     }
@@ -311,7 +311,8 @@ public class ConnectorsAdminWriteIT {
             "INSERT INTO confluence_instances (id, name, slug, domain, email, space, root_page_id, "
                 + "target_collection, target_tag, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false)",
             UUID.randomUUID(), "IT Connectors Tokenless", "it-connectors-tokenless",
-            "https://it-tokenless.atlassian.net", "svc@example.com", "DOCS", "999", COLLECTION, TAG);
+            "https://it-tokenless.atlassian.net", "svc@example.com", "DOCS", "999", COLLECTION,
+            TAG);
 
         mockMvc.perform(get("/admin/connectors").with(admin())).andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("Token Missing")))
@@ -331,19 +332,20 @@ public class ConnectorsAdminWriteIT {
     // ---------------------------------------------------------------------
 
     /**
-     * htmx sends the triggering element's own name on a GET, and the connectors select MUST be named
-     * {@code targetCollection} to bind to the form. Reading only {@code collection} left that page's
-     * tag container empty and hidden forever: every sync of a tagged collection then failed with
-     * "Field 'tag' … must not be blank", and editing an instance applied its stored tag to a select
-     * with no matching option, silently blanking it — which costs the next ingest its version
-     * scoping.
+     * htmx sends the triggering element's own name on a GET, and the connectors select MUST be
+     * named {@code targetCollection} to bind to the form. Reading only {@code collection} left that
+     * page's tag container empty and hidden forever: every sync of a tagged collection then failed
+     * with "Field 'tag' … must not be blank", and editing an instance applied its stored tag to a
+     * select with no matching option, silently blanking it — which costs the next ingest its
+     * version scoping.
      */
     @Test
     public void theTagContainerPopulatesForTheParameterNameTheConnectorsSelectSends()
         throws Exception {
         String fragment = mockMvc
             .perform(get("/admin/collections/tag-options").param("targetCollection", COLLECTION)
-                .header("HX-Request", "true").header("HX-Current-URL", CONNECTORS_URL).with(admin()))
+                .header("HX-Request", "true").header("HX-Current-URL", CONNECTORS_URL)
+                .with(admin()))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
         assertThat(fragment).contains("id=\"tag-container\"").contains("name=\"targetTag\"")
@@ -370,15 +372,16 @@ public class ConnectorsAdminWriteIT {
     /**
      * Deleting must CANCEL the instance's queued work in the database. Once the row is gone every
      * queued {@code confluence-page-import:<slug>} can only fail with "instance no longer exists",
-     * so a deleted connector would otherwise become a wall of red an operator sweeps up by hand. The
-     * existing unit test mocks {@code JobRepository}, so nothing had ever executed the SQL.
+     * so a deleted connector would otherwise become a wall of red an operator sweeps up by hand.
+     * The existing unit test mocks {@code JobRepository}, so nothing had ever executed the SQL.
      */
     @Test
     public void deletingCancelsOnlyItsOwnQueuedJobsInTheDatabase() throws Exception {
         saveDefaultInstance();
         UUID id = saved().id();
 
-        UUID queuedCrawl = insertJob("confluence-import:" + SLUG, "confluence/DOCS/12345", "queued");
+        UUID queuedCrawl =
+            insertJob("confluence-import:" + SLUG, "confluence/DOCS/12345", "queued");
         UUID queuedPage =
             insertJob("confluence-page-import:" + SLUG, "confluence/DOCS/777", "queued");
         UUID runningPage =
@@ -387,8 +390,8 @@ public class ConnectorsAdminWriteIT {
             insertJob("confluence-page-import:other-wiki", "confluence/DOCS/999", "queued");
 
         mockMvc
-            .perform(browserPost("/admin/connectors/confluence/delete",
-                Map.of("id", id.toString())))
+            .perform(
+                browserPost("/admin/connectors/confluence/delete", Map.of("id", id.toString())))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/connectors"))
             .andExpect(flash().attribute("success", Matchers.containsString("2 queued job(s)")));
 
@@ -437,8 +440,8 @@ public class ConnectorsAdminWriteIT {
         Map<String, Object> job = jdbcTemplate.queryForMap(
             "SELECT kind, source_ref, status FROM ingestion_jobs WHERE kind = ?",
             "confluence-import:" + SLUG);
-        assertThat(job).containsEntry("source_ref", "confluence/DOCS/12345")
-            .containsEntry("status", "queued");
+        assertThat(job).containsEntry("source_ref", "confluence/DOCS/12345").containsEntry("status",
+            "queued");
     }
 
     /**

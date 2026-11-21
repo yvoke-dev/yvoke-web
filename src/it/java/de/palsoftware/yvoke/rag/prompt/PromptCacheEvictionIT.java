@@ -15,8 +15,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(webEnvironment = WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(webEnvironment = WebEnvironment.MOCK, properties = "app.security.mock=true")
 public class PromptCacheEvictionIT {
 
     private static final String PB_SAVE = "it-cache-pb-save";
@@ -42,10 +41,10 @@ public class PromptCacheEvictionIT {
     @BeforeEach
     @AfterEach
     public void cleanup() {
-        jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?, ?)",
-            PB_SAVE, PB_IMPORT, PB_DELETE);
-        jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?, ?)",
-            PROMPT_IMPORT, PROMPT_SAVE, PROMPT_DELETE);
+        jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?, ?)", PB_SAVE, PB_IMPORT,
+            PB_DELETE);
+        jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?, ?)", PROMPT_IMPORT,
+            PROMPT_SAVE, PROMPT_DELETE);
         Cache pbCache = cacheManager.getCache(CacheConfig.PLAYBOOKS);
         if (pbCache != null) {
             pbCache.clear();
@@ -117,15 +116,15 @@ public class PromptCacheEvictionIT {
 
     @Test
     void savePromptEvictsCache() {
-        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V1",
-            "Desc", AREA);
+        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V1", "Desc",
+            AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_SAVE)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_SAVE)).isNotNull();
 
         // Mutate via savePrompt
-        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V2",
-            "Desc", AREA);
+        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V2", "Desc",
+            AREA);
 
         // Verification: cache is evicted
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_SAVE)).isNull();
@@ -139,7 +138,8 @@ public class PromptCacheEvictionIT {
             "Desc", AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_DELETE)).isPresent();
-        assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_DELETE)).isNotNull();
+        assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_DELETE))
+            .isNotNull();
 
         // Delete
         systemPromptService.deletePrompt(PROMPT_DELETE);
@@ -155,7 +155,8 @@ public class PromptCacheEvictionIT {
             "Desc", AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_IMPORT)).isPresent();
-        assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_IMPORT)).isNotNull();
+        assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_IMPORT))
+            .isNotNull();
 
         // Mutate via importPromptFromMarkdown (bypasses proxy in unfixed code)
         String md = """

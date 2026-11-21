@@ -1,32 +1,17 @@
 package de.palsoftware.yvoke.collection.web.admin;
 
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import org.springframework.test.web.servlet.MockMvc;
-
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-
-import static org.mockito.Mockito.verify;
-
-import static org.mockito.ArgumentMatchers.eq;
-
-import static org.mockito.ArgumentMatchers.any;
-
-import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
@@ -43,7 +28,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.ui.Model;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The tag-options fragment endpoint, which three admin pages share.

@@ -10,9 +10,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
-import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
@@ -25,7 +25,9 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -35,21 +37,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import java.util.Map;
 import org.springframework.web.servlet.ModelAndView;
-import java.util.Comparator;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = "app.security.mock=true")
@@ -93,8 +93,8 @@ public class ChatThreadRenderingIT {
      * its own exceptions, and {@code messages.status} carries no CHECK constraint to backstop it.
      * Widen or drop that predicate — or generalise it to {@code status <> 'done'} when a new
      * in-flight status is added — and the next {@code ./redeploy.sh} silently replaces the CONTENT
-     * of every message of every user with the interrupt marker, reported as an INFO log line.
-     * The terminal-row assertions are the load-bearing half.
+     * of every message of every user with the interrupt marker, reported as an INFO log line. The
+     * terminal-row assertions are the load-bearing half.
      */
     @Test
     public void theStartupSweepTouchesOnlyGeneratingRowsAndLeavesFinishedAnswersIntact() {
@@ -246,27 +246,24 @@ public class ChatThreadRenderingIT {
         assertThat(viewModel.get("playbookValidationEnabled")).isInstanceOf(Boolean.class);
 
         String html = result.getResponse().getContentAsString();
-        assertThat(html)
-            .as("the model picker options keep the wire ID as value while rendering the friendly label")
+        assertThat(html).as(
+            "the model picker options keep the wire ID as value while rendering the friendly label")
             .contains(
                 "<option value=\"deepseek/deepseek-v4.1-flash-1017\">OpenRouter - DeepSeek 4.1 Flash</option>")
-            .contains(">Gemini - 3.8 Flash</option>")
-            .contains("feedback-buttons-container")
+            .contains(">Gemini - 3.8 Flash</option>").contains("feedback-buttons-container")
             .contains("feedback-thumbs-up");
 
         // A read-only thread (e.g. a claude-plugin feedback conversation) hides the rating buttons.
         jdbcClient.sql("UPDATE conversations SET source = 'claude-plugin' WHERE id = :id")
             .param("id", convId).update();
-        MvcResult readOnlyResult =
-            mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn();
+        MvcResult readOnlyResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
+            .andExpect(status().isOk()).andReturn();
         assertThat(readOnlyResult.getModelAndView().getModel().get("isReadOnly")).isEqualTo(true);
         String readOnlyHtml = readOnlyResult.getResponse().getContentAsString();
-        assertThat(readOnlyHtml)
-            .doesNotContain("feedback-buttons-container")
+        assertThat(readOnlyHtml).doesNotContain("feedback-buttons-container")
             .doesNotContain("feedback-thumbs-up");
-        jdbcClient.sql("UPDATE conversations SET source = 'web' WHERE id = :id")
-            .param("id", convId).update();
+        jdbcClient.sql("UPDATE conversations SET source = 'web' WHERE id = :id").param("id", convId)
+            .update();
 
         // Cleanup (the security filter clears the holder after each MockMvc request).
         setSecurityContext(userOid, "thread-model@local", "Thread Model User");
@@ -298,9 +295,9 @@ public class ChatThreadRenderingIT {
         UUID convId = chatConversationService.createConversation().id();
 
         UUID messageId = UUID.randomUUID();
-        messageRepository.save(new Message(messageId, convId, "assistant", "", null, List.of(),
-            List.of(), Instant.now(), null, null, null, null, null, "generating",
-            "gemini-3.6-flash"));
+        messageRepository
+            .save(new Message(messageId, convId, "assistant", "", null, List.of(), List.of(),
+                Instant.now(), null, null, null, null, null, "generating", "gemini-3.6-flash"));
 
         // The orchestrated finish: content, tokens and status are known, the model is not.
         messageRepository.updateContentAndStatus(messageId, "the final answer", List.of(),
@@ -341,14 +338,13 @@ public class ChatThreadRenderingIT {
      * conversations across pages, which is how a chat silently disappears from a user's sidebar.
      *
      * <p>
-     * The collision is forced with an explicit UPDATE — nothing else makes the tie-break
-     * observable — and the rows are stamped far in the FUTURE so they occupy the head of the list
-     * regardless of what other ITs have left in the table. The UPDATEs are applied in descending id
-     * order so the physical row order left behind is the exact reverse of the answer required,
-     * which is what a plan returning rows in heap order would produce. Postgres orders {@code uuid}
-     * by its 16 bytes, i.e. lexicographically over the canonical lower-case hex — NOT
-     * {@code UUID.compareTo}, which compares the halves as SIGNED longs and disagrees whenever the
-     * top bit is set.
+     * The collision is forced with an explicit UPDATE — nothing else makes the tie-break observable
+     * — and the rows are stamped far in the FUTURE so they occupy the head of the list regardless
+     * of what other ITs have left in the table. The UPDATEs are applied in descending id order so
+     * the physical row order left behind is the exact reverse of the answer required, which is what
+     * a plan returning rows in heap order would produce. Postgres orders {@code uuid} by its 16
+     * bytes, i.e. lexicographically over the canonical lower-case hex — NOT {@code UUID.compareTo},
+     * which compares the halves as SIGNED longs and disagrees whenever the top bit is set.
      */
     @Test
     public void theSidebarListIsOrderedByCreatedAtDescendingThenIdAscending() {
@@ -401,8 +397,7 @@ public class ChatThreadRenderingIT {
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
 
-        List<GrantedAuthority> authorities = List.of(
-            new SimpleGrantedAuthority("ROLE_USER"),
+        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
             new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
@@ -411,11 +406,11 @@ public class ChatThreadRenderingIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(String oid, String email, String name) {
+    private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(
+        String oid, String email, String name) {
         return oidcLogin()
             .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(
-                new SimpleGrantedAuthority("ROLE_USER"),
+            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
                 new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
@@ -425,7 +420,8 @@ public class ChatThreadRenderingIT {
         Path templatePath = Paths.get("src/main/resources/templates/chat/thread.html");
         String content = Files.readString(templatePath, StandardCharsets.UTF_8);
 
-        Pattern scriptInlinePattern = Pattern.compile("<script[^>]*th:inline=\"javascript\"[^>]*>([\\s\\S]*?)</script>");
+        Pattern scriptInlinePattern =
+            Pattern.compile("<script[^>]*th:inline=\"javascript\"[^>]*>([\\s\\S]*?)</script>");
         Matcher matcher = scriptInlinePattern.matcher(content);
 
         List<String> violations = new ArrayList<>();
@@ -440,15 +436,16 @@ public class ChatThreadRenderingIT {
             }
         }
 
-        assertThat(violations)
-            .as("Found unsafe raw regex brackets in th:inline='javascript' script blocks that crash Thymeleaf parsing! Use new RegExp('\\x5B...\\x5D', 'g') instead.")
+        assertThat(violations).as(
+            "Found unsafe raw regex brackets in th:inline='javascript' script blocks that crash Thymeleaf parsing! Use new RegExp('\\x5B...\\x5D', 'g') instead.")
             .isEmpty();
     }
 
     @Test
     @DisplayName("Guards the chat thread script against Temporal Dead Zone (TDZ) ReferenceErrors on page initialization")
     public void testInlineScriptVariableDeclarationOrderBeforeInitialization() throws IOException {
-        // The chat-thread JS was extracted to static/js/chat/thread.js (MNT-02); the TDZ hazard is a
+        // The chat-thread JS was extracted to static/js/chat/thread.js (MNT-02); the TDZ hazard is
+        // a
         // JS-runtime concern that follows the code, so the guard now scans the extracted script.
         Path scriptPath = Paths.get("src/main/resources/static/js/chat/thread.js");
         String scriptBody = Files.readString(scriptPath, StandardCharsets.UTF_8);
@@ -460,15 +457,17 @@ public class ChatThreadRenderingIT {
 
         if (applyOrchestratorIdx != -1) {
             if (autocompletePopupDeclIdx != -1 && autocompletePopupDeclIdx > applyOrchestratorIdx) {
-                violations.add("autocompletePopup declared after top-level applyOrchestratorModeUI() call");
+                violations.add(
+                    "autocompletePopup declared after top-level applyOrchestratorModeUI() call");
             }
             if (filteredPromptsDeclIdx != -1 && filteredPromptsDeclIdx > applyOrchestratorIdx) {
-                violations.add("filteredAutocompletePrompts declared after top-level applyOrchestratorModeUI() call");
+                violations.add(
+                    "filteredAutocompletePrompts declared after top-level applyOrchestratorModeUI() call");
             }
         }
 
-        assertThat(violations)
-            .as("Found top-level script statements that execute before const/let variables (TDZ violation) causing Uncaught ReferenceError on page load!")
+        assertThat(violations).as(
+            "Found top-level script statements that execute before const/let variables (TDZ violation) causing Uncaught ReferenceError on page load!")
             .isEmpty();
     }
 
@@ -511,9 +510,9 @@ public class ChatThreadRenderingIT {
             UUID id = UUID.randomUUID();
             boolean isOlder = i < 60;
             (isOlder ? older : newer).add(id);
-            messageRepository.save(new Message(id, convId, (i % 2 == 0) ? "user" : "assistant",
-                "message " + i, null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "done",
-                "m"));
+            messageRepository
+                .save(new Message(id, convId, (i % 2 == 0) ? "user" : "assistant", "message " + i,
+                    null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "done", "m"));
             jdbcClient.sql("UPDATE messages SET created_at = :ts::timestamptz WHERE id = :id")
                 .param("ts", isOlder ? "2020-01-01 00:00:00+00" : "2020-01-02 00:00:00+00")
                 .param("id", id).update();
@@ -555,20 +554,18 @@ public class ChatThreadRenderingIT {
         Conversation conv = chatConversationService.createConversation();
         UUID convId = conv.id();
 
-        String rawContent = "While it is theoretically possible to perform imports with only **Read** permissions and full synchronization with **Write** permissions [4b7b0f51-6293-4cd6-8f4b-5a66adf42742], the default configuration in One Identity Manager requires the synchronization user account to be a member of the **Domain Admins** group [2a01286b-6827-453f-b635-0311b6b59e41].\n\nIf you choose not to use a Domain Admin account, you will encounter several limitations:\n\n1. **Permission List Modifications:** Changes to permission lists.\n2. **Specially Protected Objects:** Domain administrator permissions.\n\n## References\n- [2a01286b-6827-453f-b635-0311b6b59e41]\n- [4b7b0f51-6293-4cd6-8f4b-5a66adf42742]";
+        String rawContent =
+            "While it is theoretically possible to perform imports with only **Read** permissions and full synchronization with **Write** permissions [4b7b0f51-6293-4cd6-8f4b-5a66adf42742], the default configuration in One Identity Manager requires the synchronization user account to be a member of the **Domain Admins** group [2a01286b-6827-453f-b635-0311b6b59e41].\n\nIf you choose not to use a Domain Admin account, you will encounter several limitations:\n\n1. **Permission List Modifications:** Changes to permission lists.\n2. **Specially Protected Objects:** Domain administrator permissions.\n\n## References\n- [2a01286b-6827-453f-b635-0311b6b59e41]\n- [4b7b0f51-6293-4cd6-8f4b-5a66adf42742]";
 
-        Message assistantMessage = new Message(
-            UUID.randomUUID(), convId, "assistant", rawContent,
-            "oim-ask", List.of(), List.of(), Instant.now(),
-            100, 50, 150, 0, 10, "done", "deepseek-v4-pro"
-        );
+        Message assistantMessage =
+            new Message(UUID.randomUUID(), convId, "assistant", rawContent, "oim-ask", List.of(),
+                List.of(), Instant.now(), 100, 50, 150, 0, 10, "done", "deepseek-v4-pro");
         messageRepository.save(assistantMessage);
 
         var login = testUserLogin(userOid, "rendering-test@local", "Rendering Test User");
 
         MvcResult result = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
-            .andExpect(status().isOk())
-            .andReturn();
+            .andExpect(status().isOk()).andReturn();
 
         String html = result.getResponse().getContentAsString();
         assertThat(html).contains("data-raw-content");
@@ -590,20 +587,18 @@ public class ChatThreadRenderingIT {
         Conversation conv = chatConversationService.createConversation();
         UUID convId = conv.id();
 
-        String ragContent = "### Installation Prerequisites > System Requirements > Database\n\nFor One Identity Manager version 9.3.1, the database server requires:\n\n* **Microsoft SQL Server 2019** [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]\n* **RAM:** Minimum 16 GB [document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f]\n* **Storage:** Fast SSD storage [file=oim_install_guide.pdf]\n\n🔧 Calling tool: search_corpus";
+        String ragContent =
+            "### Installation Prerequisites > System Requirements > Database\n\nFor One Identity Manager version 9.3.1, the database server requires:\n\n* **Microsoft SQL Server 2019** [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]\n* **RAM:** Minimum 16 GB [document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f]\n* **Storage:** Fast SSD storage [file=oim_install_guide.pdf]\n\n🔧 Calling tool: search_corpus";
 
-        Message assistantMessage = new Message(
-            UUID.randomUUID(), convId, "assistant", ragContent,
-            "oim-ask", List.of(), List.of(), Instant.now(),
-            120, 60, 180, 0, 20, "done", "deepseek-v4-pro"
-        );
+        Message assistantMessage =
+            new Message(UUID.randomUUID(), convId, "assistant", ragContent, "oim-ask", List.of(),
+                List.of(), Instant.now(), 120, 60, 180, 0, 20, "done", "deepseek-v4-pro");
         messageRepository.save(assistantMessage);
 
         var login = testUserLogin(userOid, "rendering-test@local", "Rendering Test User");
 
         MvcResult result = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
-            .andExpect(status().isOk())
-            .andReturn();
+            .andExpect(status().isOk()).andReturn();
 
         String html = result.getResponse().getContentAsString();
         assertThat(html).contains("chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b");
@@ -626,20 +621,18 @@ public class ChatThreadRenderingIT {
         Conversation conv = chatConversationService.createConversation();
         UUID convId = conv.id();
 
-        String complexContent = "<think>Analyzing graph relationships.</think>Here are the entity relations:\n\n| Counterpart | Relation |\n|---|---|\n| `PersonHasQERResource` | `ASSIGNED_TO` |\n\n<clarifying-question><question>Target environment?</question><option>Prod</option><option>Stage</option></clarifying-question>";
+        String complexContent =
+            "<think>Analyzing graph relationships.</think>Here are the entity relations:\n\n| Counterpart | Relation |\n|---|---|\n| `PersonHasQERResource` | `ASSIGNED_TO` |\n\n<clarifying-question><question>Target environment?</question><option>Prod</option><option>Stage</option></clarifying-question>";
 
-        Message assistantMessage = new Message(
-            UUID.randomUUID(), convId, "assistant", complexContent,
-            "oim-ask", List.of(), List.of(), Instant.now(),
-            150, 80, 230, 0, 30, "done", "deepseek-v4-pro"
-        );
+        Message assistantMessage = new Message(UUID.randomUUID(), convId, "assistant",
+            complexContent, "oim-ask", List.of(), List.of(), Instant.now(), 150, 80, 230, 0, 30,
+            "done", "deepseek-v4-pro");
         messageRepository.save(assistantMessage);
 
         var login = testUserLogin(userOid, "rendering-test@local", "Rendering Test User");
 
         MvcResult result = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
-            .andExpect(status().isOk())
-            .andReturn();
+            .andExpect(status().isOk()).andReturn();
 
         String html = result.getResponse().getContentAsString();
         // The raw <think>/<clarifying-question> tags are parsed client-side (now in
@@ -662,12 +655,12 @@ public class ChatThreadRenderingIT {
      *
      * <p>
      * The exemption is the whole point and it is the half a unit test cannot reach: the decision is
-     * a Thymeleaf expression, so a wrong one produces a page that renders perfectly and simply lists
-     * the wrong options. Without it a conversation set to a prototype profile paints a dropdown
-     * whose selected option is hidden, which browsers render as the FIRST visible option — "Single
-     * playbook" — over a conversation that is still in multi-agent mode. The user would read that as
-     * their profile having been unset, and the only way to make the control tell the truth again is
-     * to pick some other profile.
+     * a Thymeleaf expression, so a wrong one produces a page that renders perfectly and simply
+     * lists the wrong options. Without it a conversation set to a prototype profile paints a
+     * dropdown whose selected option is hidden, which browsers render as the FIRST visible option —
+     * "Single playbook" — over a conversation that is still in multi-agent mode. The user would
+     * read that as their profile having been unset, and the only way to make the control tell the
+     * truth again is to pick some other profile.
      *
      * <p>
      * Asserting on the rendered HTML rather than the model is deliberate: {@code threadView} sends
@@ -676,13 +669,16 @@ public class ChatThreadRenderingIT {
      */
     @Test
     @DisplayName("A prototype profile renders hidden, except when this conversation has selected it")
-    public void thePrototypeProfileOptionIsHiddenUnlessThisConversationSelectedIt() throws Exception {
+    public void thePrototypeProfileOptionIsHiddenUnlessThisConversationSelectedIt()
+        throws Exception {
         String userOid = "profile-visibility-oid";
         userRepository.upsert(userOid, "profile-visibility@local", "Profile Visibility User");
-        orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Ordinary", 2, 8,
-            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
-        orchestratorProfileRepository.upsert(new OrchestratorProfile("IT_Vis_Prototype", 2, 8,
-            "orch", "rev", List.of("spec"), null, null, null, null, null, null, true, null, null).withArea("OIM"));
+        orchestratorProfileRepository
+            .upsert(new OrchestratorProfile("IT_Vis_Ordinary", 2, 8, "orch", "rev", List.of("spec"),
+                null, null, null, null, null, null, false, null, null).withArea("OIM"));
+        orchestratorProfileRepository.upsert(
+            new OrchestratorProfile("IT_Vis_Prototype", 2, 8, "orch", "rev", List.of("spec"), null,
+                null, null, null, null, null, true, null, null).withArea("OIM"));
 
         setSecurityContext(userOid, "profile-visibility@local", "Profile Visibility User");
         UUID convId = chatConversationService.createConversation().id();
@@ -720,8 +716,9 @@ public class ChatThreadRenderingIT {
         String userOid = "playbook-lock-render-oid";
         String profileName = "IT_Lock_Profile";
         userRepository.upsert(userOid, "playbook-lock-render@local", "Playbook Lock User");
-        orchestratorProfileRepository.upsert(new OrchestratorProfile(profileName, 2, 8,
-            "orch", "rev", List.of("spec"), null, null, null, null, null, null, false, null, null).withArea("OIM"));
+        orchestratorProfileRepository
+            .upsert(new OrchestratorProfile(profileName, 2, 8, "orch", "rev", List.of("spec"), null,
+                null, null, null, null, null, false, null, null).withArea("OIM"));
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
 
         Conversation conv = chatConversationService.createConversation();
@@ -743,8 +740,8 @@ public class ChatThreadRenderingIT {
 
         // Add a user message with playbook
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
-        messageRepository.save(new Message(UUID.randomUUID(), convId, "user", "Hello first question",
-            "oim-full", List.of(), List.of(), Instant.now()));
+        messageRepository.save(new Message(UUID.randomUUID(), convId, "user",
+            "Hello first question", "oim-full", List.of(), List.of(), Instant.now()));
 
         MvcResult lockedResult = mockMvc.perform(get("/chat/" + convId).with(login).with(csrf()))
             .andExpect(status().isOk()).andReturn();
@@ -781,11 +778,11 @@ public class ChatThreadRenderingIT {
         try {
             setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
             UUID emptyWithChipsId = chatConversationService.createConversation().id();
-            String chipsHtml = mockMvc.perform(get("/chat/" + emptyWithChipsId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String chipsHtml =
+                mockMvc.perform(get("/chat/" + emptyWithChipsId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
             String chipsDomMarkup = chipsHtml.substring(0, chipsHtml.indexOf("window.CHAT_CONFIG"));
-            assertThat(chipsDomMarkup)
-                .contains("data-prompt-name=\"oim-full-it-test\"")
+            assertThat(chipsDomMarkup).contains("data-prompt-name=\"oim-full-it-test\"")
                 .contains(">oim-full-it-test v2</button>")
                 .doesNotContain("OIM Full Search IT Title");
             assertThat(chipsHtml).doesNotContain("data-prompt-title");
@@ -797,12 +794,13 @@ public class ChatThreadRenderingIT {
             messageRepository.save(new Message(UUID.randomUUID(), versionedConvId, "user",
                 "Versioned question", "oim-full-it-test", 2, List.of(), List.of(), Instant.now(),
                 null, null, null, null, null, "done", null));
-            String versionedHtml = mockMvc.perform(get("/chat/" + versionedConvId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String versionedHtml =
+                mockMvc.perform(get("/chat/" + versionedConvId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
             String versionedDomMarkup =
                 versionedHtml.substring(0, versionedHtml.indexOf("window.CHAT_CONFIG"));
-            assertThat(versionedDomMarkup)
-                .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full-it-test v2</span>")
+            assertThat(versionedDomMarkup).contains(
+                "<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full-it-test v2</span>")
                 .contains("<span class=\"playbook-tag\">📋 oim-full-it-test v2</span>")
                 .contains("Add your question for &quot;oim-full-it-test&quot;...")
                 .doesNotContain("OIM Full Search IT Title");
@@ -814,19 +812,21 @@ public class ChatThreadRenderingIT {
         }
 
         // Verify that even if 100 messages without playbook precede the playbook message,
-        // threadView still resolves the lock and version using findInitialPlaybook / findInitialPlaybookVersion
+        // threadView still resolves the lock and version using findInitialPlaybook /
+        // findInitialPlaybookVersion
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID longConvId = chatConversationService.createConversation().id();
         for (int i = 0; i < 100; i++) {
-            messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Desktop " + i,
-                null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+            messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user",
+                "Desktop " + i, null, List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
         }
-        messageRepository.save(new Message(UUID.randomUUID(), longConvId, "user", "Web question 101",
-            "oim-full", 4, List.of(), List.of(), Instant.now(), null, null, null, null, null,
-            "done", null));
+        messageRepository.save(
+            new Message(UUID.randomUUID(), longConvId, "user", "Web question 101", "oim-full", 4,
+                List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null));
 
-        MvcResult longConvResult = mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
-            .andExpect(status().isOk()).andReturn();
+        MvcResult longConvResult =
+            mockMvc.perform(get("/chat/" + longConvId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn();
         ModelAndView longMav = longConvResult.getModelAndView();
         assertThat(longMav).isNotNull();
         assertThat(longMav.getModel().get("isPlaybookLocked")).isEqualTo(true);
@@ -835,46 +835,52 @@ public class ChatThreadRenderingIT {
         String longHtml = longConvResult.getResponse().getContentAsString();
         assertThat(longHtml).contains("isPlaybookLocked: true");
         assertThat(longHtml).contains("lockedPlaybookName: \"oim-full\"");
-        assertThat(longHtml)
-            .contains("<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full v4</span>");
+        assertThat(longHtml).contains(
+            "<span class=\"playbook-tag\" id=\"active-playbook-tag\">📋 oim-full v4</span>");
 
-        // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator profile
+        // Verify mixed legacy conversation (initial playbook + in-depth turns) retains orchestrator
+        // profile
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID mixedConvId = chatConversationService.createConversation().id();
-        chatConversationService.updateSettings(mixedConvId,
-            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
+        chatConversationService.updateSettings(mixedConvId, Map.of("model", "gemini-2.5-flash",
+            ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
         messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "Question 1",
             "oim-full", List.of(), List.of(), Instant.now().minusSeconds(10)));
         messageRepository.save(new Message(UUID.randomUUID(), mixedConvId, "user", "In-depth turn",
             null, List.of(), List.of(), Instant.now()));
 
-        MvcResult mixedResult = mockMvc.perform(get("/chat/" + mixedConvId).with(login).with(csrf()))
-            .andExpect(status().isOk()).andReturn();
+        MvcResult mixedResult =
+            mockMvc.perform(get("/chat/" + mixedConvId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn();
         ModelAndView mixedMav = mixedResult.getModelAndView();
         assertThat(mixedMav).isNotNull();
         assertThat(mixedMav.getModel().get("isPlaybookLocked")).isEqualTo(false);
         assertThat(mixedMav.getModel().get("lockedPlaybookName")).isNull();
         @SuppressWarnings("unchecked")
-        Map<String, Object> mixedSettings = (Map<String, Object>) mixedMav.getModel().get("settings");
+        Map<String, Object> mixedSettings =
+            (Map<String, Object>) mixedMav.getModel().get("settings");
         assertThat(mixedSettings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue()))
             .isEqualTo(profileName);
 
         String mixedHtml = mixedResult.getResponse().getContentAsString();
-        assertThat(mixedHtml)
-            .contains("<div id=\"active-playbook\" class=\"active-playbook\" style=\"display: none;\">");
+        assertThat(mixedHtml).contains(
+            "<div id=\"active-playbook\" class=\"active-playbook\" style=\"display: none;\">");
         assertThat(mixedHtml).doesNotContain("Add your question for");
         assertThat(mixedHtml).contains("isPlaybookLocked: false");
 
         // Fresh conversation with orchestrator profile: action-add-btn is hidden but NOT disabled
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
         UUID profileConvId = chatConversationService.createConversation().id();
-        chatConversationService.updateSettings(profileConvId,
-            Map.of("model", "gemini-2.5-flash", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
-        MvcResult profileResult = mockMvc.perform(get("/chat/" + profileConvId).with(login).with(csrf()))
-            .andExpect(status().isOk()).andReturn();
+        chatConversationService.updateSettings(profileConvId, Map.of("model", "gemini-2.5-flash",
+            ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), profileName));
+        MvcResult profileResult =
+            mockMvc.perform(get("/chat/" + profileConvId).with(login).with(csrf()))
+                .andExpect(status().isOk()).andReturn();
         String profileHtml = profileResult.getResponse().getContentAsString();
-        assertThat(profileHtml).contains("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\">");
-        assertThat(profileHtml).doesNotContain("<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
+        assertThat(profileHtml).contains(
+            "<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\">");
+        assertThat(profileHtml).doesNotContain(
+            "<button type=\"button\" id=\"action-add-btn\" class=\"chat-input-action-btn\" style=\"display: none;\" disabled=\"disabled\">");
 
         // Cleanup
         setSecurityContext(userOid, "playbook-lock-render@local", "Playbook Lock User");
@@ -898,26 +904,27 @@ public class ChatThreadRenderingIT {
         UUID desktopLegacyId = UUID.randomUUID();
         UUID pluginVerId = UUID.randomUUID();
         UUID desktopXssId = UUID.randomUUID();
-        jdbcClient.sql("""
-            INSERT INTO conversations (id, user_id, title, settings, source, area)
-            VALUES (:id1, :uid, 'Desktop Versioned', '{"desktopVersion": "1.3.1"}'::jsonb, 'desktop', 'OIM'),
-                   (:id2, :uid, 'Desktop Legacy', '{}'::jsonb, 'desktop', 'OIM'),
-                   (:id3, :uid, 'Plugin Versioned', '{"pluginVersion": "0.4.2"}'::jsonb, 'claude-plugin', 'OIM'),
-                   (:id4, :uid, 'Desktop XSS', '{"desktopVersion": "1.3.1-<script>alert(1)</script>"}'::jsonb, 'desktop', 'OIM')
-            """)
-            .param("id1", desktopVerId)
-            .param("id2", desktopLegacyId)
-            .param("id3", pluginVerId)
-            .param("id4", desktopXssId)
-            .param("uid", ownerId)
-            .update();
+        jdbcClient
+            .sql(
+                """
+                    INSERT INTO conversations (id, user_id, title, settings, source, area)
+                    VALUES (:id1, :uid, 'Desktop Versioned', '{"desktopVersion": "1.3.1"}'::jsonb, 'desktop', 'OIM'),
+                           (:id2, :uid, 'Desktop Legacy', '{}'::jsonb, 'desktop', 'OIM'),
+                           (:id3, :uid, 'Plugin Versioned', '{"pluginVersion": "0.4.2"}'::jsonb, 'claude-plugin', 'OIM'),
+                           (:id4, :uid, 'Desktop XSS', '{"desktopVersion": "1.3.1-<script>alert(1)</script>"}'::jsonb, 'desktop', 'OIM')
+                    """)
+            .param("id1", desktopVerId).param("id2", desktopLegacyId).param("id3", pluginVerId)
+            .param("id4", desktopXssId).param("uid", ownerId).update();
 
         try {
-            // 1. Versioned desktop conversation: header has "desktop 1.3.1" with badge-info & text-transform: none,
+            // 1. Versioned desktop conversation: header has "desktop 1.3.1" with badge-info &
+            // text-transform: none,
             // while sidebar has bare "desktop" and never leaks version strings
-            String desktopVerHtml = mockMvc.perform(get("/chat/" + desktopVerId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            String desktopVerHeader = extractRegion(desktopVerHtml, "<header class=\"chat-thread-header\">", "</header>");
+            String desktopVerHtml =
+                mockMvc.perform(get("/chat/" + desktopVerId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String desktopVerHeader =
+                extractRegion(desktopVerHtml, "<header class=\"chat-thread-header\">", "</header>");
             String desktopVerSidebar = extractRegion(desktopVerHtml, "<aside", "</aside>");
 
             assertHeaderBadge(desktopVerHeader, "badge badge-info", "desktop 1.3.1");
@@ -927,31 +934,40 @@ public class ChatThreadRenderingIT {
             assertThat(desktopSidebarLink).contains(">desktop</span>");
 
             // 2. Legacy desktop conversation without desktopVersion: header has bare "desktop"
-            String desktopLegacyHtml = mockMvc.perform(get("/chat/" + desktopLegacyId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            String desktopLegacyHeader = extractRegion(desktopLegacyHtml, "<header class=\"chat-thread-header\">", "</header>");
+            String desktopLegacyHtml =
+                mockMvc.perform(get("/chat/" + desktopLegacyId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String desktopLegacyHeader = extractRegion(desktopLegacyHtml,
+                "<header class=\"chat-thread-header\">", "</header>");
             assertHeaderBadge(desktopLegacyHeader, "badge badge-info", "desktop");
 
             // 3. Versioned claude-plugin conversation: header has "claude-plugin 0.4.2"
-            String pluginVerHtml = mockMvc.perform(get("/chat/" + pluginVerId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            String pluginVerHeader = extractRegion(pluginVerHtml, "<header class=\"chat-thread-header\">", "</header>");
+            String pluginVerHtml =
+                mockMvc.perform(get("/chat/" + pluginVerId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String pluginVerHeader =
+                extractRegion(pluginVerHtml, "<header class=\"chat-thread-header\">", "</header>");
             assertHeaderBadge(pluginVerHeader, "badge badge-muted", "claude-plugin 0.4.2");
 
             // 4. Stored XSS payload in desktopVersion is HTML-escaped in thread header
-            String desktopXssHtml = mockMvc.perform(get("/chat/" + desktopXssId).with(login).with(csrf()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String desktopXssHtml =
+                mockMvc.perform(get("/chat/" + desktopXssId).with(login).with(csrf()))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
             assertThat(desktopXssHtml).doesNotContain("<script>alert(1)</script>");
-            String desktopXssHeader = extractRegion(desktopXssHtml, "<header class=\"chat-thread-header\">", "</header>");
+            String desktopXssHeader =
+                extractRegion(desktopXssHtml, "<header class=\"chat-thread-header\">", "</header>");
             assertHeaderBadge(desktopXssHeader, "badge badge-info",
                 "desktop 1.3.1-&lt;script&gt;alert(1)&lt;/script&gt;");
 
             // 5. Admin conversations table isolates each conversation's <tr> row and escapes XSS
-            var adminLogin = oidcLogin()
-                .idToken(token -> token.claim("oid", userOid).claim("name", "Admin").claim("email", "source-badge@local"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
-            String adminHtml = mockMvc.perform(get("/admin/conversations")
-                    .param("userIds", ownerId.toString())
+            var adminLogin =
+                oidcLogin()
+                    .idToken(token -> token.claim("oid", userOid).claim("name", "Admin")
+                        .claim("email", "source-badge@local"))
+                    .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ROLE_USER"));
+            String adminHtml = mockMvc
+                .perform(get("/admin/conversations").param("userIds", ownerId.toString())
                     .with(adminLogin))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
@@ -963,11 +979,8 @@ public class ChatThreadRenderingIT {
                 "desktop 1.3.1-&lt;script&gt;alert(1)&lt;/script&gt;");
         } finally {
             jdbcClient.sql("DELETE FROM conversations WHERE id IN (:id1, :id2, :id3, :id4)")
-                .param("id1", desktopVerId)
-                .param("id2", desktopLegacyId)
-                .param("id3", pluginVerId)
-                .param("id4", desktopXssId)
-                .update();
+                .param("id1", desktopVerId).param("id2", desktopLegacyId).param("id3", pluginVerId)
+                .param("id4", desktopXssId).update();
         }
     }
 
@@ -981,10 +994,12 @@ public class ChatThreadRenderingIT {
 
     private static void assertHeaderBadge(String headerHtml, String expectedBadgeClass,
         String expectedInnerHtml) {
-        Matcher m = Pattern.compile("(<span[^>]*class=\"" + Pattern.quote(expectedBadgeClass)
-            + "\"[^>]*>)([^<]*)</span>").matcher(headerHtml);
-        assertThat(m.find()).as("expected badge span with class '%s' in header: %s",
-            expectedBadgeClass, headerHtml).isTrue();
+        Matcher m = Pattern.compile(
+            "(<span[^>]*class=\"" + Pattern.quote(expectedBadgeClass) + "\"[^>]*>)([^<]*)</span>")
+            .matcher(headerHtml);
+        assertThat(m.find())
+            .as("expected badge span with class '%s' in header: %s", expectedBadgeClass, headerHtml)
+            .isTrue();
         assertThat(m.group(1)).contains("text-transform: none");
         assertThat(m.group(2)).isEqualTo(expectedInnerHtml);
     }
@@ -999,24 +1014,26 @@ public class ChatThreadRenderingIT {
 
     private static void assertAdminRowSourceBadge(String adminHtml, UUID convId,
         String expectedInnerHtml) {
-        Matcher rowMatcher = Pattern.compile(
-            "<tr[^>]*>(?:(?!</tr>)[\\s\\S])*?" + Pattern.quote(convId.toString()) + "[\\s\\S]*?</tr>")
-            .matcher(adminHtml);
+        Matcher rowMatcher = Pattern.compile("<tr[^>]*>(?:(?!</tr>)[\\s\\S])*?"
+            + Pattern.quote(convId.toString()) + "[\\s\\S]*?</tr>").matcher(adminHtml);
         assertThat(rowMatcher.find()).as("missing admin <tr> row for conversation %s", convId)
             .isTrue();
         String rowHtml = rowMatcher.group();
 
-        Matcher badgeMatcher = Pattern.compile(
-            "(<span[^>]*class=\"badge badge-muted\"[^>]*>)([^<]*)</span>").matcher(rowHtml);
-        assertThat(badgeMatcher.find()).as("missing source badge span in row: %s", rowHtml).isTrue();
+        Matcher badgeMatcher =
+            Pattern.compile("(<span[^>]*class=\"badge badge-muted\"[^>]*>)([^<]*)</span>")
+                .matcher(rowHtml);
+        assertThat(badgeMatcher.find()).as("missing source badge span in row: %s", rowHtml)
+            .isTrue();
         assertThat(badgeMatcher.group(1)).contains("text-transform: none");
         assertThat(badgeMatcher.group(2)).isEqualTo(expectedInnerHtml);
     }
 
     /** The single {@code <option>} tag whose value is {@code profileName}, attributes included. */
     private static String optionTag(String html, String profileName) {
-        Matcher m = Pattern.compile("<option[^>]*value=\"" + Pattern.quote(profileName) + "\"[^>]*>")
-            .matcher(html);
+        Matcher m =
+            Pattern.compile("<option[^>]*value=\"" + Pattern.quote(profileName) + "\"[^>]*>")
+                .matcher(html);
         assertThat(m.find()).as("no <option> for profile " + profileName).isTrue();
         return m.group();
     }

@@ -1,16 +1,5 @@
 package de.palsoftware.yvoke.document.core.service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import org.springframework.stereotype.Service;
 import de.palsoftware.yvoke.document.core.HierarchyUtils;
 import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
@@ -23,6 +12,17 @@ import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.stereotype.Service;
 
 @Service
 public class SectionService {

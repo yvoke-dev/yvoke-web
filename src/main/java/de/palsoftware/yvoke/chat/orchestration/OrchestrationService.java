@@ -1,6 +1,10 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
+import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
@@ -8,6 +12,7 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.text.AssistantTranscript;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -18,21 +23,16 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
-import de.palsoftware.yvoke.llm.core.LlmFailureSummary;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import de.palsoftware.yvoke.chat.core.model.Conversation;
-import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
-import de.palsoftware.yvoke.shared.text.AssistantTranscript;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
 
 /**
  * Runs a multi-agent orchestration: a pro-model orchestrator delegates sub-questions to flash-model
