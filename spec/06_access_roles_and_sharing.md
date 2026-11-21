@@ -55,11 +55,13 @@ areas, and automation or AI coding tools connecting on a company account or a ma
 
 ## Limits
 
-- **The sidebar loads only the 100 most recent conversations you can see.** No paging control, no search.
-- **Sends are capped per person**, 20 per minute by default.
-- **A limited number of live answers run at once** (64 by default). When full the user is asked to retry —
-  but the question has already been saved, so the thread shows a question with no answer. That ceiling
-  covers only the live word-by-word mode, so the effective limit depends on which mode people use.
+- **The sidebar loads up to 100 of your own most recent conversations and separately up to 100 shared
+  conversations you can see.** No paging control, no search.
+- **Sends, playbook preflight checks, admin search queries, and MCP client requests are rate-limited per
+  caller** (20 per minute by default for web chat sends, preflight checks, and admin searches; 120 per minute
+  by default for MCP clients).
+- **A limited number of live answers run at once** (64 by default), covering web chat sends and playbook
+  preflight checks. When full the user is asked to retry before a generation starts.
 - **All automation shares one machine key**, therefore one send budget and one identity. A busy script can
   rate-limit every other integration, and reporting cannot tell them apart.
 - **Every signed-in user can read how the assistant is configured.** The playbook library and the

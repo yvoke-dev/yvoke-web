@@ -77,7 +77,7 @@ Apply to **all** code, not just large tasks. Get it right while writing — do n
 
 ## 5. Deep Context & Steering
 
-**`spec.md` (repo root) is the functional specification** — eight capability chapters, each with *What
+**`spec/` (indexed by `spec/README.md`) is the functional specification** — eight capability chapters, each with *What
 you can do* / *How it behaves* / *Limits* / *Not supported*. It governs *what the product does*. **Start
 a substantial change by reading its chapter for the area you are touching**: it is the fastest way to
 learn what a feature is for, which behaviours are deliberate, and what the product has decided not to
@@ -98,9 +98,9 @@ For large tasks or architectural decisions, also read the steering docs:
 After structural changes (migrations, `pom.xml`, config, new packages), run
 `python3 .antigravity/scripts/check_steering.py` and update the steering docs if it flags drift.
 
-`spec.md` is exempt from the "no spec files in the workspace" rule — that rule targets *transient
+`spec/` is exempt from the "no spec files in the workspace" rule — that rule targets *transient
 per-task planning artefacts* (implementation plans, task checklists, walkthroughs), which still stay out
-of the working tree. `spec.md` is a durable product artefact; do not delete it as clutter.
+of the working tree. `spec/` is a durable product artefact; do not delete it as clutter.
 
 ## 6. Known Pitfalls (project-specific)
 Accumulated, hard-won gotchas. Several exist specifically because the obvious diagnosis was the wrong

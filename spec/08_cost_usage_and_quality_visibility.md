@@ -28,7 +28,7 @@ feedback triage and answer traces; every user rates answers.
 | **Search log behind an answer** | For each question: the query, the area and version searched, and the exact sources returned — each clickable through to the passage — plus how the final source set was composed and the rating that answer received. |
 | **Full trace of an in-depth answer** | Every orchestrated answer recorded run by run: which profile ran, its status, how many review rounds, resources used, and a step-by-step trace of lead, specialists and reviewer — each step's playbook and playbook version, its instructions, its output, and the reviewer's verdict. Failed runs carry a plain-language diagnosis. |
 | **Unified message trace** | For any answer, an administrative trace endpoint reveals whether it was produced by a single agent or multi-agent orchestration, including the playbook and playbook version used, passage IDs, verbatim tool call arguments and results (when single-agent tracing is enabled), or the multi-agent run steps. |
-| **Audit trail** | Permanently records who did what and when: deleting documents, areas and versions, configuring and syncing connectors, starting an import **from the admin screens**, stopping or cancelling jobs, and graph processing. |
+| **Audit trail** | Permanently records who did what and when: deleting documents, areas and versions; creating, moving and tagging collections; managing areas, playbooks, import prompts, orchestrator profiles, JSON schemas and model pricing; configuring and syncing connectors; starting an import **from the admin screens**; stopping or cancelling jobs; and graph processing or clearing. |
 
 ## How it behaves
 
@@ -129,7 +129,6 @@ feedback triage and answer traces; every user rates answers.
 - Charge-back by team or department. Spend attributes to individuals and conversations only.
 - Exporting a cost report. Only the model price list can be exported.
 - Trend charts or month-over-month comparison. Every view is a table covering one period.
-- A record of who changed a model price. Pricing edits are not audited.
 - Alerts, assignment or categories for negative feedback. A reviewed switch and a notes field are the
   whole workflow.
 - Replying to a user who left feedback.

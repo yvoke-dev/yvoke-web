@@ -142,8 +142,13 @@ only the result.
   as it needs the switched-off connector's credentials. Nothing is imported, but the job list fills with
   failures. Stopping the running job is the only way to halt it cleanly.
 - **Renaming a Confluence page does not change the document's title** — the title is fixed when the
-  document is first created. Attachments over 50 MB are skipped and extracted text is cut at 100,000
-  characters.
+  document is first created. Attachments are streamed with a 50 MB byte ceiling, parsed with a per-attachment
+  30-second timeout, and extracted text is cut at 100,000 characters. Outside local development profiles,
+  Confluence connectors require HTTPS, reject private/loopback/link-local IP addresses (including at connect
+  time), optionally enforce a deployment host allow-list, and never expose raw remote error bodies in the UI.
+- **Archive extraction enforces zip-bomb limits.** Uploaded archives are capped on entry count (50,000),
+  single-entry decompressed size (50 MB), total decompressed size (500 MB), and compression ratio (100:1),
+  and staged upload files are cleaned up automatically once an import finishes or fails to enqueue.
 - **Integration imports are throttled per caller** (twenty requests a minute by default). Two of the
   import routes **create a missing knowledge area on the fly**, so a typo in an automated import quietly
   mints an empty knowledge area instead of failing. Such an import must name the area the new knowledge

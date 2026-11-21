@@ -77,7 +77,8 @@ running corpus scripts and the evaluation harness.
 - **A conversation's recorded desktop release version is fixed at creation.** When the desktop app creates a
   conversation, Yvoke validates and records the desktop release version verbatim (trimming surrounding spaces;
   non-text or values exceeding 256 characters are rejected, and blank values are ignored). Later settings
-  updates still replace the settings map as usual, while keeping the recorded creation version intact (or
+  updates merge atomically into the stored settings map (only supplied keys change; unknown keys or wrongly
+  typed values are refused with `400 Bad Request`), while keeping the recorded creation version intact (or
   recording a version if the conversation had none yet; an update carrying only a blank version changes
   nothing). Rated Claude plugin turns similarly record the plugin release version verbatim so both the
   conversation header and the administrator conversation register display `desktop <version>` or
@@ -97,8 +98,10 @@ running corpus scripts and the evaluation harness.
 
 ## Limits
 
-- **⚠ Searches from AI clients and desktop sync are not rate-limited.** Only web chat sends and
-  script-driven imports are. A misbehaving client can run unlimited searches, and every search costs money.
+- **MCP client endpoints are rate-limited per user** (120 requests per minute by default). JSON request
+  bodies on desktop sync and MCP routes are capped at 10 MiB (returning `413 Payload Too Large`), desktop
+  message batches are capped at 100 messages (200,000 characters per message), and feedback comments are
+  capped at 4,000 characters.
 - **Answers written by the desktop app come from that app's own model.** Only the searches it runs against
   the knowledge base appear in the cost dashboard; the answer generation itself does not.
 - **If a knowledge area declares no tags**, the generic job route and the prepared-corpus route drop
