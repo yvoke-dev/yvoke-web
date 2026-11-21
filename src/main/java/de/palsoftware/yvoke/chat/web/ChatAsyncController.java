@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -57,13 +58,19 @@ public class ChatAsyncController {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "The assistant is at capacity right now. Please retry in a moment.");
         }
+        AtomicBoolean permitReleased = new AtomicBoolean(false);
+        Runnable releasePermitOnce = () -> {
+            if (permitReleased.compareAndSet(false, true)) {
+                concurrencyLimiter.release();
+            }
+        };
         try {
             UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(id, content,
-                promptName, concurrencyLimiter::release);
+                promptName, releasePermitOnce);
             return ResponseEntity.accepted()
                 .body(Map.of("assistantMessageId", assistantMessageId.toString()));
-        } catch (Exception e) {
-            concurrencyLimiter.release();
+        } catch (Throwable e) {
+            releasePermitOnce.run();
             log.error("Failed to prepare and submit async chat", e);
             throw e; // Let standard exception handler or Spring Security filter handle it (e.g.
                      // AccessDeniedException)

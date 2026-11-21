@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViewService;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunAdminViews.RunDetailPage;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -33,8 +34,9 @@ public class AgentRunAdminController {
     @GetMapping("/agent-runs")
     public String listAgentRuns(@RequestParam(defaultValue = "100") int limit, Model model) {
         log.info("AgentRunAdminController: listing recent agent runs");
+        int clampedLimit = PagingParams.clampLimit(limit, 100, 500);
         Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        model.addAttribute("runs", agentRunAdminViewService.recentRuns(limit, areas));
+        model.addAttribute("runs", agentRunAdminViewService.recentRuns(clampedLimit, areas));
         model.addAttribute("activeTab", "agent-runs");
         return "admin/agent-runs";
     }

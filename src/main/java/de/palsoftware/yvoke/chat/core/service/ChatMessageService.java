@@ -19,6 +19,7 @@ import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
+import de.palsoftware.yvoke.chat.core.model.ConversationSettings;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageTrace;
 import de.palsoftware.yvoke.chat.core.model.ToolCallRecord;
@@ -39,6 +40,7 @@ import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
+import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -90,7 +92,10 @@ public class ChatMessageService {
     private final ChatProperties chatProperties;
     private final AgentRunRepository agentRunRepository;
     private final AgentStepRepository agentStepRepository;
+    @Nullable
+    private final RetrievalTelemetryService retrievalTelemetryService;
 
+    @Autowired
     public ChatMessageService(MessageRepository messageRepository,
         ConversationRepository conversationRepository,
         ChatConversationService chatConversationService, RagService ragService,
@@ -100,7 +105,8 @@ public class ChatMessageService {
         ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
         MessageToolCallRepository messageToolCallRepository,
         ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
-        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
+        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository,
+        @Nullable RetrievalTelemetryService retrievalTelemetryService) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -116,12 +122,29 @@ public class ChatMessageService {
         this.chatProperties = chatProperties;
         this.agentRunRepository = agentRunRepository;
         this.agentStepRepository = agentStepRepository;
+        this.retrievalTelemetryService = retrievalTelemetryService;
+    }
+
+    public ChatMessageService(MessageRepository messageRepository,
+        ConversationRepository conversationRepository,
+        ChatConversationService chatConversationService, RagService ragService,
+        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
+        PlatformTransactionManager transactionManager,
+        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
+        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
+        MessageToolCallRepository messageToolCallRepository,
+        ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
+        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
+        this(messageRepository, conversationRepository, chatConversationService, ragService,
+            retrievalLogRepository, playbookService, transactionManager, taskExecutor,
+            chatCancellationService, orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, chatProperties, agentRunRepository, agentStepRepository, null);
     }
 
     public List<Message> getMessages(UUID conversationId) {
         chatConversationService.checkChatEnabled();
         chatConversationService.verifyOwnership(conversationId, true);
-        return messageRepository.findByConversationId(conversationId, 100, 0);
+        return messageRepository.findLatestByConversationId(conversationId, 100);
     }
 
     private void validateMessageLength(String content) {
@@ -174,7 +197,7 @@ public class ChatMessageService {
 
         Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
-            (String) settings.get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
+            ConversationSettings.getString(settings, ConversationSetting.ORCHESTRATOR_PROFILE);
 
         ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
         return prepareWithLockState(conversation, userContent, promptName, lockState);
@@ -277,8 +300,8 @@ public class ChatMessageService {
         validateMessageLength(content);
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        String orchestratorProfile = (String) conversation.settings()
-            .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
+        String orchestratorProfile = ConversationSettings.getString(conversation.settings(),
+            ConversationSetting.ORCHESTRATOR_PROFILE);
 
         ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
 
@@ -307,70 +330,82 @@ public class ChatMessageService {
         });
 
         UUID userId = conversation.userId();
-        taskExecutor.submit(() -> {
-            chatCancellationService.register(conversationId, Thread.currentThread());
-            StringBuilder assistantContent = new StringBuilder();
-            Consumer<String> sink = token -> {
-                if (token != null) {
-                    assistantContent.append(token);
-                }
-            };
-
-            try {
-                // Same attribution rule as the SSE and sync paths: spend points at the
-                // persisted user message. This path does write a "generating" assistant row up
-                // front, so assistantMessageId would satisfy the FK — but using it here would make
-                // llm_call_logs.message_id mean different things depending on which entry point
-                // served the turn, and any GROUP BY message_id would silently mix the two.
-                LlmCallContextHolder.set(conversationId, prepared.userMessageId(), null, userId,
-                    "chat", "assistant");
-                RagResult ragResult =
-                    ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
-
-                String generatedContent = assistantContent.toString();
-                // Persist tool-call trace before marking status "done" in database
-                // so clients polling async status find trace available upon completion.
-                saveToolCallTrace(ragResult, assistantMessageId);
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId, generatedContent,
-                        ragResult.retrievedChunkIds(), Collections.emptyList(),
-                        ragResult.promptTokens(), ragResult.completionTokens(),
-                        ragResult.totalTokens(), ragResult.cachedTokens(),
-                        ragResult.thoughtTokens(), "done", prepared.modelToUse());
-                    linkRetrievalLogs(ragResult, assistantMessageId);
-                    // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
-                });
-            } catch (CancellationException e) {
-                Thread.interrupted(); // Clear interrupted status so DB updates can execute
-                log.info("Async generation cancelled by user for conversation: {}", conversationId);
-                String stopMsg = assistantContent.toString() + "\n\n*[Generation stopped by user]*";
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId, stopMsg,
-                        Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
-                        STATUS_CANCELLED, prepared.modelToUse());
-                });
-            } catch (Exception e) {
-                Thread.interrupted(); // Clear interrupted status so DB updates can execute
-                log.error("Error during async generation for conversation: {}", conversationId, e);
-                String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId, errorMsg,
-                        Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0, "error",
-                        prepared.modelToUse());
-                });
-            } finally {
-                if (onComplete != null) {
-                    try {
-                        onComplete.run();
-                    } catch (Throwable t) {
-                        log.error("Error executing onComplete callback for conversation: {}",
-                            conversationId, t);
+        try {
+            taskExecutor.submit(() -> {
+                chatCancellationService.register(conversationId, Thread.currentThread());
+                StringBuilder assistantContent = new StringBuilder();
+                Consumer<String> sink = token -> {
+                    if (token != null) {
+                        assistantContent.append(token);
                     }
+                };
+
+                try {
+                    // Same attribution rule as the SSE and sync paths: spend points at the
+                    // persisted user message. This path does write a "generating" assistant row up
+                    // front, so assistantMessageId would satisfy the FK — but using it here would
+                    // make llm_call_logs.message_id mean different things depending on which entry
+                    // point served the turn, and any GROUP BY message_id would silently mix the
+                    // two.
+                    LlmCallContextHolder.set(conversationId, prepared.userMessageId(), null, userId,
+                        "chat", "assistant");
+                    RagResult ragResult =
+                        ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
+
+                    String generatedContent = assistantContent.toString();
+                    // Persist tool-call trace before marking status "done" in database
+                    // so clients polling async status find trace available upon completion.
+                    saveToolCallTrace(ragResult, assistantMessageId);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId,
+                            generatedContent, ragResult.retrievedChunkIds(),
+                            Collections.emptyList(), ragResult.promptTokens(),
+                            ragResult.completionTokens(), ragResult.totalTokens(),
+                            ragResult.cachedTokens(), ragResult.thoughtTokens(), "done",
+                            prepared.modelToUse());
+                        // LLM usage is accounted for by AccountingLlmClient, one row per actual
+                        // call.
+                    });
+                    linkRetrievalLogs(ragResult, assistantMessageId);
+                } catch (CancellationException e) {
+                    Thread.interrupted(); // Clear interrupted status so DB updates can execute
+                    log.info("Async generation cancelled by user for conversation: {}",
+                        conversationId);
+                    String stopMsg =
+                        assistantContent.toString() + "\n\n*[Generation stopped by user]*";
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId, stopMsg,
+                            Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
+                            STATUS_CANCELLED, prepared.modelToUse());
+                    });
+                } catch (Exception e) {
+                    Thread.interrupted(); // Clear interrupted status so DB updates can execute
+                    log.error("Error during async generation for conversation: {}", conversationId,
+                        e);
+                    String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId, errorMsg,
+                            Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
+                            "error", prepared.modelToUse());
+                    });
+                } finally {
+                    if (onComplete != null) {
+                        try {
+                            onComplete.run();
+                        } catch (Throwable t) {
+                            log.error("Error executing onComplete callback for conversation: {}",
+                                conversationId, t);
+                        }
+                    }
+                    LlmCallContextHolder.clear();
+                    chatCancellationService.deregister(conversationId, Thread.currentThread());
                 }
-                LlmCallContextHolder.clear();
-                chatCancellationService.deregister(conversationId, Thread.currentThread());
-            }
-        });
+            });
+        } catch (Throwable submitError) {
+            markFailedToStart(assistantMessageId, prepared.modelToUse(), conversationId,
+                submitError);
+            throw submitError;
+        }
 
         return assistantMessageId;
     }
@@ -432,57 +467,77 @@ public class ChatMessageService {
             messageRepository.save(assistantMessage);
         });
 
-        taskExecutor.submit(() -> {
-            chatCancellationService.register(conversationId, Thread.currentThread());
-            try {
-                // userMessageId, not assistantMessageId: the other three chat entry points
-                // attribute LLM spend to the persisted user message, and a GROUP BY message_id
-                // that mixed the two would be comparing questions with answers.
-                OrchestrationResult result = orchestrationService.runOrchestration(conversationId,
-                    userMessageId, content, history, agentRunId, profileName, turnAreas);
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId, result.content(),
-                        result.retrievedChunkIds(), Collections.emptyList(), result.promptTokens(),
-                        result.completionTokens(), result.totalTokens(), result.cachedTokens(),
-                        result.thoughtTokens(), "done", null);
-                    for (UUID searchId : result.searchIds()) {
-                        retrievalLogRepository.updateMessageId(searchId, assistantMessageId);
+        try {
+            taskExecutor.submit(() -> {
+                chatCancellationService.register(conversationId, Thread.currentThread());
+                try {
+                    // userMessageId, not assistantMessageId: the other three chat entry points
+                    // attribute LLM spend to the persisted user message, and a GROUP BY message_id
+                    // that mixed the two would be comparing questions with answers.
+                    OrchestrationResult result =
+                        orchestrationService.runOrchestration(conversationId, userMessageId,
+                            content, history, agentRunId, profileName, turnAreas);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId,
+                            result.content(), result.retrievedChunkIds(), Collections.emptyList(),
+                            result.promptTokens(), result.completionTokens(), result.totalTokens(),
+                            result.cachedTokens(), result.thoughtTokens(), "done", null);
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    });
+                    linkRetrievalLogIds(result.searchIds(), assistantMessageId);
+                } catch (CancellationException e) {
+                    Thread.interrupted();
+                    log.info("Orchestrated generation cancelled for conversation: {}",
+                        conversationId);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId,
+                            "*[Generation stopped by user]*", Collections.emptyList(),
+                            Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    });
+                } catch (Exception e) {
+                    Thread.interrupted();
+                    log.error("Error during orchestrated generation for conversation: {}",
+                        conversationId, e);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        messageRepository.updateContentAndStatus(assistantMessageId,
+                            GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0,
+                            0, 0, 0, 0, "error", null);
+                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
+                    });
+                } finally {
+                    if (onComplete != null) {
+                        try {
+                            onComplete.run();
+                        } catch (Throwable t) {
+                            log.error("Error executing onComplete callback for conversation: {}",
+                                conversationId, t);
+                        }
                     }
-                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                });
-            } catch (CancellationException e) {
-                Thread.interrupted();
-                log.info("Orchestrated generation cancelled for conversation: {}", conversationId);
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId,
-                        "*[Generation stopped by user]*", Collections.emptyList(),
-                        Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
-                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                });
-            } catch (Exception e) {
-                Thread.interrupted();
-                log.error("Error during orchestrated generation for conversation: {}",
-                    conversationId, e);
-                transactionTemplate.executeWithoutResult(status -> {
-                    messageRepository.updateContentAndStatus(assistantMessageId, GENERIC_ERROR_TEXT,
-                        Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0, "error",
-                        null);
-                    agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                });
-            } finally {
-                if (onComplete != null) {
-                    try {
-                        onComplete.run();
-                    } catch (Throwable t) {
-                        log.error("Error executing onComplete callback for conversation: {}",
-                            conversationId, t);
-                    }
+                    chatCancellationService.deregister(conversationId, Thread.currentThread());
                 }
-                chatCancellationService.deregister(conversationId, Thread.currentThread());
-            }
-        });
+            });
+        } catch (Throwable submitError) {
+            markFailedToStart(assistantMessageId, null, conversationId, submitError);
+            throw submitError;
+        }
 
         return assistantMessageId;
+    }
+
+    private void markFailedToStart(UUID assistantMessageId, @Nullable String modelToUse,
+        UUID conversationId, Throwable submitError) {
+        log.error("Failed to submit async generation task for conversation {}", conversationId,
+            submitError);
+        try {
+            transactionTemplate.executeWithoutResult(
+                status -> messageRepository.updateContentAndStatus(assistantMessageId,
+                    GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0, 0,
+                    0, 0, "error", modelToUse));
+        } catch (Exception dbErr) {
+            log.error("Failed to mark unstarted assistant message {} as error", assistantMessageId,
+                dbErr);
+        }
     }
 
     public Optional<Message> getMessageStatus(UUID messageId) {
@@ -550,6 +605,7 @@ public class ChatMessageService {
             transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
                 prepared.conversationId(), assistantMessageId, assistantContent.toString(),
                 prepared.playbookName(), prepared.playbookVersion(), prepared.modelToUse()));
+            linkRetrievalLogs(ragResult, assistantMessageId);
 
             // Persist tool-call trace before emitting [DONE] so clients reading the trace
             // immediately upon stream completion observe the persisted tool calls.
@@ -608,6 +664,7 @@ public class ChatMessageService {
             transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
                 prepared.conversationId(), assistantMessageId, content, prepared.playbookName(),
                 prepared.playbookVersion(), prepared.modelToUse()));
+            linkRetrievalLogs(ragResult, assistantMessageId);
             saveToolCallTrace(ragResult, assistantMessageId);
 
             return new Message(assistantMessageId, prepared.conversationId(), "assistant", content,
@@ -672,7 +729,7 @@ public class ChatMessageService {
         // the picker can no longer even display. The rule is static so this path runs the REAL one
         // and takes only the list from the collaborator.
         String modelToUse = ChatConversationService.effectiveModel(
-            (String) settings.get(ConversationSetting.MODEL.getValue()),
+            ConversationSettings.getString(settings, ConversationSetting.MODEL),
             chatConversationService.getAllowedModels());
         if (modelToUse == null || modelToUse.isBlank()) {
             throw new IllegalStateException("No model selected in conversation settings");
@@ -681,30 +738,46 @@ public class ChatMessageService {
     }
 
     private String resolveThinkingLevel(Map<String, Object> settings) {
-        String level = (String) settings.get(ConversationSetting.THINKING_LEVEL.getValue());
+        String level = ConversationSettings.getString(settings, ConversationSetting.THINKING_LEVEL);
         return (level != null && !level.isBlank()) ? level : "medium";
     }
 
     private List<LlmMessage> getPriorHistory(UUID conversationId, UUID excludeMessageId) {
         List<Message> priorMessages =
-            messageRepository.findByConversationId(conversationId, 100, 0);
-        List<LlmMessage> history = new ArrayList<>();
+            messageRepository.findLatestByConversationId(conversationId, 100);
+        List<LlmMessage> candidates = new ArrayList<>();
 
         for (Message msg : priorMessages) {
             if (msg.id().equals(excludeMessageId)) {
                 continue;
             }
             if ("user".equalsIgnoreCase(msg.role())) {
-                history.add(new LlmMessage("user", msg.content()));
+                candidates.add(new LlmMessage("user", msg.content()));
             } else if ("assistant".equalsIgnoreCase(msg.role())) {
                 if ("generating".equalsIgnoreCase(msg.status()) || msg.content() == null
                     || msg.content().isBlank()) {
                     continue;
                 }
-                history.add(new LlmMessage("assistant", msg.content()));
+                candidates.add(new LlmMessage("assistant", msg.content()));
             }
         }
-        return history;
+        int budget = chatProperties.maxHistoryChars();
+        if (budget <= 0 || candidates.isEmpty()) {
+            return candidates;
+        }
+        List<LlmMessage> kept = new ArrayList<>();
+        int used = 0;
+        for (int i = candidates.size() - 1; i >= 0; i--) {
+            LlmMessage candidate = candidates.get(i);
+            int len = candidate.content() != null ? candidate.content().length() : 0;
+            if (used + len > budget) {
+                break;
+            }
+            used += len;
+            kept.add(candidate);
+        }
+        Collections.reverse(kept);
+        return kept;
     }
 
 
@@ -745,8 +818,6 @@ public class ChatMessageService {
         messageRepository.save(assistantMessage);
 
         // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
-
-        linkRetrievalLogs(ragResult, assistantMessageId);
     }
 
     private void saveToolCallTrace(RagResult ragResult, UUID assistantMessageId) {
@@ -767,11 +838,22 @@ public class ChatMessageService {
 
     private void linkRetrievalLogs(RagResult ragResult, UUID assistantMessageId) {
         if (ragResult.searchIds() != null && !ragResult.searchIds().isEmpty()) {
-            for (UUID sid : ragResult.searchIds()) {
-                retrievalLogRepository.updateMessageId(sid, assistantMessageId);
-            }
+            linkRetrievalLogIds(ragResult.searchIds(), assistantMessageId);
         } else if (ragResult.searchId() != null) {
-            retrievalLogRepository.updateMessageId(ragResult.searchId(), assistantMessageId);
+            linkRetrievalLogIds(List.of(ragResult.searchId()), assistantMessageId);
+        }
+    }
+
+    private void linkRetrievalLogIds(List<UUID> searchIds, UUID assistantMessageId) {
+        if (searchIds == null || searchIds.isEmpty()) {
+            return;
+        }
+        if (retrievalTelemetryService != null) {
+            retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
+            return;
+        }
+        for (UUID sid : searchIds) {
+            retrievalLogRepository.updateMessageId(sid, assistantMessageId);
         }
     }
 

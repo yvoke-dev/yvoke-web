@@ -413,4 +413,25 @@ class ChatSseControllerTest {
         verify(limiter).release();
         verify(sseExecutor, never()).submit(any(Runnable.class));
     }
+
+    @Test
+    void sendMessageStream_executorSubmissionFailure_releasesPermitOnce() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = allowingLimiter();
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
+            .thenReturn(dummyPreparedChat());
+        when(sseExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("executor rejected"));
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        assertThatThrownBy(() -> controller.sendMessageStream(conversationId, "hello", null))
+            .isInstanceOf(RuntimeException.class).hasMessageContaining("executor rejected");
+        verify(limiter, Mockito.times(1)).release();
+    }
 }

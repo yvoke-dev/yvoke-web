@@ -308,6 +308,7 @@ app:
     trace-tool-calls: ${APP_CHAT_TRACE_TOOL_CALLS:false}
     stale-generating-after: 15m
     max-message-chars: 100000
+    max-history-chars: 400000
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
       # cannot materialize the entire llm_call_logs table into heap.

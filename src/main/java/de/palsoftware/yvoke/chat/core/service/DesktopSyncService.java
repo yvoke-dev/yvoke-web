@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.core.service;
 
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
+import de.palsoftware.yvoke.chat.core.model.ConversationSettings;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
@@ -171,45 +172,22 @@ public class DesktopSyncService {
             conversationRepository.updateTitle(conversationId, title.trim());
         }
         if (!mapped.isEmpty()) {
-            if (mapped.containsKey("thinkingLevel")) {
-                mapped.put("thinking-level", mapped.remove("thinkingLevel"));
-            }
             String versionKey = ConversationSetting.DESKTOP_VERSION.getValue();
-            if (conversation.settings() != null
-                && conversation.settings().get(versionKey) instanceof String existing
-                && !existing.isBlank()) {
-                mapped.put(versionKey, existing);
+            String existingVersion = ConversationSettings.getString(conversation.settings(),
+                ConversationSetting.DESKTOP_VERSION);
+            if (existingVersion != null && !existingVersion.isBlank()) {
+                mapped.put(versionKey, existingVersion);
             }
-            conversationRepository.updateSettings(conversationId, mapped);
+            conversationRepository.mergeSettings(conversationId, mapped);
         }
     }
 
     private static Map<String, Object> validateSettings(@Nullable Map<String, Object> settings) {
-        if (settings == null || settings.isEmpty()) {
-            return new HashMap<>();
+        try {
+            return ConversationSettings.normalizeAndValidateDesktop(settings);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
-        Map<String, Object> copy = new HashMap<>(settings);
-        String key = ConversationSetting.DESKTOP_VERSION.getValue();
-        if (copy.containsKey(key)) {
-            Object raw = copy.get(key);
-            if (raw == null) {
-                copy.remove(key);
-            } else if (!(raw instanceof String str)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Invalid desktopVersion: must be a string");
-            } else {
-                String stripped = str.strip();
-                if (stripped.isEmpty()) {
-                    copy.remove(key);
-                } else if (stripped.length() > MAX_DESKTOP_VERSION_LENGTH) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Invalid desktopVersion: exceeds maximum length");
-                } else {
-                    copy.put(key, stripped);
-                }
-            }
-        }
-        return copy;
     }
 
     public void deleteConversation(UUID conversationId, User user) {

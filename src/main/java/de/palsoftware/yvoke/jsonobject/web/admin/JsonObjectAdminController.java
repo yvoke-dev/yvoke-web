@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -93,13 +94,17 @@ public class JsonObjectAdminController {
                 List<String> tagsFilter =
                     (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : null;
 
+                int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                    PagingParams.MAX_ADMIN_PAGE_SIZE);
+                int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
+
                 List<JsonObject> objects;
                 long totalElements;
 
                 if (search != null && !search.isBlank()) {
                     try {
-                        objects =
-                            jsonObjectService.searchObjects(colId, search, tagsFilter, page, size);
+                        objects = jsonObjectService.searchObjects(colId, search, tagsFilter,
+                            clampedPage, clampedSize);
                         totalElements =
                             jsonObjectService.countSearchObjects(colId, search, tagsFilter);
                     } catch (BadSqlGrammarException e) {
@@ -109,14 +114,15 @@ public class JsonObjectAdminController {
                         totalElements = 0;
                     }
                 } else {
-                    objects = jsonObjectService.listObjects(colId, tagsFilter, page, size);
+                    objects =
+                        jsonObjectService.listObjects(colId, tagsFilter, clampedPage, clampedSize);
                     totalElements = jsonObjectService.countObjects(colId, tagsFilter);
                 }
 
-                int totalPages = (int) Math.ceil((double) totalElements / size);
+                int totalPages = PagingParams.totalPages(totalElements, clampedSize);
 
                 model.addAttribute("jsonObjects", objects);
-                model.addAttribute("currentPage", page);
+                model.addAttribute("currentPage", clampedPage);
                 model.addAttribute("totalPages", totalPages);
                 model.addAttribute("totalElements", totalElements);
 

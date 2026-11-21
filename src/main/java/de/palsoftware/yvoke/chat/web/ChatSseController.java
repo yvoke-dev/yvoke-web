@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
@@ -99,11 +100,18 @@ public class ChatSseController {
         // Validate + persist the user message on the request thread so authorization/validation
         // failures propagate as normal HTTP errors BEFORE the SSE response is committed. Only the
         // (long-running) generation streams asynchronously.
+        AtomicBoolean permitReleased = new AtomicBoolean(false);
+        Runnable releasePermitOnce = () -> {
+            if (permitReleased.compareAndSet(false, true)) {
+                concurrencyLimiter.release();
+            }
+        };
+
         PreparedChat prepared;
         try {
             prepared = chatMessageService.prepare(id, content, promptName);
-        } catch (Exception e) {
-            concurrencyLimiter.release();
+        } catch (Throwable e) {
+            releasePermitOnce.run();
             throw e;
         }
 
@@ -126,53 +134,59 @@ public class ChatSseController {
             cancel(taskRef);
         });
 
-        Future<?> task = sseExecutor.submit(() -> {
-            chatCancellationService.register(id, Thread.currentThread());
-            try {
-                chatMessageService.stream(prepared, assistantMessageId, token -> {
-                    log.trace("SSE sending token to client: '{}'", token);
-                    try {
-                        emitter.send(token);
-                    } catch (IOException | IllegalStateException e) {
-                        // Emitter completed/closed, client disconnected, or the write path itself
-                        // threw: unwind the stream carrying enough to tell those apart afterwards.
-                        throw new SseWriteFailedException(sentTokens.get(), e);
-                    }
-                    sentTokens.incrementAndGet();
-                });
-                log.info("SSE stream completed successfully for conversation: {}", id);
-                emitter.complete();
-            } catch (CancellationException e) {
-                log.info("SSE stream cancelled by user for conversation: {}", id);
-                // Already stopped, just complete
-                emitter.complete();
-            } catch (SseWriteFailedException e) {
-                // Reached only when the in-band error write failed too, so the client really is
-                // gone. Logged with the cause chain so the level, not the wording, is what keeps
-                // an ordinary mid-answer disconnect quiet.
-                log.debug("SSE stream unwound for conversation {}: {}", id, e.getMessage(), e);
-            } catch (Exception e) {
-                // The SSE response is already committed, so report the failure in-band and complete
-                // normally — completeWithError() here would make MVC try to write a JSON error over
-                // the committed event-stream response.
-                log.error("Error during streaming generation for conversation: {}", id, e);
+        try {
+            Future<?> task = sseExecutor.submit(() -> {
+                chatCancellationService.register(id, Thread.currentThread());
                 try {
-                    // Never echo the raw exception message to the client — it can leak SQL /
-                    // provider
-                    // / stack detail. The full cause is in the server log above (SEC-17).
-                    emitter.send("[ERROR] The assistant could not complete this response.");
-                    emitter.send("[DONE]");
-                } catch (Exception ex) {
-                    log.debug("Failed to send error event via SSE for conversation {}", id, ex);
+                    chatMessageService.stream(prepared, assistantMessageId, token -> {
+                        log.trace("SSE sending token to client: '{}'", token);
+                        try {
+                            emitter.send(token);
+                        } catch (IOException | IllegalStateException e) {
+                            // Emitter completed/closed, client disconnected, or the write path
+                            // itself threw: unwind the stream carrying enough to tell those apart
+                            // afterwards.
+                            throw new SseWriteFailedException(sentTokens.get(), e);
+                        }
+                        sentTokens.incrementAndGet();
+                    });
+                    log.info("SSE stream completed successfully for conversation: {}", id);
+                    emitter.complete();
+                } catch (CancellationException e) {
+                    log.info("SSE stream cancelled by user for conversation: {}", id);
+                    // Already stopped, just complete
+                    emitter.complete();
+                } catch (SseWriteFailedException e) {
+                    // Reached only when the in-band error write failed too, so the client really is
+                    // gone. Logged with the cause chain so the level, not the wording, is what
+                    // keeps an ordinary mid-answer disconnect quiet.
+                    log.debug("SSE stream unwound for conversation {}: {}", id, e.getMessage(), e);
+                } catch (Exception e) {
+                    // The SSE response is already committed, so report the failure in-band and
+                    // complete normally — completeWithError() here would make MVC try to write a
+                    // JSON error over the committed event-stream response.
+                    log.error("Error during streaming generation for conversation: {}", id, e);
+                    try {
+                        // Never echo the raw exception message to the client — it can leak SQL /
+                        // provider / stack detail. The full cause is in the server log above
+                        // (SEC-17).
+                        emitter.send("[ERROR] The assistant could not complete this response.");
+                        emitter.send("[DONE]");
+                    } catch (Exception ex) {
+                        log.debug("Failed to send error event via SSE for conversation {}", id, ex);
+                    }
+                    emitter.complete();
+                } finally {
+                    releasePermitOnce.run();
+                    chatCancellationService.deregister(id, Thread.currentThread());
                 }
-                emitter.complete();
-            } finally {
-                concurrencyLimiter.release();
-                chatCancellationService.deregister(id, Thread.currentThread());
-            }
-        });
-
-        taskRef.set(task);
+            });
+            taskRef.set(task);
+        } catch (Throwable submitError) {
+            releasePermitOnce.run();
+            emitter.completeWithError(submitError);
+            throw submitError;
+        }
 
         return emitter;
     }

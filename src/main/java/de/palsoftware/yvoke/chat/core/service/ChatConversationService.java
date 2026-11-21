@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
+import de.palsoftware.yvoke.chat.core.model.ThinkingLevel;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
@@ -156,12 +157,26 @@ public class ChatConversationService {
 
     public void updateSettings(UUID id, Map<String, Object> settings) {
         checkChatEnabled();
-        Conversation conversation = conversationRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + id));
-        verifyConversationOwnership(conversation, false);
-        Map<String, Object> merged = new HashMap<>(conversation.settings());
-        merged.putAll(settings);
-        conversationRepository.updateSettings(id, merged);
+        verifyOwnership(id, false);
+        if (settings == null || settings.isEmpty()) {
+            return;
+        }
+        conversationRepository.mergeSettings(id, settings);
+    }
+
+    /** Atomically updates a single setting key on a conversation owned by the caller. */
+    public void updateSetting(UUID id, ConversationSetting key, Object value) {
+        checkChatEnabled();
+        verifyOwnership(id, false);
+        Object validatedValue = value;
+        if (key == ConversationSetting.THINKING_LEVEL) {
+            try {
+                validatedValue = ThinkingLevel.parse(value instanceof String s ? s : null).value();
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+            }
+        }
+        conversationRepository.mergeSettings(id, Map.of(key.getValue(), validatedValue));
     }
 
     /**
@@ -241,15 +256,24 @@ public class ChatConversationService {
      * index and the thread view.
      */
     public ConversationSidebar buildSidebar() {
-        List<Conversation> conversations = listAllConversations(SIDEBAR_LIMIT, 0);
+        checkChatEnabled();
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
+        Set<String> allowedAreasLower = AreaAccessContext.allowedUserAreasLower().orElse(null);
+        List<Conversation> owned =
+            conversationRepository.listOwned(currentUserId, SIDEBAR_LIMIT, 0, allowedAreasLower);
+        List<Conversation> otherPublic = conversationRepository.listOtherPublic(currentUserId,
+            SIDEBAR_LIMIT, 0, allowedAreasLower);
+        List<Conversation> conversations = new ArrayList<>(owned.size() + otherPublic.size());
+        conversations.addAll(owned);
+        conversations.addAll(otherPublic);
 
         TreeMap<String, List<Conversation>> folders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> untagged = new ArrayList<>();
         TreeMap<String, List<Conversation>> publicFolders =
             new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> publicUntagged = new ArrayList<>();
-        // Derived from the list already loaded above — no second query.
+        // Derived from the owned + public lists loaded above — public threads can no longer starve
+        // the owner's conversations or folder autocomplete suggestions.
         List<String> allTags = distinctTags(conversations);
 
         for (Conversation conv : conversations) {

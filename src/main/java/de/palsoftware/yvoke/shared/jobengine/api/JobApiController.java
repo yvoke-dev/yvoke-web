@@ -5,7 +5,6 @@ import de.palsoftware.yvoke.shared.jobengine.PrivilegedJobKindGuard;
 import de.palsoftware.yvoke.shared.jobengine.api.dto.JobDto;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
-import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
@@ -13,7 +12,6 @@ import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import jakarta.validation.Valid;
-import java.io.IOException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -95,20 +93,15 @@ public class JobApiController {
 
     @GetMapping("/{id}/progress")
     public SseEmitter progress(@PathVariable UUID id) {
-        IngestionJob job = jobRepository.findById(id).orElseThrow(
+        jobRepository.findById(id).orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
         assertJobAccess(id);
 
-        SseEmitter emitter = progressBroker.subscribe(id);
-        try {
-            emitter.send(SseEmitter.event().name("progress").data(ProgressEvent.of(job)));
-            if (job.status().isTerminal()) {
-                emitter.complete();
-            }
-        } catch (IOException e) {
-            emitter.completeWithError(e);
-        }
-        return emitter;
+        // Subscribe BEFORE re-reading the DB snapshot so any transition that lands concurrently
+        // cannot slip between the read and registration, and all writes to the emitter are
+        // serialized through the broker.
+        return progressBroker.subscribeWithInitial(id,
+            () -> jobRepository.findById(id).map(ProgressEvent::of));
     }
 
     private void assertJobAccess(UUID id) {

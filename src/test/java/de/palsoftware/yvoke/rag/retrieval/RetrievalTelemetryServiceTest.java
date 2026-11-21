@@ -255,4 +255,23 @@ public class RetrievalTelemetryServiceTest {
         assertThat(rerankMap.get("top1_changed")).isEqualTo(false);
         assertThat((List<Integer>) rerankMap.get("rrf_order")).isEmpty();
     }
+
+    @Test
+    public void linkMessageIdsRunsOnSameFifoExecutorStrictlyAfterInsert() {
+        UUID searchId = UUID.randomUUID();
+        UUID messageId = UUID.randomUUID();
+        SearchOptions opts = new SearchOptions("OIM-TEST", 5, true, false, null, 0);
+
+        telemetryService.logAndPersistTelemetry(searchId, "fifo query", opts, 1, 0, List.of(),
+            false, List.of(), null, null);
+        telemetryService.linkMessageIds(List.of(searchId), messageId);
+        telemetryService.flush();
+
+        var inOrder = Mockito.inOrder(retrievalLogRepository);
+        inOrder.verify(retrievalLogRepository).saveTelemetry(Mockito.eq(searchId),
+            Mockito.eq("fifo query"), Mockito.eq(collectionId), Mockito.isNull(),
+            Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any(),
+            Mockito.any(), Mockito.isNull(), Mockito.isNull());
+        inOrder.verify(retrievalLogRepository).updateMessageId(searchId, messageId);
+    }
 }

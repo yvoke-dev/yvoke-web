@@ -121,6 +121,28 @@ public class MessageRepository {
             .param("offset", offset).query(new MessageRowMapper(objectMapper)).list();
     }
 
+    /**
+     * Loads the most recent {@code limit} messages for a conversation in chronological order
+     * ({@code created_at ASC, id ASC}) so long threads keep their recent turns visible and in LLM
+     * context instead of freezing on the oldest 100.
+     */
+    public List<Message> findLatestByConversationId(UUID conversationId, int limit) {
+        String sql =
+            """
+                SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                FROM (
+                    SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                    FROM messages
+                    WHERE conversation_id = :conversationId
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT :limit
+                ) recent
+                ORDER BY created_at ASC, id ASC
+                """;
+        return jdbcClient.sql(sql).param("conversationId", conversationId).param("limit", limit)
+            .query(new MessageRowMapper(objectMapper)).list();
+    }
+
     public Optional<Message> findById(UUID id) {
         String sql =
             """

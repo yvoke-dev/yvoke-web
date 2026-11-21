@@ -20,6 +20,7 @@ import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.Nullable;
 import java.io.IOException;
@@ -194,17 +195,18 @@ public class RagAdminController {
                 activeFulltext = false;
         }
 
+        int clampedLimit = PagingParams.clampLimit(limit != null ? limit : 8, 8, maxLimit);
         model.addAttribute("tags", tags);
         model.addAttribute("query", query);
         model.addAttribute("collection", activeCollection);
         model.addAttribute("tag", tagParam);
-        model.addAttribute("limit", limit);
+        model.addAttribute("limit", clampedLimit);
         model.addAttribute("maxLimit", maxLimit);
         model.addAttribute("semantic", activeSemantic);
         model.addAttribute("fulltext", activeFulltext);
 
         if (query != null && !query.isBlank() && activeCollection != null) {
-            SearchOptions opts = new SearchOptions(activeCollection, limit, activeSemantic,
+            SearchOptions opts = new SearchOptions(activeCollection, clampedLimit, activeSemantic,
                 activeFulltext, tagParam, 0);
             SearchWithId search = hybridSearch.searchWithId(query, opts);
             model.addAttribute("results", ragAdminViewService.toSearchResults(search.results()));
@@ -236,14 +238,17 @@ public class RagAdminController {
         @RequestParam(defaultValue = "20") int size, Model model) {
 
         log.info("RagAdminController: Accessing Logs view");
+        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        List<RetrievalLogView> logs =
-            ragAdminViewService.listLogs(size, page * size, allowedAreasLower);
+        List<RetrievalLogView> logs = ragAdminViewService.listLogs(clampedSize,
+            PagingParams.safeOffset(clampedPage, clampedSize), allowedAreasLower);
         long totalCount = ragAdminViewService.countLogs(allowedAreasLower);
-        int totalPages = (int) Math.ceil((double) totalCount / size);
+        int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
         model.addAttribute("logs", logs);
-        model.addAttribute("currentPage", page);
+        model.addAttribute("currentPage", clampedPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
         model.addAttribute("logQueryMaxChars", logQueryMaxChars);

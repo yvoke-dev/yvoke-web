@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
@@ -236,21 +237,10 @@ public class ChatConversationServiceTest {
 
         chatConversationService.updateModel(conversationId, "gemini-3.1-flash-lite");
 
-        verify(conversationRepository).updateSettings(eq(conversationId),
+        verify(conversationRepository).mergeSettings(eq(conversationId),
             argThat((Map<String, Object> m) -> "gemini-3.1-flash-lite".equals(m.get("model"))));
     }
 
-    /**
-     * All six settings live in ONE jsonb column and every settings endpoint funnels through this
-     * merge, so a regression to a plain replace makes each write silently delete the others:
-     * posting {@code /thinking-level} would drop {@code model}, and {@code resolveModelToUse} then
-     * throws on the blank model so the NEXT generation dies with a generic error the user cannot
-     * trace; posting {@code /streaming} would drop {@code orchestrator-profile}, quietly demoting
-     * an orchestrated conversation to a plain run. The loss is invisible until the next send — spec
-     * § 2 lists "one setting write erasing the others" under MUST NOT happen. Asserting on the FULL
-     * captured map is the point: a containsEntry check on the incoming key alone passes against a
-     * replace.
-     */
     @Test
     public void updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt() {
         UUID id = UUID.randomUUID();
@@ -265,13 +255,11 @@ public class ChatConversationServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
-        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
-            entry("thinking-level", "high"), entry("orchestrator-profile", "oim"),
-            entry("streaming", true));
+        verify(conversationRepository).mergeSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("streaming", true));
+        verify(conversationRepository, never()).updateSettings(any(), any());
     }
 
-    /** On a key collision the incoming value wins, and the untouched keys still survive. */
     @Test
     public void updateSettingsLetsTheIncomingValueWinWithoutDroppingTheRest() {
         UUID id = UUID.randomUUID();
@@ -280,13 +268,18 @@ public class ChatConversationServiceTest {
             Collections.emptyList());
         when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
 
-        chatConversationService.updateSettings(id, Map.of("thinking-level", "low"));
+        chatConversationService.updateSetting(id, ConversationSetting.THINKING_LEVEL, "low");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
-        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
-            entry("thinking-level", "low"));
+        verify(conversationRepository).mergeSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("thinking-level", "low"));
+
+        assertThatThrownBy(() -> chatConversationService.updateSetting(id,
+            ConversationSetting.THINKING_LEVEL, "turbo"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     /**
@@ -353,9 +346,13 @@ public class ChatConversationServiceTest {
         Conversation c4 = conv(currentUserId, List.of("public"));
         Conversation c5 = conv(otherUserId, null);
         Conversation c6 = conv(otherUserId, List.of("x", "y"));
+        List<Conversation> owned = List.of(c1, c2, c3, c4);
+        List<Conversation> otherPublic = List.of(c5, c6);
         List<Conversation> all = List.of(c1, c2, c3, c4, c5, c6);
-        when(conversationRepository.listAll(eq(currentUserId), eq(100), eq(0), any()))
-            .thenReturn(all);
+        when(conversationRepository.listOwned(eq(currentUserId), eq(100), eq(0), any()))
+            .thenReturn(owned);
+        when(conversationRepository.listOtherPublic(eq(currentUserId), eq(100), eq(0), any()))
+            .thenReturn(otherPublic);
 
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
 

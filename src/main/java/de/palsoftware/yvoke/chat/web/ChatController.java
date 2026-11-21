@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
+import de.palsoftware.yvoke.chat.core.model.ConversationSettings;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
@@ -117,8 +118,8 @@ public class ChatController {
         List<OrchestratorProfileOption> orchestratorProfiles =
             new ArrayList<>(AreaAccessContext.filterByUserArea(
                 orchestratorProfileService.listProfileOptions(), OrchestratorProfileOption::area));
-        String currentProfile = (String) conversation.settings()
-            .get(ConversationSetting.ORCHESTRATOR_PROFILE.getValue());
+        String currentProfile = ConversationSettings.getString(conversation.settings(),
+            ConversationSetting.ORCHESTRATOR_PROFILE);
         if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
             .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
@@ -156,7 +157,7 @@ public class ChatController {
         // so the browser selects the first one and the picker silently claims a model the
         // conversation is not on. This is the value the send path will actually use.
         model.addAttribute("effectiveModel", chatConversationService.effectiveModel(
-            (String) conversation.settings().get(ConversationSetting.MODEL.getValue())));
+            ConversationSettings.getString(conversation.settings(), ConversationSetting.MODEL)));
         model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
         model.addAttribute("prompts", AreaAccessContext
@@ -189,10 +190,7 @@ public class ChatController {
     @ResponseBody
     public void updateStreaming(@PathVariable UUID id, @RequestParam("enabled") boolean enabled) {
         log.info("Updating streaming setting for conversation id: {} to {}", id, enabled);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
-        settings.put(ConversationSetting.STREAMING.getValue(), enabled);
-        chatConversationService.updateSettings(id, settings);
+        chatConversationService.updateSetting(id, ConversationSetting.STREAMING, enabled);
     }
 
     @PostMapping("/{id}/show-thinking")
@@ -200,10 +198,7 @@ public class ChatController {
     public void updateShowThinking(@PathVariable UUID id,
         @RequestParam("enabled") boolean enabled) {
         log.info("Updating show-thinking setting for conversation id: {} to {}", id, enabled);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
-        settings.put(ConversationSetting.SHOW_THINKING.getValue(), enabled);
-        chatConversationService.updateSettings(id, settings);
+        chatConversationService.updateSetting(id, ConversationSetting.SHOW_THINKING, enabled);
     }
 
     @PostMapping("/{id}/show-prototypes")
@@ -211,20 +206,14 @@ public class ChatController {
     public void updateShowPrototypes(@PathVariable UUID id,
         @RequestParam("enabled") boolean enabled) {
         log.info("Updating show-prototypes setting for conversation id: {} to {}", id, enabled);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
-        settings.put(ConversationSetting.SHOW_PROTOTYPES.getValue(), enabled);
-        chatConversationService.updateSettings(id, settings);
+        chatConversationService.updateSetting(id, ConversationSetting.SHOW_PROTOTYPES, enabled);
     }
 
     @PostMapping("/{id}/thinking-level")
     @ResponseBody
     public void updateThinkingLevel(@PathVariable UUID id, @RequestParam("level") String level) {
         log.info("Updating thinking-level setting for conversation id: {} to {}", id, level);
-        Map<String, Object> settings = chatConversationService.getConversation(id)
-            .map(Conversation::settings).map(HashMap::new).orElseGet(HashMap::new);
-        settings.put(ConversationSetting.THINKING_LEVEL.getValue(), level);
-        chatConversationService.updateSettings(id, settings);
+        chatConversationService.updateSetting(id, ConversationSetting.THINKING_LEVEL, level);
     }
 
     @PostMapping("/{id}/orchestrator-profile")
@@ -236,12 +225,8 @@ public class ChatController {
         Conversation conversation = chatConversationService.getConversation(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conversation not found: " + id));
-        Map<String, Object> currentSettings = conversation.settings();
-        String currentProfile =
-            currentSettings != null
-                ? (String) currentSettings
-                    .getOrDefault(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "")
-                : "";
+        String currentProfile = ConversationSettings.getString(conversation.settings(),
+            ConversationSetting.ORCHESTRATOR_PROFILE);
         if (currentProfile == null) {
             currentProfile = "";
         }
@@ -273,10 +258,8 @@ public class ChatController {
             }
         }
         log.info("Updating orchestrator-profile for conversation id: {} to '{}'", id, selected);
-        Map<String, Object> settings =
-            new HashMap<>(currentSettings != null ? currentSettings : Map.of());
-        settings.put(ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), selected);
-        chatConversationService.updateSettings(id, settings);
+        chatConversationService.updateSetting(id, ConversationSetting.ORCHESTRATOR_PROFILE,
+            selected);
     }
 
 

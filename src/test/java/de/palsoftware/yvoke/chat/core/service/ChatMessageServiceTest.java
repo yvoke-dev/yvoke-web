@@ -848,7 +848,7 @@ public class ChatMessageServiceTest {
         Message msg2Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 2",
             List.of(), List.of(), Instant.now());
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans));
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
@@ -1606,7 +1606,7 @@ public class ChatMessageServiceTest {
         Message doneMsg = new Message(UUID.randomUUID(), conversationId, "assistant", "World", null,
             List.of(), List.of(), Instant.now(), null, null, null, null, null, "done");
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(userMsg, generatingMsg, doneMsg));
 
         // Stub playbook service for the mock playbook pb Name "PB1"
@@ -1672,7 +1672,7 @@ public class ChatMessageServiceTest {
             "*[Generation stopped by user]*", null, List.of(), List.of(), Instant.now(), null, null,
             null, null, null, "cancelled");
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(question, failed, stopped));
 
         Playbook pb = new Playbook("PB1", "Title", "Desc", "PB1 Template", List.of(), false,
@@ -2656,5 +2656,90 @@ public class ChatMessageServiceTest {
             () -> new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "q",
                 "m", "s", List.of(), List.of(), null, false, "pb", 1, null));
         assertThat(ex.getMessage()).isEqualTo("allowedAreasLower must not be null");
+    }
+
+    @Test
+    public void prepare_priorHistoryTrimsOldestMessagesWhenExceedingCharacterBudget() {
+        ChatProperties tightBudget = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
+            false, false, null, null, 100_000, 25);
+        ChatMessageService budgetedService = new ChatMessageService(messageRepository,
+            conversationRepository, chatConversationService, ragService, retrievalLogRepository,
+            playbookService, transactionManager, taskExecutor, chatCancellationService,
+            orchestrationService, messageToolCallRepository, toolCallTraceExtractor, tightBudget,
+            agentRunRepository, agentStepRepository);
+
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        Message m1 = new Message(UUID.randomUUID(), conversationId, "user", "0123456789", "PB1",
+            List.of(), List.of(), Instant.now());
+        Message m2 = new Message(UUID.randomUUID(), conversationId, "assistant", "abcdefghij", null,
+            List.of(), List.of(), Instant.now(), null, null, null, null, null, "done");
+        Message m3 = new Message(UUID.randomUUID(), conversationId, "user", "ABCDEFGHIJ", "PB1",
+            List.of(), List.of(), Instant.now());
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
+            .thenReturn(List.of(m1, m2, m3));
+
+        ChatMessageService.PreparedChat prep =
+            budgetedService.prepare(conversationId, "Next", "PB1");
+
+        assertThat(prep.history()).hasSize(2);
+        assertThat(prep.history().get(0).content()).isEqualTo("abcdefghij");
+        assertThat(prep.history().get(1).content()).isEqualTo("ABCDEFGHIJ");
+    }
+
+    @Test
+    public void prepare_corruptNonStringSettingsDoNotThrowClassCastException() {
+        UUID conversationId = UUID.randomUUID();
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        // Corrupt thinking-level and orchestrator-profile fall back cleanly without ClassCast.
+        Map<String, Object> partialCorrupt = Map.of("model", "gemini-3.1-flash-lite",
+            "thinking-level", List.of("high"), "orchestrator-profile", Map.of("bad", true));
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            partialCorrupt, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Hi", "PB1");
+
+        assertThat(prep.modelToUse()).isEqualTo("gemini-3.1-flash-lite");
+        assertThat(prep.thinkingLevel()).isEqualTo("medium");
+
+        // Corrupt non-string model throws IllegalStateException (missing model), not ClassCast.
+        Conversation corruptModelConv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", 123), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false))
+            .thenReturn(corruptModelConv);
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(conversationId, "Hi", "PB1"));
+        assertThat(ex.getMessage()).contains("No model selected");
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_executorRejectionMarksGeneratingMessageAsError() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(taskExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("queue full"));
+
+        Assertions.assertThrows(RuntimeException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1"));
+
+        verify(messageRepository).updateContentAndStatus(any(UUID.class), anyString(), any(), any(),
+            eq(0), eq(0), eq(0), eq(0), eq(0), eq("error"), eq("gemini-3.1-flash-lite"));
     }
 }

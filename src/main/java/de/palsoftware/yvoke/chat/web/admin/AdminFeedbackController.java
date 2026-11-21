@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 
 import de.palsoftware.yvoke.chat.core.repository.ChatAdminQueryRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -40,11 +41,15 @@ public class AdminFeedbackController {
         long totalCount = positiveCount + negativeCount;
         double positiveRatio = totalCount > 0 ? (positiveCount * 100.0) / totalCount : 0.0;
 
+        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         long filteredCount =
             adminQueryRepository.countFilteredFeedback(rating, reviewed, timeRange, areas);
-        int totalPages = (int) Math.ceil((double) filteredCount / size);
-        List<ChatAdminQueryRepository.FeedbackComment> feedbackList = adminQueryRepository
-            .listFeedback(rating, reviewed, timeRange, sort, size, page * size, areas);
+        int totalPages = PagingParams.totalPages(filteredCount, clampedSize);
+        List<ChatAdminQueryRepository.FeedbackComment> feedbackList =
+            adminQueryRepository.listFeedback(rating, reviewed, timeRange, sort, clampedSize,
+                PagingParams.safeOffset(clampedPage, clampedSize), areas);
 
         model.addAttribute("positiveCount", positiveCount);
         model.addAttribute("negativeCount", negativeCount);
@@ -53,7 +58,7 @@ public class AdminFeedbackController {
 
         model.addAttribute("feedbackList", feedbackList);
         model.addAttribute("filteredCount", filteredCount);
-        model.addAttribute("currentPage", page);
+        model.addAttribute("currentPage", clampedPage);
         model.addAttribute("totalPages", totalPages);
 
         model.addAttribute("selectedRating", rating);
