@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
@@ -29,16 +30,12 @@ public class OrchestratorProfileService {
     @Autowired
     public OrchestratorProfileService(OrchestratorProfileRepository repository,
         OrchestratorProperties properties, AreaService areaService, ChatProperties chatProperties) {
-        this.areaService = areaService;
-        this.repository = repository;
-        this.properties = properties;
-        this.chatProperties = chatProperties;
+        this.areaService = Objects.requireNonNull(areaService, "areaService must not be null");
+        this.repository = Objects.requireNonNull(repository, "repository must not be null");
+        this.properties = Objects.requireNonNull(properties, "properties must not be null");
+        this.chatProperties =
+            Objects.requireNonNull(chatProperties, "chatProperties must not be null");
         this.objectMapper = new ObjectMapper().findAndRegisterModules();
-    }
-
-    public OrchestratorProfileService(OrchestratorProfileRepository repository,
-        OrchestratorProperties properties, AreaService areaService) {
-        this(repository, properties, areaService, null);
     }
 
     public List<OrchestratorProfile> listAllProfiles() {
@@ -96,12 +93,15 @@ public class OrchestratorProfileService {
     }
 
     private void validateOptionalModel(String fieldName, String model) {
-        if (model == null || model.isBlank() || chatProperties == null
-            || chatProperties.allowedModels() == null || chatProperties.allowedModels().isEmpty()) {
+        if (model == null || model.isBlank()) {
             return;
         }
+        List<String> allowed = chatProperties.allowedModels();
+        if (allowed == null || allowed.isEmpty()) {
+            throw new IllegalStateException("app.chat.allowed-models must not be empty.");
+        }
         String trimmed = model.trim();
-        if (!chatProperties.allowedModels().contains(trimmed)) {
+        if (!allowed.contains(trimmed)) {
             throw new IllegalArgumentException(
                 fieldName + " '" + trimmed + "' is not in app.chat.allowed-models.");
         }
@@ -135,19 +135,26 @@ public class OrchestratorProfileService {
      */
     public OrchestratorProfile importProfileFromJson(String jsonContent, String fallbackArea) {
         try {
-            OrchestratorProfile profile =
-                objectMapper.readValue(jsonContent, OrchestratorProfile.class);
+            JsonNode root = objectMapper.readTree(jsonContent);
+            if (root == null || !root.isObject()) {
+                throw new IllegalArgumentException("Invalid JSON: expected an object.");
+            }
+            OrchestratorProfile profile = objectMapper.treeToValue(root, OrchestratorProfile.class);
             if (profile.name() == null || profile.name().isBlank()) {
                 throw new IllegalArgumentException("Invalid JSON: profile name is required.");
             }
             if (profile.area() == null || profile.area().isBlank()) {
                 profile = profile.withArea(fallbackArea);
             }
-            // JSON files that omit maxReviewRounds/maxSpecialistCalls deserialize int fields to 0;
-            // inherit the configured defaults while still rejecting negative or over-limit values.
-            int rounds = profile.maxReviewRounds() == 0 ? properties.resolvedMaxReviewRounds()
-                : profile.maxReviewRounds();
-            int calls = profile.maxSpecialistCalls() == 0 ? properties.resolvedMaxSpecialistCalls()
+            // Only omitted or explicit null JSON fields inherit configured defaults; explicit 0 or
+            // negative values are preserved so saveProfile rejects them.
+            boolean roundsOmitted =
+                !root.has("maxReviewRounds") || root.get("maxReviewRounds").isNull();
+            boolean callsOmitted =
+                !root.has("maxSpecialistCalls") || root.get("maxSpecialistCalls").isNull();
+            int rounds =
+                roundsOmitted ? properties.resolvedMaxReviewRounds() : profile.maxReviewRounds();
+            int calls = callsOmitted ? properties.resolvedMaxSpecialistCalls()
                 : profile.maxSpecialistCalls();
             if (rounds != profile.maxReviewRounds() || calls != profile.maxSpecialistCalls()) {
                 profile = new OrchestratorProfile(profile.name(), rounds, calls,

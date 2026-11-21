@@ -39,7 +39,6 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,7 +80,6 @@ public class ChatMessageService {
     private final ConversationRepository conversationRepository;
     private final ChatConversationService chatConversationService;
     private final RagService ragService;
-    private final RetrievalLogRepository retrievalLogRepository;
     private final PlaybookService playbookService;
     private final TransactionTemplate transactionTemplate;
     private final AsyncTaskExecutor taskExecutor;
@@ -92,7 +90,6 @@ public class ChatMessageService {
     private final ChatProperties chatProperties;
     private final AgentRunRepository agentRunRepository;
     private final AgentStepRepository agentStepRepository;
-    @Nullable
     private final RetrievalTelemetryService retrievalTelemetryService;
     private final Set<UUID> activeGeneratingMessageIds = ConcurrentHashMap.newKeySet();
 
@@ -100,20 +97,18 @@ public class ChatMessageService {
     public ChatMessageService(MessageRepository messageRepository,
         ConversationRepository conversationRepository,
         ChatConversationService chatConversationService, RagService ragService,
-        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
-        PlatformTransactionManager transactionManager,
+        PlaybookService playbookService, PlatformTransactionManager transactionManager,
         @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
         ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
         MessageToolCallRepository messageToolCallRepository,
         ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
         AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository,
-        @Nullable RetrievalTelemetryService retrievalTelemetryService) {
+        RetrievalTelemetryService retrievalTelemetryService) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.chatConversationService = chatConversationService;
         this.ragService = ragService;
-        this.retrievalLogRepository = retrievalLogRepository;
         this.playbookService = playbookService;
         this.taskExecutor = taskExecutor;
         this.chatCancellationService = chatCancellationService;
@@ -123,23 +118,8 @@ public class ChatMessageService {
         this.chatProperties = chatProperties;
         this.agentRunRepository = agentRunRepository;
         this.agentStepRepository = agentStepRepository;
-        this.retrievalTelemetryService = retrievalTelemetryService;
-    }
-
-    public ChatMessageService(MessageRepository messageRepository,
-        ConversationRepository conversationRepository,
-        ChatConversationService chatConversationService, RagService ragService,
-        RetrievalLogRepository retrievalLogRepository, PlaybookService playbookService,
-        PlatformTransactionManager transactionManager,
-        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
-        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
-        MessageToolCallRepository messageToolCallRepository,
-        ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
-        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository) {
-        this(messageRepository, conversationRepository, chatConversationService, ragService,
-            retrievalLogRepository, playbookService, transactionManager, taskExecutor,
-            chatCancellationService, orchestrationService, messageToolCallRepository,
-            toolCallTraceExtractor, chatProperties, agentRunRepository, agentStepRepository, null);
+        this.retrievalTelemetryService = Objects.requireNonNull(retrievalTelemetryService,
+            "retrievalTelemetryService must not be null");
     }
 
     public List<Message> getMessages(UUID conversationId) {
@@ -884,15 +864,7 @@ public class ChatMessageService {
             return;
         }
         try {
-            if (retrievalTelemetryService != null) {
-                retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
-                return;
-            }
-            for (UUID sid : searchIds) {
-                if (sid != null) {
-                    retrievalLogRepository.updateMessageId(sid, assistantMessageId);
-                }
-            }
+            retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
         } catch (Exception e) {
             log.error("Failed to link retrieval logs for assistant message {}", assistantMessageId,
                 e);

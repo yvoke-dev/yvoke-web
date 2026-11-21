@@ -71,7 +71,7 @@ class ChatControllerTest {
         feedbackService = mock(ChatFeedbackService.class);
         cancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
-        orchestratorProperties = new OrchestratorProperties(3, 8, null,
+        orchestratorProperties = new OrchestratorProperties(3, 8, 10, 50, null,
             List.of(new OrchestratorProperties.Profile("yaml-profile", "orch", "rev", List.of(),
                 null, null, null)));
         orchestratorProfileService = mock(OrchestratorProfileService.class);

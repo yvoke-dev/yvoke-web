@@ -62,7 +62,8 @@ class ConfluenceClientServiceRetryTest {
         }
 
         private ScriptedClient(int maxAttempts, Object... outcomes) {
-            super(mock(SecretCipher.class), RestClient.builder(), maxAttempts, 1, 5);
+            super(mock(SecretCipher.class), RestClient.builder(), maxAttempts, 1, 5, true,
+                List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             script.addAll(List.of(outcomes));
         }
 
@@ -329,7 +330,8 @@ class ConfluenceClientServiceRetryTest {
         private final RestClient client;
 
         private LocalServerClient(String... jsonBodies) throws IOException {
-            super(mock(SecretCipher.class), RestClient.builder(), MAX_ATTEMPTS, 1, 5);
+            super(mock(SecretCipher.class), RestClient.builder(), MAX_ATTEMPTS, 1, 5, true,
+                List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             Deque<String> bodies = new ArrayDeque<>(List.of(jsonBodies));
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/rest/api/content/", exchange -> {

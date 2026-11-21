@@ -469,7 +469,8 @@ class Milestone4AdversarialChallengeTest {
             OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
             PlaybookService playbookService = mock(PlaybookService.class);
             ChatConversationService convService = mock(ChatConversationService.class);
-            OrchestratorProperties props = new OrchestratorProperties(3, 8, null, List.of());
+            OrchestratorProperties props =
+                new OrchestratorProperties(3, 8, 10, 50, null, List.of());
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
             OrchestratorAdminController controller =

@@ -31,7 +31,8 @@ class ConfluenceClientServicePageContentTest {
         private final List<String> requestedUris = new CopyOnWriteArrayList<>();
 
         private TestClient() throws IOException {
-            super(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5);
+            super(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5, true, List.of(),
+                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/rest/api/content/", exchange -> {
                 requestedUris.add(exchange.getRequestURI().toString());

@@ -46,6 +46,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -110,7 +111,8 @@ public class Milestone3AdversarialChallengeTest {
         conversationRepository = mock(ConversationRepository.class);
         userService = mock(UserService.class);
         tagRepository = mock(TagRepository.class);
-        ChatProperties chatProperties = new ChatProperties(true, List.of("model-a"), true, false);
+        ChatProperties chatProperties = new ChatProperties(true, List.of("model-a"), true, false,
+            "", Duration.ofMinutes(5), 100_000, 400_000);
         chatConversationService = new ChatConversationService(conversationRepository, userService,
             chatProperties, tagRepository);
         chatMessageService = mock(ChatMessageService.class);
@@ -118,7 +120,7 @@ public class Milestone3AdversarialChallengeTest {
         chatCancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
         OrchestratorProperties orchestratorProperties =
-            new OrchestratorProperties(3, 8, null, List.of());
+            new OrchestratorProperties(3, 8, 10, 50, null, List.of());
         orchestratorProfileService = mock(OrchestratorProfileService.class);
         chatController = new ChatController(chatConversationService, chatMessageService,
             chatFeedbackService, chatCancellationService, playbookService, orchestratorProperties,

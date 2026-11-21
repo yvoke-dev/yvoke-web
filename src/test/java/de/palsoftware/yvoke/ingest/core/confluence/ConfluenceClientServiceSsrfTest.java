@@ -20,7 +20,8 @@ import org.springframework.web.client.RestClient;
 class ConfluenceClientServiceSsrfTest {
 
     private final ConfluenceClientService service =
-        new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5);
+        new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5, true,
+            List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
 
     @Test
     void rejectsLoopbackHost() {
@@ -124,7 +125,8 @@ class ConfluenceClientServiceSsrfTest {
     private static String cql(String space, String rootPageId, String includeLabels,
         String excludeLabels) throws Exception {
         ConfluenceClientService client =
-            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5);
+            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5,
+                true, List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         Method m = ConfluenceClientService.class.getDeclaredMethod("buildCqlQuery", String.class,
             String.class, String.class, String.class);
         m.setAccessible(true);

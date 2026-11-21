@@ -18,6 +18,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.ArgumentMatchers.contains;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,7 +62,7 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
+import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -77,7 +78,7 @@ public class ChatMessageServiceTest {
     private MessageRepository messageRepository;
     private ChatConversationService chatConversationService;
     private RagService ragService;
-    private RetrievalLogRepository retrievalLogRepository;
+    private RetrievalTelemetryService retrievalTelemetryService;
     private PlaybookService playbookService;
     private PlatformTransactionManager transactionManager;
     private AsyncTaskExecutor taskExecutor;
@@ -91,20 +92,26 @@ public class ChatMessageServiceTest {
     private ConversationRepository conversationRepository;
     private ChatMessageService chatMessageService;
 
+    private static ChatProperties defaultChatProperties(boolean enabled, List<String> models,
+        boolean traceToolCalls) {
+        return new ChatProperties(enabled, models, true, traceToolCalls, "", Duration.ofMinutes(5),
+            100_000, 400_000);
+    }
+
     @BeforeEach
     public void setUp() {
         messageRepository = mock(MessageRepository.class);
         conversationRepository = mock(ConversationRepository.class);
         chatConversationService = mock(ChatConversationService.class);
         ragService = mock(RagService.class);
-        retrievalLogRepository = mock(RetrievalLogRepository.class);
+        retrievalTelemetryService = mock(RetrievalTelemetryService.class);
         playbookService = mock(PlaybookService.class);
         transactionManager = mock(PlatformTransactionManager.class);
         taskExecutor = mock(AsyncTaskExecutor.class);
         chatCancellationService = mock(ChatCancellationService.class);
         messageToolCallRepository = mock(MessageToolCallRepository.class);
         toolCallTraceExtractor = mock(ToolCallTraceExtractor.class);
-        chatProperties = new ChatProperties(true, List.of("model1"), true, false);
+        chatProperties = defaultChatProperties(true, List.of("model1"), false);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
         orchestrationService = mock(OrchestrationService.class);
@@ -112,10 +119,10 @@ public class ChatMessageServiceTest {
         when(orchestrationService.hasProfile(anyString())).thenReturn(true);
 
         chatMessageService = new ChatMessageService(messageRepository, conversationRepository,
-            chatConversationService, ragService, retrievalLogRepository, playbookService,
-            transactionManager, taskExecutor, chatCancellationService, orchestrationService,
-            messageToolCallRepository, toolCallTraceExtractor, chatProperties, agentRunRepository,
-            agentStepRepository);
+            chatConversationService, ragService, playbookService, transactionManager, taskExecutor,
+            chatCancellationService, orchestrationService, messageToolCallRepository,
+            toolCallTraceExtractor, chatProperties, agentRunRepository, agentStepRepository,
+            retrievalTelemetryService);
         setAuthenticatedUser("ROLE_USER", "AREA_USER_*");
     }
 
@@ -138,12 +145,11 @@ public class ChatMessageServiceTest {
             when(orchService.hasProfile(anyString())).thenReturn(true);
         }
         return new ChatMessageService(messageRepository, conversationRepository,
-            chatConversationService, ragService, retrievalLogRepository, playbookService,
-            transactionManager, taskExecutor, chatCancellationService,
-            orchService != null ? orchService : orchestrationService, messageToolCallRepository,
-            toolCallTraceExtractor, props != null ? props : chatProperties,
-            runRepo != null ? runRepo : agentRunRepository,
-            stepRepo != null ? stepRepo : agentStepRepository);
+            chatConversationService, ragService, playbookService, transactionManager, taskExecutor,
+            chatCancellationService, orchService != null ? orchService : orchestrationService,
+            messageToolCallRepository, toolCallTraceExtractor,
+            props != null ? props : chatProperties, runRepo != null ? runRepo : agentRunRepository,
+            stepRepo != null ? stepRepo : agentStepRepository, retrievalTelemetryService);
     }
 
     @Test
@@ -190,7 +196,7 @@ public class ChatMessageServiceTest {
         assertThat(done.get("cachedTokens").asInt()).isEqualTo(4);
         assertThat(done.get("thoughtTokens").asInt()).isEqualTo(5);
 
-        verify(retrievalLogRepository).updateMessageId(searchId, assistantMessageId);
+        verify(retrievalTelemetryService).linkMessageIds(List.of(searchId), assistantMessageId);
     }
 
     @Test
@@ -329,7 +335,7 @@ public class ChatMessageServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
+            defaultChatProperties(false, List.of("gemini-3.1-flash-lite"), false);
 
         ChatConversationService disabledConversationService =
             new ChatConversationService(mock(ConversationRepository.class), mock(UserService.class),
@@ -342,9 +348,9 @@ public class ChatMessageServiceTest {
 
         ChatMessageService disabledMessageService = new ChatMessageService(messageRepository,
             mock(ConversationRepository.class), disabledConversationService, ragService,
-            retrievalLogRepository, mockPlaybookService, transactionManager, taskExecutor,
-            chatCancellationService, mock(OrchestrationService.class), messageToolCallRepository,
-            toolCallTraceExtractor, disabledProperties, agentRunRepository, agentStepRepository);
+            mockPlaybookService, transactionManager, taskExecutor, chatCancellationService,
+            mock(OrchestrationService.class), messageToolCallRepository, toolCallTraceExtractor,
+            disabledProperties, agentRunRepository, agentStepRepository, retrievalTelemetryService);
 
         Assertions.assertThrows(IllegalStateException.class, () -> {
             disabledMessageService.prepare(UUID.randomUUID(), "query", "test-playbook");
@@ -600,7 +606,8 @@ public class ChatMessageServiceTest {
             false, Instant.now(), Instant.now(), false);
         when(playbookService.getPlaybook("pb1")).thenReturn(Optional.of(pb));
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(List.of());
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
+            .thenReturn(List.of());
 
         ChatMessageService.PreparedChat prepared =
             chatMessageService.prepare(conversationId, "What is an account?", "pb1");
@@ -687,7 +694,7 @@ public class ChatMessageServiceTest {
             "PB1", List.of(), List.of(), Instant.now());
         Message priorAnsMsg = new Message(UUID.randomUUID(), conversationId, "assistant",
             "Answer 1", List.of(), List.of(), Instant.now());
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(priorUserMsg, priorAnsMsg));
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
@@ -714,7 +721,7 @@ public class ChatMessageServiceTest {
             "PB1", List.of(), List.of(), Instant.now());
         Message priorAnsMsg = new Message(UUID.randomUUID(), conversationId, "assistant",
             "Answer 1", List.of(), List.of(), Instant.now());
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(priorUserMsg, priorAnsMsg));
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
@@ -759,7 +766,7 @@ public class ChatMessageServiceTest {
         Message msg3WebAssistant = new Message(UUID.randomUUID(), conversationId, "assistant",
             "Web answer 1", "PB1", List.of(), List.of(), Instant.now().minusSeconds(30));
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(
+        when(messageRepository.findLatestByConversationId(conversationId, 100)).thenReturn(
             List.of(msg0DesktopUser, msg1DesktopAssistant, msg2WebUser, msg3WebAssistant));
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
@@ -790,7 +797,8 @@ public class ChatMessageServiceTest {
             first100.add(new Message(UUID.randomUUID(), conversationId, "user", "Old msg " + i,
                 null, List.of(), List.of(), Instant.now().minusSeconds(1000 - i)));
         }
-        when(messageRepository.findByConversationId(conversationId, 100, 0)).thenReturn(first100);
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
+            .thenReturn(first100);
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
         Playbook pb1 = new Playbook("PB1", "Playbook 1", "Desc", "PB1 Instructions", List.of(),
@@ -1270,7 +1278,7 @@ public class ChatMessageServiceTest {
         verify(messageRepository).updateContentAndStatus(eq(assistantMessageId),
             eq("Orchestrated answer"), any(), any(), any(), any(), any(), any(), any(), eq("done"),
             any());
-        verify(retrievalLogRepository).updateMessageId(searchId, assistantMessageId);
+        verify(retrievalTelemetryService).linkMessageIds(List.of(searchId), assistantMessageId);
     }
 
     /**
@@ -1855,7 +1863,7 @@ public class ChatMessageServiceTest {
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
         // Feature flag ON
-        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatProperties enabledProps = defaultChatProperties(true, List.of("model1"), true);
         ChatMessageService service = createService(null, enabledProps, null, null);
 
         when(toolCallTraceExtractor.extract(eq(assistantMessageId), any()))
@@ -1903,7 +1911,7 @@ public class ChatMessageServiceTest {
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
         // Feature flag OFF
-        ChatProperties disabledProps = new ChatProperties(true, List.of("model1"), true, false);
+        ChatProperties disabledProps = defaultChatProperties(true, List.of("model1"), false);
         ChatMessageService service = createService(null, disabledProps, null, null);
 
         ChatMessageService.PreparedChat prepared =
@@ -1938,7 +1946,7 @@ public class ChatMessageServiceTest {
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
         // Feature flag ON
-        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatProperties enabledProps = defaultChatProperties(true, List.of("model1"), true);
         ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
@@ -1982,7 +1990,7 @@ public class ChatMessageServiceTest {
 
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
-        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatProperties enabledProps = defaultChatProperties(true, List.of("model1"), true);
         ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), assistantMessageId, 0,
@@ -2023,7 +2031,7 @@ public class ChatMessageServiceTest {
         RagResult ragResult = new RagResult(List.of(), messages, null, List.of(), 1, 2, 3, 0, 0);
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(ragResult);
 
-        ChatProperties enabledProps = new ChatProperties(true, List.of("model1"), true, true);
+        ChatProperties enabledProps = defaultChatProperties(true, List.of("model1"), true);
         ChatMessageService service = createService(null, enabledProps, null, null);
 
         ToolCallRecord record = new ToolCallRecord(UUID.randomUUID(), UUID.randomUUID(), 0,
@@ -2660,12 +2668,12 @@ public class ChatMessageServiceTest {
     @Test
     public void prepare_priorHistoryTrimsOldestMessagesWhenExceedingCharacterBudget() {
         ChatProperties tightBudget = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
-            false, false, null, null, 100_000, 25);
+            false, false, "", Duration.ofMinutes(5), 100_000, 25);
         ChatMessageService budgetedService = new ChatMessageService(messageRepository,
-            conversationRepository, chatConversationService, ragService, retrievalLogRepository,
-            playbookService, transactionManager, taskExecutor, chatCancellationService,
-            orchestrationService, messageToolCallRepository, toolCallTraceExtractor, tightBudget,
-            agentRunRepository, agentStepRepository);
+            conversationRepository, chatConversationService, ragService, playbookService,
+            transactionManager, taskExecutor, chatCancellationService, orchestrationService,
+            messageToolCallRepository, toolCallTraceExtractor, tightBudget, agentRunRepository,
+            agentStepRepository, retrievalTelemetryService);
 
         UUID conversationId = UUID.randomUUID();
         Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
@@ -2804,8 +2812,8 @@ public class ChatMessageServiceTest {
         UUID searchId = UUID.randomUUID();
         when(ragService.generateAgenticAnswer(any(), any())).thenReturn(
             new RagResult(List.of(), List.of(), searchId, List.of(searchId), 5, 5, 10, 0, 0));
-        doThrow(new RuntimeException("telemetry db hiccup")).when(retrievalLogRepository)
-            .updateMessageId(eq(searchId), any(UUID.class));
+        doThrow(new RuntimeException("telemetry db hiccup")).when(retrievalTelemetryService)
+            .linkMessageIds(eq(List.of(searchId)), any(UUID.class));
         when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
             ((Runnable) inv.getArgument(0)).run();
             return null;
@@ -2945,5 +2953,82 @@ public class ChatMessageServiceTest {
         chatMessageService.sweepStaleGeneratingMessages();
         verify(messageRepository, never()).refreshGeneratingHeartbeat(any());
         assertThat(List.of(okId, cancelId, errId)).doesNotContainNull();
+    }
+
+    @Test
+    public void validateMessageLength_allowsExactCapAndRejectsOneCharOverInPrepareAndAsync() {
+        int cap = chatProperties.maxMessageChars();
+        assertThat(cap).isEqualTo(100_000);
+
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(taskExecutor.submit(any(Runnable.class))).thenReturn(null);
+
+        String atCap = "a".repeat(cap);
+        String overCap = "a".repeat(cap + 1);
+
+        // Exact cap passes in both prepare() and prepareAndSubmitAsync()
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, atCap, "PB1");
+        assertThat(prepared.modelContent()).hasSize(cap);
+        UUID asyncId = chatMessageService.prepareAndSubmitAsync(conversationId, atCap, "PB1");
+        assertThat(asyncId).isNotNull();
+
+        // cap + 1 is rejected synchronously in BOTH prepare() and prepareAndSubmitAsync()
+        IllegalArgumentException prepareEx = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepare(conversationId, overCap, "PB1"));
+        assertThat(prepareEx.getMessage()).contains(String.valueOf(cap));
+
+        IllegalArgumentException asyncEx = Assertions.assertThrows(IllegalArgumentException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, overCap, "PB1"));
+        assertThat(asyncEx.getMessage()).contains(String.valueOf(cap));
+    }
+
+    @Test
+    public void getPriorHistory_retainsNewestMessagesWithin400kBudgetInChronologicalOrder() {
+        assertThat(chatProperties.maxHistoryChars()).isEqualTo(400_000);
+
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        // Pin the exact inclusive boundary (used + len > budget, not >=):
+        // newest 2 messages sum to exactly 400,000 chars (200,000 + 200,000) and are retained in
+        // chronological order; the next older 1-char message (total 400,001) and older messages are
+        // dropped.
+        String m1Text = "1".repeat(100);
+        String m2Text = "2";
+        String m3Text = "3".repeat(200_000);
+        String m4Text = "4".repeat(200_000);
+        Message m1 = new Message(UUID.randomUUID(), conversationId, "user", m1Text, "PB1",
+            List.of(), List.of(), Instant.now().minusSeconds(40));
+        Message m2 =
+            new Message(UUID.randomUUID(), conversationId, "assistant", m2Text, null, List.of(),
+                List.of(), Instant.now().minusSeconds(30), null, null, null, null, null, "done");
+        Message m3 = new Message(UUID.randomUUID(), conversationId, "user", m3Text, "PB1",
+            List.of(), List.of(), Instant.now().minusSeconds(20));
+        Message m4 =
+            new Message(UUID.randomUUID(), conversationId, "assistant", m4Text, null, List.of(),
+                List.of(), Instant.now().minusSeconds(10), null, null, null, null, null, "done");
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
+            .thenReturn(List.of(m1, m2, m3, m4));
+
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(conversationId, "Next question", "PB1");
+
+        assertThat(prepared.history()).hasSize(2);
+        assertThat(prepared.history().get(0).role()).isEqualTo("user");
+        assertThat(prepared.history().get(0).content()).isEqualTo(m3Text);
+        assertThat(prepared.history().get(1).role()).isEqualTo("assistant");
+        assertThat(prepared.history().get(1).content()).isEqualTo(m4Text);
     }
 }

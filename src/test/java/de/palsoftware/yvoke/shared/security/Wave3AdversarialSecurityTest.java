@@ -113,7 +113,7 @@ class Wave3AdversarialSecurityTest {
             syncService = mock(DesktopSyncService.class);
             systemPromptService = mock(SystemPromptService.class);
             playbookService = mock(PlaybookService.class);
-            orchestratorProperties = new OrchestratorProperties(2, 8, null, List.of());
+            orchestratorProperties = new OrchestratorProperties(2, 8, 10, 50, null, List.of());
             orchestratorProfileService = mock(OrchestratorProfileService.class);
             orchestratorRunService = mock(DesktopOrchestratorRunService.class);
             areaService = mock(AreaService.class);

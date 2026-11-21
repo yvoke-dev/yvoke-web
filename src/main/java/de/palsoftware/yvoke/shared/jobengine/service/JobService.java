@@ -45,11 +45,6 @@ public class JobService {
             : Path.of(uploadDir).toAbsolutePath().normalize();
     }
 
-    public JobService(JobRepository jobRepository, JobProgressBroker progressBroker,
-        List<JobHandler> handlers, List<EnqueueValidator> enqueueValidators) {
-        this(jobRepository, progressBroker, handlers, enqueueValidators, null);
-    }
-
     /**
      * Enqueues a job, or adopts the one already queued/running for the same unit of work. Callers
      * must decide what a duplicate means to their user (a 409, a "already running" notice, a

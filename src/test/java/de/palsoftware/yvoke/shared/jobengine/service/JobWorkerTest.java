@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import de.palsoftware.yvoke.shared.jobengine.WorkerProperties;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -62,8 +63,9 @@ class JobWorkerTest {
             Optional.of(job(UUID.randomUUID())), Optional.of(job(UUID.randomUUID())),
             Optional.of(job(UUID.randomUUID())), Optional.empty());
 
-        JobWorker worker = new JobWorker(jobRepository, jobService, jobExecutor,
-            new WorkerProperties(true, 2, Duration.ofSeconds(2)));
+        JobWorker worker =
+            new JobWorker(jobRepository, jobService, jobExecutor, new WorkerProperties(true, 2,
+                Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofMinutes(5)));
         worker.poll();
         worker.poll();
 
@@ -73,7 +75,8 @@ class JobWorkerTest {
     }
 
     private static WorkerProperties enabled() {
-        return new WorkerProperties(true, 4, Duration.ofSeconds(2));
+        return new WorkerProperties(true, 4, Duration.ofSeconds(2), Duration.ofSeconds(30),
+            Duration.ofMinutes(5));
     }
 
     /**
@@ -158,17 +161,20 @@ class JobWorkerTest {
      */
     @Test
     void aNonPositiveWorkerConcurrencyIsCoercedToFourRatherThanBuildingAPoolThatAcceptsNothing() {
-        WorkerProperties zero = new WorkerProperties(true, 0, null);
+        WorkerProperties zero =
+            new WorkerProperties(true, 0, null, Duration.ofSeconds(30), Duration.ofMinutes(5));
         assertEquals(4, zero.concurrency(), "concurrency=0 must be coerced to the shipped default");
         assertEquals(Duration.ofSeconds(2), zero.pollInterval(),
             "a missing poll-interval must fall back to 2s, or @Scheduled is invalid at startup");
 
-        WorkerProperties negative = new WorkerProperties(true, -1, Duration.ZERO);
+        WorkerProperties negative = new WorkerProperties(true, -1, Duration.ZERO,
+            Duration.ofSeconds(30), Duration.ofMinutes(5));
         assertEquals(4, negative.concurrency(), "a negative concurrency must be coerced too");
         assertEquals(Duration.ofSeconds(2), negative.pollInterval(),
             "a zero poll-interval must fall back to 2s");
         assertEquals(Duration.ofSeconds(2),
-            new WorkerProperties(true, 1, Duration.ofSeconds(-5)).pollInterval(),
+            new WorkerProperties(true, 1, Duration.ofSeconds(-5), Duration.ofSeconds(30),
+                Duration.ofMinutes(5)).pollInterval(),
             "a negative poll-interval must fall back to 2s");
 
         // The outcome that actually matters: a worker built from `app.worker.concurrency=0` must
@@ -186,12 +192,25 @@ class JobWorkerTest {
         verify(jobRepository, never()).requeueJob(any());
     }
 
+    @Test
+    void nonPositiveHeartbeatOrStaleAfterIsRejectedRatherThanDefaultedInline() {
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), null, Duration.ofMinutes(5)));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ZERO, Duration.ofMinutes(5)));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ofSeconds(30), null));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofSeconds(-1)));
+    }
+
     /** {@code app.worker.enabled=false} must disable both the poll loop and the recovery sweep. */
     @Test
     void aDisabledWorkerNeitherPollsNorRecovers() {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
-        WorkerProperties disabled = new WorkerProperties(false, 4, Duration.ofSeconds(2));
+        WorkerProperties disabled = new WorkerProperties(false, 4, Duration.ofSeconds(2),
+            Duration.ofSeconds(30), Duration.ofMinutes(5));
 
         JobWorker worker =
             new JobWorker(jobRepository, jobService, mock(TaskExecutor.class), disabled);

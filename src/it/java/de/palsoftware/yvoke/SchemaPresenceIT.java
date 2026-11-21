@@ -313,8 +313,14 @@ public class SchemaPresenceIT {
             jdbcTemplate.update("DELETE FROM collections WHERE id IN (?, ?)", c1, c2);
         }
 
-        // Orchestrator profile bounds enforced by CHECK constraints
+        // Orchestrator profile bounds enforced by CHECK constraints (1..50 and 1..200)
         String badProfile = "v18-prof-" + UUID.randomUUID().toString().substring(0, 8);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 0, 8)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 3, 0)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbcTemplate.update(
             "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 999, 8)",
             badProfile)).isInstanceOf(DataIntegrityViolationException.class);

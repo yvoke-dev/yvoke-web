@@ -85,9 +85,9 @@ class SecurityConfigMockAuthGuardTest {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("test");
         SecurityConfig production = new SecurityConfig(mock(UserService.class), environment, false,
-            "a-real-deployment-key", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "a-real-deployment-key", "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
             "https://login.microsoftonline.com/tenant-id/discovery/v2.0/keys", issuer,
-            "http://localhost:8080/mcp");
+            "http://localhost:8080/mcp", true, 120, 60L);
 
         var validatorField = NimbusJwtDecoder.class.getDeclaredField("jwtValidator");
         validatorField.setAccessible(true);
@@ -133,7 +133,7 @@ class SecurityConfigMockAuthGuardTest {
         environment.setActiveProfiles("test");
         return new SecurityConfig(mock(UserService.class), environment, false, apiKey, areaKeysJson,
             "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
-            "https://example/issuer", "http://localhost:8080/mcp");
+            "https://example/issuer", "http://localhost:8080/mcp", true, 120, 60L);
     }
 
     /**
@@ -292,8 +292,8 @@ class SecurityConfigMockAuthGuardTest {
         Environment environment = new MockEnvironment().withProperty("unused", "x");
         ((MockEnvironment) environment).setActiveProfiles(activeProfiles);
         return new SecurityConfig(mock(UserService.class), environment, mockAuth, "dev-key-12345",
-            "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
-            "https://example/issuer", "http://localhost:8080/mcp");
+            "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
+            "https://example/issuer", "http://localhost:8080/mcp", true, 120, 60L);
     }
 
     /**
@@ -379,8 +379,8 @@ class SecurityConfigMockAuthGuardTest {
         MockEnvironment environment = new MockEnvironment().withProperty("unused", "x");
         environment.setActiveProfiles("test");
         SecurityConfig config = new SecurityConfig(userService, environment, false, "dev-key-12345",
-            "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
-            "https://example/issuer", "http://localhost:8080/mcp");
+            "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
+            "https://example/issuer", "http://localhost:8080/mcp", true, 120, 60L);
 
         Method serviceMethod = SecurityConfig.class.getDeclaredMethod("oidcUserService");
         serviceMethod.setAccessible(true);
@@ -608,8 +608,8 @@ class SecurityConfigMockAuthGuardTest {
             String issuer = "https://login.microsoftonline.com/" + badTenant + "/v2.0";
 
             assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), prodEnv, false,
-                "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", jwks,
-                issuer, "http://localhost:8080/mcp"))
+                "dev-key-12345", "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", jwks,
+                issuer, "http://localhost:8080/mcp", true, 120, 60L))
                 .as("non-dev startup with tenant '%s' must fail closed", badTenant)
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("ENTRA_TENANT_ID");
         }
@@ -618,8 +618,8 @@ class SecurityConfigMockAuthGuardTest {
         MockEnvironment prodEnv = new MockEnvironment();
         prodEnv.setActiveProfiles("prod");
         assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), prodEnv, false,
-            "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
-            "https://example/keys", "   ", "http://localhost:8080/mcp"))
+            "dev-key-12345", "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "https://example/keys", "   ", "http://localhost:8080/mcp", true, 120, 60L))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("ENTRA_TENANT_ID");
 
         // OAuth2 authorization-uri targeting /common/ must also fail closed outside dev
@@ -628,20 +628,20 @@ class SecurityConfigMockAuthGuardTest {
         authUriEnv.setProperty("spring.security.oauth2.client.provider.entra.authorization-uri",
             "https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
         assertThatThrownBy(() -> new SecurityConfig(mock(UserService.class), authUriEnv, false,
-            "dev-key-12345", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
+            "dev-key-12345", "", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
             "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/discovery/v2.0/keys",
             "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
-            "http://localhost:8080/mcp")).isInstanceOf(IllegalStateException.class)
+            "http://localhost:8080/mcp", true, 120, 60L)).isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("ENTRA_TENANT_ID");
 
         // Dev profile allows /common/ even with mockAuth=false
         MockEnvironment devEnv = new MockEnvironment();
         devEnv.setActiveProfiles("local");
-        assertThat(new SecurityConfig(mock(UserService.class), devEnv, false, "dev-key-12345",
+        assertThat(new SecurityConfig(mock(UserService.class), devEnv, false, "dev-key-12345", "",
             "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
             "https://login.microsoftonline.com/common/discovery/v2.0/keys",
-            "https://login.microsoftonline.com/common/v2.0", "http://localhost:8080/mcp"))
-            .isNotNull();
+            "https://login.microsoftonline.com/common/v2.0", "http://localhost:8080/mcp", true, 120,
+            60L)).isNotNull();
     }
 
     @Test

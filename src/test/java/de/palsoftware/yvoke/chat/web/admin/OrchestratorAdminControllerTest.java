@@ -57,8 +57,9 @@ public class OrchestratorAdminControllerTest {
         profileService = mock(OrchestratorProfileService.class);
         playbookService = mock(PlaybookService.class);
         chatConversationService = mock(ChatConversationService.class);
-        // All-null: the record's own fallbacks, which application.yml is pinned to match.
-        properties = new OrchestratorProperties(null, null, null, null);
+        // Null round/call defaults fall back to the record's own defaults, pinned to
+        // application.yml.
+        properties = new OrchestratorProperties(null, null, 10, 50, null, null);
 
         when(playbookService.getPlaybook(any())).thenAnswer(inv -> Optional
             .of(new Playbook(inv.getArgument(0), inv.getArgument(0), "", "", List.of(), false,

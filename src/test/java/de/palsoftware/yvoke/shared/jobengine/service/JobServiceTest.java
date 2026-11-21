@@ -39,7 +39,8 @@ class JobServiceTest {
     }
 
     private JobService service(JobHandler... handlers) {
-        return new JobService(jobRepository, progressBroker, List.of(handlers), List.of());
+        return new JobService(jobRepository, progressBroker, List.of(handlers), List.of(),
+            "uploads");
     }
 
     private static IngestionJob job(UUID id, JobStatus status) {
@@ -94,8 +95,8 @@ class JobServiceTest {
         // A validator that normalizes the version; the engine must persist the normalized request.
         EnqueueValidator normalizeVersion = req -> new EnqueueRequest(req.kind(), req.sourceRef(),
             "2.0", req.collection(), req.settings());
-        JobService service =
-            new JobService(jobRepository, progressBroker, List.of(), List.of(normalizeVersion));
+        JobService service = new JobService(jobRepository, progressBroker, List.of(),
+            List.of(normalizeVersion), "uploads");
 
         EnqueueResult result =
             service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
@@ -155,8 +156,8 @@ class JobServiceTest {
             return new EnqueueRequest(req.kind(), req.sourceRef(), req.tags(),
                 req.collection() + "+second", req.settings());
         };
-        JobService service =
-            new JobService(jobRepository, progressBroker, List.of(), List.of(first, second));
+        JobService service = new JobService(jobRepository, progressBroker, List.of(),
+            List.of(first, second), "uploads");
 
         EnqueueResult result =
             service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
@@ -175,7 +176,7 @@ class JobServiceTest {
             throw new IllegalArgumentException("nope");
         };
         JobService service =
-            new JobService(jobRepository, progressBroker, List.of(), List.of(rejecting));
+            new JobService(jobRepository, progressBroker, List.of(), List.of(rejecting), "uploads");
 
         assertThatThrownBy(
             () -> service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col")))

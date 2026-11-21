@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
@@ -23,6 +24,7 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
 import de.palsoftware.yvoke.chat.orchestration.ResolvedProfile;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Iterator;
 import java.util.List;
@@ -59,6 +61,7 @@ class ProfileToolsTest {
     private OrchestratorProfileRepository profileRepository;
     private AreaService areaService;
     private OrchestratorProperties defaultProperties;
+    private ChatProperties chatProperties;
     private OrchestratorProfileService profileService;
     private ProfileTools tools;
 
@@ -67,13 +70,15 @@ class ProfileToolsTest {
         authenticateAs("AREA_USER_*");
         profileRepository = mock(OrchestratorProfileRepository.class);
         areaService = TestAreas.withAreas("OIM", "PingID");
-        defaultProperties = new OrchestratorProperties(null, null,
+        defaultProperties = new OrchestratorProperties(null, null, 10, 50,
             new RoleDefaults(new RoleConfig("gemini-2.5-pro", "HIGH"),
                 new RoleConfig("gemini-2.5-flash", "MEDIUM"),
                 new RoleConfig("gemini-2.5-flash-lite", "LOW")),
             List.of());
-        profileService =
-            new OrchestratorProfileService(profileRepository, defaultProperties, areaService);
+        chatProperties = new ChatProperties(true, List.of("gemini-2.5-pro"), true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
+        profileService = new OrchestratorProfileService(profileRepository, defaultProperties,
+            areaService, chatProperties);
         tools = new ProfileTools(profileService, areaService, json);
     }
 
@@ -146,12 +151,12 @@ class ProfileToolsTest {
     @Test
     void readsStrictlyFromDatabaseIgnoringYamlConfiguredProfiles() throws Exception {
         OrchestratorProperties propsWithYaml =
-            new OrchestratorProperties(4, 10, defaultProperties.defaults(),
+            new OrchestratorProperties(4, 10, 10, 50, defaultProperties.defaults(),
                 List.of(new Profile("yaml-only", "yaml-orch", "yaml-rev", List.of("yaml-spec"),
                     new RoleConfig("m1", "high"), new RoleConfig("m2", "low"),
                     new RoleConfig("m3", "minimal"))));
-        OrchestratorProfileService yamlService =
-            new OrchestratorProfileService(profileRepository, propsWithYaml, areaService);
+        OrchestratorProfileService yamlService = new OrchestratorProfileService(profileRepository,
+            propsWithYaml, areaService, chatProperties);
         ProfileTools yamlTools = new ProfileTools(yamlService, areaService, json);
         when(profileRepository.findAll()).thenReturn(List.of());
         when(profileRepository.findByName("yaml-only")).thenReturn(Optional.empty());
@@ -189,7 +194,7 @@ class ProfileToolsTest {
 
         // 2. Custom properties (5 review rounds, 10 specialist calls)
         OrchestratorProfileService customService = new OrchestratorProfileService(profileRepository,
-            new OrchestratorProperties(5, 10, null, null), areaService);
+            new OrchestratorProperties(5, 10, 10, 50, null, null), areaService, chatProperties);
         ProfileTools customTools = new ProfileTools(customService, areaService, json);
         assertParityWithService(customService, customTools, all);
         assertThat(
@@ -413,8 +418,8 @@ class ProfileToolsTest {
         when(failingAreas.findArea("OIM"))
             .thenThrow(new RuntimeException("secret-db-host area lookup failed"));
         OrchestratorProfileRepository cleanRepo = mock(OrchestratorProfileRepository.class);
-        OrchestratorProfileService areaFailService =
-            new OrchestratorProfileService(cleanRepo, defaultProperties, failingAreas);
+        OrchestratorProfileService areaFailService = new OrchestratorProfileService(cleanRepo,
+            defaultProperties, failingAreas, chatProperties);
         ProfileTools areaFailTools = new ProfileTools(areaFailService, failingAreas, json);
         assertThat(areaFailTools.listProfiles("OIM"))
             .isEqualTo("ERROR: the 'list_profiles' tool failed to complete the request.")
@@ -426,8 +431,8 @@ class ProfileToolsTest {
             .thenThrow(new JsonProcessingException("secret-db-host serialization boom") {});
         when(cleanRepo.findAll()).thenReturn(List.of(profileInArea("OIM", "OIM")));
         when(cleanRepo.findByName("OIM")).thenReturn(Optional.of(profileInArea("OIM", "OIM")));
-        OrchestratorProfileService cleanService =
-            new OrchestratorProfileService(cleanRepo, defaultProperties, areaService);
+        OrchestratorProfileService cleanService = new OrchestratorProfileService(cleanRepo,
+            defaultProperties, areaService, chatProperties);
         ProfileTools mapperFailTools = new ProfileTools(cleanService, areaService, brokenMapper);
 
         assertThat(mapperFailTools.listProfiles(null))

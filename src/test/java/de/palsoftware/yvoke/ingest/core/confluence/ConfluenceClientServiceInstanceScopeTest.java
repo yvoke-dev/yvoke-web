@@ -54,7 +54,8 @@ class ConfluenceClientServiceInstanceScopeTest {
         private final AtomicInteger builds = new AtomicInteger();
 
         private CountingClientService(SecretCipher secretCipher) {
-            super(secretCipher, RestClient.builder(), 3, 1, 5);
+            super(secretCipher, RestClient.builder(), 3, 1, 5, true, List.of(),
+                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         }
 
         @Override
@@ -445,7 +446,8 @@ class ConfluenceClientServiceInstanceScopeTest {
     @Test
     void testConnectionReturnsGenericMessageForBlockedInternalOrDisallowedHostsWithoutIpOracle() {
         ConfluenceClientService realService =
-            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5);
+            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5, true, List.of(),
+                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         for (String blockedUrl : List.of("https://127.0.0.1", "https://10.0.0.5",
             "https://169.254.169.254", "http://ic-consult.atlassian.net")) {
             ConfluenceClientService.ConnectionTestResult result = realService
@@ -474,7 +476,8 @@ class ConfluenceClientServiceInstanceScopeTest {
                     "Host resolves to a blocked address (10.0.0.5): rebind.example");
             }).build();
         ConfluenceClientService rebindingService =
-            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5) {
+            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5, true, List.of(),
+                ConfluenceClientService.MAX_ATTACHMENT_BYTES) {
                 @Override
                 public RestClient getClient(String domain, String email, String apiToken) {
                     return rebindingClient;

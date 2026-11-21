@@ -12,6 +12,7 @@ import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -51,8 +52,8 @@ public class ChatConversationServiceTest {
         when(userService.getCurrentUser()).thenReturn(Optional
             .of(new User(DEFAULT_USER_ID, "default-oid", "default@test.local", "Default", null)));
 
-        ChatProperties chatProperties =
-            new ChatProperties(true, List.of("gemini-3.1-flash-lite"), true, false);
+        ChatProperties chatProperties = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
+            true, false, "", Duration.ofMinutes(5), 100_000, 400_000);
 
         chatConversationService = new ChatConversationService(conversationRepository, userService,
             chatProperties, tagRepository);
@@ -142,7 +143,8 @@ public class ChatConversationServiceTest {
      */
     @Test
     public void anEmptyAllowedModelListRefusesToCreateAConversationAtAll() {
-        ChatProperties noModels = new ChatProperties(true, List.of(), true, false);
+        ChatProperties noModels = new ChatProperties(true, List.of(), true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         ChatConversationService withoutModels = new ChatConversationService(conversationRepository,
             userService, noModels, tagRepository);
 
@@ -385,7 +387,8 @@ public class ChatConversationServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
+            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false, "",
+                Duration.ofMinutes(5), 100_000, 400_000);
         ChatConversationService disabledService = new ChatConversationService(
             conversationRepository, userService, disabledProperties, tagRepository);
 

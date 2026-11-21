@@ -107,6 +107,9 @@ public class SecurityConfig {
     private final String issuerUri;
     private final String resourceUrl;
     private final Environment environment;
+    private final boolean rateLimitEnabled;
+    private final int mcpRateLimitCapacity;
+    private final long mcpRateLimitRefillSeconds;
 
     @Autowired
     public SecurityConfig(UserService userService, Environment environment,
@@ -119,7 +122,10 @@ public class SecurityConfig {
         @Value("${app.security.mcp.required-scope}") String requiredScope,
         @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
         @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
-        @Value("${app.security.mcp.resource-url}") String resourceUrl) {
+        @Value("${app.security.mcp.resource-url}") String resourceUrl,
+        @Value("${app.rate-limit.enabled}") boolean rateLimitEnabled,
+        @Value("${app.rate-limit.mcp-capacity}") int mcpRateLimitCapacity,
+        @Value("${app.rate-limit.mcp-refill-period-seconds}") long mcpRateLimitRefillSeconds) {
         this.userService = userService;
         this.mockAuth = mockAuth;
         this.apiKey = apiKey;
@@ -135,6 +141,9 @@ public class SecurityConfig {
         this.issuerUri = issuerUri;
         this.resourceUrl = resourceUrl;
         this.environment = environment;
+        this.rateLimitEnabled = rateLimitEnabled;
+        this.mcpRateLimitCapacity = mcpRateLimitCapacity;
+        this.mcpRateLimitRefillSeconds = mcpRateLimitRefillSeconds;
 
         if (mockAuth) {
             // Fail CLOSED: mocked auth trusts every credential, so it must never be reachable in a
@@ -180,13 +189,6 @@ public class SecurityConfig {
                 + " targets a multi-tenant Entra endpoint (" + uri
                 + "), which is forbidden outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
         }
-    }
-
-    public SecurityConfig(UserService userService, Environment environment, boolean mockAuth,
-        String apiKey, String adminClaim, String userClaim, String allowedAudience,
-        String requiredScope, String jwkSetUri, String issuerUri, String resourceUrl) {
-        this(userService, environment, mockAuth, apiKey, "", adminClaim, userClaim, allowedAudience,
-            requiredScope, jwkSetUri, issuerUri, resourceUrl);
     }
 
     static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json) {
@@ -300,15 +302,9 @@ public class SecurityConfig {
                         "Bearer realm=\"mcp\", resource_metadata=\"" + resourceMetadataUrl + "\"");
                 }));
 
-        boolean rateLimitEnabled =
-            environment.getProperty("app.rate-limit.enabled", Boolean.class, true);
-        int mcpCapacity =
-            environment.getProperty("app.rate-limit.mcp-capacity", Integer.class, 120);
-        long mcpRefillSeconds =
-            environment.getProperty("app.rate-limit.mcp-refill-period-seconds", Long.class, 60L);
-        McpRateLimitFilter mcpRateLimitFilter = new McpRateLimitFilter(
-            new GenerationRateLimiter(rateLimitEnabled, mcpCapacity, mcpRefillSeconds),
-            mcpRefillSeconds);
+        McpRateLimitFilter mcpRateLimitFilter =
+            new McpRateLimitFilter(new GenerationRateLimiter(rateLimitEnabled, mcpRateLimitCapacity,
+                mcpRateLimitRefillSeconds), mcpRateLimitRefillSeconds);
 
         http.csrf(csrf -> csrf.disable()).addFilterAfter(mcpRateLimitFilter,
             AuthorizationFilter.class);

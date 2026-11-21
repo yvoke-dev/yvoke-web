@@ -104,12 +104,6 @@ public class ConfluenceClientService {
             parseAllowedHosts(allowedHosts), MAX_ATTACHMENT_BYTES);
     }
 
-    public ConfluenceClientService(SecretCipher secretCipher, RestClient.Builder restClientBuilder,
-        int retryMaxAttempts, long retryInitialBackoffMs, long retryMaxBackoffMs) {
-        this(secretCipher, restClientBuilder, retryMaxAttempts, retryInitialBackoffMs,
-            retryMaxBackoffMs, true, List.of(), MAX_ATTACHMENT_BYTES);
-    }
-
     ConfluenceClientService(SecretCipher secretCipher, RestClient.Builder restClientBuilder,
         int retryMaxAttempts, long retryInitialBackoffMs, long retryMaxBackoffMs,
         boolean requireHttps, List<String> allowedHosts, long maxAttachmentBytes) {

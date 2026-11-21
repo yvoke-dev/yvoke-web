@@ -31,7 +31,11 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
 
     public RequestBodySizeLimitFilter(
         @Value("${app.security.max-json-body-bytes}") long maxBodyBytes) {
-        this.maxBodyBytes = maxBodyBytes > 0 ? maxBodyBytes : 10L * 1024L * 1024L;
+        if (maxBodyBytes <= 0) {
+            throw new IllegalArgumentException(
+                "app.security.max-json-body-bytes must be positive, got: " + maxBodyBytes);
+        }
+        this.maxBodyBytes = maxBodyBytes;
     }
 
     @Override

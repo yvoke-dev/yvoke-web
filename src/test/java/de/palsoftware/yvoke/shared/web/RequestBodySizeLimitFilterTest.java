@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.shared.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
@@ -58,5 +59,13 @@ class RequestBodySizeLimitFilterTest {
         MockHttpServletResponse res = new MockHttpServletResponse();
         filter.doFilter(ingestReq, res, new MockFilterChain());
         assertThat(res.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void rejectsNonPositiveMaxBodyBytesInsteadOfFallingBackToInlineDefault() {
+        assertThatThrownBy(() -> new RequestBodySizeLimitFilter(0))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new RequestBodySizeLimitFilter(-1))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -17,6 +17,7 @@ import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.Profile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,19 +27,23 @@ public class OrchestratorProfileServiceTest {
 
     private OrchestratorProfileRepository repository;
     private OrchestratorProperties properties;
+    private ChatProperties chatProperties;
     private OrchestratorProfileService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(OrchestratorProfileRepository.class);
-        properties = new OrchestratorProperties(2, 8,
+        properties = new OrchestratorProperties(2, 8, 10, 50,
             new RoleDefaults(new RoleConfig("gemini-3.1-pro", "high"),
                 new RoleConfig("gemini-3.1-pro", "high"),
                 new RoleConfig("gemini-3.1-flash", "medium")),
             List.of(
                 new Profile("OIM", "oim-orch", "oim-rev", List.of("spec-1"), null, null, null)));
-        service =
-            new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"));
+        chatProperties = new ChatProperties(true,
+            List.of("model-a", "model-b", "model-c", "gemini-3.8-flash", "gpt-5.4-mini"), true,
+            false, "", Duration.ofMinutes(5), 100_000, 400_000);
+        service = new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"),
+            chatProperties);
     }
 
     @Test
@@ -198,7 +203,8 @@ public class OrchestratorProfileServiceTest {
     @Test
     void saveProfileEnforcesBoundsAllowedModelsAndThinkingLevels() {
         ChatProperties chatProps =
-            new ChatProperties(true, List.of("gemini-3.8-flash", "gpt-5.4-mini"), true, false);
+            new ChatProperties(true, List.of("gemini-3.8-flash", "gpt-5.4-mini"), true, false, "",
+                Duration.ofMinutes(5), 100_000, 400_000);
         OrchestratorProfileService strictService = new OrchestratorProfileService(repository,
             properties, TestAreas.withAreas("OIM"), chatProps);
 
@@ -305,7 +311,7 @@ public class OrchestratorProfileServiceTest {
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
         OrchestratorProfileService twoAreas = new OrchestratorProfileService(repository, properties,
-            TestAreas.withAreas("OIM", "PingID"));
+            TestAreas.withAreas("OIM", "PingID"), chatProperties);
         twoAreas.importProfileFromJson("{\"name\":\"P\",\"area\":\"pingid\"}", "OIM");
 
         ArgumentCaptor<OrchestratorProfile> saved =
@@ -377,5 +383,24 @@ public class OrchestratorProfileServiceTest {
         assertThat(resolvedNegative.maxSpecialistCalls()).isEqualTo(8);
 
         verify(repository, never()).findByName(any());
+    }
+
+    @Test
+    void importProfileFromJsonRejectsExplicitZeroLimitsAndInheritsOmittedLimits() {
+        assertThatThrownBy(() -> service.importProfileFromJson(
+            "{\"name\":\"ZeroRounds\",\"maxReviewRounds\":0,\"maxSpecialistCalls\":5}", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
+        assertThatThrownBy(() -> service.importProfileFromJson(
+            "{\"name\":\"ZeroCalls\",\"maxReviewRounds\":2,\"maxSpecialistCalls\":0}", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxSpecialistCalls");
+        verify(repository, never()).upsert(any());
+
+        service.importProfileFromJson("{\"name\":\"OmittedLimits\"}", "OIM");
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(repository).upsert(saved.capture());
+        assertThat(saved.getValue().maxReviewRounds()).isEqualTo(2);
+        assertThat(saved.getValue().maxSpecialistCalls()).isEqualTo(8);
     }
 }
