@@ -54,3 +54,4 @@ data:
   APP_AI_RAG_MAX_ITERATIONS: "20"
   APP_WEB_SEARCH_ENABLED: "true"
   APP_WEB_SEARCH_ALLOWED_DOMAINS: "support.oneidentity.com,www.oneidentity.com/community/"
+  APP_CONFLUENCE_ALLOWED_HOSTS: "ic-consult.atlassian.net"

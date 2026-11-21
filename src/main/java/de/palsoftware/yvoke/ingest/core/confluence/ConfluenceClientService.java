@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.ingest.core.confluence;
 
 import de.palsoftware.yvoke.shared.io.BoundedStreams;
+import de.palsoftware.yvoke.shared.security.BlockedHostException;
 import de.palsoftware.yvoke.shared.security.DevProfiles;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
 import de.palsoftware.yvoke.shared.security.SecretDecryptionException;
@@ -269,10 +270,10 @@ public class ConfluenceClientService {
         String scheme = uri.getScheme();
         if (scheme == null
             || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
-            throw new IllegalArgumentException("Confluence URL must use http(s): " + url);
+            throw new BlockedHostException("Confluence URL must use http(s): " + url);
         }
         if (requireHttps && !scheme.equalsIgnoreCase("https")) {
-            throw new IllegalArgumentException(
+            throw new BlockedHostException(
                 "Confluence URL must use https outside development profiles: " + url);
         }
         String host = uri.getHost();
@@ -280,13 +281,13 @@ public class ConfluenceClientService {
             throw new IllegalArgumentException("Confluence URL has no host: " + url);
         }
         if (!isHostAllowed(host)) {
-            throw new IllegalArgumentException("Confluence host is not in allowed-hosts: " + host);
+            throw new BlockedHostException("Confluence host is not in allowed-hosts: " + host);
         }
         try {
             SsrfAddressValidator.resolveAndValidate(host);
         } catch (UnknownHostException e) {
-            throw new IllegalArgumentException(e.getMessage() != null ? e.getMessage()
-                : "Confluence host cannot be resolved: " + host);
+            throw new BlockedHostException(e.getMessage() != null ? e.getMessage()
+                : "Confluence host cannot be resolved: " + host, e);
         }
     }
 
@@ -395,6 +396,9 @@ public class ConfluenceClientService {
             // Never return remote response bodies to the browser (SSRF response-body oracle).
             return ConnectionTestResult
                 .failure("Atlassian API returned HTTP " + e.getStatusCode().value());
+        } catch (BlockedHostException e) {
+            log.warn("Confluence connection test blocked: {}", e.getMessage());
+            return ConnectionTestResult.failure("Confluence host is not allowed.");
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Confluence connection test rejected: {}", e.getMessage());
             return ConnectionTestResult.failure(e.getMessage());

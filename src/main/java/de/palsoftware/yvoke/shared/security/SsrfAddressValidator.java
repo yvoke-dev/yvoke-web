@@ -28,7 +28,7 @@ public final class SsrfAddressValidator {
         }
         for (InetAddress addr : addresses) {
             if (isBlockedAddress(addr)) {
-                throw new UnknownHostException(
+                throw new BlockedHostException(
                     "Host resolves to a blocked address (" + addr.getHostAddress() + "): " + host);
             }
         }

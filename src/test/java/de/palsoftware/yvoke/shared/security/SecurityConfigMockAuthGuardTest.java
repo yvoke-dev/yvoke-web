@@ -668,4 +668,18 @@ class SecurityConfigMockAuthGuardTest {
             }
         }
     }
+
+    @Test
+    void chatLayoutPinsMermaid1096WithVerifiedSriAndExcludesVulnerableVersions() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/templates/chat/layout.html"));
+
+        assertThat(html).contains("https://cdn.jsdelivr.net/npm/mermaid@10.9.6/dist/mermaid.min.js")
+            .contains(
+                "integrity=\"sha384-qX9VvWkP79m/O121ZE6sOYp0nf/pldQgtvWDbkpzi+3mUo4Wn4Ix4cFzNPay3VaB\"");
+        for (String vulnerable : List.of("mermaid@10.9.1", "mermaid@10.9.2", "mermaid@10.9.3",
+            "mermaid@10.9.4", "mermaid@10.9.5")) {
+            assertThat(html).as("chat/layout.html must not load vulnerable %s", vulnerable)
+                .doesNotContain(vulnerable);
+        }
+    }
 }

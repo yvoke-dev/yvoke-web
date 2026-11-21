@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
+import de.palsoftware.yvoke.shared.security.BlockedHostException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -11,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 public class RestClientConfigTest {
@@ -84,7 +84,7 @@ public class RestClientConfigTest {
             // guard), so even a direct request to 127.0.0.1 is refused before opening a socket.
             RestClient ssrfGuardedClient = config().confluenceRestClientBuilder().build();
             assertThatThrownBy(() -> ssrfGuardedClient.get().uri(base + "/start").retrieve()
-                .toEntity(String.class)).isInstanceOf(ResourceAccessException.class);
+                .toEntity(String.class)).isInstanceOf(BlockedHostException.class);
             assertThat(targetHits.get()).isZero();
 
             // Redirect-disabled pool (without the loopback DNS block) surfaces 3xx as-is without

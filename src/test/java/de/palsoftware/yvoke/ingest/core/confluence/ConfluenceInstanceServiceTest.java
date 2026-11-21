@@ -396,4 +396,56 @@ class ConfluenceInstanceServiceTest {
 
         assertThat(captureUpsert().targetTag()).isNull();
     }
+
+    @Test
+    void changingDomainWithBlankOrNullTokenIsRefusedBeforeUpsert() {
+        when(repository.findById(INSTANCE_ID))
+            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance moved = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
+            "https://attacker.example.com/wiki", "svc@example.com", null, null, "DOCS", "12345",
+            "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+
+        assertThatThrownBy(() -> service.save(moved, ""))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Re-enter the API token when changing the Confluence domain.");
+        assertThatThrownBy(() -> service.save(moved, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Re-enter the API token when changing the Confluence domain.");
+
+        verify(repository, never()).upsert(any());
+        verify(secretCipher, never()).encrypt(anyString());
+    }
+
+    @Test
+    void updatingNonDomainFieldsOrSameCanonicalDomainWithBlankTokenSucceedsWithSingleLookup() {
+        when(repository.findById(INSTANCE_ID))
+            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance edited = new ConfluenceInstance(INSTANCE_ID, "Renamed Wiki", "icc-wiki",
+            "https://ACME.atlassian.net/", "svc@example.com", null, null, "NEWSPACE", "12345",
+            "public", "draft", "OIM - Docs", "  ", false, true, null, null);
+
+        service.save(edited, "");
+
+        ConfluenceInstance saved = captureUpsert();
+        assertThat(saved.name()).isEqualTo("Renamed Wiki");
+        assertThat(saved.targetTag()).isEqualTo("10.0");
+        assertThat(saved.apiTokenEnc()).isNull();
+        verify(repository, times(1)).findById(INSTANCE_ID);
+    }
+
+    @Test
+    void changingDomainWithFreshlySubmittedTokenSucceeds() {
+        when(repository.findById(INSTANCE_ID))
+            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance moved = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
+            "https://new-site.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
+            "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+
+        service.save(moved, "fresh-token");
+
+        ConfluenceInstance saved = captureUpsert();
+        assertThat(saved.domain()).isEqualTo("https://new-site.atlassian.net/wiki");
+        assertThat(saved.apiTokenEnc()).isEqualTo("enc:fresh-token");
+        assertThat(saved.tokenKeyId()).isEqualTo("keyA");
+    }
 }

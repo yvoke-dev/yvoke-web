@@ -42,6 +42,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -93,6 +94,7 @@ public class ChatMessageService {
     private final AgentStepRepository agentStepRepository;
     @Nullable
     private final RetrievalTelemetryService retrievalTelemetryService;
+    private final Set<UUID> activeGeneratingMessageIds = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public ChatMessageService(MessageRepository messageRepository,
@@ -336,6 +338,7 @@ public class ChatMessageService {
                 assistantContent.append(token);
             }
         };
+        activeGeneratingMessageIds.add(assistantMessageId);
         try {
             taskExecutor.submit(() -> {
                 try {
@@ -398,6 +401,7 @@ public class ChatMessageService {
                             assistantMessageId, dbErr);
                     }
                 } finally {
+                    activeGeneratingMessageIds.remove(assistantMessageId);
                     if (onComplete != null) {
                         try {
                             onComplete.run();
@@ -476,6 +480,7 @@ public class ChatMessageService {
             messageRepository.save(assistantMessage);
         });
 
+        activeGeneratingMessageIds.add(assistantMessageId);
         try {
             taskExecutor.submit(() -> {
                 try {
@@ -527,6 +532,7 @@ public class ChatMessageService {
                             assistantMessageId, dbErr);
                     }
                 } finally {
+                    activeGeneratingMessageIds.remove(assistantMessageId);
                     if (onComplete != null) {
                         try {
                             onComplete.run();
@@ -548,6 +554,7 @@ public class ChatMessageService {
 
     private void markFailedToStart(UUID assistantMessageId, @Nullable String modelToUse,
         UUID conversationId, Throwable submitError) {
+        activeGeneratingMessageIds.remove(assistantMessageId);
         log.error("Failed to submit async generation task for conversation {}", conversationId,
             submitError);
         try {
@@ -586,6 +593,13 @@ public class ChatMessageService {
 
     @Scheduled(fixedDelayString = "${app.worker.heartbeat-interval}")
     public void sweepStaleGeneratingMessages() {
+        for (UUID id : activeGeneratingMessageIds) {
+            try {
+                messageRepository.refreshGeneratingHeartbeat(id);
+            } catch (Exception e) {
+                log.warn("Failed to refresh heartbeat for generating message {}", id, e);
+            }
+        }
         try {
             messageRepository.resetStaleGeneratingMessages(chatProperties.staleGeneratingAfter());
         } catch (Exception e) {

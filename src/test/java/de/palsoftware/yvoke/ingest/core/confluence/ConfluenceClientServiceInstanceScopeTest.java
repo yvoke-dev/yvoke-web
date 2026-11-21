@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.sun.net.httpserver.HttpServer;
+import de.palsoftware.yvoke.shared.security.BlockedHostException;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -439,5 +440,53 @@ class ConfluenceClientServiceInstanceScopeTest {
             .hasMessageContaining("re-enter the token")
             .satisfies(e -> assertThat(List.of(String.valueOf(e.getMessage()))).noneMatch(
                 message -> message.contains(ciphertext) || message.contains("the-real-token")));
+    }
+
+    @Test
+    void testConnectionReturnsGenericMessageForBlockedInternalOrDisallowedHostsWithoutIpOracle() {
+        ConfluenceClientService realService =
+            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5);
+        for (String blockedUrl : List.of("https://127.0.0.1", "https://10.0.0.5",
+            "https://169.254.169.254", "http://ic-consult.atlassian.net")) {
+            ConfluenceClientService.ConnectionTestResult result = realService
+                .testConnection(blockedUrl, "svc@example.com", "tok", "SPACE", "12345", null, null);
+
+            assertThat(result.ok()).as("blocked host %s must fail", blockedUrl).isFalse();
+            assertThat(result.message()).isEqualTo("Confluence host is not allowed.")
+                .doesNotContain("127.0.0.1").doesNotContain("10.").doesNotContain("169.254")
+                .doesNotContain("blocked address");
+        }
+
+        ConfluenceClientService allowlistedService = new ConfluenceClientService(cipher,
+            RestClient.builder(), 1, 1, 5, true, List.of("ic-consult.atlassian.net"), 1024);
+        ConfluenceClientService.ConnectionTestResult disallowed = allowlistedService.testConnection(
+            "https://other.atlassian.net", "svc@example.com", "tok", "SPACE", "12345", null, null);
+        assertThat(disallowed.ok()).isFalse();
+        assertThat(disallowed.message()).isEqualTo("Confluence host is not allowed.")
+            .doesNotContain("other.atlassian.net").doesNotContain("allowed-hosts");
+    }
+
+    @Test
+    void testConnectionMasksConnectTimeDnsRebindingBlockedHostWithoutLeakingIp() {
+        RestClient rebindingClient = RestClient.builder().baseUrl("https://rebind.example/wiki")
+            .requestInterceptor((request, body, execution) -> {
+                throw new BlockedHostException(
+                    "Host resolves to a blocked address (10.0.0.5): rebind.example");
+            }).build();
+        ConfluenceClientService rebindingService =
+            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5) {
+                @Override
+                public RestClient getClient(String domain, String email, String apiToken) {
+                    return rebindingClient;
+                }
+            };
+
+        ConfluenceClientService.ConnectionTestResult result = rebindingService.testConnection(
+            "https://rebind.example", "svc@example.com", "tok", "SPACE", "12345", null, null);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.message()).isEqualTo("Confluence host is not allowed.")
+            .doesNotContain("10.0.0.5").doesNotContain("rebind.example")
+            .doesNotContain("blocked address");
     }
 }

@@ -111,8 +111,8 @@ public class ChatController {
             !ChatConversationService.isOwner(conversation.userId(), sidebar.currentUserId())
                 || ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source());
 
-        // One query for the whole thread, skipped when the viewer is a non-owner public reader
-        // (ChatFeedbackService also enforces owner/admin visibility).
+        // One query for the whole thread; ChatFeedbackService returns an empty map for non-owner
+        // public readers (enforcing owner/admin visibility).
         Map<UUID, Feedback> feedbacks = chatFeedbackService.getFeedbackByConversation(id);
 
         List<OrchestratorProfileOption> orchestratorProfiles =

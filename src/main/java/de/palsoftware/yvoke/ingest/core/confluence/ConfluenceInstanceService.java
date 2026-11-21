@@ -8,8 +8,9 @@ import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
 import jakarta.annotation.Nullable;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -117,15 +118,12 @@ public class ConfluenceInstanceService {
      * Guarding here rather than in the browser means a slow or failed request cannot cause it.
      * Blank still means "no tag" on create, which is the only way to express that.
      */
-    private String resolveTargetTag(ConfluenceInstance draft) {
+    private static String resolveTargetTag(ConfluenceInstance draft,
+        Optional<ConfluenceInstance> existing) {
         if (draft.targetTag() != null && !draft.targetTag().isBlank()) {
             return draft.targetTag();
         }
-        if (draft.id() == null) {
-            return draft.targetTag();
-        }
-        return repository.findById(draft.id()).map(ConfluenceInstance::targetTag)
-            .orElse(draft.targetTag());
+        return existing.map(ConfluenceInstance::targetTag).orElse(draft.targetTag());
     }
 
     public ConfluenceInstance save(ConfluenceInstance draft, @Nullable String submittedToken) {
@@ -153,13 +151,24 @@ public class ConfluenceInstanceService {
                 "That API token looks like an already-encrypted value. Paste the token from your "
                     + "Atlassian account, or leave the field blank to keep the stored one.");
         }
+        Optional<ConfluenceInstance> existing =
+            draft.id() == null ? Optional.empty() : repository.findById(draft.id());
+        if (existing.isPresent() && token == null) {
+            String existingDomain = ConfluenceDomains.canonicalizeOrKeep(existing.get().domain());
+            String draftDomain = ConfluenceDomains.canonicalize(draft.domain());
+            if (!Objects.equals(existingDomain, draftDomain)) {
+                throw new IllegalArgumentException(
+                    "Re-enter the API token when changing the Confluence domain.");
+            }
+        }
         String apiTokenEnc = token == null ? null : secretCipher.encrypt(token);
         String tokenKeyId = token == null ? null : secretCipher.keyId();
 
         ConfluenceInstance toSave = new ConfluenceInstance(draft.id(), draft.name(), draft.slug(),
             draft.domain(), draft.email(), apiTokenEnc, tokenKeyId, draft.space(),
             draft.rootPageId(), draft.includeLabels(), draft.excludeLabels(), colOpt.get().name(),
-            resolveTargetTag(draft), draft.processAttachments(), draft.enabled(), null, null);
+            resolveTargetTag(draft, existing), draft.processAttachments(), draft.enabled(), null,
+            null);
         try {
             return repository.upsert(toSave);
         } catch (DataIntegrityViolationException e) {

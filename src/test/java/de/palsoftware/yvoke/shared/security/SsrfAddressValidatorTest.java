@@ -21,7 +21,7 @@ class SsrfAddressValidatorTest {
         assertThat(SsrfAddressValidator.isBlockedAddress(addr))
             .as("address %s must be blocked", literal).isTrue();
         assertThatThrownBy(() -> SsrfAddressValidator.resolveAndValidate(literal))
-            .isInstanceOf(UnknownHostException.class).hasMessageContaining("blocked address");
+            .isInstanceOf(BlockedHostException.class).hasMessageContaining("blocked address");
     }
 
     @ParameterizedTest

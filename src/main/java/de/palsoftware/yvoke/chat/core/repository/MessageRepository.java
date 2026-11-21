@@ -200,6 +200,15 @@ public class MessageRepository {
         }
     }
 
+    public void refreshGeneratingHeartbeat(UUID id) {
+        String sql = """
+            UPDATE messages
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id AND status = 'generating'
+            """;
+        jdbcClient.sql(sql).param("id", id).update();
+    }
+
     public int resetStaleGeneratingMessages(Duration staleAfter) {
         long staleSeconds = staleAfter == null ? 0L : Math.max(0L, staleAfter.toSeconds());
         String sql =

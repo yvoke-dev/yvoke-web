@@ -2844,4 +2844,106 @@ public class ChatMessageServiceTest {
             contains("could not complete"), any(), any(), eq(0), eq(0), eq(0), eq(0), eq(0),
             eq("error"), eq(null));
     }
+
+    @Test
+    public void sweepStaleGeneratingMessages_refreshesHeartbeatsForActiveMessagesBeforeReset() {
+        UUID singleConvId = UUID.randomUUID();
+        Conversation singleConv = new Conversation(singleConvId, UUID.randomUUID(), "Single",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(singleConvId, false)).thenReturn(singleConv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        UUID orchConvId = UUID.randomUUID();
+        Conversation orchConv = new Conversation(orchConvId, UUID.randomUUID(), "Orch",
+            Map.of("orchestrator-profile", "PROF1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(orchConvId, false)).thenReturn(orchConv);
+        when(orchestrationService.hasProfile("PROF1")).thenReturn(true);
+        when(orchestrationService.getProfileArea("PROF1")).thenReturn(Optional.of("AreaA"));
+
+        // Capture submitted tasks without running them yet so both generations stay in-flight.
+        List<Runnable> pendingTasks = new ArrayList<>();
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            pendingTasks.add(inv.getArgument(0));
+            return null;
+        });
+
+        UUID singleAssistantId =
+            chatMessageService.prepareAndSubmitAsync(singleConvId, "Hello single", "PB1");
+        UUID orchAssistantId =
+            chatMessageService.prepareAndSubmitAsync(orchConvId, "Hello orch", null);
+
+        // Even if one heartbeat refresh throws, the remaining active IDs and the stale reset still
+        // run, and every heartbeat happens BEFORE resetStaleGeneratingMessages.
+        doThrow(new RuntimeException("transient db hiccup")).when(messageRepository)
+            .refreshGeneratingHeartbeat(singleAssistantId);
+
+        chatMessageService.sweepStaleGeneratingMessages();
+
+        InOrder singleOrder = inOrder(messageRepository);
+        singleOrder.verify(messageRepository).refreshGeneratingHeartbeat(singleAssistantId);
+        singleOrder.verify(messageRepository)
+            .resetStaleGeneratingMessages(chatProperties.staleGeneratingAfter());
+
+        InOrder orchOrder = inOrder(messageRepository);
+        orchOrder.verify(messageRepository).refreshGeneratingHeartbeat(orchAssistantId);
+        orchOrder.verify(messageRepository)
+            .resetStaleGeneratingMessages(chatProperties.staleGeneratingAfter());
+    }
+
+    @Test
+    public void activeGeneratingMessageIds_areCleanedUpOnSuccessCancellationErrorAndSubmitRejection() {
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        // 1. Success path
+        UUID okConvId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(okConvId, false))
+            .thenReturn(new Conversation(okConvId, UUID.randomUUID(), "Ok",
+                Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of()));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenReturn(new RagResult(List.of(), List.of(), null, List.of(), 1, 1, 2, 0, 0));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+        UUID okId = chatMessageService.prepareAndSubmitAsync(okConvId, "ok", "PB1");
+
+        // 2. Cancellation path
+        UUID cancelConvId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(cancelConvId, false))
+            .thenReturn(new Conversation(cancelConvId, UUID.randomUUID(), "Cancel",
+                Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of()));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenThrow(new CancellationException("stopped"));
+        UUID cancelId = chatMessageService.prepareAndSubmitAsync(cancelConvId, "cancel", "PB1");
+
+        // 3. Error path (orchestrated)
+        UUID errConvId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(errConvId, false))
+            .thenReturn(new Conversation(errConvId, UUID.randomUUID(), "Err",
+                Map.of("orchestrator-profile", "PROF1"), null, null, List.of()));
+        when(orchestrationService.hasProfile("PROF1")).thenReturn(true);
+        when(orchestrationService.getProfileArea("PROF1")).thenReturn(Optional.of("AreaA"));
+        when(orchestrationService.runOrchestration(any(), any(), any(), any(), any(), any(), any()))
+            .thenThrow(new RuntimeException("boom"));
+        UUID errId = chatMessageService.prepareAndSubmitAsync(errConvId, "err", null);
+
+        // 4. Submit rejection path
+        UUID rejectConvId = UUID.randomUUID();
+        when(chatConversationService.verifyOwnership(rejectConvId, false))
+            .thenReturn(new Conversation(rejectConvId, UUID.randomUUID(), "Reject",
+                Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of()));
+        when(taskExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("executor rejected"));
+        Assertions.assertThrows(RuntimeException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(rejectConvId, "reject", "PB1"));
+
+        // Sweep after all 4 finished/rejected: none of them may still be heartbeated.
+        chatMessageService.sweepStaleGeneratingMessages();
+        verify(messageRepository, never()).refreshGeneratingHeartbeat(any());
+        assertThat(List.of(okId, cancelId, errId)).doesNotContainNull();
+    }
 }
