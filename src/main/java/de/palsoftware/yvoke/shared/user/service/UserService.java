@@ -1,8 +1,8 @@
 package de.palsoftware.yvoke.shared.user.service;
 
-import de.palsoftware.yvoke.shared.user.model.*;
-import de.palsoftware.yvoke.shared.user.repository.*;
-
+import de.palsoftware.yvoke.shared.user.model.User;
+import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,10 +13,15 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 @Service
 public class UserService {
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
+    private static final String REQUEST_CACHE_ATTR = UserService.class.getName() + ".currentUser";
+
+    private record CachedUser(String entraOid, Optional<User> user) {}
 
     private final UserRepository userRepository;
 
@@ -57,32 +62,50 @@ public class UserService {
         }
 
         Object principal = auth.getPrincipal();
+        String entraOid = extractEntraOid(auth, principal);
+        if (entraOid == null) {
+            return Optional.empty();
+        }
+
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs != null) {
+            Object cachedObj =
+                attrs.getAttribute(REQUEST_CACHE_ATTR, RequestAttributes.SCOPE_REQUEST);
+            if (cachedObj instanceof CachedUser cached
+                && Objects.equals(cached.entraOid(), entraOid)) {
+                return cached.user();
+            }
+        }
+
+        Optional<User> resolved;
+        if (principal instanceof Jwt jwt) {
+            String email = jwt.getClaimAsString("preferred_username");
+            if (email == null) {
+                email = jwt.getClaimAsString("email");
+            }
+            String displayName = jwt.getClaimAsString("name");
+            resolved = userRepository.upsertAndReturn(entraOid, email, displayName);
+        } else {
+            resolved = userRepository.findByEntraOid(entraOid);
+        }
+
+        if (attrs != null && resolved.isPresent()) {
+            attrs.setAttribute(REQUEST_CACHE_ATTR, new CachedUser(entraOid, resolved),
+                RequestAttributes.SCOPE_REQUEST);
+        }
+        return resolved;
+    }
+
+    private static String extractEntraOid(Authentication auth, Object principal) {
         if (principal instanceof OidcUser oidcUser) {
             String entraOid = oidcUser.getClaimAsString("oid");
-            if (entraOid == null) {
-                entraOid = oidcUser.getSubject();
-            }
-            if (entraOid != null) {
-                return userRepository.findByEntraOid(entraOid);
-            }
-        } else if (principal instanceof Jwt jwt) {
-            String entraOid = jwt.getClaimAsString("oid");
-            if (entraOid == null) {
-                entraOid = jwt.getSubject();
-            }
-            if (entraOid != null) {
-                String email = jwt.getClaimAsString("preferred_username");
-                if (email == null) {
-                    email = jwt.getClaimAsString("email");
-                }
-                String displayName = jwt.getClaimAsString("name");
-                userRepository.upsert(entraOid, email, displayName);
-                return userRepository.findByEntraOid(entraOid);
-            }
-        } else if (auth.getName() != null) {
-            return userRepository.findByEntraOid(auth.getName());
+            return entraOid != null ? entraOid : oidcUser.getSubject();
         }
-        return Optional.empty();
+        if (principal instanceof Jwt jwt) {
+            String entraOid = jwt.getClaimAsString("oid");
+            return entraOid != null ? entraOid : jwt.getSubject();
+        }
+        return auth.getName();
     }
 
     public String getCurrentUserDisplayName() {

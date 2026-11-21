@@ -4,6 +4,10 @@ import de.palsoftware.yvoke.shared.jobengine.*;
 import de.palsoftware.yvoke.shared.jobengine.model.*;
 import de.palsoftware.yvoke.shared.jobengine.repository.*;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,6 +16,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,14 +30,24 @@ public class JobService {
     private final JobProgressBroker progressBroker;
     private final Map<String, JobHandler> handlersByKind;
     private final List<EnqueueValidator> enqueueValidators;
+    private final Path uploadRoot;
 
+    @Autowired
     public JobService(JobRepository jobRepository, JobProgressBroker progressBroker,
-        List<JobHandler> handlers, List<EnqueueValidator> enqueueValidators) {
+        List<JobHandler> handlers, List<EnqueueValidator> enqueueValidators,
+        @Value("${app.upload-dir}") String uploadDir) {
         this.jobRepository = jobRepository;
         this.progressBroker = progressBroker;
         this.handlersByKind =
             handlers.stream().collect(Collectors.toMap(JobHandler::kind, Function.identity()));
         this.enqueueValidators = enqueueValidators;
+        this.uploadRoot = (uploadDir == null || uploadDir.isBlank()) ? null
+            : Path.of(uploadDir).toAbsolutePath().normalize();
+    }
+
+    public JobService(JobRepository jobRepository, JobProgressBroker progressBroker,
+        List<JobHandler> handlers, List<EnqueueValidator> enqueueValidators) {
+        this(jobRepository, progressBroker, handlers, enqueueValidators, null);
     }
 
     /**
@@ -74,6 +90,11 @@ public class JobService {
         return jobRepository.claimNext();
     }
 
+    @Transactional
+    public Optional<IngestionJob> claimNext(String workerId) {
+        return jobRepository.claimNext(workerId);
+    }
+
     public List<JobStep> getStepsForKind(String kind) {
         if (kind == null) {
             return List.of();
@@ -91,6 +112,7 @@ public class JobService {
         JobHandler handler = handlersByKind.get(baseKind);
         if (handler == null) {
             fail(job.id(), "no handler for kind=" + job.kind());
+            cleanupStagedUpload(job);
             return;
         }
 
@@ -101,6 +123,7 @@ public class JobService {
         } catch (RuntimeException e) {
             log.warn("Job {} failed during execution", job.id(), e);
             fail(job.id(), e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            cleanupStagedUpload(job);
             return;
         }
 
@@ -108,10 +131,75 @@ public class JobService {
         if (validationError != null) {
             log.warn("Job {} produced no usable output: {}", job.id(), validationError);
             fail(job.id(), validationError);
+            cleanupStagedUpload(job);
             return;
         }
 
         complete(job.id(), counts);
+        cleanupStagedUpload(job);
+    }
+
+    /**
+     * Deletes a staged upload file inside {@code app.upload-dir} once a job reaches a terminal
+     * state and no other queued/running job references the same {@code source_ref}. Non-file refs
+     * (e.g. Confluence URLs or document UUIDs) and paths outside {@code uploadRoot} are ignored.
+     */
+    void cleanupStagedUpload(IngestionJob job) {
+        if (uploadRoot == null || job == null || job.sourceRef() == null
+            || job.sourceRef().isBlank()) {
+            return;
+        }
+        Path candidate;
+        try {
+            candidate = Path.of(job.sourceRef()).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            return;
+        }
+        if (candidate.equals(uploadRoot) || !candidate.startsWith(uploadRoot)
+            || !Files.isRegularFile(candidate) || !isStagedUploadFile(candidate, uploadRoot)) {
+            return;
+        }
+        try {
+            if (jobRepository.countActiveJobsBySourceRef(job.sourceRef()) > 0) {
+                return;
+            }
+            Files.deleteIfExists(candidate);
+            Path parent = candidate.getParent();
+            if (parent != null && !parent.equals(uploadRoot) && parent.getParent() != null
+                && parent.getParent().equals(uploadRoot)
+                && parent.getFileName().toString().startsWith("custom_")) {
+                Files.deleteIfExists(parent);
+            }
+        } catch (IOException | RuntimeException e) {
+            log.warn("Failed to clean up staged upload for job {}: {}", job.id(), candidate, e);
+        }
+    }
+
+    /**
+     * Only deletes files that Yvoke itself staged ({@code <uploadRoot>/<uuid>_*} or
+     * {@code <uploadRoot>/custom_<uuid>/*}), leaving caller-managed files placed under
+     * {@code app.upload-dir} untouched.
+     */
+    private static boolean isStagedUploadFile(Path candidate, Path uploadRoot) {
+        Path parent = candidate.getParent();
+        if (parent == null) {
+            return false;
+        }
+        if (parent.equals(uploadRoot)) {
+            String name = candidate.getFileName().toString();
+            if (name.length() > 37 && name.charAt(36) == '_') {
+                try {
+                    UUID.fromString(name.substring(0, 36));
+                    return true;
+                } catch (IllegalArgumentException ignored) {
+                    return false;
+                }
+            }
+            return false;
+        }
+        Path grandParent = parent.getParent();
+        return grandParent != null && grandParent.equals(uploadRoot)
+            && parent.getFileName().toString().startsWith("custom_");
     }
 
     private String validateCounts(JobHandler handler, IngestionJob job, JobCounts counts) {

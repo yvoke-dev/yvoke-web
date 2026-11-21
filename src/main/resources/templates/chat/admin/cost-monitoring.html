@@ -232,7 +232,7 @@
                                                 <span th:text="${@modelLabels.formatCsv(row.modelsUsed)}" style="font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px;"></span>
                                             </td>
                                             <td>
-                                                <span th:if="${row.masProfilesUsed != null and !row.masProfilesUsed.isBlank()}" th:text="${row.masProfilesUsed}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">OIM</span>
+                                                <span th:if="${row.masProfilesUsed != null and !row.masProfilesUsed.isBlank()}" th:text="${row.masProfilesUsed}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">Profile</span>
                                                 <span th:if="${row.masProfilesUsed == null or row.masProfilesUsed.isBlank()}" style="color: #666;">—</span>
                                             </td>
                                             <td>
@@ -336,7 +336,7 @@
                                             <td>
                                                 <span th:if="${row.itemType == 'MESSAGE' and row.role == 'assistant'}" style="color: #28a745; font-weight: 600;">🤖 assistant</span>
                                                 <span th:if="${row.itemType == 'MAS_STEP'}" style="background: rgba(111,66,193,0.2); color: #b197fc; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8em; font-weight: 600;">
-                                                    ⚡ MAS: <span th:text="${row.role}">specialist</span> (<span th:text="${row.masProfile != null ? row.masProfile : 'agent'}">OIM</span>)
+                                                    ⚡ MAS: <span th:text="${row.role}">specialist</span> (<span th:text="${row.masProfile != null ? row.masProfile : 'agent'}">Profile</span>)
                                                 </span>
                                                 <span th:if="${row.itemType == 'MESSAGE' and row.role != 'assistant'}" th:text="${row.role}"></span>
                                             </td>

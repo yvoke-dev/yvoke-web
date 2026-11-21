@@ -1,6 +1,6 @@
 package de.palsoftware.yvoke.shared.web;
 
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -13,18 +13,24 @@ import org.springframework.stereotype.Component;
  * guaranteed release.
  *
  * <p>
+ * Backed by a CAS-bounded counter so extraneous or duplicate {@link #release()} calls can never
+ * inflate available permits above {@code maxConcurrent}.
+ *
+ * <p>
  * Set {@code app.generation.max-concurrent} to 0 (or less) to disable the cap.
  */
 @Component
 public class GenerationConcurrencyLimiter {
 
     private final boolean enabled;
-    private final Semaphore permits;
+    private final int maxConcurrent;
+    private final AtomicInteger available;
 
     public GenerationConcurrencyLimiter(
         @Value("${app.generation.max-concurrent}") int maxConcurrent) {
         this.enabled = maxConcurrent > 0;
-        this.permits = new Semaphore(Math.max(1, maxConcurrent));
+        this.maxConcurrent = Math.max(1, maxConcurrent);
+        this.available = new AtomicInteger(this.maxConcurrent);
     }
 
     /**
@@ -33,18 +39,41 @@ public class GenerationConcurrencyLimiter {
      *         429).
      */
     public boolean tryAcquire() {
-        return !enabled || permits.tryAcquire();
+        if (!enabled) {
+            return true;
+        }
+        while (true) {
+            int cur = available.get();
+            if (cur <= 0) {
+                return false;
+            }
+            if (available.compareAndSet(cur, cur - 1)) {
+                return true;
+            }
+        }
     }
 
-    /** Returns a previously acquired slot. No-op when the cap is disabled. */
+    /**
+     * Returns a previously acquired slot, clamped at {@code maxConcurrent} so double-release cannot
+     * inflate capacity. No-op when the cap is disabled.
+     */
     public void release() {
-        if (enabled) {
-            permits.release();
+        if (!enabled) {
+            return;
+        }
+        while (true) {
+            int cur = available.get();
+            if (cur >= maxConcurrent) {
+                return;
+            }
+            if (available.compareAndSet(cur, cur + 1)) {
+                return;
+            }
         }
     }
 
     /** Visible for tests. */
-    int availablePermits() {
-        return permits.availablePermits();
+    public int availablePermits() {
+        return available.get();
     }
 }

@@ -671,4 +671,31 @@ class ChatAsyncControllerTest {
             .andExpect(MockMvcResultMatchers.jsonPath("$.error")
                 .value("Playbook cannot be changed once a conversation has started."));
     }
+
+    @Test
+    void sendMessageAsync_inlineOnCompleteThenThrow_releasesPermitOnlyOnce() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatConversationService chatConversationService = mock(ChatConversationService.class);
+        GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
+        UUID conversationId = UUID.randomUUID();
+
+        when(
+            chatMessageService.prepareAndSubmitAsync(eq(conversationId), anyString(), any(), any()))
+            .thenAnswer(inv -> {
+                Runnable onComplete = inv.getArgument(3);
+                onComplete.run();
+                onComplete.run();
+                throw new RuntimeException("post-run failure");
+            });
+
+        ChatAsyncController controller =
+            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+
+        assertThrows(RuntimeException.class,
+            () -> controller.sendMessageAsync(conversationId, "hello", null));
+
+        assertEquals(1, limiter.availablePermits());
+        assertThat(limiter.tryAcquire()).isTrue();
+        assertThat(limiter.tryAcquire()).isFalse();
+    }
 }

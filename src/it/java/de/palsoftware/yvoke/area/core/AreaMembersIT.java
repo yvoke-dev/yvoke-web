@@ -97,7 +97,7 @@ class AreaMembersIT {
         Collection created = collectionRepository.create("it-members-col", null, "OIM");
         assertThat(created.area()).isEqualTo("OIM");
 
-        collectionRepository.updateArea("it-members-col", OTHER);
+        collectionRepository.updateArea(created.id(), OTHER);
 
         assertThat(collectionRepository.findByName("it-members-col")).get()
             .extracting(Collection::area).isEqualTo(OTHER);

@@ -1,7 +1,11 @@
 package de.palsoftware.yvoke.shared.config;
 
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.shared.security.SsrfAddressValidator;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.SystemDefaultDnsResolver;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -35,20 +39,23 @@ public class RestClientConfig {
     @Bean
     @Primary
     public RestClient.Builder restClientBuilder() {
-        return RestClient.builder().requestFactory(pooledFactory(true));
+        return RestClient.builder().requestFactory(pooledFactory(true, null));
     }
 
     /**
-     * Confluence-only client with automatic redirect following DISABLED (SEC-11). The SSRF guard in
-     * {@code ConfluenceClientService} validates each target host's resolved IP before the request,
-     * but an HTTP 3xx would let the remote server bounce the connection to an internal / cloud-
-     * metadata address without that host ever being re-checked. Refusing to follow redirects closes
-     * that bypass; the Confluence REST endpoints we call return their payloads directly and
-     * paginate via {@code _links.next}, so they never need transparent redirects.
+     * Confluence-only client with automatic redirect following DISABLED (SEC-11) AND a connect-time
+     * SSRF {@link DnsResolver} that re-validates every resolved IP address immediately before the
+     * socket is opened — closing DNS rebinding and cached-client TOCTOU gaps.
      */
     @Bean
     public RestClient.Builder confluenceRestClientBuilder() {
-        return RestClient.builder().requestFactory(pooledFactory(false));
+        DnsResolver ssrfSafeDnsResolver = new SystemDefaultDnsResolver() {
+            @Override
+            public InetAddress[] resolve(String host) throws UnknownHostException {
+                return SsrfAddressValidator.resolveAndValidate(host);
+            }
+        };
+        return RestClient.builder().requestFactory(pooledFactory(false, ssrfSafeDnsResolver));
     }
 
     /**
@@ -59,22 +66,28 @@ public class RestClientConfig {
      */
     @Bean
     public RestClient.Builder embeddingRestClientBuilder() {
-        return RestClient.builder().requestFactory(pooledFactory(true));
+        return RestClient.builder().requestFactory(pooledFactory(true, null));
     }
 
     @Bean
     public RestClient.Builder rerankRestClientBuilder() {
-        return RestClient.builder().requestFactory(pooledFactory(true));
+        return RestClient.builder().requestFactory(pooledFactory(true, null));
     }
 
-    private HttpComponentsClientHttpRequestFactory pooledFactory(boolean followRedirects) {
+    HttpComponentsClientHttpRequestFactory pooledFactory(boolean followRedirects,
+        DnsResolver dnsResolver) {
         ConnectionConfig connectionConfig =
             ConnectionConfig.custom().setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
                 .setSocketTimeout(Timeout.ofMilliseconds(readTimeout)).build();
 
-        HttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder
-            .create().setDefaultConnectionConfig(connectionConfig).setMaxConnTotal(20)
-            .setMaxConnPerRoute(10).build();
+        PoolingHttpClientConnectionManagerBuilder cmBuilder =
+            PoolingHttpClientConnectionManagerBuilder.create()
+                .setDefaultConnectionConfig(connectionConfig).setMaxConnTotal(20)
+                .setMaxConnPerRoute(10);
+        if (dnsResolver != null) {
+            cmBuilder.setDnsResolver(dnsResolver);
+        }
+        HttpClientConnectionManager connectionManager = cmBuilder.build();
 
         RequestConfig requestConfig = RequestConfig.custom()
             .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectTimeout)).build();

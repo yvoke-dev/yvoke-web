@@ -813,11 +813,11 @@ public class OrchestrationService {
      * bare question, so no code-side task string wraps it.
      *
      * <p>
-     * It lives here rather than in the {@code oim-orchestrator} playbook because
-     * {@link #afterAnswerMarker} depends on it and fails OPEN — no marker means the text passes
-     * through untouched. A playbook is a database row edited through the admin UI and imported from
-     * a separate repo, so were that row the only thing asking for the marker, editing it would
-     * silently restore the leak with nothing to notice.
+     * It lives here rather than in the orchestrator playbook because {@link #afterAnswerMarker}
+     * depends on it and fails OPEN — no marker means the text passes through untouched. A playbook
+     * is a database row edited through the admin UI and imported from a separate repo, so were that
+     * row the only thing asking for the marker, editing it would silently restore the leak with
+     * nothing to notice.
      */
     static final String ANSWER_MARKER_CONTRACT = "Your reply to a question is delivered to the "
         + "user verbatim as the answer. Write the line " + ANSWER_MARKER + " on its own "

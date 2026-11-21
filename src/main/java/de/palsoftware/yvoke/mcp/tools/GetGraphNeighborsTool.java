@@ -93,8 +93,7 @@ public class GetGraphNeighborsTool {
         if (matchedCol == null) {
             return "Error: Collection '" + col + "' does not exist.";
         }
-        if (matchedCol.area() != null && !matchedCol.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
+        if (!AreaAccessContext.canAccessEffectiveUserArea(matchedCol.area())) {
             return "Error: Collection '" + col + "' does not exist.";
         }
         // The stored spelling, not the caller's: the match above is case-insensitive but every

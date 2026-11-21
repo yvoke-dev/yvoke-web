@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.shared.api;
 
+import jakarta.validation.ConstraintViolationException;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -51,6 +53,24 @@ public class ApiExceptionHandler {
             .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest()
             .body(Map.of("error", message.isBlank() ? "Invalid request body" : message));
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodValidation(
+        HandlerMethodValidationException ex) {
+        String message = ex.getAllErrors().stream().map(err -> err.getDefaultMessage())
+            .filter(m -> m != null && !m.isBlank()).collect(Collectors.joining("; "));
+        return ResponseEntity.badRequest()
+            .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(
+        ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+            .map(v -> v.getPropertyPath() + " " + v.getMessage()).collect(Collectors.joining("; "));
+        return ResponseEntity.badRequest()
+            .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

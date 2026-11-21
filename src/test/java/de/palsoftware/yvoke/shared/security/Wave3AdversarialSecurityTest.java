@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.shared.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -458,7 +459,7 @@ class Wave3AdversarialSecurityTest {
                     assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
                     assertThat(rse.getReason()).isEqualTo("Unknown job id: " + jobIdPing);
                 });
-            verify(progressBroker, never()).subscribe(any());
+            verify(progressBroker, never()).subscribeWithInitial(any(), any());
         }
 
         @Test
@@ -466,11 +467,11 @@ class Wave3AdversarialSecurityTest {
         void progressOimKeyOnOimJob() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
             SseEmitter emitter = new SseEmitter();
-            when(progressBroker.subscribe(jobIdOim)).thenReturn(emitter);
+            when(progressBroker.subscribeWithInitial(eq(jobIdOim), any())).thenReturn(emitter);
 
             SseEmitter res = controller.progress(jobIdOim);
             assertThat(res).isNotNull();
-            verify(progressBroker).subscribe(jobIdOim);
+            verify(progressBroker).subscribeWithInitial(eq(jobIdOim), any());
         }
     }
 

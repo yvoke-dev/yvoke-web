@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -66,9 +67,8 @@ import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import org.springframework.core.task.AsyncTaskExecutor;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.scheduling.annotation.Scheduled;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -848,7 +848,7 @@ public class ChatMessageServiceTest {
         Message msg2Ans = new Message(UUID.randomUUID(), conversationId, "assistant", "Answer 2",
             List.of(), List.of(), Instant.now());
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(msg1, msg1Ans, msg2, msg2Ans));
         when(messageRepository.findInitialPlaybook(conversationId)).thenReturn(Optional.of("PB1"));
 
@@ -1606,7 +1606,7 @@ public class ChatMessageServiceTest {
         Message doneMsg = new Message(UUID.randomUUID(), conversationId, "assistant", "World", null,
             List.of(), List.of(), Instant.now(), null, null, null, null, null, "done");
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(userMsg, generatingMsg, doneMsg));
 
         // Stub playbook service for the mock playbook pb Name "PB1"
@@ -1672,7 +1672,7 @@ public class ChatMessageServiceTest {
             "*[Generation stopped by user]*", null, List.of(), List.of(), Instant.now(), null, null,
             null, null, null, "cancelled");
 
-        when(messageRepository.findByConversationId(conversationId, 100, 0))
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
             .thenReturn(List.of(question, failed, stopped));
 
         Playbook pb = new Playbook("PB1", "Title", "Desc", "PB1 Template", List.of(), false,
@@ -1728,20 +1728,19 @@ public class ChatMessageServiceTest {
      * container that will not start is not.
      */
     @Test
-    public void theStartupSweepIsWiredToApplicationReadyAndCannotItselfAbortStartup()
-        throws Exception {
-        EventListener wiring = AnnotatedElementUtils.findMergedAnnotation(
-            ChatMessageService.class.getMethod("onApplicationReady"), EventListener.class);
+    public void theStaleGeneratingSweepIsScheduledAndSwallowsDbErrors() throws Exception {
+        Scheduled wiring = AnnotatedElementUtils.findMergedAnnotation(
+            ChatMessageService.class.getMethod("sweepStaleGeneratingMessages"), Scheduled.class);
 
-        assertThat(wiring).as("nothing else invokes the sweep — the annotation IS the wiring")
+        assertThat(wiring)
+            .as("nothing else invokes the sweep — the @Scheduled annotation IS the wiring")
             .isNotNull();
-        assertThat(wiring.value()).as("ApplicationReadyEvent: the sweep needs a live DataSource")
-            .containsExactly(ApplicationReadyEvent.class);
+        assertThat(wiring.fixedDelayString()).isEqualTo("${app.worker.heartbeat-interval}");
 
         doThrow(new RuntimeException("the connection pool is not up yet")).when(messageRepository)
-            .resetGeneratingMessages();
-        chatMessageService.onApplicationReady();
-        verify(messageRepository).resetGeneratingMessages();
+            .resetStaleGeneratingMessages(any());
+        chatMessageService.sweepStaleGeneratingMessages();
+        verify(messageRepository).resetStaleGeneratingMessages(any());
     }
 
     /**
@@ -2656,5 +2655,193 @@ public class ChatMessageServiceTest {
             () -> new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "q",
                 "m", "s", List.of(), List.of(), null, false, "pb", 1, null));
         assertThat(ex.getMessage()).isEqualTo("allowedAreasLower must not be null");
+    }
+
+    @Test
+    public void prepare_priorHistoryTrimsOldestMessagesWhenExceedingCharacterBudget() {
+        ChatProperties tightBudget = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
+            false, false, null, null, 100_000, 25);
+        ChatMessageService budgetedService = new ChatMessageService(messageRepository,
+            conversationRepository, chatConversationService, ragService, retrievalLogRepository,
+            playbookService, transactionManager, taskExecutor, chatCancellationService,
+            orchestrationService, messageToolCallRepository, toolCallTraceExtractor, tightBudget,
+            agentRunRepository, agentStepRepository);
+
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        Message m1 = new Message(UUID.randomUUID(), conversationId, "user", "0123456789", "PB1",
+            List.of(), List.of(), Instant.now());
+        Message m2 = new Message(UUID.randomUUID(), conversationId, "assistant", "abcdefghij", null,
+            List.of(), List.of(), Instant.now(), null, null, null, null, null, "done");
+        Message m3 = new Message(UUID.randomUUID(), conversationId, "user", "ABCDEFGHIJ", "PB1",
+            List.of(), List.of(), Instant.now());
+        when(messageRepository.findLatestByConversationId(conversationId, 100))
+            .thenReturn(List.of(m1, m2, m3));
+
+        ChatMessageService.PreparedChat prep =
+            budgetedService.prepare(conversationId, "Next", "PB1");
+
+        assertThat(prep.history()).hasSize(2);
+        assertThat(prep.history().get(0).content()).isEqualTo("abcdefghij");
+        assertThat(prep.history().get(1).content()).isEqualTo("ABCDEFGHIJ");
+    }
+
+    @Test
+    public void prepare_corruptNonStringSettingsDoNotThrowClassCastException() {
+        UUID conversationId = UUID.randomUUID();
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+
+        // Corrupt thinking-level and orchestrator-profile fall back cleanly without ClassCast.
+        Map<String, Object> partialCorrupt = Map.of("model", "gemini-3.1-flash-lite",
+            "thinking-level", List.of("high"), "orchestrator-profile", Map.of("bad", true));
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            partialCorrupt, null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+
+        ChatMessageService.PreparedChat prep =
+            chatMessageService.prepare(conversationId, "Hi", "PB1");
+
+        assertThat(prep.modelToUse()).isEqualTo("gemini-3.1-flash-lite");
+        assertThat(prep.thinkingLevel()).isEqualTo("medium");
+
+        // Corrupt non-string model throws IllegalStateException (missing model), not ClassCast.
+        Conversation corruptModelConv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", 123), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false))
+            .thenReturn(corruptModelConv);
+
+        IllegalStateException ex = Assertions.assertThrows(IllegalStateException.class,
+            () -> chatMessageService.prepare(conversationId, "Hi", "PB1"));
+        assertThat(ex.getMessage()).contains("No model selected");
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_executorRejectionMarksGeneratingMessageAsError() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(taskExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("queue full"));
+
+        Assertions.assertThrows(RuntimeException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1"));
+
+        verify(messageRepository).updateContentAndStatus(any(UUID.class), anyString(), any(), any(),
+            eq(0), eq(0), eq(0), eq(0), eq(0), eq("error"), eq("gemini-3.1-flash-lite"));
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_singlePlaybook_resetsCancellationSentinelAndRunsOnComplete() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenReturn(new RagResult(List.of(), List.of(), null, List.of(), 1, 1, 2, 0, 0));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        AtomicBoolean completed = new AtomicBoolean(false);
+        chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1",
+            () -> completed.set(true));
+
+        verify(chatCancellationService).reset(conversationId);
+        assertThat(completed.get()).isTrue();
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_errorInsideWorker_marksGeneratingMessageAsErrorAndRunsOnComplete() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenThrow(new AssertionError("fatal-worker-error"));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        AtomicBoolean completed = new AtomicBoolean(false);
+        UUID assistantId = chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1",
+            () -> completed.set(true));
+
+        assertThat(completed.get()).isTrue();
+        verify(messageRepository).updateContentAndStatus(eq(assistantId),
+            contains("could not complete"), any(), any(), eq(0), eq(0), eq(0), eq(0), eq(0),
+            eq("error"), eq("gemini-3.1-flash-lite"));
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_linkRetrievalLogsFailure_doesNotOverwriteDoneMessage() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        UUID searchId = UUID.randomUUID();
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(
+            new RagResult(List.of(), List.of(), searchId, List.of(searchId), 5, 5, 10, 0, 0));
+        doThrow(new RuntimeException("telemetry db hiccup")).when(retrievalLogRepository)
+            .updateMessageId(eq(searchId), any(UUID.class));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        UUID assistantId =
+            chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1", () -> {
+            });
+
+        verify(messageRepository).updateContentAndStatus(eq(assistantId), anyString(), any(), any(),
+            eq(5), eq(5), eq(10), eq(0), eq(0), eq("done"), eq("gemini-3.1-flash-lite"));
+        verify(messageRepository, never()).updateContentAndStatus(eq(assistantId), anyString(),
+            any(), any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), eq("error"), any());
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_orchestrated_executorRejectionMarksGeneratingMessageAsError() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("orchestrator-profile", "PROF1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("PROF1")).thenReturn(true);
+        when(orchestrationService.getProfileArea("PROF1")).thenReturn(Optional.of("AreaA"));
+        when(taskExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("orchestrator queue full"));
+
+        ArgumentCaptor<Message> savedCaptor = ArgumentCaptor.forClass(Message.class);
+        Assertions.assertThrows(RuntimeException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", null, () -> {
+            }));
+
+        verify(messageRepository, times(2)).save(savedCaptor.capture());
+        UUID assistantId = savedCaptor.getAllValues().stream()
+            .filter(m -> "assistant".equals(m.role())).findFirst().orElseThrow().id();
+        verify(messageRepository).updateContentAndStatus(eq(assistantId),
+            contains("could not complete"), any(), any(), eq(0), eq(0), eq(0), eq(0), eq(0),
+            eq("error"), eq(null));
     }
 }

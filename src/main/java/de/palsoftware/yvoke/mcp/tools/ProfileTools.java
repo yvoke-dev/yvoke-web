@@ -41,9 +41,9 @@ public class ProfileTools {
             + "specialistPlaybooks, maxReviewRounds, maxSpecialistCalls}.";
 
     private static final String AREA_PARAM =
-        "Optional area name, e.g. \"OIM\" (see list_areas). Omit to list every area's profiles.";
+        "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's profiles.";
 
-    private static final String NAME_PARAM = "The orchestrator profile's name, e.g. \"OIM\".";
+    private static final String NAME_PARAM = "The orchestrator profile's name, e.g. \"Docs\".";
 
     /**
      * Multi-agent profile exposed to MCP clients. As with {@code OrchestratorProfileDto}, per-role

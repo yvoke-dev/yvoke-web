@@ -14,6 +14,7 @@ import java.util.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
@@ -192,6 +193,28 @@ public class CollectionServiceTest {
 
         assertThatThrownBy(() -> collectionService.createCollection("Test", "New Desc", "OIM"))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already exists");
+    }
+
+    @Test
+    public void testCreateCollectionConcurrentDuplicateMapsDataIntegrityViolation() {
+        when(collectionRepository.findByName("Test")).thenReturn(Optional.empty());
+        when(collectionRepository.create("Test", "Desc", "OIM"))
+            .thenThrow(new DataIntegrityViolationException("ux_collections_name_lower"));
+
+        assertThatThrownBy(() -> collectionService.createCollection("Test", "Desc", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already exists");
+    }
+
+    @Test
+    public void testMoveCollectionUpdatesById() {
+        UUID colId = UUID.randomUUID();
+        Collection existing = new Collection(colId, "Test", "Desc", Collections.emptyList(),
+            OffsetDateTime.now(), "OIM");
+        when(collectionRepository.findByName("Test")).thenReturn(Optional.of(existing));
+
+        collectionService.moveCollection("Test", "OIM");
+
+        verify(collectionRepository).updateArea(colId, "OIM");
     }
 
     @Test

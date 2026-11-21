@@ -37,16 +37,29 @@ import java.util.Arrays;
 
 class JobApiControllerTest {
 
+    private static class StubBroker extends JobProgressBroker {
+        private SseEmitter nextEmitter;
+
+        void setNextEmitter(SseEmitter emitter) {
+            this.nextEmitter = emitter;
+        }
+
+        @Override
+        protected SseEmitter createEmitter() {
+            return nextEmitter != null ? nextEmitter : super.createEmitter();
+        }
+    }
+
     private JobService jobService;
     private JobRepository jobRepository;
-    private JobProgressBroker progressBroker;
+    private StubBroker progressBroker;
     private JobApiController controller;
 
     @BeforeEach
     void setUp() {
         jobService = mock(JobService.class);
         jobRepository = mock(JobRepository.class);
-        progressBroker = mock(JobProgressBroker.class);
+        progressBroker = spy(new StubBroker());
         controller = new JobApiController(jobService, jobRepository, progressBroker);
     }
 
@@ -73,7 +86,7 @@ class JobApiControllerTest {
         UUID id = UUID.randomUUID();
         SseEmitter emitter = mock(SseEmitter.class);
         when(jobRepository.findById(id)).thenReturn(Optional.of(job(id, JobStatus.RUNNING)));
-        when(progressBroker.subscribe(id)).thenReturn(emitter);
+        progressBroker.setNextEmitter(emitter);
 
         controller.progress(id);
 
@@ -178,19 +191,19 @@ class JobApiControllerTest {
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND));
-        verify(progressBroker, never()).subscribe(any());
+        verify(progressBroker, never()).subscribeWithInitial(any(), any());
     }
 
     @Test
     void progressKnownJobSubscribesAndSendsSnapshot() {
         UUID id = UUID.randomUUID();
         when(jobRepository.findById(id)).thenReturn(Optional.of(job(id, JobStatus.RUNNING)));
-        when(progressBroker.subscribe(id)).thenReturn(new SseEmitter());
+        progressBroker.setNextEmitter(new SseEmitter());
 
         SseEmitter emitter = controller.progress(id);
 
         assertThat(emitter).isNotNull();
-        verify(progressBroker).subscribe(id);
+        verify(progressBroker).subscribeWithInitial(eq(id), any());
     }
 
     /**
@@ -212,7 +225,7 @@ class JobApiControllerTest {
         SseEmitter finishedEmitter = mock(SseEmitter.class);
         when(jobRepository.findById(finishedId))
             .thenReturn(Optional.of(job(finishedId, JobStatus.COMPLETED)));
-        when(progressBroker.subscribe(finishedId)).thenReturn(finishedEmitter);
+        progressBroker.setNextEmitter(finishedEmitter);
 
         assertThat(controller.progress(finishedId)).isSameAs(finishedEmitter);
 
@@ -223,7 +236,7 @@ class JobApiControllerTest {
         SseEmitter runningEmitter = mock(SseEmitter.class);
         when(jobRepository.findById(runningId))
             .thenReturn(Optional.of(job(runningId, JobStatus.RUNNING)));
-        when(progressBroker.subscribe(runningId)).thenReturn(runningEmitter);
+        progressBroker.setNextEmitter(runningEmitter);
 
         assertThat(controller.progress(runningId)).isSameAs(runningEmitter);
 

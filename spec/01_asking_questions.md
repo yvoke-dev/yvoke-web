@@ -67,8 +67,9 @@ areas (or all conversations for Superadmins).
   instructions underneath. Universal rules — how sources are cited, never naming an unverified object,
   always naming a knowledge area and version, and which tools are available — are written directly into
   each playbook. Instructions are never layered or inherited.
-- **Only the owner may change anything.** Administrators and viewers of a shared conversation can read a
-  thread and its ratings, but cannot post, rate, tag, stop or delete it.
+- **Only the owner may change anything.** Administrators can read any thread in their scope together with
+  its ratings and comments; non-owner viewers of a shared conversation can read the thread, while the owner's
+  private feedback comments remain hidden from them. Neither can post, rate, tag, stop or delete it.
 - **The conversation header badge shows the client release version when recorded, while the sidebar badge stays compact.**
   Opening a conversation created by the desktop app or rated from the Claude plugin shows its recorded client
   release version in the thread header badge (`desktop <version>` or `claude-plugin <version>`). Web
@@ -107,10 +108,12 @@ areas (or all conversations for Superadmins).
 - **Timing.** The first words appear within a few seconds. A normal answer takes roughly half a minute to
   a couple of minutes depending on how much research it does. An in-depth investigation takes **minutes**,
   not seconds. There is no progress estimate and no notification when it finishes.
-- **The sidebar lists only the 100 most recent conversations.** Older ones stay reachable by direct link
-  but cannot be found by browsing — there is no paging and no search.
-- **A conversation shows only its first 100 messages**, and the assistant is given those same first 100
-  as context. A very long thread stops carrying its own recent history.
+- **The sidebar lists up to 100 of your own most recent conversations and separately up to 100 shared
+  conversations from colleagues**, so shared activity never crowds out your own threads. Older ones stay
+  reachable by direct link but cannot be found by browsing — there is no paging and no search.
+- **A conversation shows its most recent 100 messages**, and the assistant is given that same trailing window
+  trimmed to a configurable character budget (400,000 characters by default). Individual chat messages are
+  capped at 100,000 characters and feedback comments at 4,000 characters.
 - **Streaming mode is experimental**: it forces thinking and tools visible, and the whole answer is lost if
   the connection breaks or the answer takes longer than ten minutes.
 - **Stopping is not immediate.** The assistant finishes the research step it is on first.

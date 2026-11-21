@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.shared.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 public class RestClientConfigTest {
@@ -78,11 +80,19 @@ public class RestClientConfigTest {
         try {
             String base = "http://127.0.0.1:" + server.getAddress().getPort();
 
-            RestClient confluenceClient = config().confluenceRestClientBuilder().build();
-            ResponseEntity<String> response =
-                confluenceClient.get().uri(base + "/start").retrieve().toEntity(String.class);
+            // Production Confluence client ALSO blocks loopback at connect time (DNS rebinding
+            // guard), so even a direct request to 127.0.0.1 is refused before opening a socket.
+            RestClient ssrfGuardedClient = config().confluenceRestClientBuilder().build();
+            assertThatThrownBy(() -> ssrfGuardedClient.get().uri(base + "/start").retrieve()
+                .toEntity(String.class)).isInstanceOf(ResourceAccessException.class);
+            assertThat(targetHits.get()).isZero();
 
-            // Redirect surfaced as-is, and /target was never reached.
+            // Redirect-disabled pool (without the loopback DNS block) surfaces 3xx as-is without
+            // hitting /target.
+            RestClient noRedirectClient =
+                RestClient.builder().requestFactory(config().pooledFactory(false, null)).build();
+            ResponseEntity<String> response =
+                noRedirectClient.get().uri(base + "/start").retrieve().toEntity(String.class);
             assertThat(response.getStatusCode().is3xxRedirection()).isTrue();
             assertThat(targetHits.get()).isZero();
 

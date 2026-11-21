@@ -382,7 +382,7 @@ public class KgGraphReadRepository {
             if (edgeCount > 0) {
                 entity = new KgEntity(null, collectionId, collection, entityName, "table",
                     tag != null ? List.of(tag) : List.of("ALL"),
-                    "_(no entity node in the graph — description unavailable; showing edges matched by name. Run oim_db_summary for the full table summary.)_",
+                    "_(no entity node in the graph — description unavailable; showing edges matched by name.)_",
                     Collections.emptyMap(), null);
             } else {
                 return null;

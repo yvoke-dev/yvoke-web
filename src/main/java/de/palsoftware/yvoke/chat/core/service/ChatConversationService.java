@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
+import de.palsoftware.yvoke.chat.core.model.ThinkingLevel;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
@@ -110,6 +111,10 @@ public class ChatConversationService {
         return chatProperties.playbookValidationEnabled();
     }
 
+    public int getMaxMessageChars() {
+        return chatProperties.maxMessageChars();
+    }
+
     public Conversation createConversation() {
         checkChatEnabled();
         UUID id = UUID.randomUUID();
@@ -129,7 +134,9 @@ public class ChatConversationService {
         settings.put(ConversationSetting.SHOW_PROTOTYPES.getValue(), false);
 
         String title = "New Conversation";
-        UUID userId = userService.getCurrentUser().map(User::id).orElse(null);
+        UUID userId =
+            userService.getCurrentUser().map(User::id).orElseThrow(() -> new AccessDeniedException(
+                "Authenticated user is required to create a conversation."));
         conversationRepository.create(id, userId, title, settings);
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -150,12 +157,26 @@ public class ChatConversationService {
 
     public void updateSettings(UUID id, Map<String, Object> settings) {
         checkChatEnabled();
-        Conversation conversation = conversationRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + id));
-        verifyConversationOwnership(conversation, false);
-        Map<String, Object> merged = new HashMap<>(conversation.settings());
-        merged.putAll(settings);
-        conversationRepository.updateSettings(id, merged);
+        verifyOwnership(id, false);
+        if (settings == null || settings.isEmpty()) {
+            return;
+        }
+        conversationRepository.mergeSettings(id, settings);
+    }
+
+    /** Atomically updates a single setting key on a conversation owned by the caller. */
+    public void updateSetting(UUID id, ConversationSetting key, Object value) {
+        checkChatEnabled();
+        verifyOwnership(id, false);
+        Object validatedValue = value;
+        if (key == ConversationSetting.THINKING_LEVEL) {
+            try {
+                validatedValue = ThinkingLevel.parse(value instanceof String s ? s : null).value();
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+            }
+        }
+        conversationRepository.mergeSettings(id, Map.of(key.getValue(), validatedValue));
     }
 
     /**
@@ -235,20 +256,29 @@ public class ChatConversationService {
      * index and the thread view.
      */
     public ConversationSidebar buildSidebar() {
-        List<Conversation> conversations = listAllConversations(SIDEBAR_LIMIT, 0);
+        checkChatEnabled();
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
+        Set<String> allowedAreasLower = AreaAccessContext.allowedUserAreasLower().orElse(null);
+        List<Conversation> owned =
+            conversationRepository.listOwned(currentUserId, SIDEBAR_LIMIT, 0, allowedAreasLower);
+        List<Conversation> otherPublic = conversationRepository.listOtherPublic(currentUserId,
+            SIDEBAR_LIMIT, 0, allowedAreasLower);
+        List<Conversation> conversations = new ArrayList<>(owned.size() + otherPublic.size());
+        conversations.addAll(owned);
+        conversations.addAll(otherPublic);
 
         TreeMap<String, List<Conversation>> folders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> untagged = new ArrayList<>();
         TreeMap<String, List<Conversation>> publicFolders =
             new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> publicUntagged = new ArrayList<>();
-        // Derived from the list already loaded above — no second query.
+        // Derived from the owned + public lists loaded above — public threads can no longer starve
+        // the owner's conversations or folder autocomplete suggestions.
         List<String> allTags = distinctTags(conversations);
 
         for (Conversation conv : conversations) {
             boolean isPublic = (conv.tags() != null && conv.tags().contains("public"))
-                || !Objects.equals(conv.userId(), currentUserId);
+                || !isOwner(conv.userId(), currentUserId);
 
             if (isPublic) {
                 if (conv.tags() == null || conv.tags().isEmpty()) {
@@ -284,6 +314,31 @@ public class ChatConversationService {
             publicUntagged, publicCount, allTags, currentUserId);
     }
 
+    /** Null-safe ownership check: an orphaned (null userId) conversation has NO owner. */
+    public static boolean isOwner(UUID conversationUserId, UUID currentUserId) {
+        return conversationUserId != null && currentUserId != null
+            && conversationUserId.equals(currentUserId);
+    }
+
+    /**
+     * Checks that the caller may read the conversation and returns whether they are authorized to
+     * view private feedback comments (owner or an admin for the conversation's area — never a plain
+     * public viewer).
+     */
+    public boolean canViewFeedback(UUID conversationId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Conversation not found: " + conversationId));
+        verifyConversationOwnership(conversation, true);
+        UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
+        if (isOwner(conversation.userId(), currentUserId)) {
+            return true;
+        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (AreaAccessContext.isSuperAdmin(auth) || (conversation.area() != null
+            && AreaAccessContext.canAdministerArea(auth, conversation.area())));
+    }
+
     public void verifyConversationOwnership(Conversation conversation, boolean readOnlyAllowed) {
         if (conversation.area() != null && !conversation.area().isBlank()
             && !AreaAccessContext.canAccessUserArea(conversation.area())) {
@@ -291,7 +346,7 @@ public class ChatConversationService {
                 "Conversation not found: " + conversation.id());
         }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
-        if (Objects.equals(conversation.userId(), currentUserId)) {
+        if (isOwner(conversation.userId(), currentUserId)) {
             if (!readOnlyAllowed
                 && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
                 throw new AccessDeniedException(

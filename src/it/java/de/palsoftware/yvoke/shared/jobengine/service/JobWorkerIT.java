@@ -111,7 +111,7 @@ public class JobWorkerIT {
                 """,
             id, "ref-" + id, collectionId);
 
-        jobWorker.recoverOrphanedJobs();
+        jobWorker.heartbeatAndRecoverStale();
 
         // After recovery the job is retriable and the poll loop eventually completes it.
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {

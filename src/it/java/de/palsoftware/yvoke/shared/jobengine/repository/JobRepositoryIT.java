@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -204,20 +205,31 @@ public class JobRepositoryIT {
     }
 
     @Test
-    public void requeueOrphansReturnsRunningJobsToQueued() {
-        UUID id = jobRepository.enqueue(itTestRequest()).jobId();
-        IngestionJob claimed = jobService.claimNext().orElseThrow();
+    public void requeueStaleRunningJobsReturnsOnlyStaleRunningJobsToQueued() {
+        UUID staleId = jobRepository.enqueue(itTestRequest()).jobId();
+        IngestionJob claimed = jobService.claimNext("worker-old").orElseThrow();
         assertThat(claimed.status()).isEqualTo(JobStatus.RUNNING);
 
-        int requeued = jobRepository.requeueOrphans();
-        assertThat(requeued).isGreaterThanOrEqualTo(1);
+        UUID freshId = jobRepository.enqueue(itTestRequest()).jobId();
+        jobService.claimNext("worker-live").orElseThrow();
 
-        IngestionJob job = jobRepository.findById(id).orElseThrow();
-        assertThat(job.status()).isEqualTo(JobStatus.QUEUED);
-        assertThat(job.step()).isNull();
-        assertThat(job.startedAt()).isNull();
-        // attempts is preserved so a retried job is distinguishable from a first attempt.
-        assertThat(job.attempts()).isEqualTo(1);
+        // Backdate staleId's heartbeat beyond the threshold; freshId keeps its fresh heartbeat.
+        jdbcTemplate.update(
+            "UPDATE ingestion_jobs SET heartbeat_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id = ?",
+            staleId);
+
+        int requeued = jobRepository.requeueStaleRunningJobs(Duration.ofMinutes(5));
+        assertThat(requeued).isEqualTo(1);
+
+        IngestionJob staleJob = jobRepository.findById(staleId).orElseThrow();
+        assertThat(staleJob.status()).isEqualTo(JobStatus.QUEUED);
+        assertThat(staleJob.step()).isNull();
+        assertThat(staleJob.startedAt()).isNull();
+        assertThat(staleJob.attempts()).isEqualTo(1);
+
+        assertThat(statusOf(freshId))
+            .as("a running job with a fresh heartbeat must not be requeued during rolling deploy")
+            .isEqualTo(JobStatus.RUNNING);
     }
 
     // ---------------------------------------------------------------------
@@ -609,13 +621,15 @@ public class JobRepositoryIT {
         UUID queued = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
             "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
 
-        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'running' WHERE id = ?", running);
+        jdbcTemplate.update(
+            "UPDATE ingestion_jobs SET status = 'running', heartbeat_at = NULL WHERE id = ?",
+            running);
         jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'completed' WHERE id = ?",
             completed);
         jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'cancelled' WHERE id = ?",
             cancelled);
 
-        int moved = jobRepository.requeueOrphans();
+        int moved = jobRepository.requeueStaleRunningJobs(Duration.ofMinutes(5));
 
         assertThat(moved).isEqualTo(1);
         assertThat(statusOf(running)).isEqualTo(JobStatus.QUEUED);

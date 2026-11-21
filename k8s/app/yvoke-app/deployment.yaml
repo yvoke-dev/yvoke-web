@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/component: yvoke-app
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   minReadySeconds: 10
   selector:
     matchLabels:
@@ -16,11 +18,8 @@ spec:
       labels:
         app.kubernetes.io/name: yvoke-app
         app.kubernetes.io/component: yvoke-app
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/path: "/actuator/prometheus"
-        prometheus.io/port: "8080"
     spec:
+      terminationGracePeriodSeconds: 60
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -128,13 +127,13 @@ spec:
                   key: password
           startupProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/liveness
               port: management
             periodSeconds: 10
             failureThreshold: 30
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/readiness
               port: management
             initialDelaySeconds: 15
             periodSeconds: 10
@@ -142,7 +141,7 @@ spec:
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/liveness
               port: management
             initialDelaySeconds: 30
             periodSeconds: 20

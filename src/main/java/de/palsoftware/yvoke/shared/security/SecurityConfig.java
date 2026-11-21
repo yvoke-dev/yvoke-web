@@ -6,6 +6,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.shared.web.GenerationRateLimiter;
+import de.palsoftware.yvoke.shared.web.McpRateLimitFilter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -56,6 +58,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.SavedRequest;
@@ -103,6 +106,7 @@ public class SecurityConfig {
     private final String jwkSetUri;
     private final String issuerUri;
     private final String resourceUrl;
+    private final Environment environment;
 
     @Autowired
     public SecurityConfig(UserService userService, Environment environment,
@@ -130,6 +134,7 @@ public class SecurityConfig {
         this.jwkSetUri = jwkSetUri;
         this.issuerUri = issuerUri;
         this.resourceUrl = resourceUrl;
+        this.environment = environment;
 
         if (mockAuth) {
             // Fail CLOSED: mocked auth trusts every credential, so it must never be reachable in a
@@ -149,6 +154,31 @@ public class SecurityConfig {
             log.warn("tokens are trusted. This is for LOCAL DEVELOPMENT ONLY — never enable");
             log.warn("it in a deployed/production environment.");
             log.warn("====================================================================");
+        } else if (!DevProfiles.anyActive(environment)) {
+            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.issuer-uri",
+                issuerUri);
+            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                jwkSetUri);
+            String authUri = environment
+                .getProperty("spring.security.oauth2.client.provider.entra.authorization-uri", "");
+            if (!authUri.isBlank()) {
+                assertPinnedEntraTenant(
+                    "spring.security.oauth2.client.provider.entra.authorization-uri", authUri);
+            }
+        }
+    }
+
+    private static void assertPinnedEntraTenant(String propertyName, String uri) {
+        if (uri == null || uri.isBlank()) {
+            throw new IllegalStateException(propertyName
+                + " must not be blank outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
+        }
+        String lower = uri.toLowerCase(Locale.ROOT);
+        if (lower.contains("/common/") || lower.contains("/organizations/")
+            || lower.contains("/consumers/")) {
+            throw new IllegalStateException(propertyName
+                + " targets a multi-tenant Entra endpoint (" + uri
+                + "), which is forbidden outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
         }
     }
 
@@ -180,7 +210,7 @@ public class SecurityConfig {
         }
         if (!root.isObject()) {
             throw new IllegalStateException(
-                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"OIM\": \"...\"}; got "
+                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"Docs\": \"...\"}; got "
                     + root.getNodeType());
         }
         Map<String, String> parsed = new LinkedHashMap<>();
@@ -270,7 +300,18 @@ public class SecurityConfig {
                         "Bearer realm=\"mcp\", resource_metadata=\"" + resourceMetadataUrl + "\"");
                 }));
 
-        http.csrf(csrf -> csrf.disable());
+        boolean rateLimitEnabled =
+            environment.getProperty("app.rate-limit.enabled", Boolean.class, true);
+        int mcpCapacity =
+            environment.getProperty("app.rate-limit.mcp-capacity", Integer.class, 120);
+        long mcpRefillSeconds =
+            environment.getProperty("app.rate-limit.mcp-refill-period-seconds", Long.class, 60L);
+        McpRateLimitFilter mcpRateLimitFilter = new McpRateLimitFilter(
+            new GenerationRateLimiter(rateLimitEnabled, mcpCapacity, mcpRefillSeconds),
+            mcpRefillSeconds);
+
+        http.csrf(csrf -> csrf.disable()).addFilterAfter(mcpRateLimitFilter,
+            AuthorizationFilter.class);
 
         return http.build();
     }

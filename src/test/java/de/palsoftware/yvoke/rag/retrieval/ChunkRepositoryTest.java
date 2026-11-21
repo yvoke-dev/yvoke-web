@@ -330,7 +330,7 @@ public class ChunkRepositoryTest {
                 "OIM", Collections.emptyMap(), 0.0);
             when(querySpec.list()).thenReturn(List.of(one, two));
 
-            assertThatThrownBy(() -> chunkRepository.findByIdPrefix("a1b2c3d4"))
+            assertThatThrownBy(() -> chunkRepository.findByIdPrefix("a1b2c3d4", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .as("an ambiguous prefix must fail loudly rather than resolve to one of the rows")
                 .hasMessageContaining("a1b2c3d4").hasMessageContaining("2 matches")
@@ -348,27 +348,27 @@ public class ChunkRepositoryTest {
     public void testFindByIdPrefixValidation() {
         // Test null prefix
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix(null);
+            chunkRepository.findByIdPrefix(null, null);
         });
 
         // Test too short prefix (less than 8 characters but not empty)
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234567");
+            chunkRepository.findByIdPrefix("1234567", null);
         });
 
         // Test invalid characters prefix
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234567g"); // 'g' is not valid hex
+            chunkRepository.findByIdPrefix("1234567g", null); // 'g' is not valid hex
         });
 
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234-56%"); // '%' is sql wildcard
+            chunkRepository.findByIdPrefix("1234-56%", null); // '%' is sql wildcard
         });
 
         // Test valid prefix (empty string is allowed, triggers no validation exception)
         try {
             when(querySpec.list()).thenReturn(Collections.emptyList());
-            chunkRepository.findByIdPrefix("");
+            chunkRepository.findByIdPrefix("", null);
         } catch (IllegalArgumentException e) {
             Assertions.fail("Empty prefix should be allowed");
         }
@@ -376,7 +376,7 @@ public class ChunkRepositoryTest {
         // Test valid prefix (8 characters hex)
         try {
             when(querySpec.list()).thenReturn(Collections.emptyList());
-            chunkRepository.findByIdPrefix("a1b2c3d4");
+            chunkRepository.findByIdPrefix("a1b2c3d4", null);
         } catch (IllegalArgumentException e) {
             Assertions.fail("Valid hex prefix of 8 characters should not throw exception");
         }
@@ -430,51 +430,6 @@ public class ChunkRepositoryTest {
 
         assertThat(sqlCaptor.getValue())
             .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
-    }
-
-    @Test
-    public void findByIdPrefixOneArgScopesBySecurityContextWhenAreaUserAuthenticated() {
-        try {
-            SecurityContextHolder.getContext()
-                .setAuthentication(new UsernamePasswordAuthenticationToken("hr-user", "n/a",
-                    List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                        new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "HR"))));
-
-            UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
-            ChunkRow one =
-                new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
-                    "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
-            when(querySpec.list()).thenReturn(List.of(one));
-
-            Optional<ChunkRow> result = chunkRepository.findByIdPrefix("a1b2c3d4");
-            assertThat(result).contains(one);
-
-            ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-            verify(jdbcClient).sql(sqlCaptor.capture());
-            verify(statementSpec).param("prefix", "a1b2c3d4%");
-            verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
-
-            assertThat(sqlCaptor.getValue())
-                .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
-    }
-
-    @Test
-    public void findByIdPrefixOneArgReturnsEmptyWhenNoAuthenticationOrAnonymous() {
-        try {
-            SecurityContextHolder.clearContext();
-            assertThat(chunkRepository.findByIdPrefix("a1b2c3d4")).isEmpty();
-            verify(jdbcClient, never()).sql(anyString());
-
-            SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken(
-                "key", "anon", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
-            assertThat(chunkRepository.findByIdPrefix("a1b2c3d4")).isEmpty();
-            verify(jdbcClient, never()).sql(anyString());
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
     }
 
     @Test

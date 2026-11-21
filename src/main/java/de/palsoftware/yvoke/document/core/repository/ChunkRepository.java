@@ -4,13 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -219,33 +215,6 @@ public class ChunkRepository {
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
         return jdbcClient.sql(sql).param("ids", idStrings)
             .query(new ChunkRowMapper(objectMapper, null)).list();
-    }
-
-    public Optional<ChunkRow> findById(UUID id) {
-        if (id == null) {
-            return Optional.empty();
-        }
-        return findByIdPrefix(id.toString());
-    }
-
-    public Optional<ChunkRow> findByIdPrefix(String idPrefix) {
-        return findByIdPrefix(idPrefix, resolveSecurityContextAllowedAreasLower());
-    }
-
-    @Nullable
-    private static Set<String> resolveSecurityContextAllowedAreasLower() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()
-            || auth instanceof AnonymousAuthenticationToken) {
-            return Set.of();
-        }
-        if (AreaAccessContext.hasAllUserAreas(auth) || AreaAccessContext.isSuperAdmin(auth)) {
-            return null;
-        }
-        Set<String> allowed = new HashSet<>();
-        AreaAccessContext.allowedUserAreasLower(auth).ifPresent(allowed::addAll);
-        AreaAccessContext.allowedAdminAreasLower(auth).ifPresent(allowed::addAll);
-        return allowed;
     }
 
     public Optional<ChunkRow> findByIdPrefix(String idPrefix,

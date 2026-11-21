@@ -306,7 +306,7 @@ class DesktopSyncControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content(oversizedBatch.toString()))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error", containsString("messages")))
-            .andExpect(jsonPath("$.error", containsString("500")));
+            .andExpect(jsonPath("$.error", containsString("100")));
 
         // The per-message bound: one element over @Size(max = 1_000_000) fails the same way.
         String oversizedContent = "x".repeat(1_000_001);

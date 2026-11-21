@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResul
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -120,6 +121,28 @@ public class MessageRepository {
             .param("offset", offset).query(new MessageRowMapper(objectMapper)).list();
     }
 
+    /**
+     * Loads the most recent {@code limit} messages for a conversation in chronological order
+     * ({@code created_at ASC, id ASC}) so long threads keep their recent turns visible and in LLM
+     * context instead of freezing on the oldest 100.
+     */
+    public List<Message> findLatestByConversationId(UUID conversationId, int limit) {
+        String sql =
+            """
+                SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                FROM (
+                    SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
+                    FROM messages
+                    WHERE conversation_id = :conversationId
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT :limit
+                ) recent
+                ORDER BY created_at ASC, id ASC
+                """;
+        return jdbcClient.sql(sql).param("conversationId", conversationId).param("limit", limit)
+            .query(new MessageRowMapper(objectMapper)).list();
+    }
+
     public Optional<Message> findById(UUID id) {
         String sql =
             """
@@ -177,17 +200,20 @@ public class MessageRepository {
         }
     }
 
-    public void resetGeneratingMessages() {
+    public int resetStaleGeneratingMessages(Duration staleAfter) {
+        long staleSeconds = staleAfter == null ? 0L : Math.max(0L, staleAfter.toSeconds());
         String sql =
             """
                 UPDATE messages
                 SET status = 'error', content = '⚠️ *[Generation interrupted (system restart)]*', updated_at = CURRENT_TIMESTAMP
                 WHERE status = 'generating'
+                  AND updated_at < CURRENT_TIMESTAMP - make_interval(secs => :staleSeconds)
                 """;
-        int updated = jdbcClient.sql(sql).update();
+        int updated = jdbcClient.sql(sql).param("staleSeconds", staleSeconds).update();
         if (updated > 0) {
-            log.info("Reset {} messages stuck in 'generating' status to 'error'", updated);
+            log.info("Reset {} stale messages stuck in 'generating' status to 'error'", updated);
         }
+        return updated;
     }
 
     public long countByConversationId(UUID conversationId) {

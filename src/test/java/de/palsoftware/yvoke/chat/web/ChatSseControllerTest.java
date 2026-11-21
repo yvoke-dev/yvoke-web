@@ -22,7 +22,10 @@ import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.shared.api.ApiExceptionHandler;
 import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
+import java.lang.reflect.Field;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -32,6 +35,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.concurrent.CancellationException;
@@ -412,5 +416,94 @@ class ChatSseControllerTest {
 
         verify(limiter).release();
         verify(sseExecutor, never()).submit(any(Runnable.class));
+    }
+
+    @Test
+    void sendMessageStream_executorSubmissionFailure_releasesPermitOnce() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = allowingLimiter();
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
+            .thenReturn(dummyPreparedChat());
+        when(sseExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("executor rejected"));
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        assertThatThrownBy(() -> controller.sendMessageStream(conversationId, "hello", null))
+            .isInstanceOf(RuntimeException.class).hasMessageContaining("executor rejected");
+        verify(limiter, Mockito.times(1)).release();
+    }
+
+    @Test
+    void sendMessageStream_preStartFutureCancel_stillReleasesPermitOnce() throws Exception {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
+            .thenReturn(dummyPreparedChat());
+
+        AtomicReference<FutureTask<?>> queuedTask = new AtomicReference<>();
+        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            Runnable r = inv.getArgument(0);
+            FutureTask<?> ft = new FutureTask<>(r, null);
+            queuedTask.set(ft);
+            return ft;
+        });
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        SseEmitter emitter = controller.sendMessageStream(conversationId, "hello", null);
+
+        // Simulate Spring MVC firing onTimeout/onCompletion BEFORE the virtual thread starts
+        // executing FutureTask.run(): FutureTask cancels in NEW state so lambda never runs.
+        Field timeoutCallbackField = ResponseBodyEmitter.class.getDeclaredField("timeoutCallback");
+        timeoutCallbackField.setAccessible(true);
+        Runnable timeoutCallback = (Runnable) timeoutCallbackField.get(emitter);
+        timeoutCallback.run();
+
+        // Even if the executor subsequently attempts to run the cancelled FutureTask, it is a
+        // no-op.
+        queuedTask.get().run();
+
+        assertThat(queuedTask.get().isCancelled()).isTrue();
+        // Permit MUST have been returned so capacity is not permanently leaked.
+        assertThat(limiter.tryAcquire()).isTrue();
+    }
+
+    @Test
+    void sendMessageStream_errorInsideWorker_releasesPermitAndCompletesEmitter() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
+        AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
+        GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
+        UUID conversationId = UUID.randomUUID();
+
+        when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
+            .thenReturn(dummyPreparedChat());
+        doThrow(new AssertionError("boom-error")).when(chatMessageService).stream(any(), any(),
+            any());
+        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return CompletableFuture.completedFuture(null);
+        });
+
+        ChatSseController controller = new ChatSseController(chatMessageService,
+            chatConversationService, chatCancellationService, sseExecutor, limiter);
+
+        SseEmitter emitter = controller.sendMessageStream(conversationId, "hello", null);
+
+        // Permit is returned and emitter is marked completed (no 600s hang).
+        assertThat(limiter.tryAcquire()).isTrue();
+        assertThatThrownBy(() -> emitter.send("after-complete"))
+            .isInstanceOf(IllegalStateException.class);
     }
 }

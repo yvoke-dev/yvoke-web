@@ -7,4 +7,4 @@ RUN mkdir -p /app/uploads && chown -R app:app /app
 COPY --chown=app:app target/yvoke.jar app.jar
 USER app
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70.0", "-jar", "app.jar"]

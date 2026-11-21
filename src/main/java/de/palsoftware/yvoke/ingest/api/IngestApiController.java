@@ -73,8 +73,8 @@ public class IngestApiController {
         @RequestParam(value = "area", required = false) String area) {
 
         // Same gate as POST /api/jobs/v1: this endpoint names the job kind from a request param and
-        // shares the ROLE_INGEST/USER/ADMIN chain, so without it a plain user could POST a 1-byte
-        // file with kind=confluence-import and start a full space crawl on the stored admin token.
+        // shares the ROLE_INGEST/AREA_ADMIN/ADMIN chain, so without it an ingest key or non-admin
+        // could POST a 1-byte file with kind=confluence-import and start a full space crawl.
         // IngestService additionally allowlists the kinds this endpoint actually serves.
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(kind);
         UUID jobId = ingestService.uploadAndEnqueue(file, collectionName, tag, kind,

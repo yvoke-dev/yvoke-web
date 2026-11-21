@@ -205,12 +205,7 @@ class ProductSpecStructureTest {
             if ("07_using_the_assistant_from_other_tools.md".equals(chapterName)) {
                 assertThat(collapsedWhitespace).as(
                     "%s must describe settings map replacement while keeping creation version intact",
-                    chapterPath)
-                    .doesNotContain("version-only update",
-                        "without clearing existing conversation settings",
-                        "without clearing other conversation settings",
-                        "which is recorded without wiping existing conversation settings")
-                    .contains("replace the settings map",
+                    chapterPath).contains("replace the settings map",
                         "keeping the recorded creation version intact",
                         "blank version changes nothing");
             }

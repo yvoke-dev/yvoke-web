@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.rag.prompt;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
+import de.palsoftware.yvoke.shared.validation.SlugNames;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -88,9 +89,7 @@ public class PlaybookService {
     public void savePlaybook(String name, String title, String description, String templateText,
         List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
         String area, int version) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Playbook name cannot be empty.");
-        }
+        String validName = SlugNames.requireValidName(name, "Playbook");
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Playbook title cannot be empty.");
         }
@@ -106,13 +105,13 @@ public class PlaybookService {
 
         String storedArea = areaService.requireArea(area);
 
-        playbookRepository.upsert(name.trim(), title.trim(),
+        playbookRepository.upsert(validName, title.trim(),
             description != null ? description.trim() : "", templateText.trim(), tools,
             codeExecution, agent, prototype, storedArea, version);
 
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
-            registerPlaybookWithMcp(name.trim(), server);
+            registerPlaybookWithMcp(validName, server);
         }
     }
 

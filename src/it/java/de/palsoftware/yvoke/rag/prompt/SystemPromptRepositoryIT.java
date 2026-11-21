@@ -128,10 +128,20 @@ public class SystemPromptRepositoryIT {
     }
 
     @Test
-    public void checkConstraintRejectsRetiredPromptTypes() {
-        assertThatThrownBy(() -> jdbcTemplate.update(
+    public void retiredChatRowsRemainIgnoredByTypedQueriesDuringNonDestructiveRollout() {
+        // V17 intentionally stays non-destructive for rolling-deploy/rollback safety from 1.3.0,
+        // so legacy CHAT rows can still coexist in DB while typed repository queries return only
+        // SUMMARIZE and KG prompts.
+        jdbcTemplate.update(
             "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES ('IT-BAD-CHAT', 'CHAT', 'body', 'x')"))
-            .isInstanceOf(DataIntegrityViolationException.class);
+                + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'body', 'x') ON CONFLICT (name) DO NOTHING");
+        try {
+            assertThat(repository.findByType(SystemPromptType.SUMMARIZE))
+                .extracting(SystemPrompt::name).doesNotContain("IT-LEGACY-CHAT");
+            assertThat(repository.findByType(SystemPromptType.KG)).extracting(SystemPrompt::name)
+                .doesNotContain("IT-LEGACY-CHAT");
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
+        }
     }
 }

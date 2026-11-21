@@ -46,7 +46,7 @@ Apply to **all** code, not just large tasks. Get it right while writing — do n
 - **Large Tasks**: You MUST use the Spec-Driven Development (ASDD) flow. Read `file://./.antigravity/sdd_protocol.md` before starting.
 - **Available Subagents**: 
   - `sdd_planner`: Discovers requirements, explores implications, checks `spec/`, and drafts the plan (WHAT & WHY).
-  - `sdd_plan_critic`: Adversarial architecture & 47 Known Pitfalls auditor (Gate 1).
+  - `sdd_plan_critic`: Adversarial architecture & Known Pitfalls auditor (Gate 1).
   - `sdd_task_architect`: Sets up worktree (`.worktrees/sdd-<feature>`) and breaks plan into waves in `task.md`.
   - `sdd_task_critic`: Adversarial QA critic targeting Happy-Path Test Syndrome & mandating negative tests (Gate 2).
   - `spring_implementer`: Writes local Spring Boot/Postgres code inside the worktree using strict TDD.
@@ -68,7 +68,7 @@ Apply to **all** code, not just large tasks. Get it right while writing — do n
 
 ## 5. Deep Context & Steering
 
-**`file://./spec.md` is the functional specification** — eight capability chapters, each with *What you
+**`file://./spec/README.md` (`spec/`) is the functional specification** — eight capability chapters, each with *What you
 can do* / *How it behaves* / *Limits* / *Not supported*. It governs *what the product does*. **Start a
 substantial change by reading its chapter for the area you are touching**: it is the fastest way to
 learn what a feature is for, which behaviours are deliberate, and what the product has decided not to

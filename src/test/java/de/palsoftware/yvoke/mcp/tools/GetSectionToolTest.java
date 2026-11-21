@@ -289,7 +289,7 @@ public class GetSectionToolTest {
         when(docRepo.findById(eq(DOC)))
             .thenReturn(Optional.of(new DocumentRow(DOC, pingColId, "PingID - Manuals", "manual",
                 "PingID Guide", null, "completed", Collections.emptyList(), Instant.now())));
-        when(chunkRepo.findByIdPrefix(eq(CHUNK_A.toString())))
+        when(chunkRepo.findByIdPrefix(eq(CHUNK_A.toString()), any()))
             .thenReturn(Optional.of(new ChunkRow(CHUNK_A, DOC, "secret text", List.of("Ch1"), "Ch1",
                 1, 0, null, "PingID Guide", "manual", "PingID - Manuals", null, 0.9)));
 

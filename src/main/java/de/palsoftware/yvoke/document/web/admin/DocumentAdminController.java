@@ -13,6 +13,7 @@ import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
@@ -94,14 +95,17 @@ public class DocumentAdminController {
             }
         }
 
+        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         long totalCount = documentAdminViewService.countDocuments(collFilter, kindFilter, tagFilter,
             searchIdFilter, searchTitleFilter, collFilter == null ? allowedAreasLower : null);
-        int totalPages = (int) Math.ceil((double) totalCount / size);
+        int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
         model.addAttribute("documents",
-            documentAdminViewService.listDocuments(collFilter, size, page * size, kindFilter,
-                tagFilter, searchIdFilter, searchTitleFilter,
-                collFilter == null ? allowedAreasLower : null));
+            documentAdminViewService.listDocuments(collFilter, clampedSize,
+                PagingParams.safeOffset(clampedPage, clampedSize), kindFilter, tagFilter,
+                searchIdFilter, searchTitleFilter, collFilter == null ? allowedAreasLower : null));
         model.addAttribute("collections", allCols.stream().map(Collection::name).toList());
         model.addAttribute("allCollections", allCols);
         model.addAttribute("kinds", documentAdminViewService.distinctKinds());
@@ -112,7 +116,7 @@ public class DocumentAdminController {
         model.addAttribute("selectedTag", tagFilter);
         model.addAttribute("selectedSearchId", searchIdFilter);
         model.addAttribute("selectedSearchTitle", searchTitleFilter);
-        model.addAttribute("currentPage", page);
+        model.addAttribute("currentPage", clampedPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
 

@@ -14,7 +14,7 @@
                         <span style="font-size: 1.1rem;">&larr;</span> All Graph Scopes
                     </a>
                     <h1 class="page-title">
-                        <span th:text="${collection}">OIM-DB</span>
+                        <span th:text="${collection}">Collection</span>
                         <span class="badge badge-muted"
                               th:text="${#strings.isEmpty(tag) ? 'ALL VERSIONS' : tag}"
                               style="font-size: 0.9rem; vertical-align: middle;">9.3</span>
@@ -227,7 +227,7 @@
                         </div>
 
                         <!-- FK recursive walk CTE -->
-                        <div th:if="${collection == 'OIM-DB'}" class="card" style="margin-bottom: 0;">
+                        <div th:if="${fkWalk != null and !fkWalk.isEmpty()}" class="card" style="margin-bottom: 0;">
                             <div class="card-title">Foreign Key Recursive Graph Walk</div>
 
                             <form th:action="@{/admin/kg/view}" method="get" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem;">
@@ -284,7 +284,7 @@
                         </div>
 
                         <!-- Call Graph callers/callees -->
-                        <div th:if="${collection == 'OIM-DB'}" class="card">
+                        <div th:if="${(callers != null and !callers.isEmpty()) or (callees != null and !callees.isEmpty())}" class="card">
                             <div class="card-title">Call Graph (Procedures, Functions, Scripts)</div>
                             <div class="grid-2">
                                 <!-- Callers -->

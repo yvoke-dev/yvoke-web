@@ -4,13 +4,16 @@ import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -33,12 +36,20 @@ public class CollectionAdminController {
     private final CollectionService collectionService;
     private final TagService tagService;
     private final AreaService areaService;
+    private final AdminAuditLogger auditLogger;
 
+    @Autowired
     public CollectionAdminController(CollectionService collectionService, TagService tagService,
-        AreaService areaService) {
+        AreaService areaService, AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.collectionService = collectionService;
         this.tagService = tagService;
+        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
+    }
+
+    public CollectionAdminController(CollectionService collectionService, TagService tagService,
+        AreaService areaService) {
+        this(collectionService, tagService, areaService, AdminAuditLogger.noop());
     }
 
     @GetMapping("/collections")
@@ -68,6 +79,7 @@ public class CollectionAdminController {
             throw new IllegalArgumentException("Collection '" + name.trim() + "' already exists.");
         }
         collectionService.createCollection(name, description, area);
+        auditLogger.log("CREATE_COLLECTION", name.trim(), Map.of("area", area.trim()));
         redirectAttributes.addFlashAttribute("success",
             "Collection '" + name.trim() + "' created successfully.");
         return "redirect:/admin/collections";
@@ -87,6 +99,9 @@ public class CollectionAdminController {
                 "Not authorized to administer target area: " + area);
         }
         String movedTo = collectionService.moveCollection(name, area);
+        auditLogger.log("MOVE_COLLECTION", current.name() != null ? current.name() : name,
+            Map.of("fromArea", current.area() != null ? current.area() : "", "toArea",
+                movedTo != null ? movedTo : (area != null ? area : "")));
         redirectAttributes.addFlashAttribute("success",
             "Collection '" + name + "' moved to area '" + movedTo + "'.");
         return "redirect:/admin/collections";
@@ -137,6 +152,7 @@ public class CollectionAdminController {
         Collection col = collectionService.findByIdForAdmin(collectionId).orElseThrow(
             () -> new IllegalArgumentException("Collection not found: " + collectionId));
         tagService.addTagToCollection(col.id(), tag);
+        auditLogger.log("ADD_COLLECTION_TAG", col.name(), Map.of("tag", tag.trim()));
         redirectAttributes.addFlashAttribute("success", "Tag added successfully.");
         return "redirect:/admin/collections";
     }

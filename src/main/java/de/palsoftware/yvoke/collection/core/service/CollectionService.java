@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -122,7 +123,13 @@ public class CollectionService {
             throw new IllegalArgumentException("Collection '" + trimmedName + "' already exists.");
         }
 
-        return collectionRepository.create(trimmedName, description, areaService.requireArea(area));
+        try {
+            return collectionRepository.create(trimmedName, description,
+                areaService.requireArea(area));
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("Collection '" + trimmedName + "' already exists.",
+                e);
+        }
     }
 
     /** Moves an existing collection to another area. */
@@ -131,7 +138,7 @@ public class CollectionService {
         Collection collection = getCollection(name).orElseThrow(
             () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
         String storedArea = areaService.requireArea(area);
-        collectionRepository.updateArea(collection.name(), storedArea);
+        collectionRepository.updateArea(collection.id(), storedArea);
         return storedArea;
     }
 }

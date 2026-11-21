@@ -10,10 +10,18 @@
  * user-triggered handler, never at load time.
  */
 
-import { buildJsonPath, getFieldType, parseJsonPath } from './jsonpath-filter.js';
+import {
+    buildJsonPath,
+    getFieldType,
+    parseJsonPath,
+    populateDatalist,
+    populateEnumSelect,
+} from './jsonpath-filter.js';
 
 window.JsonPathFilter = {
     build: buildJsonPath,
     parse: parseJsonPath,
     getFieldType: getFieldType,
+    populateEnumSelect: populateEnumSelect,
+    populateDatalist: populateDatalist,
 };

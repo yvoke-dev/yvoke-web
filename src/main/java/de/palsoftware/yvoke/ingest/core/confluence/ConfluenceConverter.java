@@ -6,6 +6,12 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.tika.Tika;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -13,6 +19,8 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,14 +30,21 @@ public class ConfluenceConverter {
 
     private static final int MAX_EXTRACTED_CHARS = 100_000;
 
-    private static final long MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_ATTACHMENT_BYTES = ConfluenceClientService.MAX_ATTACHMENT_BYTES;
+
+    private static final int DEFAULT_PARSE_TIMEOUT_SECONDS = 30;
 
     private final ConfluenceClientService confluenceClient;
     private final Tika tika;
     private final FlexmarkHtmlConverter htmlConverter;
+    private final int parseTimeoutSeconds;
 
-    public ConfluenceConverter(ConfluenceClientService confluenceClient) {
+    @Autowired
+    public ConfluenceConverter(ConfluenceClientService confluenceClient,
+        @Value("${app.confluence.attachment-parse-timeout-seconds}") int parseTimeoutSeconds) {
         this.confluenceClient = confluenceClient;
+        this.parseTimeoutSeconds =
+            parseTimeoutSeconds > 0 ? parseTimeoutSeconds : DEFAULT_PARSE_TIMEOUT_SECONDS;
         this.tika = new Tika();
         this.tika.setMaxStringLength(MAX_EXTRACTED_CHARS);
         // SETEXT_HEADINGS defaults to TRUE, which renders H1/H2 as underlines ("Overview\n=====")
@@ -41,6 +56,10 @@ public class ConfluenceConverter {
         MutableDataSet options = new MutableDataSet();
         options.set(FlexmarkHtmlConverter.SETEXT_HEADINGS, false);
         this.htmlConverter = FlexmarkHtmlConverter.builder(options).build();
+    }
+
+    public ConfluenceConverter(ConfluenceClientService confluenceClient) {
+        this(confluenceClient, DEFAULT_PARSE_TIMEOUT_SECONDS);
     }
 
     /**
@@ -166,9 +185,17 @@ public class ConfluenceConverter {
                 Map<String, Object> linksMap = (Map<String, Object>) attachment.get("_links");
                 if (linksMap != null && linksMap.get("download") != null) {
                     String downloadUrl = (String) linksMap.get("download");
-                    byte[] fileData = confluenceClient.downloadAttachment(instance, downloadUrl);
-                    try (InputStream is = new ByteArrayInputStream(fileData)) {
-                        String extractedText = tika.parseToString(is);
+                    byte[] fileData;
+                    try {
+                        fileData = confluenceClient.downloadAttachment(instance, downloadUrl);
+                    } catch (AttachmentTooLargeException e) {
+                        log.warn(
+                            "Skipping attachment '{}' because download exceeded size limit: {}",
+                            title, e.getMessage());
+                        continue;
+                    }
+                    try {
+                        String extractedText = parseWithTimeout(fileData);
                         if (extractedText != null && !extractedText.trim().isEmpty()) {
                             attachmentsMd.append("\n\n### Attachment: ").append(title)
                                 .append("\n\n");
@@ -188,5 +215,27 @@ public class ConfluenceConverter {
         }
 
         return markdown;
+    }
+
+    String parseWithTimeout(byte[] fileData) throws Exception {
+        try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<String> future = exec.submit(() -> {
+                try (InputStream is = new ByteArrayInputStream(fileData)) {
+                    return tika.parseToString(is);
+                }
+            });
+            try {
+                return future.get(parseTimeoutSeconds, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                future.cancel(true);
+                throw new TimeoutException(
+                    "Tika attachment parsing timed out after " + parseTimeoutSeconds + "s");
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof Exception cause) {
+                    throw cause;
+                }
+                throw e;
+            }
+        }
     }
 }

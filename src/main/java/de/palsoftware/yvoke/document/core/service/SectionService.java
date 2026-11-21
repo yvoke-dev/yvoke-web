@@ -21,6 +21,7 @@ import de.palsoftware.yvoke.document.core.model.SectionChunks.SectionChunk;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 
 @Service
@@ -98,7 +99,8 @@ public class SectionService {
         // findByIdPrefix INNER JOINs documents, so the row already carries the document's title and
         // tag and a chunk whose document is gone simply does not come back. The second lookup this
         // method used to do for the title could therefore never fail, and is gone with it.
-        ChunkRow chunk = chunkRepository.findByIdPrefix(chunkIdPrefix)
+        ChunkRow chunk = chunkRepository
+            .findByIdPrefix(chunkIdPrefix, AreaAccessContext.allowedUserAreasLower().orElse(null))
             .orElseThrow(() -> new NoSuchElementException(
                 "(no chunk with id starting '" + chunkIdPrefix + "')"));
 
@@ -194,9 +196,9 @@ public class SectionService {
             throw new IllegalArgumentException("Chunk ID prefix cannot be null or empty.");
         }
 
-        ChunkRow chunk = (allowedAreasLower != null
-            ? chunkRepository.findByIdPrefix(chunkIdPrefix, allowedAreasLower)
-            : chunkRepository.findByIdPrefix(chunkIdPrefix))
+        Set<String> effectiveAreas = allowedAreasLower != null ? allowedAreasLower
+            : AreaAccessContext.allowedUserAreasLower().orElse(null);
+        ChunkRow chunk = chunkRepository.findByIdPrefix(chunkIdPrefix, effectiveAreas)
             .orElseThrow(() -> new NoSuchElementException(
                 "(no chunk with id starting '" + chunkIdPrefix + "')"));
 
