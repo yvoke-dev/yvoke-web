@@ -148,7 +148,7 @@ public class PlaybookValidationController {
 
             String systemPrompt =
                 """
-                    You are a playbook validator for a system managing database and product knowledge of One Identity Manager.
+                    You are a playbook validator for a technical knowledge-base assistant.
                     Your task is to analyze the user's question, evaluate if their selected playbook is the most appropriate one, and if not, suggest the single best playbook from the list of available playbooks.
 
                     Available Playbooks (name | title | description):

@@ -35,6 +35,10 @@ public class GetTocToolTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
         documentRepository = mock(DocumentRepository.class);
         tocService = mock(TocService.class);
         collectionService = mock(CollectionService.class);

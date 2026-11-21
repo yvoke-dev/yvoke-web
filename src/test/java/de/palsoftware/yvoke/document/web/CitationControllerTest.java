@@ -43,7 +43,8 @@ public class CitationControllerTest {
 
         ChunkRow defaultChunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text",
             List.of(), "heading", 1, 1, null, "docTitle", "md", "DefaultCol", null, 1.0);
-        when(chunkRepository.findByIdPrefix(anyString())).thenReturn(Optional.of(defaultChunk));
+        when(chunkRepository.findByIdPrefix(anyString(), any()))
+            .thenReturn(Optional.of(defaultChunk));
     }
 
     @AfterEach
@@ -204,7 +205,7 @@ public class CitationControllerTest {
 
         ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
             "heading", 1, 1, null, "docTitle", "md", "FinanceCol", null, 1.0);
-        when(chunkRepository.findByIdPrefix("chunk123")).thenReturn(Optional.of(chunk));
+        when(chunkRepository.findByIdPrefix(eq("chunk123"), any())).thenReturn(Optional.of(chunk));
 
         Collection col = new Collection(UUID.randomUUID(), "FinanceCol", "desc", List.of(),
             OffsetDateTime.now(), "Finance");
@@ -252,7 +253,7 @@ public class CitationControllerTest {
 
         ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
             "heading", 1, 1, null, "docTitle", "md", "Col", null, 1.0);
-        when(chunkRepository.findByIdPrefix("chunk123")).thenReturn(Optional.of(chunk));
+        when(chunkRepository.findByIdPrefix(eq("chunk123"), any())).thenReturn(Optional.of(chunk));
 
         Collection col = new Collection(UUID.randomUUID(), "Col", "desc", List.of(),
             OffsetDateTime.now(), "Finance");

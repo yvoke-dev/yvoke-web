@@ -105,15 +105,13 @@ class RagServiceAreaIsolationTest {
 
         ChunkRow chunkOim = new ChunkRow(chunkOimId, docOimId, "OIM chunk content",
             List.of("Intro"), "Intro", 1, 0, null, "OIM Guide", "manual", "oim-col", null, 0.95);
-        when(chunkRepository.findById(chunkOimId)).thenReturn(Optional.of(chunkOim));
-        when(chunkRepository.findByIdPrefix(chunkOimId.toString()))
+        when(chunkRepository.findByIdPrefix(eq(chunkOimId.toString()), any()))
             .thenReturn(Optional.of(chunkOim));
 
         ChunkRow chunkPing =
             new ChunkRow(chunkPingId, docPingId, "PingID chunk content", List.of("Intro"), "Intro",
                 1, 0, null, "PingID Guide", "manual", "pingid-col", null, 0.95);
-        when(chunkRepository.findById(chunkPingId)).thenReturn(Optional.of(chunkPing));
-        when(chunkRepository.findByIdPrefix(chunkPingId.toString()))
+        when(chunkRepository.findByIdPrefix(eq(chunkPingId.toString()), any()))
             .thenReturn(Optional.of(chunkPing));
 
         ObjectMapper mapper = new ObjectMapper();
@@ -382,8 +380,6 @@ class RagServiceAreaIsolationTest {
     @DisplayName("get_section with invalid short chunk_id prefix is caught by the tool error boundary instead of aborting the turn")
     void guardExceptionIsContainedWithinToolErrorBoundary() {
         ToolCallback mockTool = createMockTool("get_section");
-        when(chunkRepository.findByIdPrefix("123")).thenThrow(
-            new IllegalArgumentException("Chunk ID prefix must be at least 8 hex chars"));
         when(chunkRepository.findByIdPrefix(eq("123"), any())).thenThrow(
             new IllegalArgumentException("Chunk ID prefix must be at least 8 hex chars"));
 

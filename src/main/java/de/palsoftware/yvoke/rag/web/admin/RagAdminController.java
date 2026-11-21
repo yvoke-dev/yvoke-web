@@ -170,8 +170,7 @@ public class RagAdminController {
         List<String> tags = activeCollection != null ? collectionService
             .getCollection(activeCollection).map(Collection::tags).orElse(List.of()) : List.of();
 
-        String defaultTag = tags.contains("9.3") ? "9.3"
-            : (tags.contains("9.3.1") ? "9.3.1" : (tags.isEmpty() ? null : tags.get(0)));
+        String defaultTag = tags.isEmpty() ? null : tags.get(0);
         String tagParam;
         if (tag == null) {
             tagParam = defaultTag;

@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.ChunkSurfacingMessageLookup;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -104,7 +105,8 @@ public class DocumentAdminViewService {
 
     @Transactional(readOnly = true)
     public Optional<ChunkDetailPage> chunkDetailPage(String idPrefix) {
-        return chunkRepository.findByIdPrefix(idPrefix).map(chunk -> {
+        Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
+        return chunkRepository.findByIdPrefix(idPrefix, allowedAreasLower).map(chunk -> {
             boolean hasEmbedding = chunkRepository.chunkHasEmbedding(chunk.id());
             List<Map<String, Object>> surfaced =
                 chunkSurfacingMessageLookup.findMessagesSurfacingChunk(chunk.id());

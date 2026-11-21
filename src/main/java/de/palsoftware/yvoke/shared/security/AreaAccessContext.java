@@ -178,6 +178,30 @@ public final class AreaAccessContext {
         return canAccessUserArea(getAuthentication(), area);
     }
 
+    /**
+     * Authorizes user-level read access to {@code area}, intersecting any active turn-level scope
+     * bound via {@link TurnAreaScopeHolder} with the caller's Spring Security authorities.
+     *
+     * <p>
+     * Fail-closed: unassigned ({@code null}/blank) areas are permitted only to callers/turns with
+     * unrestricted area access ({@code *}). On background async/orchestrator threads where no
+     * {@code SecurityContext} is bound, the turn scope (already validated against the caller's
+     * areas on the request thread) is authoritative.
+     */
+    public static boolean canAccessEffectiveUserArea(String area) {
+        Set<String> turnAreas = TurnAreaScopeHolder.get();
+        Authentication auth = getAuthentication();
+        if (turnAreas != null) {
+            boolean allowedByTurn = turnAreas.contains("*") || (area != null && !area.isBlank()
+                && turnAreas.contains(area.trim().toLowerCase(Locale.ROOT)));
+            if (!allowedByTurn) {
+                return false;
+            }
+            return auth == null || canAccessUserArea(auth, area);
+        }
+        return canAccessUserArea(auth, area);
+    }
+
     public static boolean canAdministerArea(Authentication auth, String area) {
         if (auth == null) {
             return false;

@@ -307,7 +307,7 @@ public class Milestone3AdversarialChallengeTest {
         String chunkId = "chunk-oim-123";
         ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
             "heading", 1, 1, null, "docTitle", "md", "OIM-Col", null, 1.0);
-        when(chunkRepository.findByIdPrefix(chunkId)).thenReturn(Optional.of(chunk));
+        when(chunkRepository.findByIdPrefix(eq(chunkId), any())).thenReturn(Optional.of(chunk));
 
         Collection col = new Collection(UUID.randomUUID(), "OIM-Col", "desc", List.of(),
             OffsetDateTime.now(), "OIM");
@@ -354,7 +354,7 @@ public class Milestone3AdversarialChallengeTest {
         String chunkId = "chunk-ping-123";
         ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
             "heading", 1, 1, null, "docTitle", "md", "Ping-Col", null, 1.0);
-        when(chunkRepository.findByIdPrefix(chunkId)).thenReturn(Optional.of(chunk));
+        when(chunkRepository.findByIdPrefix(eq(chunkId), any())).thenReturn(Optional.of(chunk));
 
         Collection col = new Collection(UUID.randomUUID(), "Ping-Col", "desc", List.of(),
             OffsetDateTime.now(), "PingID");

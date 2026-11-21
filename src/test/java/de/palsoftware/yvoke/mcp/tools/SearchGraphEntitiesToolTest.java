@@ -30,6 +30,10 @@ public class SearchGraphEntitiesToolTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
         kgRepository = mock(KgGraphReadRepository.class);
         collectionService = mock(CollectionService.class);
         searchGraphEntitiesTool = new SearchGraphEntitiesTool(kgRepository, collectionService);
