@@ -10,6 +10,9 @@ import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.web.GenerationConcurrencyLimiter;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.Collections;
 import java.util.List;
 import java.time.Instant;
@@ -227,5 +230,40 @@ class PlaybookValidationControllerTest {
 
         assertThat(response.plausible()).isFalse();
         verify(llmClient, never()).generate(any());
+    }
+
+    @Test
+    void validatePlaybook_enforcesConcurrencyLimiterAndReleasesPermitOnSuccessAndError() {
+        GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
+        PlaybookValidationController limitedController = new PlaybookValidationController(
+            chatConversationService, playbookService, llmClient, objectMapper, limiter);
+        Playbook pb = new Playbook("pb-1", "PB 1", "desc", "tmpl", List.of(), false, "specialist",
+            false, Instant.now(), Instant.now(), false, "OIM");
+        when(playbookService.listDefaultPlaybookNames()).thenReturn(Set.of());
+        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(pb));
+
+        // 1. At capacity -> HTTP 429 (must NOT be swallowed into fail-open 200).
+        assertThat(limiter.tryAcquire()).isTrue();
+        assertThatThrownBy(() -> limitedController.validatePlaybook(convId, "Question", "pb-1"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        verify(llmClient, never()).generate(any());
+        limiter.release();
+
+        // 2. Success releases the permit back to 1.
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(0, 0, 0, 0, 0)));
+        assertThat(limitedController.validatePlaybook(convId, "Question", "pb-1").plausible())
+            .isTrue();
+        assertThat(limiter.availablePermits()).isEqualTo(1);
+
+        // 3. LLM exception fails open AND still releases the permit back to 1.
+        when(llmClient.generate(any(LlmRequest.class)))
+            .thenThrow(new RuntimeException("provider timeout"));
+        assertThat(limitedController.validatePlaybook(convId, "Question", "pb-1").plausible())
+            .isTrue();
+        assertThat(limiter.availablePermits()).isEqualTo(1);
     }
 }

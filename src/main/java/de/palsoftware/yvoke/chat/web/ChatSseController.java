@@ -110,34 +110,38 @@ public class ChatSseController {
         PreparedChat prepared;
         try {
             prepared = chatMessageService.prepare(id, content, promptName);
-        } catch (Throwable e) {
-            releasePermitOnce.run();
-            throw e;
-        }
 
-        UUID assistantMessageId = UUID.randomUUID();
+            UUID assistantMessageId = UUID.randomUUID();
 
-        AtomicReference<Future<?>> taskRef = new AtomicReference<>();
-        // Tokens written so far. Only ever read to describe a failure — the citation filter emits
-        // one SSE event per character, so "which token" is the difference between "the very first
-        // write, the one that commits the response" and "somewhere in the answer".
-        AtomicInteger sentTokens = new AtomicInteger();
+            AtomicReference<Future<?>> taskRef = new AtomicReference<>();
+            AtomicBoolean started = new AtomicBoolean(false);
+            AtomicBoolean cancelled = new AtomicBoolean(false);
+            // Tokens written so far. Only ever read to describe a failure — the citation filter
+            // emits one SSE event per character, so "which token" is the difference between "the
+            // very first write, the one that commits the response" and "somewhere in the answer".
+            AtomicInteger sentTokens = new AtomicInteger();
 
-        emitter.onCompletion(() -> cancel(taskRef));
-        emitter.onTimeout(() -> {
-            log.warn("SSE timeout for conversation: {}", id);
-            cancel(taskRef);
-            emitter.complete();
-        });
-        emitter.onError(t -> {
-            log.warn("SSE connection error for conversation {}: {}", id, t.getMessage());
-            cancel(taskRef);
-        });
+            Runnable cancelTask = () -> {
+                cancelled.set(true);
+                cancel(taskRef, started, releasePermitOnce);
+            };
+            emitter.onCompletion(cancelTask);
+            emitter.onTimeout(() -> {
+                log.warn("SSE timeout for conversation: {}", id);
+                cancelTask.run();
+                safeComplete(emitter);
+            });
+            emitter.onError(t -> {
+                log.warn("SSE connection error for conversation {}: {}", id, t.getMessage());
+                cancelTask.run();
+            });
 
-        try {
             Future<?> task = sseExecutor.submit(() -> {
-                chatCancellationService.register(id, Thread.currentThread());
+                if (!started.compareAndSet(false, true)) {
+                    return;
+                }
                 try {
+                    chatCancellationService.register(id, Thread.currentThread());
                     chatMessageService.stream(prepared, assistantMessageId, token -> {
                         log.trace("SSE sending token to client: '{}'", token);
                         try {
@@ -151,17 +155,18 @@ public class ChatSseController {
                         sentTokens.incrementAndGet();
                     });
                     log.info("SSE stream completed successfully for conversation: {}", id);
-                    emitter.complete();
+                    safeComplete(emitter);
                 } catch (CancellationException e) {
                     log.info("SSE stream cancelled by user for conversation: {}", id);
                     // Already stopped, just complete
-                    emitter.complete();
+                    safeComplete(emitter);
                 } catch (SseWriteFailedException e) {
                     // Reached only when the in-band error write failed too, so the client really is
                     // gone. Logged with the cause chain so the level, not the wording, is what
                     // keeps an ordinary mid-answer disconnect quiet.
                     log.debug("SSE stream unwound for conversation {}: {}", id, e.getMessage(), e);
-                } catch (Exception e) {
+                    safeComplete(emitter);
+                } catch (Throwable e) {
                     // The SSE response is already committed, so report the failure in-band and
                     // complete normally — completeWithError() here would make MVC try to write a
                     // JSON error over the committed event-stream response.
@@ -172,16 +177,22 @@ public class ChatSseController {
                         // (SEC-17).
                         emitter.send("[ERROR] The assistant could not complete this response.");
                         emitter.send("[DONE]");
-                    } catch (Exception ex) {
+                    } catch (Throwable ex) {
                         log.debug("Failed to send error event via SSE for conversation {}", id, ex);
                     }
-                    emitter.complete();
+                    safeComplete(emitter);
                 } finally {
-                    releasePermitOnce.run();
-                    chatCancellationService.deregister(id, Thread.currentThread());
+                    try {
+                        releasePermitOnce.run();
+                    } finally {
+                        chatCancellationService.deregister(id, Thread.currentThread());
+                    }
                 }
             });
             taskRef.set(task);
+            if (cancelled.get()) {
+                cancel(taskRef, started, releasePermitOnce);
+            }
         } catch (Throwable submitError) {
             releasePermitOnce.run();
             emitter.completeWithError(submitError);
@@ -191,10 +202,23 @@ public class ChatSseController {
         return emitter;
     }
 
-    private static void cancel(AtomicReference<Future<?>> taskRef) {
+    private static void safeComplete(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Throwable ignored) {
+            // Emitter was already completed or closed.
+        }
+    }
+
+    private static void cancel(AtomicReference<Future<?>> taskRef, AtomicBoolean started,
+        Runnable releasePermitOnce) {
         Future<?> f = taskRef.get();
         if (f != null) {
-            f.cancel(true);
+            boolean cancelled = f.cancel(true);
+            if (cancelled && started.compareAndSet(false, true)) {
+                // Task was cancelled before the worker entered the lambda; finally will never run.
+                releasePermitOnce.run();
+            }
         }
     }
 }

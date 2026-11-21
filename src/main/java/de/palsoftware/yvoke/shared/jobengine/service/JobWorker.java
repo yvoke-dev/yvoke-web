@@ -14,8 +14,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -46,17 +44,6 @@ public class JobWorker {
 
     public String workerId() {
         return workerId;
-    }
-
-    @EventListener(ApplicationReadyEvent.class)
-    public void recoverOrphanedJobs() {
-        if (!properties.enabled()) {
-            return;
-        }
-        int requeued = jobRepository.requeueStaleRunningJobs(properties.staleAfter());
-        if (requeued > 0) {
-            log.warn("Recovery sweep re-queued {} stale running job(s)", requeued);
-        }
     }
 
     @Scheduled(fixedDelayString = "${app.worker.heartbeat-interval}")

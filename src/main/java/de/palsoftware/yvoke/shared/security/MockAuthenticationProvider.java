@@ -18,7 +18,8 @@ import org.springframework.security.core.GrantedAuthority;
  *
  * <p>
  * Supports simulated Entra ID role claims passed in the password field (comma-separated, e.g.
- * {@code "OIM.Admin,PingID.User"}) or legacy mock credentials ({@code "admin"} / {@code "user"}).
+ * {@code "Docs.Admin,Platform.User"}) or legacy mock credentials ({@code "admin"} /
+ * {@code "user"}).
  * </p>
  */
 public class MockAuthenticationProvider implements AuthenticationProvider {
@@ -88,7 +89,7 @@ public class MockAuthenticationProvider implements AuthenticationProvider {
             return List.of(userClaim);
         }
 
-        // If username itself contains a valid role pattern (e.g. "OIM.Admin")
+        // If username itself contains a valid role pattern (e.g. "Docs.Admin")
         if (username != null && !username.isBlank()) {
             String trimmed = username.trim();
             if (trimmed.equalsIgnoreCase(adminClaim) || trimmed.equalsIgnoreCase(userClaim)

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import de.palsoftware.yvoke.shared.jobengine.WorkerProperties;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -19,6 +20,7 @@ import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.annotation.Scheduled;
 
 class JobWorkerTest {
 
@@ -106,7 +108,10 @@ class JobWorkerTest {
      * expired) so an overlapping pod during deploy cannot hijack an active job.
      */
     @Test
-    void recoverySweepRequeuesOnlyStaleRunningJobsAndShutdownStopsClaims() {
+    void recoverySweepRequeuesOnlyStaleRunningJobsAndShutdownStopsClaims() throws Exception {
+        assertNotNull(
+            JobWorker.class.getMethod("heartbeatAndRecoverStale").getAnnotation(Scheduled.class));
+
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
@@ -114,7 +119,7 @@ class JobWorkerTest {
         when(jobRepository.requeueStaleRunningJobs(props.staleAfter())).thenReturn(3);
 
         JobWorker worker = new JobWorker(jobRepository, jobService, jobExecutor, props);
-        worker.recoverOrphanedJobs();
+        worker.heartbeatAndRecoverStale();
         verify(jobRepository, times(1)).requeueStaleRunningJobs(props.staleAfter());
 
         // Claim a job (kept in-flight because mock executor doesn't run the runnable) and verify
@@ -191,7 +196,6 @@ class JobWorkerTest {
         JobWorker worker =
             new JobWorker(jobRepository, jobService, mock(TaskExecutor.class), disabled);
         worker.poll();
-        worker.recoverOrphanedJobs();
         worker.heartbeatAndRecoverStale();
 
         verify(jobService, never()).claimNext(any());

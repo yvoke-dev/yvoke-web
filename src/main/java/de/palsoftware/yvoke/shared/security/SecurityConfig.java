@@ -210,7 +210,7 @@ public class SecurityConfig {
         }
         if (!root.isObject()) {
             throw new IllegalStateException(
-                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"OIM\": \"...\"}; got "
+                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"Docs\": \"...\"}; got "
                     + root.getNodeType());
         }
         Map<String, String> parsed = new LinkedHashMap<>();

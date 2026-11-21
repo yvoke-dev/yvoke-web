@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.chat.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -66,9 +67,8 @@ import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import org.springframework.core.task.AsyncTaskExecutor;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.scheduling.annotation.Scheduled;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -1728,19 +1728,18 @@ public class ChatMessageServiceTest {
      * container that will not start is not.
      */
     @Test
-    public void theStartupSweepIsWiredToApplicationReadyAndCannotItselfAbortStartup()
-        throws Exception {
-        EventListener wiring = AnnotatedElementUtils.findMergedAnnotation(
-            ChatMessageService.class.getMethod("onApplicationReady"), EventListener.class);
+    public void theStaleGeneratingSweepIsScheduledAndSwallowsDbErrors() throws Exception {
+        Scheduled wiring = AnnotatedElementUtils.findMergedAnnotation(
+            ChatMessageService.class.getMethod("sweepStaleGeneratingMessages"), Scheduled.class);
 
-        assertThat(wiring).as("nothing else invokes the sweep — the annotation IS the wiring")
+        assertThat(wiring)
+            .as("nothing else invokes the sweep — the @Scheduled annotation IS the wiring")
             .isNotNull();
-        assertThat(wiring.value()).as("ApplicationReadyEvent: the sweep needs a live DataSource")
-            .containsExactly(ApplicationReadyEvent.class);
+        assertThat(wiring.fixedDelayString()).isEqualTo("${app.worker.heartbeat-interval}");
 
         doThrow(new RuntimeException("the connection pool is not up yet")).when(messageRepository)
             .resetStaleGeneratingMessages(any());
-        chatMessageService.onApplicationReady();
+        chatMessageService.sweepStaleGeneratingMessages();
         verify(messageRepository).resetStaleGeneratingMessages(any());
     }
 
@@ -2741,5 +2740,108 @@ public class ChatMessageServiceTest {
 
         verify(messageRepository).updateContentAndStatus(any(UUID.class), anyString(), any(), any(),
             eq(0), eq(0), eq(0), eq(0), eq(0), eq("error"), eq("gemini-3.1-flash-lite"));
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_singlePlaybook_resetsCancellationSentinelAndRunsOnComplete() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenReturn(new RagResult(List.of(), List.of(), null, List.of(), 1, 1, 2, 0, 0));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        AtomicBoolean completed = new AtomicBoolean(false);
+        chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1",
+            () -> completed.set(true));
+
+        verify(chatCancellationService).reset(conversationId);
+        assertThat(completed.get()).isTrue();
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_errorInsideWorker_marksGeneratingMessageAsErrorAndRunsOnComplete() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        when(ragService.generateAgenticAnswer(any(), any()))
+            .thenThrow(new AssertionError("fatal-worker-error"));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        AtomicBoolean completed = new AtomicBoolean(false);
+        UUID assistantId = chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1",
+            () -> completed.set(true));
+
+        assertThat(completed.get()).isTrue();
+        verify(messageRepository).updateContentAndStatus(eq(assistantId),
+            contains("could not complete"), any(), any(), eq(0), eq(0), eq(0), eq(0), eq(0),
+            eq("error"), eq("gemini-3.1-flash-lite"));
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_linkRetrievalLogsFailure_doesNotOverwriteDoneMessage() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("model", "gemini-3.1-flash-lite"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        Playbook pb = new Playbook("PB1", "T", "D", "Template", List.of(), false, Instant.now(),
+            Instant.now(), false);
+        when(playbookService.getPlaybook("PB1")).thenReturn(Optional.of(pb));
+        UUID searchId = UUID.randomUUID();
+        when(ragService.generateAgenticAnswer(any(), any())).thenReturn(
+            new RagResult(List.of(), List.of(), searchId, List.of(searchId), 5, 5, 10, 0, 0));
+        doThrow(new RuntimeException("telemetry db hiccup")).when(retrievalLogRepository)
+            .updateMessageId(eq(searchId), any(UUID.class));
+        when(taskExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
+            ((Runnable) inv.getArgument(0)).run();
+            return null;
+        });
+
+        UUID assistantId =
+            chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", "PB1", () -> {
+            });
+
+        verify(messageRepository).updateContentAndStatus(eq(assistantId), anyString(), any(), any(),
+            eq(5), eq(5), eq(10), eq(0), eq(0), eq("done"), eq("gemini-3.1-flash-lite"));
+        verify(messageRepository, never()).updateContentAndStatus(eq(assistantId), anyString(),
+            any(), any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), eq("error"), any());
+    }
+
+    @Test
+    public void prepareAndSubmitAsync_orchestrated_executorRejectionMarksGeneratingMessageAsError() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "Chat",
+            Map.of("orchestrator-profile", "PROF1"), null, null, List.of());
+        when(chatConversationService.verifyOwnership(conversationId, false)).thenReturn(conv);
+        when(orchestrationService.hasProfile("PROF1")).thenReturn(true);
+        when(orchestrationService.getProfileArea("PROF1")).thenReturn(Optional.of("AreaA"));
+        when(taskExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RuntimeException("orchestrator queue full"));
+
+        ArgumentCaptor<Message> savedCaptor = ArgumentCaptor.forClass(Message.class);
+        Assertions.assertThrows(RuntimeException.class,
+            () -> chatMessageService.prepareAndSubmitAsync(conversationId, "Hello", null, () -> {
+            }));
+
+        verify(messageRepository, times(2)).save(savedCaptor.capture());
+        UUID assistantId = savedCaptor.getAllValues().stream()
+            .filter(m -> "assistant".equals(m.role())).findFirst().orElseThrow().id();
+        verify(messageRepository).updateContentAndStatus(eq(assistantId),
+            contains("could not complete"), any(), any(), eq(0), eq(0), eq(0), eq(0), eq(0),
+            eq("error"), eq(null));
     }
 }

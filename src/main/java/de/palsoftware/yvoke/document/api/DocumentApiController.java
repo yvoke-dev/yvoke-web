@@ -37,7 +37,7 @@ public class DocumentApiController {
      * leniently while querying with the caller's spelling resolves to nothing, and refusing to
      * match at all turns a typo into a confident empty list. Every MCP tool already guards this
      * input the same way; this endpoint was the one member of the family that did not, so
-     * {@code collection=oim} against a stored {@code OIM} answered 200 with {@code []} —
+     * {@code collection=docs} against a stored {@code Docs} answered 200 with {@code []} —
      * indistinguishable from an area that genuinely holds no documents.
      */
     @GetMapping

@@ -48,8 +48,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -311,6 +310,7 @@ public class ChatMessageService {
                 onComplete);
         }
 
+        chatCancellationService.reset(conversationId);
         PreparedChat prepared = prepareWithLockState(conversation, content, promptName, lockState);
         return dispatchAsync(conversation, prepared, onComplete);
     }
@@ -330,17 +330,16 @@ public class ChatMessageService {
         });
 
         UUID userId = conversation.userId();
+        StringBuilder assistantContent = new StringBuilder();
+        Consumer<String> sink = token -> {
+            if (token != null) {
+                assistantContent.append(token);
+            }
+        };
         try {
             taskExecutor.submit(() -> {
-                chatCancellationService.register(conversationId, Thread.currentThread());
-                StringBuilder assistantContent = new StringBuilder();
-                Consumer<String> sink = token -> {
-                    if (token != null) {
-                        assistantContent.append(token);
-                    }
-                };
-
                 try {
+                    chatCancellationService.register(conversationId, Thread.currentThread());
                     // Same attribution rule as the SSE and sync paths: spend points at the
                     // persisted user message. This path does write a "generating" assistant row up
                     // front, so assistantMessageId would satisfy the FK — but using it here would
@@ -373,21 +372,31 @@ public class ChatMessageService {
                         conversationId);
                     String stopMsg =
                         assistantContent.toString() + "\n\n*[Generation stopped by user]*";
-                    transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId, stopMsg,
-                            Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
-                            STATUS_CANCELLED, prepared.modelToUse());
-                    });
-                } catch (Exception e) {
+                    try {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            messageRepository.updateContentAndStatus(assistantMessageId, stopMsg,
+                                Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
+                                STATUS_CANCELLED, prepared.modelToUse());
+                        });
+                    } catch (Throwable dbErr) {
+                        log.error("Failed to mark cancelled assistant message {} in DB",
+                            assistantMessageId, dbErr);
+                    }
+                } catch (Throwable e) {
                     Thread.interrupted(); // Clear interrupted status so DB updates can execute
                     log.error("Error during async generation for conversation: {}", conversationId,
                         e);
                     String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
-                    transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId, errorMsg,
-                            Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
-                            "error", prepared.modelToUse());
-                    });
+                    try {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            messageRepository.updateContentAndStatus(assistantMessageId, errorMsg,
+                                Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
+                                "error", prepared.modelToUse());
+                        });
+                    } catch (Throwable dbErr) {
+                        log.error("Failed to mark errored assistant message {} in DB",
+                            assistantMessageId, dbErr);
+                    }
                 } finally {
                     if (onComplete != null) {
                         try {
@@ -469,8 +478,8 @@ public class ChatMessageService {
 
         try {
             taskExecutor.submit(() -> {
-                chatCancellationService.register(conversationId, Thread.currentThread());
                 try {
+                    chatCancellationService.register(conversationId, Thread.currentThread());
                     // userMessageId, not assistantMessageId: the other three chat entry points
                     // attribute LLM spend to the persisted user message, and a GROUP BY message_id
                     // that mixed the two would be comparing questions with answers.
@@ -489,22 +498,34 @@ public class ChatMessageService {
                     Thread.interrupted();
                     log.info("Orchestrated generation cancelled for conversation: {}",
                         conversationId);
-                    transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId,
-                            "*[Generation stopped by user]*", Collections.emptyList(),
-                            Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
-                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                    });
-                } catch (Exception e) {
+                    try {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            messageRepository.updateContentAndStatus(assistantMessageId,
+                                "*[Generation stopped by user]*", Collections.emptyList(),
+                                Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
+                            agentRunRepository.updateAssistantMessageId(agentRunId,
+                                assistantMessageId);
+                        });
+                    } catch (Throwable dbErr) {
+                        log.error("Failed to mark cancelled orchestrated message {} in DB",
+                            assistantMessageId, dbErr);
+                    }
+                } catch (Throwable e) {
                     Thread.interrupted();
                     log.error("Error during orchestrated generation for conversation: {}",
                         conversationId, e);
-                    transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId,
-                            GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0,
-                            0, 0, 0, 0, "error", null);
-                        agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
-                    });
+                    try {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            messageRepository.updateContentAndStatus(assistantMessageId,
+                                GENERIC_ERROR_TEXT, Collections.emptyList(),
+                                Collections.emptyList(), 0, 0, 0, 0, 0, "error", null);
+                            agentRunRepository.updateAssistantMessageId(agentRunId,
+                                assistantMessageId);
+                        });
+                    } catch (Throwable dbErr) {
+                        log.error("Failed to mark errored orchestrated message {} in DB",
+                            assistantMessageId, dbErr);
+                    }
                 } finally {
                     if (onComplete != null) {
                         try {
@@ -534,7 +555,7 @@ public class ChatMessageService {
                 status -> messageRepository.updateContentAndStatus(assistantMessageId,
                     GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0, 0,
                     0, 0, "error", modelToUse));
-        } catch (Exception dbErr) {
+        } catch (Throwable dbErr) {
             log.error("Failed to mark unstarted assistant message {} as error", assistantMessageId,
                 dbErr);
         }
@@ -563,9 +584,8 @@ public class ChatMessageService {
         return Optional.of(MessageTrace.forSingle(message, records));
     }
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void onApplicationReady() {
-        log.info("Checking for stale 'generating' messages to clean up on startup...");
+    @Scheduled(fixedDelayString = "${app.worker.heartbeat-interval}")
+    public void sweepStaleGeneratingMessages() {
         try {
             messageRepository.resetStaleGeneratingMessages(chatProperties.staleGeneratingAfter());
         } catch (Exception e) {
@@ -616,6 +636,7 @@ public class ChatMessageService {
                 prepared.conversationId());
             throw e;
         } catch (Exception e) {
+            Thread.interrupted();
             log.error("Error during streaming generation for conversation: {}",
                 prepared.conversationId(), e);
             String errorMsg = "\n\n" + GENERIC_ERROR_TEXT;
@@ -848,12 +869,19 @@ public class ChatMessageService {
         if (searchIds == null || searchIds.isEmpty()) {
             return;
         }
-        if (retrievalTelemetryService != null) {
-            retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
-            return;
-        }
-        for (UUID sid : searchIds) {
-            retrievalLogRepository.updateMessageId(sid, assistantMessageId);
+        try {
+            if (retrievalTelemetryService != null) {
+                retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
+                return;
+            }
+            for (UUID sid : searchIds) {
+                if (sid != null) {
+                    retrievalLogRepository.updateMessageId(sid, assistantMessageId);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to link retrieval logs for assistant message {}", assistantMessageId,
+                e);
         }
     }
 

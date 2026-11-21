@@ -127,7 +127,7 @@ app:
   security:
     mock: ${APP_SECURITY_MOCK:false}
     api-key: ${APP_SECURITY_API_KEY:dev-key-12345}
-    # Per-area machine API keys as a JSON object, e.g. {"OIM":"...","PingID":"..."}.
+    # Per-area machine API keys as a JSON object, e.g. {"Docs":"...","Platform":"..."}.
     # Each key grants ROLE_INGEST scoped to its named area on /api/ingest/**, /api/document/**, and /api/jobs/**.
     # Blank or {} configures no per-area keys.
     area-api-keys: ${APP_SECURITY_AREA_API_KEYS:}
@@ -144,8 +144,8 @@ app:
       admin-claim: ${APP_SECURITY_ADMIN_CLAIM:Admin}
       user-claim: ${APP_SECURITY_USER_CLAIM:User}
     mcp:
-      allowed-audience: ${APP_SECURITY_MCP_AUDIENCE:api://oim-kb}
-      required-scope: ${APP_SECURITY_MCP_SCOPE:api://oim-kb/mcp.read}
+      allowed-audience: ${APP_SECURITY_MCP_AUDIENCE:api://yvoke}
+      required-scope: ${APP_SECURITY_MCP_SCOPE:api://yvoke/mcp.read}
       resource-url: ${APP_SECURITY_MCP_RESOURCE_URL:http://localhost:8080/mcp}
       authorization-server-url: ${APP_SECURITY_MCP_AUTHORIZATION_SERVER_URL:https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0}
   ai:

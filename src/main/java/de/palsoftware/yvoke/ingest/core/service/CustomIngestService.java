@@ -619,7 +619,7 @@ public class CustomIngestService {
         // of them uses the vector — search_graph_entities ranks by trigram
         // similarity(e.name, …), and the only <=> in the codebase is over chunks. Embedding
         // every entity description therefore cost one model round-trip per entity (~10.6k
-        // per version per ingest of the OIM corpus) for a column nothing consults. The
+        // per version per ingest of a large corpus) for a column nothing consults. The
         // description itself IS kept — it is what the MCP tools render. Restore this block
         // if entity vector search is ever added.
         if (EMBED_ENTITY_DESCRIPTIONS && !descriptionsToEmbed.isEmpty()) {

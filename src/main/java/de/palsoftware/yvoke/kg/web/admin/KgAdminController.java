@@ -147,14 +147,12 @@ public class KgAdminController {
                 model.addAttribute("metadataJson",
                     nb.entity() != null ? nb.entity().metadataJson() : "{}");
 
-                if ("OIM-DB".equals(collection)) {
-                    model.addAttribute("fkWalk",
-                        kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
-                    model.addAttribute("callers", kgAdminViewService.calls(selectedEntity,
-                        "callers", 50, tagParam, collection));
-                    model.addAttribute("callees", kgAdminViewService.calls(selectedEntity,
-                        "callees", 50, tagParam, collection));
-                }
+                model.addAttribute("fkWalk",
+                    kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
+                model.addAttribute("callers",
+                    kgAdminViewService.calls(selectedEntity, "callers", 50, tagParam, collection));
+                model.addAttribute("callees",
+                    kgAdminViewService.calls(selectedEntity, "callees", 50, tagParam, collection));
             } else {
                 // Fallback direct entity search if not a table
                 Optional<KgEntityView> exact =

@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
 /**
  * Configuration for multi-agent orchestrator mode. Global {@code defaults} supply the model +
  * thinking level for each role (orchestrator / reviewer / specialist); each named {@code profile}
- * (a knowledge base such as OIM or PingID) names its three playbooks and MAY override any role's
+ * (a knowledge base such as Docs or Platform) names its three playbooks and MAY override any role's
  * model/thinking. A profile that doesn't override inherits the defaults.
  */
 @ConfigurationProperties(prefix="app.ai.orchestrator")public record OrchestratorProperties(Integer maxReviewRounds,Integer maxSpecialistCalls,Integer maxReviewRoundsLimit,Integer maxSpecialistCallsLimit,RoleDefaults defaults,List<Profile>profiles){
