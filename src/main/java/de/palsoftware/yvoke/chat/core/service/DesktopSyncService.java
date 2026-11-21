@@ -178,7 +178,7 @@ public class DesktopSyncService {
             if (existingVersion != null && !existingVersion.isBlank()) {
                 mapped.put(versionKey, existingVersion);
             }
-            conversationRepository.mergeSettings(conversationId, mapped);
+            conversationRepository.updateSettings(conversationId, mapped);
         }
     }
 

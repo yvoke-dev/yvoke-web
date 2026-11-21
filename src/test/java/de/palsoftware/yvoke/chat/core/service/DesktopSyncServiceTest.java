@@ -404,7 +404,7 @@ public class DesktopSyncServiceTest {
         verify(conversationRepository).updateTitle(conversationId, "Updated Title");
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).mergeSettings(eq(conversationId), captor.capture());
+        verify(conversationRepository).updateSettings(eq(conversationId), captor.capture());
 
         Map<String, Object> mapped = captor.getValue();
         assertThat(mapped).containsEntry("thinking-level", "high");
@@ -554,7 +554,7 @@ public class DesktopSyncServiceTest {
         // 1. Full settings PATCH with overwrite attempt ("1.4.0") keeps "1.3.0"
         service.updateConversation(conversationId, currentUser, null,
             Map.of("model", "claude-opus-4-6", "desktopVersion", "1.4.0"));
-        verify(conversationRepository).mergeSettings(conversationId,
+        verify(conversationRepository).updateSettings(conversationId,
             Map.of("model", "claude-opus-4-6", "desktopVersion", "1.3.0"));
 
         // 2. Overwrite attempt alongside camelCase thinkingLevel keeps verbatim existing "v1.3.0"
@@ -566,7 +566,7 @@ public class DesktopSyncServiceTest {
             .thenReturn(Optional.of(existingWithV));
         service.updateConversation(conversationId, currentUser, null,
             Map.of("desktopVersion", "1.4.0", "thinkingLevel", "high"));
-        verify(conversationRepository).mergeSettings(conversationId,
+        verify(conversationRepository).updateSettings(conversationId,
             Map.of("desktopVersion", "v1.3.0", "thinking-level", "high"));
 
         // 3. Omission of desktopVersion in full settings PATCH preserves existing version
@@ -574,7 +574,7 @@ public class DesktopSyncServiceTest {
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(existing));
         service.updateConversation(conversationId, currentUser, null,
             Map.of("model", "claude-opus-4-6"));
-        verify(conversationRepository).mergeSettings(conversationId,
+        verify(conversationRepository).updateSettings(conversationId,
             Map.of("desktopVersion", "1.3.0", "model", "claude-opus-4-6"));
 
         // 4. Null or empty settings updates title without calling updateSettings
@@ -583,7 +583,7 @@ public class DesktopSyncServiceTest {
         service.updateConversation(conversationId, currentUser, "Renamed", null);
         service.updateConversation(conversationId, currentUser, "Renamed", Map.of());
         verify(conversationRepository, times(2)).updateTitle(conversationId, "Renamed");
-        verify(conversationRepository, never()).mergeSettings(any(), any());
+        verify(conversationRepository, never()).updateSettings(any(), any());
     }
 
     @Test
@@ -611,7 +611,7 @@ public class DesktopSyncServiceTest {
                 service.updateConversation(conversationId, currentUser, "Renamed", patch);
 
                 verify(conversationRepository).updateTitle(conversationId, "Renamed");
-                verify(conversationRepository, never()).mergeSettings(any(), any());
+                verify(conversationRepository, never()).updateSettings(any(), any());
             }
         }
     }
@@ -638,7 +638,7 @@ public class DesktopSyncServiceTest {
         }
 
         verify(conversationRepository, never()).updateTitle(any(), any());
-        verify(conversationRepository, never()).mergeSettings(any(), any());
+        verify(conversationRepository, never()).updateSettings(any(), any());
 
         // Padded 256-char version is accepted on update backfill
         Conversation unversioned = new Conversation(conversationId, currentUserId, "Title",
@@ -646,7 +646,7 @@ public class DesktopSyncServiceTest {
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(unversioned));
         service.updateConversation(conversationId, currentUser, null,
             Map.of("desktopVersion", "\t" + "1".repeat(256) + "\u2003"));
-        verify(conversationRepository).mergeSettings(conversationId,
+        verify(conversationRepository).updateSettings(conversationId,
             Map.of("desktopVersion", "1".repeat(256)));
     }
 
@@ -674,7 +674,7 @@ public class DesktopSyncServiceTest {
             service.updateConversation(conversationId, currentUser, null,
                 Map.of("model", "claude-opus-4-6"));
 
-            verify(conversationRepository).mergeSettings(conversationId,
+            verify(conversationRepository).updateSettings(conversationId,
                 Map.of("model", "claude-opus-4-6"));
         }
 
@@ -690,7 +690,7 @@ public class DesktopSyncServiceTest {
             service.updateConversation(conversationId, currentUser, null,
                 Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
 
-            verify(conversationRepository).mergeSettings(conversationId,
+            verify(conversationRepository).updateSettings(conversationId,
                 Map.of("desktopVersion", verbatim, "model", "claude-opus-4-6"));
         }
 
@@ -705,7 +705,7 @@ public class DesktopSyncServiceTest {
         service.updateConversation(conversationId, currentUser, null,
             Map.of("desktopVersion", "1.4.0"));
 
-        verify(conversationRepository).mergeSettings(conversationId,
+        verify(conversationRepository).updateSettings(conversationId,
             Map.of("desktopVersion", "1.3.0"));
     }
 }

@@ -1159,6 +1159,7 @@ public class ChatAsyncControllerIT {
     public void changingOrchestratorProfileAfterConversationHasStarted_returnsBadRequest()
         throws Exception {
         UUID userOid = UUID.randomUUID();
+        userRepository.upsert(userOid.toString(), "profile-lock@local", "Profile Lock User");
         setSecurityContext(userOid.toString(), "profile-lock@local", "Profile Lock User");
 
         Conversation conv = chatConversationService.createConversation();

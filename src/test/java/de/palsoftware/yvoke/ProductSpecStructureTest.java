@@ -204,8 +204,8 @@ class ProductSpecStructureTest {
 
             if ("07_using_the_assistant_from_other_tools.md".equals(chapterName)) {
                 assertThat(collapsedWhitespace).as(
-                    "%s must describe atomic settings merge while keeping creation version intact",
-                    chapterPath).contains("merge atomically into the stored settings map",
+                    "%s must describe settings map replacement while keeping creation version intact",
+                    chapterPath).contains("replace the settings map",
                         "keeping the recorded creation version intact",
                         "blank version changes nothing");
             }

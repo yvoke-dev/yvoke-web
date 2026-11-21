@@ -398,8 +398,10 @@ class ConfluenceClientServiceInstanceScopeTest {
             "acme.atlassian.net", "svc@example.com", "revoked", "SPACE", "12345", null, null);
 
         assertThat(result.ok()).isFalse();
+        // S1: return only the HTTP status to the UI, never echo the remote response body
+        // (eliminates SSRF response-body oracle).
         assertThat(result.message()).contains("HTTP 401")
-            .contains("Basic authentication with passwords is deprecated.");
+            .doesNotContain("Basic authentication with passwords is deprecated.");
         assertThat(result.spaceName()).isNull();
         assertThat(result.samplePagesHtml()).isEmpty();
     }

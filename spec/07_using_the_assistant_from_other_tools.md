@@ -77,8 +77,8 @@ running corpus scripts and the evaluation harness.
 - **A conversation's recorded desktop release version is fixed at creation.** When the desktop app creates a
   conversation, Yvoke validates and records the desktop release version verbatim (trimming surrounding spaces;
   non-text or values exceeding 256 characters are rejected, and blank values are ignored). Later settings
-  updates merge atomically into the stored settings map (only supplied keys change; unknown keys or wrongly
-  typed values are refused with `400 Bad Request`), while keeping the recorded creation version intact (or
+  updates still replace the settings map as usual (validating allowed keys and value types and refusing
+  malformed entries with `400 Bad Request`), while keeping the recorded creation version intact (or
   recording a version if the conversation had none yet; an update carrying only a blank version changes
   nothing). Rated Claude plugin turns similarly record the plugin release version verbatim so both the
   conversation header and the administrator conversation register display `desktop <version>` or

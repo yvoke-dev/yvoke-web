@@ -374,17 +374,19 @@ public class CustomIngestServiceIT {
             .isFalse();
         assertThat(count(DOC_COUNT_SQL)).as("a rejected zip leaves no half-corpus behind").isZero();
 
-        // The traversal form is dropped by the dot-path filter instead — no throw, but also no
-        // escape, and the legitimate sibling entry still has to be ingestable.
+        // SafeZipExtractor checks zip-slip BEFORE dot-file filtering, so traversal entries fail
+        // the entire archive loudly rather than silently ingesting a partial corpus.
         Path traversal = tempDir.resolve("traversal.zip");
         try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(traversal))) {
             putEntry(zos, "docs/demo.md", markdown("table", "DEMO_TABLE"));
             putEntry(zos, "../../escaped.md", "owned");
         }
         IngestionJob travJob = job(traversal, Map.of("enableGraph", false));
-        customIngestService.ingest(travJob, ctxFor(travJob));
+        assertThatThrownBy(() -> customIngestService.ingest(travJob, ctxFor(travJob)))
+            .hasStackTraceContaining("zip-slip");
         assertThat(Files.exists(tempDir.getParent().resolve("escaped.md"))).isFalse();
-        assertThat(count(DOC_COUNT_SQL)).as("the legitimate entry still ingests").isEqualTo(1);
+        assertThat(count(DOC_COUNT_SQL)).as("a traversal zip leaves no half-corpus behind")
+            .isZero();
     }
 
     /**

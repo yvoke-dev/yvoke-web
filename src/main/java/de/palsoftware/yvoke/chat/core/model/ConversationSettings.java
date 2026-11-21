@@ -27,7 +27,7 @@ public final class ConversationSettings {
             ConversationSetting.STREAMING.getValue(), ConversationSetting.SHOW_THINKING.getValue(),
             ConversationSetting.SHOW_PROTOTYPES.getValue(),
             ConversationSetting.ORCHESTRATOR_PROFILE.getValue(),
-            ConversationSetting.DESKTOP_VERSION.getValue(), "client");
+            ConversationSetting.DESKTOP_VERSION.getValue(), "client", "playbook");
 
     private ConversationSettings() {}
 

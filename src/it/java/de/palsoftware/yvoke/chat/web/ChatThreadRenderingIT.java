@@ -98,6 +98,7 @@ public class ChatThreadRenderingIT {
      */
     @Test
     public void theStartupSweepTouchesOnlyGeneratingRowsAndLeavesFinishedAnswersIntact() {
+        userRepository.upsert("sweep-oid", "sweep@local", "Sweep User");
         setSecurityContext("sweep-oid", "sweep@local", "Sweep User");
         UUID convId = chatConversationService.createConversation().id();
 
@@ -262,6 +263,7 @@ public class ChatThreadRenderingIT {
      */
     @Test
     public void anUpdateWithNoModelKeepsTheModelAlreadyOnTheRow() {
+        userRepository.upsert("coalesce-oid", "coalesce@local", "Coalesce User");
         setSecurityContext("coalesce-oid", "coalesce@local", "Coalesce User");
         UUID convId = chatConversationService.createConversation().id();
 
@@ -504,9 +506,9 @@ public class ChatThreadRenderingIT {
                 + "to the model — changing the cap changes prompt size and cost with no signal")
             .hasSize(100);
         assertThat(rendered.stream().map(m -> ((Message) m).id()).toList())
-            .as("created_at ASC then id ASC: a tie resolved by anything else scrambles the turn, "
-                + "and the same list is what rehydrates LLM history")
-            .isEqualTo(expected.subList(0, 100));
+            .as("latest 100 messages in created_at ASC then id ASC order: a tie resolved by "
+                + "anything else scrambles the turn, and the same list is what rehydrates LLM history")
+            .isEqualTo(expected.subList(5, 105));
 
         // Cleanup (the security filter clears the holder after each MockMvc request).
         setSecurityContext(userOid, "thread-cap@local", "Thread Cap User");

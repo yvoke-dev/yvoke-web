@@ -156,7 +156,7 @@ public class JobService {
             return;
         }
         if (candidate.equals(uploadRoot) || !candidate.startsWith(uploadRoot)
-            || !Files.isRegularFile(candidate)) {
+            || !Files.isRegularFile(candidate) || !isStagedUploadFile(candidate, uploadRoot)) {
             return;
         }
         try {
@@ -173,6 +173,33 @@ public class JobService {
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to clean up staged upload for job {}: {}", job.id(), candidate, e);
         }
+    }
+
+    /**
+     * Only deletes files that Yvoke itself staged ({@code <uploadRoot>/<uuid>_*} or
+     * {@code <uploadRoot>/custom_<uuid>/*}), leaving caller-managed files placed under
+     * {@code app.upload-dir} untouched.
+     */
+    private static boolean isStagedUploadFile(Path candidate, Path uploadRoot) {
+        Path parent = candidate.getParent();
+        if (parent == null) {
+            return false;
+        }
+        if (parent.equals(uploadRoot)) {
+            String name = candidate.getFileName().toString();
+            if (name.length() > 37 && name.charAt(36) == '_') {
+                try {
+                    UUID.fromString(name.substring(0, 36));
+                    return true;
+                } catch (IllegalArgumentException ignored) {
+                    return false;
+                }
+            }
+            return false;
+        }
+        Path grandParent = parent.getParent();
+        return grandParent != null && grandParent.equals(uploadRoot)
+            && parent.getFileName().toString().startsWith("custom_");
     }
 
     private String validateCounts(JobHandler handler, IngestionJob job, JobCounts counts) {

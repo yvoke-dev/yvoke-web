@@ -35,7 +35,7 @@ class DesktopSyncDtoValidationTest {
     @Test
     void rejectsBatchLargerThanTheAllowedMaximum() {
         List<NewMessageDto> tooMany =
-            Collections.nCopies(501, new NewMessageDto("user", "hi", null, null, null, null, null));
+            Collections.nCopies(101, new NewMessageDto("user", "hi", null, null, null, null, null));
         AppendMessagesRequest request = new AppendMessagesRequest(tooMany);
 
         assertThat(validator.validate(request)).isNotEmpty();
@@ -44,13 +44,13 @@ class DesktopSyncDtoValidationTest {
     @Test
     void acceptsBatchAtTheAllowedMaximum() {
         List<NewMessageDto> ok =
-            Collections.nCopies(500, new NewMessageDto("user", "hi", null, null, null, null, null));
+            Collections.nCopies(100, new NewMessageDto("user", "hi", null, null, null, null, null));
         assertThat(validator.validate(new AppendMessagesRequest(ok))).isEmpty();
     }
 
     @Test
     void rejectsMessageWithOverlongContent() {
-        String huge = "x".repeat(1_000_001);
+        String huge = "x".repeat(200_001);
         AppendMessagesRequest request = new AppendMessagesRequest(
             List.of(new NewMessageDto("user", huge, null, null, null, null, null)));
 

@@ -177,14 +177,18 @@ public class ConversationRepository {
                 FROM conversations
                 WHERE source <> 'claude-plugin'
                   AND 'public' = ANY(tags)
-                  AND (:userId IS NULL OR user_id IS DISTINCT FROM :userId)
                 """);
+        if (userId != null) {
+            sql.append(" AND user_id IS DISTINCT FROM :userId");
+        }
         if (allowedAreasLower != null) {
             sql.append(" AND area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)");
         }
         sql.append(" ORDER BY created_at DESC, id ASC LIMIT :limit OFFSET :offset");
-        var spec = jdbcClient.sql(sql.toString()).param("userId", userId).param("limit", limit)
-            .param("offset", offset);
+        var spec = jdbcClient.sql(sql.toString()).param("limit", limit).param("offset", offset);
+        if (userId != null) {
+            spec = spec.param("userId", userId);
+        }
         if (allowedAreasLower != null) {
             spec = spec.param("allowedAreasLower", allowedAreasLower);
         }
