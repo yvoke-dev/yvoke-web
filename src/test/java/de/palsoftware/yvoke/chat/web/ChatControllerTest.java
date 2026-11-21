@@ -71,7 +71,7 @@ class ChatControllerTest {
         feedbackService = mock(ChatFeedbackService.class);
         cancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
-        orchestratorProperties = new OrchestratorProperties(3, 8, null,
+        orchestratorProperties = new OrchestratorProperties(3, 8, 10, 50, null,
             List.of(new OrchestratorProperties.Profile("yaml-profile", "orch", "rev", List.of(),
                 null, null, null)));
         orchestratorProfileService = mock(OrchestratorProfileService.class);
@@ -98,7 +98,8 @@ class ChatControllerTest {
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
-        verify(conversationService).updateSettings(eq(conversationId), any());
+        verify(conversationService).updateSetting(conversationId,
+            ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
     }
 
     @Test
@@ -112,7 +113,8 @@ class ChatControllerTest {
         assertDoesNotThrow(
             () -> controller.updateOrchestratorProfile(conversationId, "yaml-profile"));
 
-        verify(conversationService).updateSettings(eq(conversationId), any());
+        verify(conversationService).updateSetting(conversationId,
+            ConversationSetting.ORCHESTRATOR_PROFILE, "yaml-profile");
     }
 
     @Test
@@ -173,7 +175,8 @@ class ChatControllerTest {
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "  "));
 
-        verify(conversationService).updateSettings(eq(conversationId), any());
+        verify(conversationService).updateSetting(conversationId,
+            ConversationSetting.ORCHESTRATOR_PROFILE, "");
     }
 
     @Test
@@ -190,7 +193,7 @@ class ChatControllerTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         assertEquals("Orchestrator profile cannot be changed once a conversation has started.",
             ex.getReason());
-        verify(conversationService, never()).updateSettings(any(), any());
+        verify(conversationService, never()).updateSetting(any(), any(), any());
     }
 
     @Test
@@ -206,7 +209,8 @@ class ChatControllerTest {
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
-        verify(conversationService).updateSettings(eq(conversationId), any());
+        verify(conversationService).updateSetting(conversationId,
+            ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
     }
 
     /**

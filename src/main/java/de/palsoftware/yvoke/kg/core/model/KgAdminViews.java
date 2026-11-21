@@ -48,13 +48,14 @@ public final class KgAdminViews {
     public record KgNeighborhoodView(@Nullable KgEntityView entity,
         List<KgRelationshipView> outgoing, List<KgRelationshipView> incoming) {}
 
-    /** A row in the FK-walk table (admin/kg-view, OIM-DB only). */
+    /** A row in the FK-walk table (admin/kg-view, schema graphs with FK edges). */
     public record KgWalkView(int depth, List<String> path) {}
 
     /**
-     * A caller/callee row in the call-graph table (admin/kg-view, OIM-DB only). Exposes
-     * {@code category()} to match the template — the raw {@link KgCall} only had {@code kind()}, so
-     * the call-graph section used to fail to render; mapping {@code category = kind} fixes it.
+     * A caller/callee row in the call-graph table (admin/kg-view, schema graphs with call edges).
+     * Exposes {@code category()} to match the template — the raw {@link KgCall} only had
+     * {@code kind()}, so the call-graph section used to fail to render; mapping
+     * {@code category = kind} fixes it.
      */
     public record KgCallView(String name, @Nullable String category) {}
 }

@@ -8,6 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import de.palsoftware.yvoke.shared.jobengine.WorkerProperties;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
@@ -19,6 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.annotation.Scheduled;
 
 class JobWorkerTest {
 
@@ -56,22 +59,24 @@ class JobWorkerTest {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
-        when(jobService.claimNext()).thenReturn(Optional.of(job(UUID.randomUUID())),
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(UUID.randomUUID())),
             Optional.of(job(UUID.randomUUID())), Optional.of(job(UUID.randomUUID())),
             Optional.of(job(UUID.randomUUID())), Optional.empty());
 
-        JobWorker worker = new JobWorker(jobRepository, jobService, jobExecutor,
-            new WorkerProperties(true, 2, Duration.ofSeconds(2)));
+        JobWorker worker =
+            new JobWorker(jobRepository, jobService, jobExecutor, new WorkerProperties(true, 2,
+                Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofMinutes(5)));
         worker.poll();
         worker.poll();
 
-        verify(jobService, times(2)).claimNext();
+        verify(jobService, times(2)).claimNext(worker.workerId());
         verify(jobExecutor, times(2)).execute(any(Runnable.class));
         verify(jobRepository, never()).requeueJob(any());
     }
 
     private static WorkerProperties enabled() {
-        return new WorkerProperties(true, 4, Duration.ofSeconds(2));
+        return new WorkerProperties(true, 4, Duration.ofSeconds(2), Duration.ofSeconds(30),
+            Duration.ofMinutes(5));
     }
 
     /**
@@ -90,29 +95,50 @@ class JobWorkerTest {
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
         UUID rejectedId = UUID.randomUUID();
 
-        when(jobService.claimNext()).thenReturn(Optional.of(job(rejectedId)), Optional.empty());
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(rejectedId)),
+            Optional.empty());
         doThrow(new RejectedExecutionException("executor is shutting down")).when(jobExecutor)
             .execute(any(Runnable.class));
 
         new JobWorker(jobRepository, jobService, jobExecutor, enabled()).poll();
 
         verify(jobRepository, times(1)).requeueJob(rejectedId);
-        verify(jobRepository, never()).requeueOrphans();
+        verify(jobRepository, never()).requeueStaleRunningJobs(any());
     }
 
     /**
-     * The startup recovery sweep is the one place a blanket re-queue IS correct: nothing is running
-     * yet, so every {@code running} row is genuinely orphaned by the previous process.
+     * Startup and periodic recovery must requeue only stale running jobs (whose heartbeat has
+     * expired) so an overlapping pod during deploy cannot hijack an active job.
      */
     @Test
-    void theStartupSweepStillUsesTheBlanketRequeue() {
+    void recoverySweepRequeuesOnlyStaleRunningJobsAndShutdownStopsClaims() throws Exception {
+        assertNotNull(
+            JobWorker.class.getMethod("heartbeatAndRecoverStale").getAnnotation(Scheduled.class));
+
         JobRepository jobRepository = mock(JobRepository.class);
-        when(jobRepository.requeueOrphans()).thenReturn(3);
+        JobService jobService = mock(JobService.class);
+        TaskExecutor jobExecutor = mock(TaskExecutor.class);
+        WorkerProperties props = enabled();
+        when(jobRepository.requeueStaleRunningJobs(props.staleAfter())).thenReturn(3);
 
-        new JobWorker(jobRepository, mock(JobService.class), mock(TaskExecutor.class), enabled())
-            .recoverOrphanedJobs();
+        JobWorker worker = new JobWorker(jobRepository, jobService, jobExecutor, props);
+        worker.heartbeatAndRecoverStale();
+        verify(jobRepository, times(1)).requeueStaleRunningJobs(props.staleAfter());
 
-        verify(jobRepository, times(1)).requeueOrphans();
+        // Claim a job (kept in-flight because mock executor doesn't run the runnable) and verify
+        // heartbeat refreshes it.
+        UUID activeId = UUID.randomUUID();
+        when(jobService.claimNext(worker.workerId())).thenReturn(Optional.of(job(activeId)),
+            Optional.empty());
+        worker.poll();
+        worker.heartbeatAndRecoverStale();
+        verify(jobRepository, times(1)).refreshHeartbeat(activeId, worker.workerId());
+        verify(jobRepository, times(2)).requeueStaleRunningJobs(props.staleAfter());
+
+        // Once shutting down (SIGTERM), poll() must not claim any new jobs.
+        worker.onShutdown();
+        worker.poll();
+        verify(jobService, times(2)).claimNext(worker.workerId());
     }
 
     /**
@@ -135,17 +161,20 @@ class JobWorkerTest {
      */
     @Test
     void aNonPositiveWorkerConcurrencyIsCoercedToFourRatherThanBuildingAPoolThatAcceptsNothing() {
-        WorkerProperties zero = new WorkerProperties(true, 0, null);
+        WorkerProperties zero =
+            new WorkerProperties(true, 0, null, Duration.ofSeconds(30), Duration.ofMinutes(5));
         assertEquals(4, zero.concurrency(), "concurrency=0 must be coerced to the shipped default");
         assertEquals(Duration.ofSeconds(2), zero.pollInterval(),
             "a missing poll-interval must fall back to 2s, or @Scheduled is invalid at startup");
 
-        WorkerProperties negative = new WorkerProperties(true, -1, Duration.ZERO);
+        WorkerProperties negative = new WorkerProperties(true, -1, Duration.ZERO,
+            Duration.ofSeconds(30), Duration.ofMinutes(5));
         assertEquals(4, negative.concurrency(), "a negative concurrency must be coerced too");
         assertEquals(Duration.ofSeconds(2), negative.pollInterval(),
             "a zero poll-interval must fall back to 2s");
         assertEquals(Duration.ofSeconds(2),
-            new WorkerProperties(true, 1, Duration.ofSeconds(-5)).pollInterval(),
+            new WorkerProperties(true, 1, Duration.ofSeconds(-5), Duration.ofSeconds(30),
+                Duration.ofMinutes(5)).pollInterval(),
             "a negative poll-interval must fall back to 2s");
 
         // The outcome that actually matters: a worker built from `app.worker.concurrency=0` must
@@ -154,7 +183,7 @@ class JobWorkerTest {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
         TaskExecutor jobExecutor = mock(TaskExecutor.class);
-        when(jobService.claimNext()).thenReturn(Optional.of(job(UUID.randomUUID())),
+        when(jobService.claimNext(any())).thenReturn(Optional.of(job(UUID.randomUUID())),
             Optional.empty());
 
         new JobWorker(jobRepository, jobService, jobExecutor, zero).poll();
@@ -163,20 +192,33 @@ class JobWorkerTest {
         verify(jobRepository, never()).requeueJob(any());
     }
 
+    @Test
+    void nonPositiveHeartbeatOrStaleAfterIsRejectedRatherThanDefaultedInline() {
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), null, Duration.ofMinutes(5)));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ZERO, Duration.ofMinutes(5)));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ofSeconds(30), null));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerProperties(true, 4,
+            Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofSeconds(-1)));
+    }
+
     /** {@code app.worker.enabled=false} must disable both the poll loop and the recovery sweep. */
     @Test
     void aDisabledWorkerNeitherPollsNorRecovers() {
         JobRepository jobRepository = mock(JobRepository.class);
         JobService jobService = mock(JobService.class);
-        WorkerProperties disabled = new WorkerProperties(false, 4, Duration.ofSeconds(2));
+        WorkerProperties disabled = new WorkerProperties(false, 4, Duration.ofSeconds(2),
+            Duration.ofSeconds(30), Duration.ofMinutes(5));
 
         JobWorker worker =
             new JobWorker(jobRepository, jobService, mock(TaskExecutor.class), disabled);
         worker.poll();
-        worker.recoverOrphanedJobs();
+        worker.heartbeatAndRecoverStale();
 
-        verify(jobService, never()).claimNext();
-        verify(jobRepository, never()).requeueOrphans();
+        verify(jobService, never()).claimNext(any());
+        verify(jobRepository, never()).requeueStaleRunningJobs(any());
         verify(jobRepository, never()).requeueJob(any());
     }
 }

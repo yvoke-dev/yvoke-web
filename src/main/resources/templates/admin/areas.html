@@ -11,7 +11,7 @@
             <div class="page-header">
                 <div>
                     <h1 class="page-title">Areas</h1>
-                    <p class="page-subtitle">An area is a knowledge base such as OIM: its system prompts, collections, playbooks and multi-agent profiles. Every one of those belongs to exactly one area; you choose it on that item's own page.</p>
+                    <p class="page-subtitle">An area is a knowledge base grouping its system prompts, collections, playbooks and multi-agent profiles. Every one of those belongs to exactly one area; you choose it on that item's own page.</p>
                 </div>
             </div>
 
@@ -35,7 +35,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                             <div style="flex: 1; margin-right: 1.5rem;">
                                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                                    <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${a.area.name}">OIM</span>
+                                    <span style="font-family: monospace; font-size: 0.85rem; background-color: var(--bg-surface-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); color: var(--text-secondary);" th:text="${a.area.name}">Area</span>
                                     <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${a.area.title}">Title</h3>
                                     <span th:if="${a.area.prototype}" title="Marked as prototype" style="font-size: 0.75rem; background-color: var(--color-warning-dim, rgba(245,158,11,0.15)); color: var(--color-warning, #f59e0b); border: 1px solid var(--color-warning, #f59e0b); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); font-weight: 500;">🧪 Prototype</span>
                                 </div>
@@ -94,8 +94,8 @@
                         <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                             <div class="form-group">
                                 <label for="name" class="form-label">Name</label>
-                                <input sec:authorize="hasRole('ADMIN')" type="text" id="name" name="name" class="form-input" placeholder="e.g. OIM" required />
-                                <input sec:authorize="!hasRole('ADMIN')" type="text" id="name" name="name" class="form-input" placeholder="e.g. OIM" required readonly />
+                                <input sec:authorize="hasRole('ADMIN')" type="text" id="name" name="name" class="form-input" placeholder="e.g. Docs" required />
+                                <input sec:authorize="!hasRole('ADMIN')" type="text" id="name" name="name" class="form-input" placeholder="e.g. Docs" required readonly />
                                 <span sec:authorize="hasRole('ADMIN')" class="help-text" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Renaming an area carries over to all of its members.</span>
                             </div>
                             <div class="form-group">

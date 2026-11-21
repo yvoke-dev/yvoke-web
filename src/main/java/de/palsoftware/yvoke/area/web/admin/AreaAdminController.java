@@ -1,7 +1,10 @@
 package de.palsoftware.yvoke.area.web.admin;
 
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.util.Map;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -22,9 +25,11 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class AreaAdminController {
 
     private final AreaService areaService;
+    private final AdminAuditLogger auditLogger;
 
-    public AreaAdminController(AreaService areaService) {
+    public AreaAdminController(AreaService areaService, AdminAuditLogger auditLogger) {
         this.areaService = areaService;
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping("/areas")
@@ -57,6 +62,8 @@ public class AreaAdminController {
         }
         areaService.saveArea(originalName, name, title, description, prototype, defaultPlaybook,
             defaultProfile);
+        auditLogger.log("SAVE_AREA", name.trim(), Map.of("originalName",
+            originalName != null ? originalName.trim() : "", "prototype", prototype));
         redirectAttributes.addFlashAttribute("success", "Area '" + name.trim() + "' saved.");
         return "redirect:/admin/areas";
     }
@@ -68,6 +75,8 @@ public class AreaAdminController {
                 "Only superadmins can delete areas");
         }
         String deleted = areaService.deleteArea(name);
+        String target = deleted != null ? deleted : (name != null ? name.trim() : "");
+        auditLogger.log("DELETE_AREA", target, Map.of("name", target));
         redirectAttributes.addFlashAttribute("success", "Area '" + deleted + "' deleted.");
         return "redirect:/admin/areas";
     }

@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -23,7 +24,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -38,12 +41,15 @@ public class JsonObjectAdminController {
     private final JsonObjectService jsonObjectService;
     private final CollectionService collectionService;
     private final ObjectMapper objectMapper;
+    private final AdminAuditLogger auditLogger;
 
     public JsonObjectAdminController(JsonObjectService jsonObjectService,
-        CollectionService collectionService, ObjectMapper objectMapper) {
+        CollectionService collectionService, ObjectMapper objectMapper,
+        AdminAuditLogger auditLogger) {
         this.jsonObjectService = jsonObjectService;
         this.collectionService = collectionService;
         this.objectMapper = objectMapper;
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping
@@ -82,13 +88,17 @@ public class JsonObjectAdminController {
                 List<String> tagsFilter =
                     (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : null;
 
+                int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                    PagingParams.MAX_ADMIN_PAGE_SIZE);
+                int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
+
                 List<JsonObject> objects;
                 long totalElements;
 
                 if (search != null && !search.isBlank()) {
                     try {
-                        objects =
-                            jsonObjectService.searchObjects(colId, search, tagsFilter, page, size);
+                        objects = jsonObjectService.searchObjects(colId, search, tagsFilter,
+                            clampedPage, clampedSize);
                         totalElements =
                             jsonObjectService.countSearchObjects(colId, search, tagsFilter);
                     } catch (BadSqlGrammarException e) {
@@ -98,14 +108,15 @@ public class JsonObjectAdminController {
                         totalElements = 0;
                     }
                 } else {
-                    objects = jsonObjectService.listObjects(colId, tagsFilter, page, size);
+                    objects =
+                        jsonObjectService.listObjects(colId, tagsFilter, clampedPage, clampedSize);
                     totalElements = jsonObjectService.countObjects(colId, tagsFilter);
                 }
 
-                int totalPages = (int) Math.ceil((double) totalElements / size);
+                int totalPages = PagingParams.totalPages(totalElements, clampedSize);
 
                 model.addAttribute("jsonObjects", objects);
-                model.addAttribute("currentPage", page);
+                model.addAttribute("currentPage", clampedPage);
                 model.addAttribute("totalPages", totalPages);
                 model.addAttribute("totalElements", totalElements);
 
@@ -189,14 +200,15 @@ public class JsonObjectAdminController {
         Map<String, Object> schemaMap =
             objectMapper.readValue(schemaJson, new TypeReference<Map<String, Object>>() {});
         jsonObjectService.saveManualSchema(colOpt.get().id(), tag, schemaMap);
+        auditLogger.log("EDIT_JSON_SCHEMA", colOpt.get().name(),
+            Map.of("tag", tag != null ? tag.trim() : ""));
 
         redirectAttributes.addFlashAttribute("success", "Schema updated successfully.");
-
-        String redirectUrl = "redirect:/admin/json-objects?collection=" + collection;
+        redirectAttributes.addAttribute("collection", colOpt.get().name());
         if (tag != null && !tag.isBlank()) {
-            redirectUrl += "&tag=" + tag;
+            redirectAttributes.addAttribute("tag", tag.trim());
         }
-        return redirectUrl;
+        return "redirect:/admin/json-objects";
     }
 
     @PostMapping("/schema/rebuild")
@@ -209,6 +221,8 @@ public class JsonObjectAdminController {
         }
         boolean rebuilt = jsonObjectService.rebuildSchema(colOpt.get().id(), tag);
         if (rebuilt) {
+            auditLogger.log("REBUILD_JSON_SCHEMA", colOpt.get().name(),
+                Map.of("tag", tag != null ? tag.trim() : ""));
             redirectAttributes.addFlashAttribute("success",
                 "Schema re-inferred from current objects.");
         } else {
@@ -216,11 +230,11 @@ public class JsonObjectAdminController {
                 "Schema is manually maintained; rebuild skipped. Switch it to inferred first.");
         }
 
-        String redirectUrl = "redirect:/admin/json-objects?collection=" + collection;
+        redirectAttributes.addAttribute("collection", colOpt.get().name());
         if (tag != null && !tag.isBlank()) {
-            redirectUrl += "&tag=" + tag;
+            redirectAttributes.addAttribute("tag", tag.trim());
         }
-        return redirectUrl;
+        return "redirect:/admin/json-objects";
     }
 
     private List<String> extractSchemaFieldPaths(Map<String, Object> schemaData) {

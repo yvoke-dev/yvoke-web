@@ -37,8 +37,9 @@ Ordinary chat users never see jobs.
   unknown AI instructions are caught before the work is accepted, so the queue holds only jobs that had
   everything they needed when they were submitted.
 - **There is no automatic retry.** A failed job stays failed until someone submits the same work again.
-- **If the service restarts while jobs are running, they go back into the queue and start over from the
-  beginning.** An *Attempts* figure records how often a job was started.
+- **Running jobs renew a periodic heartbeat lease; stale jobs whose worker heartbeat expires are
+  re-queued automatically**, while live jobs running on another instance are left untouched. An *Attempts*
+  figure records how often a job was started.
 - **Re-importing the same source file updates its documents in place**, so re-running after a partial
   failure is safe.
 - **Cancelling frees the duplicate check immediately**, so re-submitting at once can create a second job

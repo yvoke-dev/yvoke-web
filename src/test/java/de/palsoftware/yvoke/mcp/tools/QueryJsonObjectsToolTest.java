@@ -29,6 +29,10 @@ public class QueryJsonObjectsToolTest {
 
     @BeforeEach
     public void setUp() {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
+                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
         jsonObjectService = mock(JsonObjectService.class);
         collectionService = mock(CollectionService.class);
         objectMapper = new ObjectMapper();

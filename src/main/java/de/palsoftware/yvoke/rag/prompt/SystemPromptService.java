@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.rag.prompt;
 
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
+import de.palsoftware.yvoke.shared.validation.SlugNames;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -105,9 +106,7 @@ public class SystemPromptService {
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
     public void savePrompt(String name, SystemPromptType type, String systemPrompt,
         String description, String area) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Prompt name cannot be empty.");
-        }
+        String validName = SlugNames.requireValidName(name, "Prompt");
         if (type == null) {
             throw new IllegalArgumentException("Prompt type cannot be empty.");
         }
@@ -115,7 +114,7 @@ public class SystemPromptService {
             throw new IllegalArgumentException("System prompt content cannot be empty.");
         }
         String storedArea = areaService.requireArea(area);
-        systemPromptRepository.upsert(name.trim(), type, systemPrompt.trim(),
+        systemPromptRepository.upsert(validName, type, systemPrompt.trim(),
             description != null ? description.trim() : "", storedArea);
     }
 

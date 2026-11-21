@@ -410,12 +410,19 @@
             // Populate/update versions dropdown
             updateDialogTags(currentTag);
             
-            // Fetch KG prompts dynamically
+            // Fetch KG prompts dynamically as JSON and populate options via DOM API (no innerHTML).
             fetch('/admin/prompts/kg-options')
-                .then(response => response.text())
-                .then(html => {
+                .then(response => response.json())
+                .then(options => {
                     const kgSelect = document.getElementById('dialogKgPromptSelect');
-                    kgSelect.innerHTML = html;
+                    kgSelect.replaceChildren();
+                    for (const p of options) {
+                        const opt = document.createElement('option');
+                        opt.value = p.name;
+                        opt.textContent = p.name;
+                        opt.title = p.description || '';
+                        kgSelect.appendChild(opt);
+                    }
                     const hasKgPrompts = kgSelect.options.length > 0;
                     document.getElementById('noDialogKgPromptWarning').style.display = hasKgPrompts ? 'none' : 'block';
                     updateDialogKgPromptTooltip();

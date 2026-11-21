@@ -20,6 +20,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -74,14 +75,16 @@ public class DocumentIngestService {
     private final SectionSummarizer sectionSummarizer;
     private final SystemPromptService systemPromptService;
     private final UploadPathGuard uploadPathGuard;
+    private final SafeZipExtractor safeZipExtractor;
 
+    @Autowired
     public DocumentIngestService(EmbeddingService embeddingService,
         DocumentRepository documentRepository, ChunkRepository chunkRepository,
         KgWriteRepository kgRepository, DocumentKgExtractor kgExtractor,
         KgConsolidator kgConsolidator, JdbcClient jdbcClient,
         PlatformTransactionManager transactionManager, SectionSummarizer sectionSummarizer,
         SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard,
-        IngestPrompts ingestPrompts) {
+        IngestPrompts ingestPrompts, SafeZipExtractor safeZipExtractor) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
@@ -94,6 +97,21 @@ public class DocumentIngestService {
         this.systemPromptService = systemPromptService;
         this.uploadPathGuard = uploadPathGuard;
         this.ingestPrompts = ingestPrompts;
+        this.safeZipExtractor = safeZipExtractor != null ? safeZipExtractor
+            : new SafeZipExtractor(ZipExtractionProperties.defaults());
+    }
+
+    public DocumentIngestService(EmbeddingService embeddingService,
+        DocumentRepository documentRepository, ChunkRepository chunkRepository,
+        KgWriteRepository kgRepository, DocumentKgExtractor kgExtractor,
+        KgConsolidator kgConsolidator, JdbcClient jdbcClient,
+        PlatformTransactionManager transactionManager, SectionSummarizer sectionSummarizer,
+        SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard,
+        IngestPrompts ingestPrompts) {
+        this(embeddingService, documentRepository, chunkRepository, kgRepository, kgExtractor,
+            kgConsolidator, jdbcClient, transactionManager, sectionSummarizer, systemPromptService,
+            uploadPathGuard, ingestPrompts,
+            new SafeZipExtractor(ZipExtractionProperties.defaults()));
     }
 
     public JobCounts ingest(IngestionJob job, JobContext ctx) {
@@ -527,27 +545,7 @@ public class DocumentIngestService {
     }
 
     private void unzip(Path zipFile, Path destDir) throws IOException {
-        try (ZipFile zip = new ZipFile(zipFile.toFile())) {
-            Enumeration<? extends ZipEntry> entries = zip.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (name.contains("__MACOSX") || name.contains("/.") || name.startsWith("."))
-                    continue;
-                Path entryPath = destDir.resolve(name).normalize();
-                if (!entryPath.startsWith(destDir))
-                    throw new IOException("Bad zip entry (zip-slip): " + entry.getName());
-                if (entry.isDirectory()) {
-                    Files.createDirectories(entryPath);
-                } else {
-                    Files.createDirectories(entryPath.getParent());
-                    try (var is = zip.getInputStream(entry);
-                        var os = Files.newOutputStream(entryPath)) {
-                        is.transferTo(os);
-                    }
-                }
-            }
-        }
+        safeZipExtractor.extract(zipFile, destDir);
     }
 
     private void cleanDirectory(Path path) {

@@ -35,6 +35,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -112,13 +113,16 @@ public class CustomIngestService {
     private final ObjectMapper objectMapper;
     private final SystemPromptService systemPromptService;
     private final IngestPrompts ingestPrompts;
+    private final SafeZipExtractor safeZipExtractor;
 
+    @Autowired
     public CustomIngestService(EmbeddingService embeddingService,
         DocumentRepository documentRepository, GeneralSummarizer generalSummarizer,
         KgWriteRepository kgRepository, JdbcClient jdbcClient,
         PlatformTransactionManager transactionManager, UploadPathGuard uploadPathGuard,
         @Value("${app.ai.summarize.concurrency}") int concurrency,
-        SystemPromptService systemPromptService, IngestPrompts ingestPrompts) {
+        SystemPromptService systemPromptService, IngestPrompts ingestPrompts,
+        SafeZipExtractor safeZipExtractor) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.generalSummarizer = generalSummarizer;
@@ -130,6 +134,18 @@ public class CustomIngestService {
         this.objectMapper = new ObjectMapper();
         this.systemPromptService = systemPromptService;
         this.ingestPrompts = ingestPrompts;
+        this.safeZipExtractor = safeZipExtractor != null ? safeZipExtractor
+            : new SafeZipExtractor(ZipExtractionProperties.defaults());
+    }
+
+    public CustomIngestService(EmbeddingService embeddingService,
+        DocumentRepository documentRepository, GeneralSummarizer generalSummarizer,
+        KgWriteRepository kgRepository, JdbcClient jdbcClient,
+        PlatformTransactionManager transactionManager, UploadPathGuard uploadPathGuard,
+        int concurrency, SystemPromptService systemPromptService, IngestPrompts ingestPrompts) {
+        this(embeddingService, documentRepository, generalSummarizer, kgRepository, jdbcClient,
+            transactionManager, uploadPathGuard, concurrency, systemPromptService, ingestPrompts,
+            new SafeZipExtractor(ZipExtractionProperties.defaults()));
     }
 
     private record DocPayload(String sourceFile, String kind, String name, String title,
@@ -603,7 +619,7 @@ public class CustomIngestService {
         // of them uses the vector — search_graph_entities ranks by trigram
         // similarity(e.name, …), and the only <=> in the codebase is over chunks. Embedding
         // every entity description therefore cost one model round-trip per entity (~10.6k
-        // per version per ingest of the OIM corpus) for a column nothing consults. The
+        // per version per ingest of a large corpus) for a column nothing consults. The
         // description itself IS kept — it is what the MCP tools render. Restore this block
         // if entity vector search is ever added.
         if (EMBED_ENTITY_DESCRIPTIONS && !descriptionsToEmbed.isEmpty()) {
@@ -760,27 +776,7 @@ public class CustomIngestService {
     }
 
     private void unzip(Path zipFile, Path destDir) throws IOException {
-        try (ZipFile zip = new ZipFile(zipFile.toFile())) {
-            Enumeration<? extends ZipEntry> entries = zip.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (name.contains("__MACOSX") || name.contains("/.") || name.startsWith("."))
-                    continue;
-                Path entryPath = destDir.resolve(name).normalize();
-                if (!entryPath.startsWith(destDir))
-                    throw new IOException("Bad zip entry (zip-slip): " + entry.getName());
-                if (entry.isDirectory()) {
-                    Files.createDirectories(entryPath);
-                } else {
-                    Files.createDirectories(entryPath.getParent());
-                    try (var is = zip.getInputStream(entry);
-                        var os = Files.newOutputStream(entryPath)) {
-                        is.transferTo(os);
-                    }
-                }
-            }
-        }
+        safeZipExtractor.extract(zipFile, destDir);
     }
 
     private void cleanDirectory(Path path) {

@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.shared.user.repository.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +13,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +21,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.mockito.ArgumentCaptor;
 import java.time.Instant;
 import java.util.UUID;
@@ -69,7 +73,7 @@ public class UserServiceTest {
         // is what proves the fallback ran rather than any argument this test supplied.
         User provisioned = new User(UUID.randomUUID(), "desktop-sub-1234", "desktop@contoso.com",
             null, Instant.now());
-        when(userRepository.findByEntraOid("desktop-sub-1234"))
+        when(userRepository.upsertAndReturn("desktop-sub-1234", "desktop@contoso.com", null))
             .thenReturn(Optional.of(provisioned));
 
         Optional<User> user = userService.getCurrentUser();
@@ -80,7 +84,8 @@ public class UserServiceTest {
         ArgumentCaptor<String> oid = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> email = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> displayName = ArgumentCaptor.forClass(String.class);
-        verify(userRepository).upsert(oid.capture(), email.capture(), displayName.capture());
+        verify(userRepository).upsertAndReturn(oid.capture(), email.capture(),
+            displayName.capture());
 
         assertThat(oid.getValue()).as("sub becomes the entra_oid when oid is absent")
             .isEqualTo("desktop-sub-1234");
@@ -209,13 +214,46 @@ public class UserServiceTest {
 
         User mockUser = new User(UUID.randomUUID(), "mock-jwt-oid", "jwt-user@palsoftware.local",
             "Jwt User", Instant.now());
-        when(userRepository.findByEntraOid("mock-jwt-oid")).thenReturn(Optional.of(mockUser));
+        when(userRepository.upsertAndReturn("mock-jwt-oid", "jwt-user@palsoftware.local",
+            "Jwt User")).thenReturn(Optional.of(mockUser));
 
         Optional<User> user = userService.getCurrentUser();
 
-        verify(userRepository).upsert("mock-jwt-oid", "jwt-user@palsoftware.local", "Jwt User");
+        verify(userRepository).upsertAndReturn("mock-jwt-oid", "jwt-user@palsoftware.local",
+            "Jwt User");
         assertThat(user).isPresent();
         assertThat(user.get().displayName()).isEqualTo("Jwt User");
+    }
+
+    @Test
+    public void getCurrentUserCachesResolutionWithinSameHttpRequest() {
+        RequestContextHolder
+            .setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+        try {
+            Jwt jwt = mock(Jwt.class);
+            when(jwt.getClaimAsString("oid")).thenReturn("cached-jwt-oid");
+            when(jwt.getClaimAsString("preferred_username")).thenReturn("cached@local");
+            when(jwt.getClaimAsString("name")).thenReturn("Cached User");
+
+            Authentication auth = mock(Authentication.class);
+            when(auth.isAuthenticated()).thenReturn(true);
+            when(auth.getPrincipal()).thenReturn(jwt);
+            SecurityContextHolder.getContext().setAuthentication(auth);
+
+            User mockUser = new User(UUID.randomUUID(), "cached-jwt-oid", "cached@local",
+                "Cached User", Instant.now());
+            when(userRepository.upsertAndReturn("cached-jwt-oid", "cached@local", "Cached User"))
+                .thenReturn(Optional.of(mockUser));
+
+            assertThat(userService.getCurrentUser()).contains(mockUser);
+            assertThat(userService.getCurrentUser()).contains(mockUser);
+            assertThat(userService.getCurrentUser()).contains(mockUser);
+
+            verify(userRepository, times(1)).upsertAndReturn("cached-jwt-oid", "cached@local",
+                "Cached User");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test

@@ -1,11 +1,13 @@
 package de.palsoftware.yvoke.chat.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -26,21 +28,25 @@ public class ChatPropertiesTest {
 
     @Test
     public void testValidProperties() {
-        ChatProperties props = new ChatProperties(true, List.of("model1"), true, false);
+        ChatProperties props = new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isEmpty();
         assertThat(props.traceToolCalls()).isFalse();
 
-        ChatProperties propsWithTrace = new ChatProperties(true, List.of("model1"), true, true);
+        ChatProperties propsWithTrace = new ChatProperties(true, List.of("model1"), true, true, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         assertThat(propsWithTrace.traceToolCalls()).isTrue();
     }
 
     @Test
     public void testTraceToolCallsBindsFromPropertySource() {
-        MapConfigurationPropertySource source = new MapConfigurationPropertySource(
-            Map.of("app.chat.enabled", "true", "app.chat.playbook-validation-enabled", "true",
-                "app.chat.allowed-models", "model1", "app.chat.trace-tool-calls", "true",
-                "app.chat.model-labels", "{\"model1\":\"Model One\"}"));
+        MapConfigurationPropertySource source =
+            new MapConfigurationPropertySource(Map.of("app.chat.enabled", "true",
+                "app.chat.playbook-validation-enabled", "true", "app.chat.allowed-models", "model1",
+                "app.chat.trace-tool-calls", "true", "app.chat.model-labels",
+                "{\"model1\":\"Model One\"}", "app.chat.stale-generating-after", "5m",
+                "app.chat.max-message-chars", "100000", "app.chat.max-history-chars", "400000"));
 
         ChatProperties props = new Binder(source).bind("app.chat", ChatProperties.class).get();
         assertThat(props.traceToolCalls()).isTrue();
@@ -76,9 +82,11 @@ public class ChatPropertiesTest {
      */
     @Test
     public void aCommaSeparatedAllowedModelsValueBindsToTheFullList() {
-        MapConfigurationPropertySource source = new MapConfigurationPropertySource(
-            Map.of("app.chat.enabled", "true", "app.chat.playbook-validation-enabled", "true",
-                "app.chat.allowed-models", "gemini-3.6-flash,gemini-3.5-flash-lite"));
+        MapConfigurationPropertySource source =
+            new MapConfigurationPropertySource(Map.of("app.chat.enabled", "true",
+                "app.chat.playbook-validation-enabled", "true", "app.chat.allowed-models",
+                "gemini-3.6-flash,gemini-3.5-flash-lite", "app.chat.stale-generating-after", "5m",
+                "app.chat.max-message-chars", "100000", "app.chat.max-history-chars", "400000"));
 
         ChatProperties props = new Binder(source).bind("app.chat", ChatProperties.class).get();
 
@@ -92,7 +100,8 @@ public class ChatPropertiesTest {
 
     @Test
     public void testNullAllowedModels() {
-        ChatProperties props = new ChatProperties(true, null, true, false);
+        ChatProperties props = new ChatProperties(true, null, true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isNotEmpty();
         assertThat(violations)
@@ -101,10 +110,38 @@ public class ChatPropertiesTest {
 
     @Test
     public void testEmptyAllowedModels() {
-        ChatProperties props = new ChatProperties(true, Collections.emptyList(), true, false);
+        ChatProperties props = new ChatProperties(true, Collections.emptyList(), true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         Set<ConstraintViolation<ChatProperties>> violations = validator.validate(props);
         assertThat(violations).isNotEmpty();
         assertThat(violations)
             .anyMatch(v -> v.getPropertyPath().toString().equals("allowedModels"));
+    }
+
+    @Test
+    public void rejectsNonPositiveStaleDurationAndCharLimitsInsteadOfDefaultingInline() {
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "", null,
+            100_000, 400_000)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("stale-generating-after");
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ZERO, 100_000, 400_000)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("stale-generating-after");
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofSeconds(-1), 100_000, 400_000)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("stale-generating-after");
+
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofMinutes(5), 0, 400_000)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("max-message-chars");
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofMinutes(5), -1, 400_000)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("max-message-chars");
+
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofMinutes(5), 100_000, 0)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("max-history-chars");
+        assertThatThrownBy(() -> new ChatProperties(true, List.of("model1"), true, false, "",
+            Duration.ofMinutes(5), 100_000, -1)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("max-history-chars");
     }
 }

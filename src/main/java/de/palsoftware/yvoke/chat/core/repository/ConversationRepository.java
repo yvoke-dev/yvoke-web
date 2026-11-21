@@ -132,6 +132,70 @@ public class ConversationRepository {
     }
 
     /**
+     * Lists a user's own non-plugin conversations, independently capped so public conversations
+     * from other users can never starve the owner's sidebar or folder autocomplete.
+     */
+    public List<Conversation> listOwned(UUID userId, int limit, int offset,
+        Set<String> allowedAreasLower) {
+        if (userId == null) {
+            return List.of();
+        }
+        StringBuilder sql = new StringBuilder(
+            """
+                SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area
+                FROM conversations
+                WHERE source <> 'claude-plugin' AND user_id = :userId
+                """);
+        if (allowedAreasLower != null) {
+            if (allowedAreasLower.isEmpty()) {
+                sql.append(" AND area IS NULL");
+            } else {
+                sql.append(" AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))");
+            }
+        }
+        sql.append(" ORDER BY created_at DESC, id ASC LIMIT :limit OFFSET :offset");
+        var spec = jdbcClient.sql(sql.toString()).param("userId", userId).param("limit", limit)
+            .param("offset", offset);
+        if (allowedAreasLower != null && !allowedAreasLower.isEmpty()) {
+            spec = spec.param("allowedAreasLower", allowedAreasLower);
+        }
+        return spec.query(new ConversationRowMapper(objectMapper)).list();
+    }
+
+    /**
+     * Lists other users' {@code public}-tagged conversations visible in {@code allowedAreasLower},
+     * excluding conversations owned by {@code userId} (already loaded by {@link #listOwned}).
+     */
+    public List<Conversation> listOtherPublic(UUID userId, int limit, int offset,
+        Set<String> allowedAreasLower) {
+        if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder sql = new StringBuilder(
+            """
+                SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area
+                FROM conversations
+                WHERE source <> 'claude-plugin'
+                  AND 'public' = ANY(tags)
+                """);
+        if (userId != null) {
+            sql.append(" AND user_id IS DISTINCT FROM :userId");
+        }
+        if (allowedAreasLower != null) {
+            sql.append(" AND area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)");
+        }
+        sql.append(" ORDER BY created_at DESC, id ASC LIMIT :limit OFFSET :offset");
+        var spec = jdbcClient.sql(sql.toString()).param("limit", limit).param("offset", offset);
+        if (userId != null) {
+            spec = spec.param("userId", userId);
+        }
+        if (allowedAreasLower != null) {
+            spec = spec.param("allowedAreasLower", allowedAreasLower);
+        }
+        return spec.query(new ConversationRowMapper(objectMapper)).list();
+    }
+
+    /**
      * Owner-scoped, deliberately unlike {@link #listAll} above.
      *
      * <p>
@@ -203,6 +267,22 @@ public class ConversationRepository {
             WHERE id = :id
             """;
         jdbcClient.sql(sql).param("id", id).param("settings", settingsJson).update();
+    }
+
+    /**
+     * Atomically merges {@code patch} into {@code conversations.settings} in SQL via JSONB
+     * concatenation ({@code ||}), eliminating read-modify-write lost updates between concurrent
+     * setting toggles or desktop PATCH requests.
+     */
+    public void mergeSettings(UUID id, Map<String, Object> patch) {
+        String patchJson = serializeSettings(patch);
+        String sql = """
+            UPDATE conversations
+            SET settings = COALESCE(settings, '{}'::jsonb) || :patch::jsonb,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+            """;
+        jdbcClient.sql(sql).param("id", id).param("patch", patchJson).update();
     }
 
     public void delete(UUID id) {

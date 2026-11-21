@@ -240,9 +240,10 @@ public class EntraAuthoritiesMapperTest {
     private static Set<String> bearerRoleAuthorities(List<String> roles) throws Exception {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("test");
-        SecurityConfig config = new SecurityConfig(Mockito.mock(UserService.class), env, false,
-            "a-real-key", "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read",
-            "https://example/keys", "https://example/issuer", "http://localhost:8080/mcp");
+        SecurityConfig config =
+            new SecurityConfig(Mockito.mock(UserService.class), env, false, "a-real-key", "",
+                "Admin", "User", "api://oim-kb", "api://oim-kb/mcp.read", "https://example/keys",
+                "https://example/issuer", "http://localhost:8080/mcp", true, 120, 60L);
 
         Method m = SecurityConfig.class.getDeclaredMethod("jwtAuthenticationConverter");
         m.setAccessible(true);

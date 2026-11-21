@@ -72,7 +72,7 @@ class DesktopSyncControllerTest {
         profileService = mock(OrchestratorProfileService.class);
         when(profileService.listAllProfiles()).thenReturn(List.of());
         areaService = mock(AreaService.class);
-        orchestratorProperties = new OrchestratorProperties(2, 8, null,
+        orchestratorProperties = new OrchestratorProperties(2, 8, 10, 50, null,
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
                 List.of("oim-access-governance", "oim-developer-api"), null, null, null)));
         orchestratorRunService = mock(DesktopOrchestratorRunService.class);
@@ -114,7 +114,7 @@ class DesktopSyncControllerTest {
     @Test
     void listOrchestratorProfilesReturnsEmptyWhenNoneConfigured() {
         controller = new DesktopSyncController(syncService, playbookService,
-            new OrchestratorProperties(null, null, null, null), profileService,
+            new OrchestratorProperties(null, null, 10, 50, null, null), profileService,
             orchestratorRunService, areaService);
         assertThat(controller.listOrchestratorProfiles()).isEmpty();
     }
@@ -306,7 +306,7 @@ class DesktopSyncControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content(oversizedBatch.toString()))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error", containsString("messages")))
-            .andExpect(jsonPath("$.error", containsString("500")));
+            .andExpect(jsonPath("$.error", containsString("100")));
 
         // The per-message bound: one element over @Size(max = 1_000_000) fails the same way.
         String oversizedContent = "x".repeat(1_000_001);

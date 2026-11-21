@@ -13,9 +13,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.Profile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleConfig;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaults;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,19 +27,23 @@ public class OrchestratorProfileServiceTest {
 
     private OrchestratorProfileRepository repository;
     private OrchestratorProperties properties;
+    private ChatProperties chatProperties;
     private OrchestratorProfileService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(OrchestratorProfileRepository.class);
-        properties = new OrchestratorProperties(2, 8,
+        properties = new OrchestratorProperties(2, 8, 10, 50,
             new RoleDefaults(new RoleConfig("gemini-3.1-pro", "high"),
                 new RoleConfig("gemini-3.1-pro", "high"),
                 new RoleConfig("gemini-3.1-flash", "medium")),
             List.of(
                 new Profile("OIM", "oim-orch", "oim-rev", List.of("spec-1"), null, null, null)));
-        service =
-            new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"));
+        chatProperties = new ChatProperties(true,
+            List.of("model-a", "model-b", "model-c", "gemini-3.8-flash", "gpt-5.4-mini"), true,
+            false, "", Duration.ofMinutes(5), 100_000, 400_000);
+        service = new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"),
+            chatProperties);
     }
 
     @Test
@@ -195,6 +201,45 @@ public class OrchestratorProfileServiceTest {
     }
 
     @Test
+    void saveProfileEnforcesBoundsAllowedModelsAndThinkingLevels() {
+        ChatProperties chatProps =
+            new ChatProperties(true, List.of("gemini-3.8-flash", "gpt-5.4-mini"), true, false, "",
+                Duration.ofMinutes(5), 100_000, 400_000);
+        OrchestratorProfileService strictService = new OrchestratorProfileService(repository,
+            properties, TestAreas.withAreas("OIM"), chatProps);
+
+        // Excess review rounds rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 11, 8, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
+
+        // Excess specialist calls rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 3, 51, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxSpecialistCalls");
+
+        // Unlisted model rejected
+        assertThatThrownBy(() -> strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o",
+            "r", List.of("s"), "unapproved-expensive-model", "high", null, null, null, null, false,
+            null, null, "OIM"))).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("allowed-models");
+
+        // Invalid thinking level rejected
+        assertThatThrownBy(() -> strictService
+            .saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
+                "gemini-3.8-flash", "ultra-max", null, null, null, null, false, null, null, "OIM")))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("thinking level");
+
+        // Valid whitelisted model + normalized thinking level accepted
+        strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
+            "gemini-3.8-flash", "HIGH", "gpt-5.4-mini", "Low", null, "", false, null, null, "OIM"));
+        verify(repository).upsert(any(OrchestratorProfile.class));
+    }
+
+    @Test
     void testExportAndImportProfile() {
         OrchestratorProfile profile = new OrchestratorProfile("ExportImportProfile", 3, 9,
             "orch-pb", "rev-pb", List.of("spec-1", "spec-2"), "model-a", "high", "model-b", "low",
@@ -266,7 +311,7 @@ public class OrchestratorProfileServiceTest {
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
         OrchestratorProfileService twoAreas = new OrchestratorProfileService(repository, properties,
-            TestAreas.withAreas("OIM", "PingID"));
+            TestAreas.withAreas("OIM", "PingID"), chatProperties);
         twoAreas.importProfileFromJson("{\"name\":\"P\",\"area\":\"pingid\"}", "OIM");
 
         ArgumentCaptor<OrchestratorProfile> saved =
@@ -338,5 +383,24 @@ public class OrchestratorProfileServiceTest {
         assertThat(resolvedNegative.maxSpecialistCalls()).isEqualTo(8);
 
         verify(repository, never()).findByName(any());
+    }
+
+    @Test
+    void importProfileFromJsonRejectsExplicitZeroLimitsAndInheritsOmittedLimits() {
+        assertThatThrownBy(() -> service.importProfileFromJson(
+            "{\"name\":\"ZeroRounds\",\"maxReviewRounds\":0,\"maxSpecialistCalls\":5}", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
+        assertThatThrownBy(() -> service.importProfileFromJson(
+            "{\"name\":\"ZeroCalls\",\"maxReviewRounds\":2,\"maxSpecialistCalls\":0}", "OIM"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxSpecialistCalls");
+        verify(repository, never()).upsert(any());
+
+        service.importProfileFromJson("{\"name\":\"OmittedLimits\"}", "OIM");
+        ArgumentCaptor<OrchestratorProfile> saved =
+            ArgumentCaptor.forClass(OrchestratorProfile.class);
+        verify(repository).upsert(saved.capture());
+        assertThat(saved.getValue().maxReviewRounds()).isEqualTo(2);
+        assertThat(saved.getValue().maxSpecialistCalls()).isEqualTo(8);
     }
 }

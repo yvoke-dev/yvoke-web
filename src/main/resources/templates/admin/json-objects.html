@@ -373,14 +373,17 @@
                 enumValues = schema.properties[fieldName].enum;
             }
             
-            valueContainer.innerHTML = '';
+            valueContainer.replaceChildren();
             if (hasEnum) {
                 const select = document.createElement('select');
                 select.className = 'form-select rule-value';
                 select.style.width = '100%';
-                select.innerHTML = '<option value="">Select a value...</option>' + 
-                                   enumValues.map(val => `<option value="${val}">${val}</option>`).join('');
-                select.value = initialValue;
+                window.JsonPathFilter.populateEnumSelect(
+                    select,
+                    enumValues,
+                    initialValue,
+                    () => document.createElement('option')
+                );
                 valueContainer.appendChild(select);
             } else {
                 const input = document.createElement('input');
@@ -403,7 +406,11 @@
                         fetch(`/admin/json-objects/distinct-values?collection=${encodeURIComponent(collection)}&fieldName=${encodeURIComponent(fieldName)}`)
                             .then(res => res.json())
                             .then(values => {
-                                datalist.innerHTML = values.map(v => `<option value="${v.replace(/"/g, '&quot;')}"></option>`).join('');
+                                window.JsonPathFilter.populateDatalist(
+                                    datalist,
+                                    values,
+                                    () => document.createElement('option')
+                                );
                             })
                             .catch(err => console.error('Failed to load distinct values', err));
                     }

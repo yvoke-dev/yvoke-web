@@ -39,6 +39,7 @@ import de.palsoftware.yvoke.kg.core.service.KgAdminViewService;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
 import de.palsoftware.yvoke.kg.web.admin.KgAdminController;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
@@ -103,7 +104,7 @@ public class Milestone4Challenger1AdversarialTest {
             collectionService = mock(CollectionService.class);
             tagService = mock(TagService.class);
             controller = new CollectionAdminController(collectionService, tagService,
-                TestAreas.withAreas("AreaA", "AreaB"));
+                TestAreas.withAreas("AreaA", "AreaB"), mock(AdminAuditLogger.class));
         }
 
         @Test
@@ -156,7 +157,7 @@ public class Milestone4Challenger1AdversarialTest {
             collectionService = mock(CollectionService.class);
             tagService = mock(TagService.class);
             controller = new CollectionAdminController(collectionService, tagService,
-                TestAreas.withAreas("AreaA", "AreaB"));
+                TestAreas.withAreas("AreaA", "AreaB"), mock(AdminAuditLogger.class));
         }
 
         @Test
@@ -234,7 +235,7 @@ public class Milestone4Challenger1AdversarialTest {
         @BeforeEach
         void setUp() {
             areaService = mock(AreaService.class);
-            controller = new AreaAdminController(areaService);
+            controller = new AreaAdminController(areaService, mock(AdminAuditLogger.class));
             mvc = MockMvcBuilders.standaloneSetup(controller).build();
         }
 
@@ -378,8 +379,8 @@ public class Milestone4Challenger1AdversarialTest {
 
             CollectionService colService = mock(CollectionService.class);
             JsonObjectService jsonObjectService = mock(JsonObjectService.class);
-            JsonObjectAdminController controller =
-                new JsonObjectAdminController(jsonObjectService, colService, new ObjectMapper());
+            JsonObjectAdminController controller = new JsonObjectAdminController(jsonObjectService,
+                colService, new ObjectMapper(), mock(AdminAuditLogger.class));
 
             Collection colB = new Collection(UUID.randomUUID(), "CollB", "desc", List.of(),
                 OffsetDateTime.now(), "AreaB");
@@ -477,6 +478,9 @@ public class Milestone4Challenger1AdversarialTest {
             env.setProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri",
                 "https://example/issuer");
             env.setProperty("app.security.mcp.resource-url", "http://localhost:8080/mcp");
+            env.setProperty("app.rate-limit.enabled", "true");
+            env.setProperty("app.rate-limit.mcp-capacity", "120");
+            env.setProperty("app.rate-limit.mcp-refill-period-seconds", "60");
 
             MockServletContext servletContext = new MockServletContext();
             context = new AnnotationConfigWebApplicationContext();

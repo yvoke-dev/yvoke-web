@@ -95,7 +95,7 @@
                             <div>
                                 <strong style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Target</strong>
                                 <div style="margin-top: 0.35rem; font-size: 0.9rem;">
-                                    <div th:text="${instance.targetCollection}">OIM - Docs</div>
+                                    <div th:text="${instance.targetCollection}">Docs</div>
                                     <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Tag: <span th:text="${instance.targetTag != null ? instance.targetTag : 'none'}">10.0</span></div>
                                     <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${instance.processAttachments} ? 'Attachments: processed' : 'Attachments: skipped'">Attachments: skipped</div>
                                     <div style="font-size: 0.8rem; color: var(--text-secondary);" th:text="${instance.buildSectionSummaries} ? 'Section summaries: ' + ${instance.summarizePrompt} : 'Section summaries: off'">Section summaries: off</div>

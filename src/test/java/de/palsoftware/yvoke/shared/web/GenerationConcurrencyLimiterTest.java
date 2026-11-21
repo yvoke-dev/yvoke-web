@@ -37,4 +37,17 @@ class GenerationConcurrencyLimiterTest {
         // release is a harmless no-op when disabled.
         limiter.release();
     }
+
+    @Test
+    void releaseNeverInflatesCapacityAboveMaxConcurrent() {
+        GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
+        assertThat(limiter.tryAcquire()).isTrue();
+        limiter.release();
+        // Extraneous double-release must never inflate permits above maxConcurrent (1).
+        limiter.release();
+        limiter.release();
+        assertThat(limiter.availablePermits()).isEqualTo(1);
+        assertThat(limiter.tryAcquire()).isTrue();
+        assertThat(limiter.tryAcquire()).isFalse();
+    }
 }

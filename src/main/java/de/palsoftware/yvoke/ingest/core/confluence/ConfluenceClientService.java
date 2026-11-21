@@ -1,9 +1,14 @@
 package de.palsoftware.yvoke.ingest.core.confluence;
 
+import de.palsoftware.yvoke.shared.io.BoundedStreams;
+import de.palsoftware.yvoke.shared.security.BlockedHostException;
+import de.palsoftware.yvoke.shared.security.DevProfiles;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
 import de.palsoftware.yvoke.shared.security.SecretDecryptionException;
+import de.palsoftware.yvoke.shared.security.SsrfAddressValidator;
 import jakarta.annotation.Nullable;
-import java.net.InetAddress;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +24,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,10 +33,12 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -61,6 +69,10 @@ public class ConfluenceClientService {
 
     private static final Pattern DATE_PREFIX_PATTERN = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})");
 
+    public static final long MAX_ATTACHMENT_BYTES = 50L * 1024L * 1024L;
+
+    private static final int MAX_LOGGED_ERROR_BODY_CHARS = 256;
+
     private final SecretCipher secretCipher;
 
     private final RestClient.Builder restClientBuilder;
@@ -68,6 +80,9 @@ public class ConfluenceClientService {
     private final int retryMaxAttempts;
     private final long retryInitialBackoffMs;
     private final long retryMaxBackoffMs;
+    private final boolean requireHttps;
+    private final List<String> allowedHosts;
+    private final long maxAttachmentBytes;
 
     /**
      * Per-instance clients, so a sync neither rebuilds the client per call nor shares one across
@@ -77,16 +92,38 @@ public class ConfluenceClientService {
 
     private final Map<UserCacheKey, String> userDisplayNameCache = new ConcurrentHashMap<>();
 
+    @Autowired
     public ConfluenceClientService(SecretCipher secretCipher,
         @Qualifier("confluenceRestClientBuilder") RestClient.Builder restClientBuilder,
         @Value("${app.confluence.retry.max-attempts}") int retryMaxAttempts,
         @Value("${app.confluence.retry.initial-backoff-ms}") long retryInitialBackoffMs,
-        @Value("${app.confluence.retry.max-backoff-ms}") long retryMaxBackoffMs) {
+        @Value("${app.confluence.retry.max-backoff-ms}") long retryMaxBackoffMs,
+        @Value("${app.confluence.allowed-hosts}") String allowedHosts, Environment environment) {
+        this(secretCipher, restClientBuilder, retryMaxAttempts, retryInitialBackoffMs,
+            retryMaxBackoffMs, environment == null || !DevProfiles.anyActive(environment),
+            parseAllowedHosts(allowedHosts), MAX_ATTACHMENT_BYTES);
+    }
+
+    ConfluenceClientService(SecretCipher secretCipher, RestClient.Builder restClientBuilder,
+        int retryMaxAttempts, long retryInitialBackoffMs, long retryMaxBackoffMs,
+        boolean requireHttps, List<String> allowedHosts, long maxAttachmentBytes) {
         this.secretCipher = secretCipher;
         this.restClientBuilder = restClientBuilder;
         this.retryMaxAttempts = Math.max(1, retryMaxAttempts);
         this.retryInitialBackoffMs = Math.max(0, retryInitialBackoffMs);
         this.retryMaxBackoffMs = Math.max(0, retryMaxBackoffMs);
+        this.requireHttps = requireHttps;
+        this.allowedHosts = allowedHosts == null ? List.of() : List.copyOf(allowedHosts);
+        this.maxAttachmentBytes =
+            maxAttachmentBytes > 0 ? maxAttachmentBytes : MAX_ATTACHMENT_BYTES;
+    }
+
+    private static List<String> parseAllowedHosts(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(",")).map(String::trim).filter(s -> !s.isEmpty())
+            .map(s -> s.toLowerCase(Locale.ROOT)).toList();
     }
 
     /** A built client plus the connection fields it was built from. */
@@ -217,7 +254,7 @@ public class ConfluenceClientService {
             .defaultHeader("Accept", "application/json").build();
     }
 
-    private static void assertSafeConfluenceUrl(String url) {
+    private void assertSafeConfluenceUrl(String url) {
         URI uri;
         try {
             uri = URI.create(url);
@@ -227,25 +264,43 @@ public class ConfluenceClientService {
         String scheme = uri.getScheme();
         if (scheme == null
             || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
-            throw new IllegalArgumentException("Confluence URL must use http(s): " + url);
+            throw new BlockedHostException("Confluence URL must use http(s): " + url);
+        }
+        if (requireHttps && !scheme.equalsIgnoreCase("https")) {
+            throw new BlockedHostException(
+                "Confluence URL must use https outside development profiles: " + url);
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("Confluence URL has no host: " + url);
         }
-        try {
-            for (InetAddress addr : InetAddress.getAllByName(host)) {
-                if (addr.isLoopbackAddress() || addr.isAnyLocalAddress()
-                    || addr.isLinkLocalAddress() || addr.isMulticastAddress()
-                    || addr.isSiteLocalAddress()) {
-                    throw new IllegalArgumentException(
-                        "Confluence URL resolves to a blocked address (" + addr.getHostAddress()
-                            + "): " + host);
-                }
-            }
-        } catch (UnknownHostException e) {
-            throw new IllegalArgumentException("Confluence host cannot be resolved: " + host);
+        if (!isHostAllowed(host)) {
+            throw new BlockedHostException("Confluence host is not in allowed-hosts: " + host);
         }
+        try {
+            SsrfAddressValidator.resolveAndValidate(host);
+        } catch (UnknownHostException e) {
+            throw new BlockedHostException(e.getMessage() != null ? e.getMessage()
+                : "Confluence host cannot be resolved: " + host, e);
+        }
+    }
+
+    private boolean isHostAllowed(String host) {
+        if (allowedHosts.isEmpty()) {
+            return true;
+        }
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        for (String pattern : allowedHosts) {
+            if (pattern.startsWith("*.")) {
+                String suffix = pattern.substring(1); // ".atlassian.net"
+                if (lowerHost.endsWith(suffix) && lowerHost.length() > suffix.length()) {
+                    return true;
+                }
+            } else if (lowerHost.equals(pattern)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void assertSameHostAsBase(String baseUrl, URI candidate) {
@@ -326,14 +381,25 @@ public class ConfluenceClientService {
                 totalPagesFound, samplePages.toString());
 
         } catch (RestClientResponseException e) {
-            log.error("Confluence test failed with REST response error: status={}, body={}",
-                e.getStatusCode(), e.getResponseBodyAsString(), e);
-            return ConnectionTestResult.failure(String.format("Atlassian API returned HTTP %d: %s",
-                e.getStatusCode().value(), e.getResponseBodyAsString()));
+            String rawBody = e.getResponseBodyAsString();
+            String logPreview = rawBody == null ? ""
+                : rawBody.replaceAll("[\\r\\n]+", " ").substring(0,
+                    Math.min(rawBody.length(), MAX_LOGGED_ERROR_BODY_CHARS));
+            log.warn("Confluence test failed with HTTP {}: {}", e.getStatusCode().value(),
+                logPreview);
+            // Never return remote response bodies to the browser (SSRF response-body oracle).
+            return ConnectionTestResult
+                .failure("Atlassian API returned HTTP " + e.getStatusCode().value());
+        } catch (BlockedHostException e) {
+            log.warn("Confluence connection test blocked: {}", e.getMessage());
+            return ConnectionTestResult.failure("Confluence host is not allowed.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.warn("Confluence connection test rejected: {}", e.getMessage());
+            return ConnectionTestResult.failure(e.getMessage());
         } catch (Exception e) {
             log.error("Confluence connection test failed", e);
-            return ConnectionTestResult
-                .failure(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            return ConnectionTestResult.failure(
+                "Confluence connection test failed (" + e.getClass().getSimpleName() + ")");
         }
     }
 
@@ -755,7 +821,31 @@ public class ConfluenceClientService {
             assertSafeConfluenceUrl(downloadUrl);
             assertSameHostAsBase(baseUrl(instance), URI.create(downloadUrl));
         }
-        return getClient(instance).get().uri(downloadUrl).retrieve().body(byte[].class);
+        return getClient(instance).get().uri(downloadUrl).exchange((request, response) -> {
+            if (response.getStatusCode().isError()) {
+                byte[] errBody = new byte[0];
+                try (InputStream errStream = response.getBody()) {
+                    errBody = BoundedStreams.readBounded(errStream, 4096);
+                } catch (IllegalArgumentException | IOException ignored) {
+                    // Truncated/unreadable error body is non-fatal
+                }
+                throw new RestClientResponseException(
+                    "HTTP " + response.getStatusCode().value() + " downloading attachment",
+                    response.getStatusCode(), response.getStatusText(), response.getHeaders(),
+                    errBody, StandardCharsets.UTF_8);
+            }
+            long contentLength = response.getHeaders().getContentLength();
+            if (contentLength > maxAttachmentBytes) {
+                throw new AttachmentTooLargeException("Attachment exceeds maximum allowed size ("
+                    + maxAttachmentBytes + " bytes): Content-Length=" + contentLength);
+            }
+            try (InputStream body = response.getBody()) {
+                return BoundedStreams.readBounded(body, maxAttachmentBytes);
+            } catch (IllegalArgumentException e) {
+                throw new AttachmentTooLargeException(
+                    "Attachment exceeds maximum allowed size (" + maxAttachmentBytes + " bytes)");
+            }
+        });
     }
 
     /**

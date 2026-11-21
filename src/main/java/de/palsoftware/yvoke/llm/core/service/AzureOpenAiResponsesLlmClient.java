@@ -62,7 +62,7 @@ import org.slf4j.LoggerFactory;
  * {@code com.openai:openai-java}.
  *
  * <p>
- * This exists because {@link AzureOpenAiLlmClient} cannot ask a reasoning model to think hard while
+ * This exists because {@code AzureOpenAiLlmClient} cannot ask a reasoning model to think hard while
  * it holds tools: chat completions answers that pair with
  * {@code "Function tools with reasoning_effort are not supported for this model in
  * /v1/chat/completions. Please use /v1/responses instead."} — measured on {@code gpt-5.6-luna} at
@@ -100,7 +100,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      */
     static final String V1_SUFFIX = "/openai/v1";
 
-    /** Same detection as {@link AzureOpenAiLlmClient}; see that field for why it is shaped so. */
+    /** Same detection as {@code AzureOpenAiLlmClient}; see that field for why it is shaped so. */
     private static final Pattern REASONING_MODEL_PATTERN =
         Pattern.compile("(?:^|[^a-z0-9])o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning");
 
@@ -150,7 +150,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      * <p>
      * A blank endpoint is fatal rather than defaulted: openai-java falls back to
      * {@code api.openai.com}, so it would ship the Azure key to a third party instead of merely
-     * failing — the same trap {@link AzureOpenAiLlmClient} guards against.
+     * failing — the same trap {@code AzureOpenAiLlmClient} guards against.
      */
     static String baseUrl(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
@@ -167,7 +167,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
 
     /**
      * Releases the OkHttp connection pool. Spring calls this on context shutdown because the client
-     * is a singleton bean. Unlike {@link AzureOpenAiLlmClient} — whose azure-core transport really
+     * is a singleton bean. Unlike {@code AzureOpenAiLlmClient} — whose azure-core transport really
      * does have nothing to release — {@code OpenAIClient} owns a pool, so this is not a no-op.
      */
     @Override
@@ -348,7 +348,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      * Describes a terminal turn that should fail the call, or {@code null} when it may stand.
      *
      * <p>
-     * Truncation is deliberately NOT a failure: {@link AzureOpenAiLlmClient} lists
+     * Truncation is deliberately NOT a failure: {@code AzureOpenAiLlmClient} lists
      * {@code TOKEN_LIMIT_REACHED} among its benign finish reasons and delivers the partial answer,
      * so raising here would make one provider stricter than the rest for the same outcome.
      */
@@ -710,7 +710,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         return ReasoningEffort.of(normalized);
     }
 
-    /** See {@link AzureOpenAiLlmClient#isReasoningModel(String)} — the same rule, same reasons. */
+    /** See {@code isReasoningModel(String)} — the same rule, same reasons. */
     boolean isReasoningModel(String model) {
         if (model == null) {
             return false;

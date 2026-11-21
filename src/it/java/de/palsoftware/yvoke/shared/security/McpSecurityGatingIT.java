@@ -118,7 +118,7 @@ public class McpSecurityGatingIT {
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.resource").value("http://localhost:8080/mcp"))
                 .andExpect(jsonPath("$.authorization_servers[0]").value("https://login.microsoftonline.com/common/v2.0"))
-                .andExpect(jsonPath("$.scopes_supported[0]").value("api://oim-kb/mcp.read"))
+                .andExpect(jsonPath("$.scopes_supported[0]").value("api://yvoke/mcp.read"))
                 .andExpect(jsonPath("$.bearer_methods_supported[0]").value("header"));
     }
 
@@ -288,7 +288,7 @@ public class McpSecurityGatingIT {
         @SuppressWarnings("unchecked")
         List<Object> scopes = (List<Object>) authorizationServerMetadata.get("scopes_supported");
         assertThat(scopes).as("a client cannot request a scope the metadata never advertises")
-            .contains("api://oim-kb/mcp.read");
+            .contains("api://yvoke/mcp.read");
 
         // The configured value already ends in /v2.0, so only a non-normalised tenant URL can show
         // that the normalisation is still there.

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -98,11 +99,12 @@ public class KgAdminController {
         String tagParam = (tag != null && !tag.isBlank()) ? tag : null;
         String kindParam = (kind != null && !kind.isBlank()) ? kind : null;
 
+        int clampedHops = Math.max(1, Math.min(hops, 5));
         model.addAttribute("collection", collection);
         model.addAttribute("tag", tagParam);
         model.addAttribute("query", queryParam);
         model.addAttribute("kind", kindParam);
-        model.addAttribute("hops", hops);
+        model.addAttribute("hops", clampedHops);
         model.addAttribute("kinds", kgAdminViewService.listKinds(collection, tagParam));
 
         if (queryParam != null) {
@@ -116,11 +118,11 @@ public class KgAdminController {
         } else {
             // Default to browsing all entities in the scope (optionally filtered by kind).
             int size = 50;
-            int safePage = Math.max(page, 0);
+            int safePage = PagingParams.clampPageForOffset(page, size);
             List<KgEntityView> searchResults = kgAdminViewService.listEntities(collection, tagParam,
-                kindParam, size, safePage * size);
+                kindParam, size, PagingParams.safeOffset(safePage, size));
             long totalCount = kgAdminViewService.countEntities(collection, tagParam, kindParam);
-            int totalPages = (int) Math.ceil((double) totalCount / size);
+            int totalPages = PagingParams.totalPages(totalCount, size);
 
             model.addAttribute("searchResults", searchResults);
             model.addAttribute("browseMode", true);
@@ -145,14 +147,12 @@ public class KgAdminController {
                 model.addAttribute("metadataJson",
                     nb.entity() != null ? nb.entity().metadataJson() : "{}");
 
-                if ("OIM-DB".equals(collection)) {
-                    model.addAttribute("fkWalk",
-                        kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
-                    model.addAttribute("callers", kgAdminViewService.calls(selectedEntity,
-                        "callers", 50, tagParam, collection));
-                    model.addAttribute("callees", kgAdminViewService.calls(selectedEntity,
-                        "callees", 50, tagParam, collection));
-                }
+                model.addAttribute("fkWalk",
+                    kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
+                model.addAttribute("callers",
+                    kgAdminViewService.calls(selectedEntity, "callers", 50, tagParam, collection));
+                model.addAttribute("callees",
+                    kgAdminViewService.calls(selectedEntity, "callees", 50, tagParam, collection));
             } else {
                 // Fallback direct entity search if not a table
                 Optional<KgEntityView> exact =
@@ -189,6 +189,9 @@ public class KgAdminController {
         int entityCount = kgReadRepository.getEntityCount(collection, tagParam);
         int relationshipCount = kgReadRepository.getRelationshipCount(collection, tagParam);
         kgWriteRepository.deleteTagGraph(collection, tagParam);
+
+        auditLogRepository.log(getCurrentAdminOid(), "CLEAR_KG", collection, Map.of("tag", tagParam,
+            "entitiesDeleted", entityCount, "relationshipsDeleted", relationshipCount));
 
         redirectAttributes.addFlashAttribute("success",
             "Cleared knowledge graph for " + collection + " / " + tagParam + " — deleted "

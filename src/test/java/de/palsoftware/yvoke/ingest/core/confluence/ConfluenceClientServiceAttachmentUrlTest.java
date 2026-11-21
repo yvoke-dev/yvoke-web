@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -42,7 +43,8 @@ class ConfluenceClientServiceAttachmentUrlTest {
     private final class GuardedClientService extends ConfluenceClientService {
 
         private GuardedClientService() {
-            super(mock(SecretCipher.class), RestClient.builder(), 1, 1, 5);
+            super(mock(SecretCipher.class), RestClient.builder(), 1, 1, 5, true, List.of(),
+                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         }
 
         @Override

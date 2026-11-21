@@ -106,6 +106,13 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
   info:
     git:
       # /actuator/info is anonymous, and the build-info contributor deliberately publishes
@@ -120,7 +127,7 @@ app:
   security:
     mock: ${APP_SECURITY_MOCK:false}
     api-key: ${APP_SECURITY_API_KEY:dev-key-12345}
-    # Per-area machine API keys as a JSON object, e.g. {"OIM":"...","PingID":"..."}.
+    # Per-area machine API keys as a JSON object, e.g. {"Docs":"...","Platform":"..."}.
     # Each key grants ROLE_INGEST scoped to its named area on /api/ingest/**, /api/document/**, and /api/jobs/**.
     # Blank or {} configures no per-area keys.
     area-api-keys: ${APP_SECURITY_AREA_API_KEYS:}
@@ -131,12 +138,14 @@ app:
     # environment that sets a secret-key must also set its own APP_SECRET_SALT. Changing it (or the
     # key) invalidates previously encrypted secrets, which must then be re-encrypted.
     secret-salt: ${APP_SECRET_SALT:}
+    # Hard byte ceiling on JSON/API request bodies (/api/chat/**, /mcp/**) before Jackson parses.
+    max-json-body-bytes: 10485760
     roles:
       admin-claim: ${APP_SECURITY_ADMIN_CLAIM:Admin}
       user-claim: ${APP_SECURITY_USER_CLAIM:User}
     mcp:
-      allowed-audience: ${APP_SECURITY_MCP_AUDIENCE:api://oim-kb}
-      required-scope: ${APP_SECURITY_MCP_SCOPE:api://oim-kb/mcp.read}
+      allowed-audience: ${APP_SECURITY_MCP_AUDIENCE:api://yvoke}
+      required-scope: ${APP_SECURITY_MCP_SCOPE:api://yvoke/mcp.read}
       resource-url: ${APP_SECURITY_MCP_RESOURCE_URL:http://localhost:8080/mcp}
       authorization-server-url: ${APP_SECURITY_MCP_AUTHORIZATION_SERVER_URL:https://login.microsoftonline.com/${ENTRA_TENANT_ID:common}/v2.0}
   ai:
@@ -144,9 +153,9 @@ app:
     #
     # 'cloudflare-gemini' and 'azure-openai' are RETIRED: LlmConfig rejects them at
     # startup rather than letting them reach the unknown-value fallback, which answers with Gemini
-    # on a Gemini key and logs the operator's own spelling back at them. Both classes, their
-    # tests and the settings below are deliberately left in place, so re-enabling either of them is a
-    # branch in LlmConfig plus an entry in LlmRouteId. Note that retiring cloudflare-gemini gives up
+    # on a Gemini key and logs the operator's own spelling back at them. Both retired client classes
+    # and their tests were deleted (recoverable from git history); the settings below remain only so
+    # existing environment files stay inert. Note that retiring cloudflare-gemini gives up
     # the AI Gateway's response cache, its cf-aig-metadata attribution and the cost_avoided figures
     # derived from cache hits.
     provider: ${AI_PROVIDER:gemini}
@@ -229,6 +238,8 @@ app:
       # correct. The extra round is cheap now that a citation-only revision cannot delegate.
       max-review-rounds: 3
       max-specialist-calls: 8
+      max-review-rounds-limit: 10
+      max-specialist-calls-limit: 50
   retrieval:
     default-limit: 10
     # Ceiling on rows returned by any search. Both candidate pools are derived from the
@@ -252,7 +263,13 @@ app:
     enabled: true
     concurrency: 4
     poll-interval: 2s
+    heartbeat-interval: 30s
+    stale-after: 5m
   confluence:
+    # Optional comma-separated host allowlist (exact host or *.suffix, e.g. *.atlassian.net).
+    # Empty allows any public HTTPS host (still subject to SSRF IP filtering).
+    allowed-hosts: ${APP_CONFLUENCE_ALLOWED_HOSTS:}
+    attachment-parse-timeout-seconds: 30
     # Backoff for the Confluence body fetch: a full-space crawl issues one request per page at
     # `app.worker.concurrency`, so HTTP 429 is expected. `Retry-After` wins when the server sends
     # it, capped by max-backoff-ms so a hostile/large value cannot park a worker thread.
@@ -260,12 +277,20 @@ app:
       max-attempts: ${APP_CONFLUENCE_RETRY_MAX_ATTEMPTS:4}
       initial-backoff-ms: ${APP_CONFLUENCE_RETRY_INITIAL_BACKOFF_MS:1000}
       max-backoff-ms: ${APP_CONFLUENCE_RETRY_MAX_BACKOFF_MS:30000}
+  ingest:
+    zip:
+      max-entries: 50000
+      max-entry-bytes: 52428800
+      max-total-bytes: 524288000
+      max-compression-ratio: 100
   # SEC-03: per-principal token-bucket rate limiting for the generation/ingest endpoints. Each
   # principal may make up to `capacity` such requests per `refill-period-seconds` before receiving 429.
   rate-limit:
     enabled: ${APP_RATE_LIMIT_ENABLED:true}
     capacity: ${APP_RATE_LIMIT_CAPACITY:20}
     refill-period-seconds: ${APP_RATE_LIMIT_REFILL_SECONDS:60}
+    mcp-capacity: ${APP_RATE_LIMIT_MCP_CAPACITY:120}
+    mcp-refill-period-seconds: ${APP_RATE_LIMIT_MCP_REFILL_SECONDS:60}
   generation:
     # PRF-15: app-wide cap on concurrently-running SSE generations. Excess requests get 429 until a
     # slot frees. Set to 0 to disable.
@@ -281,6 +306,9 @@ app:
     model-labels: '${AI_MODEL_LABELS:{"gemini-3.8-flash":"Gemini - 3.8 Flash","gemini-3.5-flash-lite":"Gemini - 3.5 Flash Lite","gpt-5.4-mini":"Azure - GPT 5.4 Mini","DeepSeek-V4-Flash":"Azure - DeepSeek V4 Flash","gpt-5.6-luna":"Azure - GPT 5.6 Luna","deepseek/deepseek-v4.1-flash-1017":"OpenRouter - DeepSeek 4.1 Flash"}}'
     playbook-validation-enabled: ${APP_CHAT_PLAYBOOK_VALIDATION_ENABLED:true}
     trace-tool-calls: ${APP_CHAT_TRACE_TOOL_CALLS:false}
+    stale-generating-after: 5m
+    max-message-chars: 100000
+    max-history-chars: 400000
     cost-explorer:
       # PRF-01: hard row cap for the per-call/per-message cost-explorer views so a wide time range
       # cannot materialize the entire llm_call_logs table into heap.

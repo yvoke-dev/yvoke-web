@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -279,33 +280,53 @@ public class SchemaPresenceIT {
     }
 
     @Test
-    public void testMigrationV17RetireChatSystemPrompts() {
+    public void testMigrationV17RetireChatSystemPromptsIsNonDestructiveForRollingUpgrade() {
+        // V17 is the non-destructive expand phase: 1.3.0 columns remain intact until the follow-up
+        // release so rolling upgrades and rollbacks from 1.3.0 succeed without a DB restore.
         assertThat(columnExists("playbooks", "system_prompt"))
-            .withFailMessage("Column playbooks.system_prompt should be dropped (V17)")
-            .isFalse();
-        assertThat(indexExists("playbooks", "idx_playbooks_system_prompt"))
-            .withFailMessage("Index idx_playbooks_system_prompt should be dropped (V17)")
-            .isFalse();
+            .withFailMessage("Column playbooks.system_prompt must remain during expand phase (V17)")
+            .isTrue();
         assertThat(columnExists("areas", "default_system_prompt"))
-            .withFailMessage("Column areas.default_system_prompt should be dropped (V17)")
-            .isFalse();
-        assertThat(indexExists("areas", "idx_areas_default_system_prompt"))
-            .withFailMessage("Index idx_areas_default_system_prompt should be dropped (V17)")
-            .isFalse();
+            .withFailMessage("Column areas.default_system_prompt must remain during expand phase (V17)")
+            .isTrue();
+    }
 
-        // Check constraint enforces KG or SUMMARIZE
-        String promptName = "v17-it-prompt-" + UUID.randomUUID();
+    @Test
+    public void testMigrationV18HardeningLeasesAndConstraints() {
+        assertThat(columnExists("ingestion_jobs", "worker_id")).isTrue();
+        assertThat(columnExists("ingestion_jobs", "heartbeat_at")).isTrue();
+        assertThat(indexExists("collections", "ux_collections_name_lower")).isTrue();
+
+        // Case-insensitive collection uniqueness enforced by DB index
+        UUID c1 = UUID.randomUUID();
+        UUID c2 = UUID.randomUUID();
+        String base = "v18-col-" + UUID.randomUUID().toString().substring(0, 8);
         try {
             jdbcTemplate.update(
-                "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'KG', 'body', 'test')",
-                promptName);
+                "INSERT INTO collections (id, name, description, area) VALUES (?, ?, 'a', 'OIM')",
+                c1, base.toLowerCase(Locale.ROOT));
             assertThatThrownBy(() -> jdbcTemplate.update(
-                "INSERT INTO system_prompts (name, type, system_prompt, description) VALUES (?, 'CHAT', 'body', 'test')",
-                promptName + "-chat"))
+                "INSERT INTO collections (id, name, description, area) VALUES (?, ?, 'b', 'OIM')",
+                c2, base.toUpperCase(Locale.ROOT)))
                 .isInstanceOf(DataIntegrityViolationException.class);
         } finally {
-            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", promptName);
+            jdbcTemplate.update("DELETE FROM collections WHERE id IN (?, ?)", c1, c2);
         }
+
+        // Orchestrator profile bounds enforced by CHECK constraints (1..50 and 1..200)
+        String badProfile = "v18-prof-" + UUID.randomUUID().toString().substring(0, 8);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 0, 8)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 3, 0)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 999, 8)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO orchestrator_profiles (name, area, max_review_rounds, max_specialist_calls) VALUES (?, 'OIM', 3, 999)",
+            badProfile)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test

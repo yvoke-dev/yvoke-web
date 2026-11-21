@@ -85,9 +85,8 @@ public class LifecycleService {
 
         collectionRepository.findByName(collection).ifPresent(col -> {
             jsonObjectService.deleteObjectsByCollection(col.id());
+            collectionRepository.deleteById(col.id());
         });
-
-        collectionRepository.delete(collection);
 
         auditLogRepository.log(getActor(), "DELETE_COLLECTION", collection,
             Map.of("collection", collection, "documents_deleted", docsDeleted));

@@ -12,8 +12,25 @@ import org.junit.jupiter.api.Test;
 public class OrchestratorPropertiesTest {
 
     private OrchestratorProperties props(Profile... profiles) {
-        return new OrchestratorProperties(2, 8, new RoleDefaults(new RoleConfig("pro", "high"),
-            new RoleConfig("pro", "high"), new RoleConfig("flash", "medium")), List.of(profiles));
+        return new OrchestratorProperties(
+            2, 8, 10, 50, new RoleDefaults(new RoleConfig("pro", "high"),
+                new RoleConfig("pro", "high"), new RoleConfig("flash", "medium")),
+            List.of(profiles));
+    }
+
+    @Test
+    public void resolvedLimitsFailFastWhenUnconfiguredOrNonPositive() {
+        OrchestratorProperties missing = new OrchestratorProperties(2, 8, null, null, null, null);
+        assertThatThrownBy(missing::resolvedMaxReviewRoundsLimit)
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(missing::resolvedMaxSpecialistCallsLimit)
+            .isInstanceOf(IllegalStateException.class);
+
+        OrchestratorProperties zero = new OrchestratorProperties(2, 8, 0, -1, null, null);
+        assertThatThrownBy(zero::resolvedMaxReviewRoundsLimit)
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(zero::resolvedMaxSpecialistCallsLimit)
+            .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

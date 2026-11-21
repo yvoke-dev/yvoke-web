@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -24,6 +25,7 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -57,8 +59,9 @@ public class OrchestratorAdminControllerTest {
         profileService = mock(OrchestratorProfileService.class);
         playbookService = mock(PlaybookService.class);
         chatConversationService = mock(ChatConversationService.class);
-        // All-null: the record's own fallbacks, which application.yml is pinned to match.
-        properties = new OrchestratorProperties(null, null, null, null);
+        // Null round/call defaults fall back to the record's own defaults, pinned to
+        // application.yml.
+        properties = new OrchestratorProperties(null, null, 10, 50, null, null);
 
         when(playbookService.getPlaybook(any())).thenAnswer(inv -> Optional
             .of(new Playbook(inv.getArgument(0), inv.getArgument(0), "", "", List.of(), false,
@@ -66,7 +69,7 @@ public class OrchestratorAdminControllerTest {
 
         controller = new OrchestratorAdminController(profileService, playbookService,
             chatConversationService, properties, TestAreas.withAreas("OIM", "Finance"),
-            new ObjectMapper().findAndRegisterModules());
+            new ObjectMapper().findAndRegisterModules(), mock(AdminAuditLogger.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -428,6 +431,14 @@ public class OrchestratorAdminControllerTest {
 
         mockMvc.perform(post("/admin/orchestrators/delete").param("name", "FinProfile"))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void constructorRejectsNullAuditLogger() {
+        assertThatThrownBy(() -> new OrchestratorAdminController(profileService, playbookService,
+            chatConversationService, properties, TestAreas.withAreas("OIM", "Finance"),
+            new ObjectMapper().findAndRegisterModules(), null))
+            .isInstanceOf(NullPointerException.class);
     }
 }
 

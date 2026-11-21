@@ -104,7 +104,8 @@ public class CitationController {
     private void verifyCitationAreaAccess(String chunkId, String documentId) {
         String area = null;
         if (chunkId != null && !chunkId.isBlank()) {
-            Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkId.trim());
+            Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkId.trim(),
+                AreaAccessContext.allowedUserAreasLower().orElse(null));
             if (chunkOpt.isEmpty()) {
                 throw new NoSuchElementException("Chunk not found: " + chunkId);
             }

@@ -47,8 +47,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(chatEnabledInterceptor).addPathPatterns("/chat", "/chat/**");
-        // Rate-limit only the expensive, LLM/ingest-triggering POSTs — not the cheap GET polls.
+        // Rate-limit the expensive, LLM/embedding/ingest-triggering routes — not the cheap GET
+        // polls. (/admin/search only consumes a token when `query` is non-blank.)
         registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/chat/*/send",
-            "/chat/*/send-async", "/api/ingest/**");
+            "/chat/*/send-async", "/chat/*/validate-playbook", "/admin/search", "/api/ingest/**");
     }
 }

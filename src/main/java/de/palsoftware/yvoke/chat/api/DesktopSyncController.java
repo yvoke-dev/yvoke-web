@@ -16,6 +16,7 @@ import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -119,7 +120,9 @@ public class DesktopSyncController {
     public List<ConversationDto> listConversations(User user,
         @RequestParam(name = "limit", defaultValue = "100") int limit,
         @RequestParam(name = "offset", defaultValue = "0") int offset) {
-        return syncService.listConversations(user, limit, offset).stream()
+        int clampedLimit = PagingParams.clampLimit(limit, 100, 500);
+        int clampedOffset = PagingParams.clampOffset(offset);
+        return syncService.listConversations(user, clampedLimit, clampedOffset).stream()
             .map(ConversationDto::from).toList();
     }
 
@@ -152,7 +155,9 @@ public class DesktopSyncController {
     public List<MessageDto> getMessages(User user, @PathVariable UUID id,
         @RequestParam(name = "limit", defaultValue = "500") int limit,
         @RequestParam(name = "offset", defaultValue = "0") int offset) {
-        List<Message> messages = syncService.getMessages(id, user, limit, offset);
+        int clampedLimit = PagingParams.clampLimit(limit, 500, 500);
+        int clampedOffset = PagingParams.clampOffset(offset);
+        List<Message> messages = syncService.getMessages(id, user, clampedLimit, clampedOffset);
         Map<UUID, Feedback> feedback = syncService.getFeedbackByMessageId(id, user);
         return messages.stream().map(m -> MessageDto.from(m, feedback.get(m.id()))).toList();
     }
@@ -173,7 +178,7 @@ public class DesktopSyncController {
 
     @PutMapping("/messages/{messageId}/feedback")
     public FeedbackDto submitFeedback(User user, @PathVariable UUID messageId,
-        @RequestBody FeedbackRequest request) {
+        @Valid @RequestBody FeedbackRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }

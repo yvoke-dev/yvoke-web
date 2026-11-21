@@ -386,6 +386,9 @@ public class ConfluenceConnectorController {
                 return failureHtml(
                     "That Confluence instance no longer exists — reload the connectors page.");
             }
+        } else if (!AreaAccessContext.isSuperAdmin()
+            && AreaAccessContext.allowedAdminAreasLower().isEmpty()) {
+            return failureHtml("Not authorized to test Confluence connections.");
         }
 
         String testDomain = firstNonBlank(domain, instance == null ? null : instance.domain());

@@ -8,10 +8,14 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,16 +49,19 @@ public class OrchestratorAdminController {
     private final OrchestratorProperties properties;
     private final AreaService areaService;
     private final ObjectMapper objectMapper;
+    private final AdminAuditLogger auditLogger;
 
     public OrchestratorAdminController(OrchestratorProfileService profileService,
         PlaybookService playbookService, ChatConversationService chatConversationService,
-        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper) {
+        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper,
+        AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.profileService = profileService;
         this.playbookService = playbookService;
         this.chatConversationService = chatConversationService;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping
@@ -149,6 +156,8 @@ public class OrchestratorAdminController {
                 orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel,
                 specialistThinkingLevel, prototype, null, null, area);
         profileService.saveProfile(profile);
+        auditLogger.log("SAVE_ORCHESTRATOR_PROFILE", name.trim(),
+            Map.of("area", area.trim(), "maxReviewRounds", rounds, "maxSpecialistCalls", calls));
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + name + "' saved successfully.");
         return "redirect:/admin/orchestrators";
@@ -175,10 +184,8 @@ public class OrchestratorAdminController {
     public String importProfile(@RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
         throws IOException {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty.");
-        }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        String content =
+            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         OrchestratorProfile parsed;
         try {
             parsed = objectMapper.readValue(content, OrchestratorProfile.class);
@@ -211,6 +218,8 @@ public class OrchestratorAdminController {
             return "redirect:/admin/orchestrators";
         }
         OrchestratorProfile imported = profileService.importProfileFromJson(content, area);
+        auditLogger.log("IMPORT_ORCHESTRATOR_PROFILE", imported.name(),
+            Map.of("area", imported.area() != null ? imported.area() : ""));
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/orchestrators";
@@ -255,6 +264,8 @@ public class OrchestratorAdminController {
                 "Orchestrator profile not found: " + name);
         }
         profileService.deleteProfile(name);
+        auditLogger.log("DELETE_ORCHESTRATOR_PROFILE", profile.get().name(),
+            Map.of("area", profile.get().area() != null ? profile.get().area() : ""));
         redirectAttributes.addFlashAttribute("success",
             "Orchestrator profile '" + name + "' deleted successfully.");
         return "redirect:/admin/orchestrators";

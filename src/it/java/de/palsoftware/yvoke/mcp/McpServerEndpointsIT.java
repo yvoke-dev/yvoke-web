@@ -795,7 +795,7 @@ public class McpServerEndpointsIT {
         areaRepository.upsert(new Area(area, "Profile Wire Area", null, false, null, null, null,
             null));
         try {
-            OrchestratorProfile seeded = new OrchestratorProfile(profileName, 0, 0, "oim-orch",
+            OrchestratorProfile seeded = new OrchestratorProfile(profileName, 3, 8, "oim-orch",
                 "oim-rev", List.of("oim-spec"), "DeepSeek-V4-Flash", "HIGH", null, null, null, null,
                 true, now, now, area);
             orchestratorProfileRepository.upsert(seeded);
@@ -877,7 +877,7 @@ public class McpServerEndpointsIT {
                     .isEqualTo("ERROR: 'name' is required for get_profile.");
 
                 // 7. Live update & live delete over the same open McpSession
-                OrchestratorProfile updated = new OrchestratorProfile(profileName, 4, 0, "oim-orch",
+                OrchestratorProfile updated = new OrchestratorProfile(profileName, 4, 8, "oim-orch",
                     "oim-rev", List.of("oim-spec"), "DeepSeek-V4-Flash", "HIGH", null, null, null,
                     null, true, now, now, area);
                 orchestratorProfileRepository.upsert(updated);

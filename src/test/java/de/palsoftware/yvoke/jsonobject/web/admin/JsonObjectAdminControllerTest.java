@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -44,8 +45,8 @@ public class JsonObjectAdminControllerTest {
         jsonObjectService = mock(JsonObjectService.class);
         collectionService = mock(CollectionService.class);
         objectMapper = new ObjectMapper();
-        controller =
-            new JsonObjectAdminController(jsonObjectService, collectionService, objectMapper);
+        controller = new JsonObjectAdminController(jsonObjectService, collectionService,
+            objectMapper, mock(AdminAuditLogger.class));
         model = new ConcurrentModel();
 
         SecurityContextHolder.getContext()
@@ -175,5 +176,37 @@ public class JsonObjectAdminControllerTest {
 
         assertThat(view).isEqualTo("redirect:/admin/json-objects");
         assertThat(redirect.getFlashAttributes()).containsKey("error");
+    }
+
+    @Test
+    public void editAndRebuildSchemaEncodeRedirectQueryParametersViaRedirectAttributes()
+        throws Exception {
+        SecurityContextHolder.getContext()
+            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+        UUID colId = UUID.randomUUID();
+        Collection col =
+            new Collection(colId, "OIM & DB #1", "desc", List.of(), OffsetDateTime.now(), "OIM");
+        when(collectionService.getCollection("OIM & DB #1")).thenReturn(Optional.of(col));
+        when(jsonObjectService.rebuildSchema(colId, "9.3&evil=1")).thenReturn(true);
+
+        RedirectAttributes editRedirect = new RedirectAttributesModelMap();
+        String editView = controller.editSchema("OIM & DB #1", "9.3&evil=1",
+            "{\"type\":\"object\"}", editRedirect);
+        assertThat(editView).isEqualTo("redirect:/admin/json-objects");
+        assertThat(editRedirect.asMap()).containsEntry("collection", "OIM & DB #1")
+            .containsEntry("tag", "9.3&evil=1");
+
+        RedirectAttributes rebuildRedirect = new RedirectAttributesModelMap();
+        String rebuildView = controller.rebuildSchema("OIM & DB #1", "9.3&evil=1", rebuildRedirect);
+        assertThat(rebuildView).isEqualTo("redirect:/admin/json-objects");
+        assertThat(rebuildRedirect.asMap()).containsEntry("collection", "OIM & DB #1")
+            .containsEntry("tag", "9.3&evil=1");
+    }
+
+    @Test
+    public void constructorRejectsNullAuditLogger() {
+        assertThrows(NullPointerException.class,
+            () -> new JsonObjectAdminController(jsonObjectService, collectionService, objectMapper,
+                null));
     }
 }

@@ -25,7 +25,7 @@ public class AreaTools {
 
     private static final String DESCRIPTION =
         "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
-            + "tells you to. Lists the Yvoke areas (knowledge bases such as OIM) as a JSON array of "
+            + "tells you to. Lists the Yvoke areas (knowledge bases) as a JSON array of "
             + "{name, title, description, prototype, defaultPlaybook, defaultProfile, "
             + "collections, playbooks, profiles}, where the last three are the names of the area's "
             + "members. It does not answer questions about the knowledge base.";

@@ -147,13 +147,13 @@
       "name": "app.security.mcp.allowed-audience",
       "type": "java.lang.String",
       "description": "Allowed audience identifier for JWT validation in MCP requests.",
-      "defaultValue": "api://oim-kb"
+      "defaultValue": "api://yvoke"
     },
     {
       "name": "app.security.mcp.required-scope",
       "type": "java.lang.String",
       "description": "Required scope in JWT for accessing the MCP service.",
-      "defaultValue": "api://oim-kb/mcp.read"
+      "defaultValue": "api://yvoke/mcp.read"
     },
     {
       "name": "app.security.mcp.resource-url",

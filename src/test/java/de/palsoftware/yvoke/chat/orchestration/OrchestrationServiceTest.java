@@ -124,7 +124,7 @@ public class OrchestrationServiceTest {
         runRepository = mock(AgentRunRepository.class);
         stepRepository = mock(AgentStepRepository.class);
 
-        OrchestratorProperties props = new OrchestratorProperties(2, 8,
+        OrchestratorProperties props = new OrchestratorProperties(2, 8, 10, 50,
             new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
                 new RoleConfig("flash", "medium")),
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
@@ -210,7 +210,7 @@ public class OrchestrationServiceTest {
     @Test
     public void specialistBudgetIsPerRunAndRefusalIsAReturnedStringNotAnException() {
         rejectFirstNReviews = 2; // forces three orchestrator rounds, i.e. three delegations
-        OrchestratorProperties oneCall = new OrchestratorProperties(2, 1,
+        OrchestratorProperties oneCall = new OrchestratorProperties(2, 1, 10, 50,
             new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
                 new RoleConfig("flash", "medium")),
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
@@ -2028,7 +2028,7 @@ public class OrchestrationServiceTest {
             .thenReturn(Optional.of(revPb));
         when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
 
-        OrchestratorProperties props = new OrchestratorProperties(2, 8,
+        OrchestratorProperties props = new OrchestratorProperties(2, 8, 10, 50,
             new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
                 new RoleConfig("flash", "medium")),
             List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",

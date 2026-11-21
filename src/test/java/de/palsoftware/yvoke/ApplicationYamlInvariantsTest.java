@@ -93,7 +93,8 @@ public class ApplicationYamlInvariantsTest {
      */
     @Test
     public void theOrchestratorLimitsInYamlAreTheOnesTheCodeFallsBackTo() {
-        OrchestratorProperties unconfigured = new OrchestratorProperties(null, null, null, null);
+        OrchestratorProperties unconfigured =
+            new OrchestratorProperties(null, null, 10, 50, null, null);
 
         assertThat(Integer.parseInt(text("app", "ai", "orchestrator", "max-review-rounds")))
             .as("application.yml and OrchestratorProperties must not disagree about the review"

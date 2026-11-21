@@ -6,11 +6,13 @@ import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
+import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
 import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -38,16 +40,20 @@ public class ChatConversationServiceTest {
     private TagRepository tagRepository;
     private ChatConversationService chatConversationService;
 
+    private static final UUID DEFAULT_USER_ID =
+        UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @BeforeEach
     public void setUp() {
         conversationRepository = mock(ConversationRepository.class);
         userService = mock(UserService.class);
         tagRepository = mock(TagRepository.class);
 
-        when(userService.getCurrentUser()).thenReturn(Optional.empty());
+        when(userService.getCurrentUser()).thenReturn(Optional
+            .of(new User(DEFAULT_USER_ID, "default-oid", "default@test.local", "Default", null)));
 
-        ChatProperties chatProperties =
-            new ChatProperties(true, List.of("gemini-3.1-flash-lite"), true, false);
+        ChatProperties chatProperties = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
+            true, false, "", Duration.ofMinutes(5), 100_000, 400_000);
 
         chatConversationService = new ChatConversationService(conversationRepository, userService,
             chatProperties, tagRepository);
@@ -55,15 +61,15 @@ public class ChatConversationServiceTest {
 
     @Test
     public void testCreateConversation() {
-        Conversation mockConv = new Conversation(UUID.randomUUID(), null, "Title",
+        Conversation mockConv = new Conversation(UUID.randomUUID(), DEFAULT_USER_ID, "Title",
             Collections.emptyMap(), null, null, Collections.emptyList());
         when(conversationRepository.findById(any())).thenReturn(Optional.of(mockConv));
 
         Conversation result = chatConversationService.createConversation();
 
         assertThat(result).isNotNull();
-        verify(conversationRepository).create(any(UUID.class), eq(null), eq("New Conversation"),
-            anyMap());
+        verify(conversationRepository).create(any(UUID.class), eq(DEFAULT_USER_ID),
+            eq("New Conversation"), anyMap());
     }
 
     /**
@@ -93,16 +99,16 @@ public class ChatConversationServiceTest {
      */
     @Test
     public void aNewConversationIsSeededWithExactlyTheDefaultSettings() {
-        Conversation created = new Conversation(UUID.randomUUID(), null, "New Conversation",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation created = new Conversation(UUID.randomUUID(), DEFAULT_USER_ID,
+            "New Conversation", Collections.emptyMap(), null, null, Collections.emptyList());
         when(conversationRepository.findById(any())).thenReturn(Optional.of(created));
 
         chatConversationService.createConversation();
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> settingsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).create(any(UUID.class), eq(null), eq("New Conversation"),
-            settingsCaptor.capture());
+        verify(conversationRepository).create(any(UUID.class), eq(DEFAULT_USER_ID),
+            eq("New Conversation"), settingsCaptor.capture());
 
         // The model is the FIRST entry of app.chat.allowed-models (here the one configured in
         // setUp) — the whitelist's head is the default, so reordering the list changes it.
@@ -137,7 +143,8 @@ public class ChatConversationServiceTest {
      */
     @Test
     public void anEmptyAllowedModelListRefusesToCreateAConversationAtAll() {
-        ChatProperties noModels = new ChatProperties(true, List.of(), true, false);
+        ChatProperties noModels = new ChatProperties(true, List.of(), true, false, "",
+            Duration.ofMinutes(5), 100_000, 400_000);
         ChatConversationService withoutModels = new ChatConversationService(conversationRepository,
             userService, noModels, tagRepository);
 
@@ -190,8 +197,8 @@ public class ChatConversationServiceTest {
     public void testUpdateModelRejectsModelOutsideAllowList() {
         UUID conversationId = UUID.randomUUID();
         // Owned conversation so the ownership check passes and we reach the whitelist validation.
-        Conversation conv = new Conversation(conversationId, null, "Title", Collections.emptyMap(),
-            null, null, Collections.emptyList());
+        Conversation conv = new Conversation(conversationId, DEFAULT_USER_ID, "Title",
+            Collections.emptyMap(), null, null, Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conv));
 
         // allowedModels is ["gemini-3.1-flash-lite"]; a model outside the whitelist must be refused
@@ -226,61 +233,55 @@ public class ChatConversationServiceTest {
     @Test
     public void testUpdateModelAcceptsWhitelistedModel() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, null, "Title", Collections.emptyMap(),
-            null, null, Collections.emptyList());
+        Conversation conv = new Conversation(conversationId, DEFAULT_USER_ID, "Title",
+            Collections.emptyMap(), null, null, Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conv));
 
         chatConversationService.updateModel(conversationId, "gemini-3.1-flash-lite");
 
-        verify(conversationRepository).updateSettings(eq(conversationId),
+        verify(conversationRepository).mergeSettings(eq(conversationId),
             argThat((Map<String, Object> m) -> "gemini-3.1-flash-lite".equals(m.get("model"))));
     }
 
-    /**
-     * All six settings live in ONE jsonb column and every settings endpoint funnels through this
-     * merge, so a regression to a plain replace makes each write silently delete the others:
-     * posting {@code /thinking-level} would drop {@code model}, and {@code resolveModelToUse} then
-     * throws on the blank model so the NEXT generation dies with a generic error the user cannot
-     * trace; posting {@code /streaming} would drop {@code orchestrator-profile}, quietly demoting
-     * an orchestrated conversation to a plain run. The loss is invisible until the next send — spec
-     * § 2 lists "one setting write erasing the others" under MUST NOT happen. Asserting on the FULL
-     * captured map is the point: a containsEntry check on the incoming key alone passes against a
-     * replace.
-     */
     @Test
     public void updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt() {
         UUID id = UUID.randomUUID();
-        Conversation existing = new Conversation(id, null, "Title", Map.of("model",
-            "gemini-3.1-flash-lite", "thinking-level", "high", "orchestrator-profile", "oim"), null,
-            null, Collections.emptyList());
+        Conversation existing =
+            new Conversation(
+                id, DEFAULT_USER_ID, "Title", Map.of("model", "gemini-3.1-flash-lite",
+                    "thinking-level", "high", "orchestrator-profile", "oim"),
+                null, null, Collections.emptyList());
         when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
 
         chatConversationService.updateSettings(id, Map.of("streaming", true));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
-        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
-            entry("thinking-level", "high"), entry("orchestrator-profile", "oim"),
-            entry("streaming", true));
+        verify(conversationRepository).mergeSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("streaming", true));
+        verify(conversationRepository, never()).updateSettings(any(), any());
     }
 
-    /** On a key collision the incoming value wins, and the untouched keys still survive. */
     @Test
     public void updateSettingsLetsTheIncomingValueWinWithoutDroppingTheRest() {
         UUID id = UUID.randomUUID();
-        Conversation existing = new Conversation(id, null, "Title",
+        Conversation existing = new Conversation(id, DEFAULT_USER_ID, "Title",
             Map.of("model", "gemini-3.1-flash-lite", "thinking-level", "high"), null, null,
             Collections.emptyList());
         when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
 
-        chatConversationService.updateSettings(id, Map.of("thinking-level", "low"));
+        chatConversationService.updateSetting(id, ConversationSetting.THINKING_LEVEL, "low");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).updateSettings(ArgumentMatchers.eq(id), captor.capture());
-        assertThat(captor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
-            entry("thinking-level", "low"));
+        verify(conversationRepository).mergeSettings(ArgumentMatchers.eq(id), captor.capture());
+        assertThat(captor.getValue()).containsOnly(entry("thinking-level", "low"));
+
+        assertThatThrownBy(() -> chatConversationService.updateSetting(id,
+            ConversationSetting.THINKING_LEVEL, "turbo"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     /**
@@ -347,9 +348,13 @@ public class ChatConversationServiceTest {
         Conversation c4 = conv(currentUserId, List.of("public"));
         Conversation c5 = conv(otherUserId, null);
         Conversation c6 = conv(otherUserId, List.of("x", "y"));
+        List<Conversation> owned = List.of(c1, c2, c3, c4);
+        List<Conversation> otherPublic = List.of(c5, c6);
         List<Conversation> all = List.of(c1, c2, c3, c4, c5, c6);
-        when(conversationRepository.listAll(eq(currentUserId), eq(100), eq(0), any()))
-            .thenReturn(all);
+        when(conversationRepository.listOwned(eq(currentUserId), eq(100), eq(0), any()))
+            .thenReturn(owned);
+        when(conversationRepository.listOtherPublic(eq(currentUserId), eq(100), eq(0), any()))
+            .thenReturn(otherPublic);
 
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
 
@@ -382,7 +387,8 @@ public class ChatConversationServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false);
+            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false, "",
+                Duration.ofMinutes(5), 100_000, 400_000);
         ChatConversationService disabledService = new ChatConversationService(
             conversationRepository, userService, disabledProperties, tagRepository);
 
@@ -637,6 +643,47 @@ public class ChatConversationServiceTest {
         verify(conversationRepository, never()).delete(any());
         verify(conversationRepository, never()).updateSettings(any(), any());
         verifyNoInteractions(tagRepository);
+    }
+
+    @Test
+    public void orphanedNullOwnerConversationNeverMatchesMissingCurrentUser() {
+        when(userService.getCurrentUser()).thenReturn(Optional.empty());
+        UUID orphanedId = UUID.randomUUID();
+        Conversation orphaned = new Conversation(orphanedId, null, "Orphaned",
+            Collections.emptyMap(), null, null, Collections.emptyList());
+
+        assertThatThrownBy(() -> chatConversationService.createConversation())
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(
+            () -> chatConversationService.verifyConversationOwnership(orphaned, true))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(
+            () -> chatConversationService.verifyConversationOwnership(orphaned, false))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThat(ChatConversationService.isOwner(null, null)).isFalse();
+    }
+
+    @Test
+    public void canViewFeedbackHidesPrivateCommentsFromPublicViewersButAllowsOwner() {
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        Conversation publicConv = new Conversation(convId, ownerId, "Shared",
+            Collections.emptyMap(), null, null, List.of("public"), "web", "OIM");
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(publicConv));
+
+        SecurityContextHolder.getContext().setAuthentication(
+            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+
+        // Owner sees feedback
+        when(userService.getCurrentUser())
+            .thenReturn(Optional.of(new User(ownerId, "oid-1", "o@x", "Owner", null)));
+        assertThat(chatConversationService.canViewFeedback(convId)).isTrue();
+
+        // Non-owner public viewer does NOT see private feedback comments
+        when(userService.getCurrentUser())
+            .thenReturn(Optional.of(new User(viewerId, "oid-2", "v@x", "Viewer", null)));
+        assertThat(chatConversationService.canViewFeedback(convId)).isFalse();
     }
 }
 

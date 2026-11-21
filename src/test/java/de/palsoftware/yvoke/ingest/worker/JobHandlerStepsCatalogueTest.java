@@ -90,7 +90,7 @@ public class JobHandlerStepsCatalogueTest {
     public void everyHandlerDeclaresTheStepsItActuallyReports() {
         List<JobHandler> handlers = allHandlers();
         JobService jobService = new JobService(mock(JobRepository.class),
-            mock(JobProgressBroker.class), handlers, List.of());
+            mock(JobProgressBroker.class), handlers, List.of(), "uploads");
         List<String> declaredKinds =
             Arrays.stream(IngestJobKind.values()).map(IngestJobKind::getValue).toList();
 

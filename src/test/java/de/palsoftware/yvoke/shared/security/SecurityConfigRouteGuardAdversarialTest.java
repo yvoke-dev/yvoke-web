@@ -148,6 +148,9 @@ class SecurityConfigRouteGuardAdversarialTest {
         env.setProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri",
             "https://example/issuer");
         env.setProperty("app.security.mcp.resource-url", "http://localhost:8080/mcp");
+        env.setProperty("app.rate-limit.enabled", "true");
+        env.setProperty("app.rate-limit.mcp-capacity", "120");
+        env.setProperty("app.rate-limit.mcp-refill-period-seconds", "60");
 
         MockServletContext servletContext = new MockServletContext();
         context = new AnnotationConfigWebApplicationContext();

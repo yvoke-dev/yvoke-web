@@ -128,7 +128,7 @@ public class LifecycleServiceTest {
         ordered.verify(documentRepository).deleteByCollection("OIM");
         ordered.verify(kgRepository).deleteCollectionGraph("OIM");
         ordered.verify(jsonObjectService).deleteObjectsByCollection(collectionId);
-        ordered.verify(collectionRepository).delete("OIM");
+        ordered.verify(collectionRepository).deleteById(collectionId);
         // The audit row is written INSIDE the transaction, i.e. after the last cascade step, so a
         // rollback takes the "deleted" record with it.
         ordered.verify(auditLogRepository).log(eq("anonymous_admin"), eq("DELETE_COLLECTION"),
@@ -144,6 +144,9 @@ public class LifecycleServiceTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testDeleteCollection() {
+        UUID collectionId = UUID.randomUUID();
+        when(collectionRepository.findByName("OIM")).thenReturn(Optional.of(
+            new Collection(collectionId, "OIM", "corpus", List.of("9.3"), OffsetDateTime.now())));
         when(documentRepository.deleteByCollection("OIM")).thenReturn(7);
 
         lifecycleService.deleteCollection("OIM");
@@ -151,10 +154,8 @@ public class LifecycleServiceTest {
         // Order: content first (documents, then KG), collection row last.
         verify(documentRepository).deleteByCollection("OIM");
         verify(kgRepository).deleteCollectionGraph("OIM");
-        // collection is mocked, but the inner lambda isn't executed easily if we don't return it.
-        // wait, we need to mock findByName to return a collection so jsonObjectService is called
-        // Actually the test doesn't check jsonObjectService right now
-        verify(collectionRepository).delete("OIM");
+        verify(jsonObjectService).deleteObjectsByCollection(collectionId);
+        verify(collectionRepository).deleteById(collectionId);
 
         ArgumentCaptor<Map<String, Object>> detailsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(auditLogRepository).log(eq("anonymous_admin"), eq("DELETE_COLLECTION"), eq("OIM"),

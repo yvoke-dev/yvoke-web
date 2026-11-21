@@ -117,22 +117,19 @@ class RagServiceAreaAdversarialStressTest {
 
         ChunkRow chunkOim = new ChunkRow(chunkOimId, docOimId, "OIM chunk content",
             List.of("Intro"), "Intro", 1, 0, null, "OIM Guide", "manual", "oim-col", null, 0.95);
-        when(chunkRepository.findById(chunkOimId)).thenReturn(Optional.of(chunkOim));
-        when(chunkRepository.findByIdPrefix(chunkOimId.toString()))
+        when(chunkRepository.findByIdPrefix(eq(chunkOimId.toString()), any()))
             .thenReturn(Optional.of(chunkOim));
 
         ChunkRow chunkPing =
             new ChunkRow(chunkPingId, docPingId, "PingID chunk content", List.of("Intro"), "Intro",
                 1, 0, null, "PingID Guide", "manual", "pingid-col", null, 0.95);
-        when(chunkRepository.findById(chunkPingId)).thenReturn(Optional.of(chunkPing));
-        when(chunkRepository.findByIdPrefix(chunkPingId.toString()))
+        when(chunkRepository.findByIdPrefix(eq(chunkPingId.toString()), any()))
             .thenReturn(Optional.of(chunkPing));
 
         ChunkRow chunkNullArea = new ChunkRow(chunkNullAreaId, docNullAreaId,
             "Null Area chunk content", List.of("Intro"), "Intro", 1, 0, null, "Null Area Guide",
             "manual", "null-area-col", null, 0.95);
-        when(chunkRepository.findById(chunkNullAreaId)).thenReturn(Optional.of(chunkNullArea));
-        when(chunkRepository.findByIdPrefix(chunkNullAreaId.toString()))
+        when(chunkRepository.findByIdPrefix(eq(chunkNullAreaId.toString()), any()))
             .thenReturn(Optional.of(chunkNullArea));
 
         ObjectMapper mapper = new ObjectMapper();

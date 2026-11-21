@@ -35,11 +35,11 @@ public class SubmitFeedbackTool {
     private static final String QUESTION_PARAM = "The user's question text for the rated turn.";
     private static final String ANSWER_PARAM = "The assistant's answer text for the rated turn.";
     private static final String AREA_PARAM =
-        "Optional knowledge area name active for the session (e.g. 'OIM').";
+        "Optional knowledge area name active for the session (e.g. 'Docs').";
     private static final String MODE_PARAM =
         "Optional session execution mode: 'single' or 'multi'.";
     private static final String PLAYBOOK_PARAM =
-        "Optional playbook name used for the turn (e.g. 'oim-full').";
+        "Optional playbook name used for the turn (e.g. 'docs-full').";
     private static final String PLAYBOOK_VERSION_PARAM =
         "Optional positive integer version of the playbook used for the turn.";
     private static final String PROFILE_PARAM =

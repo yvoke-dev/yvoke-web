@@ -39,8 +39,8 @@
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
                             <div style="flex: 1; margin-right: 1.5rem;">
                                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${profile.name}">OIM</h3>
-                                    <span th:if="${profile.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${profile.area}">OIM</span>
+                                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-accent); margin: 0;" th:text="${profile.name}">Profile</h3>
+                                    <span th:if="${profile.area != null}" title="Area" style="font-size: 0.75rem; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;" th:text="${profile.area}">Area</span>
                                     <span style="font-size: 0.75rem; background-color: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); color: var(--text-secondary); font-weight: 500;">
                                         Max Review Rounds: <strong th:text="${profile.maxReviewRounds}" style="color: var(--text-primary);">2</strong>
                                     </span>
@@ -125,7 +125,7 @@
                     <form id="profile-form" th:action="@{/admin/orchestrators}" method="post" style="display: flex; flex-direction: column; gap: 1.25rem;">
                         <div class="form-group">
                             <label for="name" class="form-label">Profile Name</label>
-                            <input type="text" name="name" id="name" required class="form-input" placeholder="e.g. OIM" />
+                            <input type="text" name="name" id="name" required class="form-input" placeholder="e.g. Docs" />
                         </div>
 
                         <div class="form-group">

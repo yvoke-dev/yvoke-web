@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -97,6 +98,7 @@ public class ChatThreadRenderingIT {
      */
     @Test
     public void theStartupSweepTouchesOnlyGeneratingRowsAndLeavesFinishedAnswersIntact() {
+        userRepository.upsert("sweep-oid", "sweep@local", "Sweep User");
         setSecurityContext("sweep-oid", "sweep@local", "Sweep User");
         UUID convId = chatConversationService.createConversation().id();
 
@@ -113,12 +115,22 @@ public class ChatThreadRenderingIT {
         messageRepository.save(new Message(cancelled, convId, "assistant", "stopped by the user",
             null, List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "cancelled", "m"));
 
-        messageRepository.resetGeneratingMessages();
+        UUID freshGenerating = UUID.randomUUID();
+        messageRepository.save(new Message(freshGenerating, convId, "assistant", "", null,
+            List.of(), List.of(), Instant.now(), 0, 0, 0, 0, 0, "generating", "m"));
+        jdbcClient.sql(
+            "UPDATE messages SET updated_at = CURRENT_TIMESTAMP - INTERVAL '20 minutes' WHERE id = :id")
+            .param("id", generating).update();
+
+        messageRepository.resetStaleGeneratingMessages(Duration.ofMinutes(15));
 
         assertThat(messageRepository.findById(generating).orElseThrow().status())
             .isEqualTo("error");
         assertThat(messageRepository.findById(generating).orElseThrow().content())
             .contains("Generation interrupted");
+        assertThat(messageRepository.findById(freshGenerating).orElseThrow().status())
+            .as("a fresh generating message must not be marked interrupted during rolling deploy")
+            .isEqualTo("generating");
 
         // Nothing terminal may be rewritten — not its status and not its content.
         assertThat(messageRepository.findById(done).orElseThrow())
@@ -129,6 +141,36 @@ public class ChatThreadRenderingIT {
         assertThat(messageRepository.findById(cancelled).orElseThrow())
             .satisfies(m -> assertThat(m.status()).isEqualTo("cancelled"))
             .satisfies(m -> assertThat(m.content()).isEqualTo("stopped by the user"));
+    }
+
+    @Test
+    public void aHeartbeatedGeneratingMessageSurvivesTheStaleSweepWhileAnUnheartbeatedOneIsReset() {
+        userRepository.upsert("heartbeat-oid", "heartbeat@local", "Heartbeat User");
+        setSecurityContext("heartbeat-oid", "heartbeat@local", "Heartbeat User");
+        UUID convId = chatConversationService.createConversation().id();
+
+        UUID heartbeated = UUID.randomUUID();
+        UUID stale = UUID.randomUUID();
+        messageRepository.save(new Message(heartbeated, convId, "assistant", "", null, List.of(),
+            List.of(), Instant.now(), 0, 0, 0, 0, 0, "generating", "m"));
+        messageRepository.save(new Message(stale, convId, "assistant", "", null, List.of(),
+            List.of(), Instant.now(), 0, 0, 0, 0, 0, "generating", "m"));
+
+        jdbcClient.sql(
+            "UPDATE messages SET updated_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id IN (:h, :s)")
+            .param("h", heartbeated).param("s", stale).update();
+
+        messageRepository.refreshGeneratingHeartbeat(heartbeated);
+        messageRepository.resetStaleGeneratingMessages(Duration.ofMinutes(5));
+
+        assertThat(messageRepository.findById(heartbeated).orElseThrow().status())
+            .as("a generating message whose heartbeat was refreshed must survive the stale sweep")
+            .isEqualTo("generating");
+        assertThat(messageRepository.findById(stale).orElseThrow().status())
+            .as("an unheartbeated generating message older than 5m must be marked error")
+            .isEqualTo("error");
+        assertThat(messageRepository.findById(stale).orElseThrow().content())
+            .contains("Generation interrupted");
     }
 
     /**
@@ -251,6 +293,7 @@ public class ChatThreadRenderingIT {
      */
     @Test
     public void anUpdateWithNoModelKeepsTheModelAlreadyOnTheRow() {
+        userRepository.upsert("coalesce-oid", "coalesce@local", "Coalesce User");
         setSecurityContext("coalesce-oid", "coalesce@local", "Coalesce User");
         UUID convId = chatConversationService.createConversation().id();
 
@@ -493,9 +536,9 @@ public class ChatThreadRenderingIT {
                 + "to the model — changing the cap changes prompt size and cost with no signal")
             .hasSize(100);
         assertThat(rendered.stream().map(m -> ((Message) m).id()).toList())
-            .as("created_at ASC then id ASC: a tie resolved by anything else scrambles the turn, "
-                + "and the same list is what rehydrates LLM history")
-            .isEqualTo(expected.subList(0, 100));
+            .as("latest 100 messages in created_at ASC then id ASC order: a tie resolved by "
+                + "anything else scrambles the turn, and the same list is what rehydrates LLM history")
+            .isEqualTo(expected.subList(5, 105));
 
         // Cleanup (the security filter clears the holder after each MockMvc request).
         setSecurityContext(userOid, "thread-cap@local", "Thread Cap User");

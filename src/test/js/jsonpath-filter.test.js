@@ -10,8 +10,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildJsonPath, getFieldType, parseJsonPath }
-    from '../../main/resources/static/js/admin/jsonpath-filter.js';
+import {
+    buildJsonPath,
+    getFieldType,
+    parseJsonPath,
+    populateDatalist,
+    populateEnumSelect,
+} from '../../main/resources/static/js/admin/jsonpath-filter.js';
 
 const SCHEMA = {
     properties: {
@@ -228,5 +233,49 @@ describe('edge cases', () => {
         const { once, twice } = roundTrip(group('&&', rule('nested.inner', '==', 'v')));
         assert.equal(parseJsonPath(once).children[0].field, 'nested.inner');
         assert.equal(twice, once);
+    });
+});
+
+describe('safe DOM option builders (XSS defense)', () => {
+    function fakeContainer() {
+        return {
+            children: [{ value: 'stale' }],
+            value: '',
+            replaceChildren() { this.children = []; },
+            appendChild(node) { this.children.push(node); },
+        };
+    }
+
+    function fakeOption() {
+        return { value: '', textContent: '' };
+    }
+
+    test('populateEnumSelect sets option textContent and value without HTML parsing', () => {
+        const select = fakeContainer();
+        const xss = '"><img src=x onerror=alert(1)>';
+        populateEnumSelect(select, ['safe', xss, 42], xss, fakeOption);
+        assert.equal(select.children.length, 4);
+        assert.equal(select.children[0].value, '');
+        assert.equal(select.children[0].textContent, 'Select a value...');
+        assert.equal(select.children[2].value, xss);
+        assert.equal(select.children[2].textContent, xss);
+        assert.equal(select.children[3].value, '42');
+        assert.equal(select.value, xss);
+
+        populateEnumSelect(select, null, undefined, fakeOption);
+        assert.equal(select.children.length, 1);
+        assert.equal(select.value, '');
+    });
+
+    test('populateDatalist sets option value verbatim without HTML parsing', () => {
+        const datalist = fakeContainer();
+        const xss = '</option><script>alert(1)</script>';
+        populateDatalist(datalist, ['a', xss, 7], fakeOption);
+        assert.equal(datalist.children.length, 3);
+        assert.equal(datalist.children[1].value, xss);
+        assert.equal(datalist.children[2].value, '7');
+
+        populateDatalist(datalist, null, fakeOption);
+        assert.equal(datalist.children.length, 0);
     });
 });

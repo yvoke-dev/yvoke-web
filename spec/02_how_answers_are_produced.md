@@ -145,7 +145,8 @@ in-depth profiles, and can inspect any search or trace.
   delivered carrying the "did not pass review" warning while being substantially correct.
 - **At most 20 research steps per question.** On reaching the limit the assistant must conclude, and the
   answer carries a visible warning that it may be incomplete.
-- **The history an answer sees is the first 100 messages**, not the most recent 100.
+- **The history an answer sees is the most recent 100 messages**, trimmed to the configured character budget (400,000 characters by default).
+- **In-depth profiles enforce deployment ceilings on rounds, specialist calls, models and thinking levels.** Saving or importing a profile rejects non-whitelisted models, invalid thinking levels, or round/specialist caps above the configured maximums (10 review rounds and 50 specialist calls by default).
 - **One search returns 10 passages by default, 20 at most.** Asking for more is silently reduced to 20 —
   the ceiling exists because every candidate passage is sent to the relevance re-ranking service in a
   single request, and an oversized request is rejected, which would quietly drop the re-ranking step

@@ -51,6 +51,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.RagAdminViewService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -103,10 +104,10 @@ class RagAdminControllerTest {
 
         telemetryService = mock(RetrievalTelemetryService.class);
 
-        controller =
-            new RagAdminController(hybridSearch, retrievalLogRepository, ragAdminViewService,
-                collectionService, playbookService, systemPromptService, ragService, objectMapper,
-                telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM", "Finance"));
+        controller = new RagAdminController(hybridSearch, retrievalLogRepository,
+            ragAdminViewService, collectionService, playbookService, systemPromptService,
+            ragService, objectMapper, telemetryService, 100, MAX_LIMIT,
+            TestAreas.withAreas("OIM", "Finance"), mock(AdminAuditLogger.class));
 
         model = mock(Model.class);
     }
@@ -476,21 +477,21 @@ class RagAdminControllerTest {
     }
 
     @Test
-    void getKgPromptOptions_filtersToAdministeredArea() {
+    void getKgPromptOptions_filtersToAdministeredAreaAndReturnsJsonData() {
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
             "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        SystemPrompt finKg = new SystemPrompt("fin-kg", SystemPromptType.KG, "body", "Fin KG",
-            Instant.now(), Instant.now(), false, "Finance");
+        SystemPrompt finKg = new SystemPrompt("fin-kg", SystemPromptType.KG, "body",
+            "Fin <script>KG</script>", Instant.now(), Instant.now(), false, "Finance");
         SystemPrompt oimKg = new SystemPrompt("oim-kg", SystemPromptType.KG, "body", "OIM KG",
             Instant.now(), Instant.now(), false, "OIM");
         when(systemPromptService.listPromptsByType(SystemPromptType.KG))
             .thenReturn(List.of(finKg, oimKg));
 
-        String html = controller.getKgPromptOptions();
+        List<RagAdminController.KgPromptOption> options = controller.getKgPromptOptions();
 
-        assertThat(html).contains("fin-kg");
-        assertThat(html).doesNotContain("oim-kg");
+        assertThat(options).containsExactly(
+            new RagAdminController.KgPromptOption("fin-kg", "Fin <script>KG</script>"));
     }
 
     @Test
@@ -590,5 +591,14 @@ class RagAdminControllerTest {
 
         mvc.perform(multipart("/admin/prompts/import").file(file).param("area", "Finance"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void constructorRejectsNullAuditLogger() {
+        assertThatThrownBy(
+            () -> new RagAdminController(hybridSearch, retrievalLogRepository, ragAdminViewService,
+                collectionService, playbookService, systemPromptService, ragService, objectMapper,
+                telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM", "Finance"), null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

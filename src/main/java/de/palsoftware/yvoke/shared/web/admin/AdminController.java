@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,14 +64,18 @@ public class AdminController {
     public String listJobs(@RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size, Model model) {
         log.info("AdminController: Accessing Jobs view");
+        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        List<IngestionJob> jobs = jobRepository.listJobs(size, page * size, areas);
+        List<IngestionJob> jobs = jobRepository.listJobs(clampedSize,
+            PagingParams.safeOffset(clampedPage, clampedSize), areas);
         long totalCount = jobRepository.countJobs(areas);
-        int totalPages = (int) Math.ceil((double) totalCount / size);
+        int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
         model.addAttribute("jobs", jobs);
         model.addAttribute("queuedKinds", jobRepository.listQueuedKinds(areas));
-        model.addAttribute("currentPage", page);
+        model.addAttribute("currentPage", clampedPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
 
@@ -157,11 +162,15 @@ public class AdminController {
     @GetMapping("/audit")
     public String listAuditLogs(@RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size, Model model) {
-        model.addAttribute("logs", auditLogRepository.listLogs(size, page * size));
+        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
+        model.addAttribute("logs", auditLogRepository.listLogs(clampedSize,
+            PagingParams.safeOffset(clampedPage, clampedSize)));
         long totalCount = auditLogRepository.countLogs();
-        int totalPages = (int) Math.ceil((double) totalCount / size);
+        int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
-        model.addAttribute("currentPage", page);
+        model.addAttribute("currentPage", clampedPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalCount", totalCount);
 

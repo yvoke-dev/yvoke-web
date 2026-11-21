@@ -2,6 +2,7 @@ package de.palsoftware.yvoke.rag.core.service;
 
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.CitationStreamingFilter;
+import de.palsoftware.yvoke.shared.security.TurnAreaScopeHolder;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
@@ -599,7 +600,12 @@ public class RagService {
                         if (callback instanceof ContextAwareToolCallback contextAware) {
                             responseData = contextAware.callWithContext(tc.arguments(), ctx);
                         } else {
-                            responseData = callback.call(tc.arguments());
+                            TurnAreaScopeHolder.set(ctx.getAllowedAreasLower());
+                            try {
+                                responseData = callback.call(tc.arguments());
+                            } finally {
+                                TurnAreaScopeHolder.clear();
+                            }
                         }
                         if (responseData != null && (responseData.startsWith("Error:")
                             || responseData.startsWith("Error "))) {

@@ -89,12 +89,9 @@ public class GetTocTool {
             DocumentRow doc = docOpt.get();
             if (doc.collectionId() != null) {
                 Optional<Collection> colOpt = collectionService.findById(doc.collectionId());
-                if (colOpt.isPresent()) {
-                    String area = colOpt.get().area();
-                    if (area != null && !area.isBlank()
-                        && !AreaAccessContext.canAccessUserArea(area)) {
-                        return "Error: Document with ID '" + docId + "' not found.";
-                    }
+                String area = colOpt.map(Collection::area).orElse(null);
+                if (!AreaAccessContext.canAccessEffectiveUserArea(area)) {
+                    return "Error: Document with ID '" + docId + "' not found.";
                 }
             }
             String docName = doc.title();

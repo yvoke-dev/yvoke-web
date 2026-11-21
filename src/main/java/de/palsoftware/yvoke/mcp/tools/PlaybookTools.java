@@ -46,10 +46,10 @@ public class PlaybookTools {
             + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, "
             + "version, text}, " + "where text is the playbook's full instructions.";
 
-    private static final String NAME_PARAM = "The playbook's name, e.g. \"oim-full\".";
+    private static final String NAME_PARAM = "The playbook's name, e.g. \"docs-full\".";
 
     private static final String AREA_PARAM =
-        "Optional area name, e.g. \"OIM\" (see list_areas). Omit to list every area's playbooks.";
+        "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's playbooks.";
 
     /** One playbook with its text: {@link PlaybookDto}'s fields plus {@code text}. */
     record PlaybookWithText(String name, String title, String description, List<String> tools,

@@ -107,6 +107,7 @@ public class ChatFeedbackServiceTest {
             Instant.now(), Instant.now());
 
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
+        when(chatConversationService.canViewFeedback(conversationId)).thenReturn(true);
         when(feedbackRepository.findByMessageId(messageId)).thenReturn(Optional.of(mockFeedback));
 
         Optional<Feedback> result = chatFeedbackService.getFeedback(messageId);
@@ -116,5 +117,15 @@ public class ChatFeedbackServiceTest {
         assertThat(result.get().comment()).isEqualTo("Good answer");
 
         verify(chatConversationService).verifyOwnership(conversationId, true);
+        verify(chatConversationService).canViewFeedback(conversationId);
+    }
+
+    @Test
+    public void getFeedbackByConversationReturnsEmptyForNonOwnerPublicViewer() {
+        UUID conversationId = UUID.randomUUID();
+        when(chatConversationService.canViewFeedback(conversationId)).thenReturn(false);
+
+        assertThat(chatFeedbackService.getFeedbackByConversation(conversationId)).isEmpty();
+        verify(feedbackRepository, never()).findByConversationId(any());
     }
 }

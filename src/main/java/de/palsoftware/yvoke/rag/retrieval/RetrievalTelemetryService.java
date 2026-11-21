@@ -3,8 +3,10 @@ package de.palsoftware.yvoke.rag.retrieval;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,12 +19,23 @@ public class RetrievalTelemetryService {
 
     private static final Logger log = LoggerFactory.getLogger(RetrievalTelemetryService.class);
 
+    static final int MAX_QUEUE_CAPACITY = 10_000;
+
     // Telemetry is pure logging, so its DB writes stay off the search hot path. Single-threaded
-    // to keep inserts ordered and bound the write concurrency; the linking of a log row to its
-    // chat message (updateMessageId) only happens after the LLM stream completes, long after
-    // this insert has landed.
-    private final ExecutorService telemetryExecutor =
-        Executors.newSingleThreadExecutor(Thread.ofVirtual().name("retrieval-telemetry").factory());
+    // FIFO keeps inserts and subsequent message-id links ordered so updateMessageId always runs
+    // after saveTelemetry has inserted the row; a bounded queue prevents unbounded heap growth if
+    // Postgres stalls.
+    private final ExecutorService telemetryExecutor = new ThreadPoolExecutor(1, 1, 0L,
+        TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(MAX_QUEUE_CAPACITY),
+        Thread.ofVirtual().name("retrieval-telemetry").factory(), (task, executor) -> {
+            if (!executor.isShutdown()) {
+                log.warn(
+                    "Retrieval telemetry queue full ({} entries); dropping oldest telemetry event",
+                    MAX_QUEUE_CAPACITY);
+                executor.getQueue().poll();
+                executor.execute(task);
+            }
+        });
 
     private final RetrievalLogRepository retrievalLogRepository;
     private final CollectionRepository collectionRepository;
@@ -38,6 +51,27 @@ public class RetrievalTelemetryService {
     @PreDestroy
     void shutdown() {
         telemetryExecutor.close();
+    }
+
+    /**
+     * Links previously-logged retrieval rows to the finished assistant message on the same
+     * single-threaded FIFO executor that inserts them, so the {@code UPDATE} always executes after
+     * {@link #logAndPersistTelemetry}'s {@code INSERT} has committed.
+     */
+    public void linkMessageIds(List<UUID> searchIds, UUID messageId) {
+        if (searchIds == null || searchIds.isEmpty() || messageId == null) {
+            return;
+        }
+        List<UUID> copy = List.copyOf(searchIds);
+        telemetryExecutor.execute(() -> {
+            for (UUID sid : copy) {
+                try {
+                    retrievalLogRepository.updateMessageId(sid, messageId);
+                } catch (Exception e) {
+                    log.warn("Failed to link retrieval log {} to message {}", sid, messageId, e);
+                }
+            }
+        });
     }
 
     /**

@@ -29,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.List;
 import java.util.Optional;
@@ -69,7 +70,7 @@ class CollectionAdminControllerTest {
         collectionService = mock(CollectionService.class);
         tagService = mock(TagService.class);
         controller = new CollectionAdminController(collectionService, tagService,
-            TestAreas.withAreas("OIM"));
+            TestAreas.withAreas("OIM"), mock(AdminAuditLogger.class));
 
         SecurityContextHolder.getContext()
             .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
@@ -317,5 +318,12 @@ class CollectionAdminControllerTest {
             .andExpect(flash().attribute("success", "Tag added successfully."));
 
         verify(tagService).addTagToCollection(colId, "v1");
+    }
+
+    @Test
+    void constructorRejectsNullAuditLogger() {
+        assertThrows(NullPointerException.class,
+            () -> new CollectionAdminController(collectionService, tagService,
+                TestAreas.withAreas("OIM"), null));
     }
 }

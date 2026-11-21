@@ -20,9 +20,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
@@ -47,7 +47,8 @@ public class McpToolsConfig {
      * The tools both the in-app assistant ({@code RagService}, through its
      * {@code List<ToolCallback>} constructor argument) and MCP clients get. It starts from the
      * client-only names, so no shared registration, by hand or by scan, can put one of them in
-     * front of the in-app assistant.
+     * front of the in-app assistant. Registration fails fast on missing beans, class-load errors,
+     * or duplicate tool names rather than silently starting with a depleted tool catalogue.
      */
     @Bean
     public List<ToolCallback> sharedToolCallbacks(ApplicationContext applicationContext,
@@ -56,64 +57,36 @@ public class McpToolsConfig {
         List<ToolCallback> callbacksList = new ArrayList<>();
         Set<String> registeredNames = new HashSet<>();
         for (ToolCallback clientOnly : clientOnlyToolCallbacks.getToolCallbacks()) {
-            registeredNames.add(clientOnly.getToolDefinition().name());
+            String name = clientOnly.getToolDefinition().name();
+            if (!registeredNames.add(name)) {
+                throw new IllegalStateException("Duplicate client-only MCP tool name: " + name);
+            }
         }
 
-        try {
-            SearchCorpusTool searchCorpusTool = applicationContext.getBean(SearchCorpusTool.class);
-            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            registerByHand(new SearchCorpusToolCallback(searchCorpusTool, objectMapper, maxLimit),
-                registeredNames, callbacksList);
-        } catch (Exception e) {
-            log.error("Failed to register custom SearchCorpusToolCallback", e);
-        }
+        ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
+        List<ToolCallback> handRegistered = List.of(
+            new SearchCorpusToolCallback(
+                applicationContext.getBean(SearchCorpusTool.class), objectMapper, maxLimit),
+            new AskClarifyingQuestionToolCallback(objectMapper),
+            new GetSectionToolCallback(applicationContext.getBean(GetSectionTool.class),
+                objectMapper),
+            new ListDocumentsToolCallback(applicationContext.getBean(ListDocumentsTool.class),
+                objectMapper),
+            new VerifyCitationsToolCallback(applicationContext.getBean(VerifyCitationsTool.class),
+                objectMapper));
 
-        try {
-            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            registerByHand(new AskClarifyingQuestionToolCallback(objectMapper), registeredNames,
-                callbacksList);
-        } catch (Exception e) {
-            log.error("Failed to register custom AskClarifyingQuestionToolCallback", e);
-        }
-
-        try {
-            GetSectionTool getSectionTool = applicationContext.getBean(GetSectionTool.class);
-            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            registerByHand(new GetSectionToolCallback(getSectionTool, objectMapper),
-                registeredNames, callbacksList);
-        } catch (Exception e) {
-            log.error("Failed to register custom GetSectionToolCallback", e);
-        }
-
-        try {
-            ListDocumentsTool listDocumentsTool =
-                applicationContext.getBean(ListDocumentsTool.class);
-            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            registerByHand(new ListDocumentsToolCallback(listDocumentsTool, objectMapper),
-                registeredNames, callbacksList);
-        } catch (Exception e) {
-            log.error("Failed to register custom ListDocumentsToolCallback", e);
-        }
-
-        try {
-            VerifyCitationsTool verifyCitationsTool =
-                applicationContext.getBean(VerifyCitationsTool.class);
-            ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-            registerByHand(new VerifyCitationsToolCallback(verifyCitationsTool, objectMapper),
-                registeredNames, callbacksList);
-        } catch (Exception e) {
-            log.error("Failed to register custom VerifyCitationsToolCallback", e);
+        for (ToolCallback callback : handRegistered) {
+            registerUnique(callback, registeredNames, callbacksList, "hand-registered");
         }
 
         for (Class<?> clazz : scanToolClasses()) {
-            // Registered by hand above with a context-aware callback. The duplicate-name
-            // guard below would skip the scanned copy anyway, but that leaves two sources
-            // of truth for one tool's schema; skipping the class keeps exactly one.
+            // Registered by hand above with a context-aware callback. Skipping the class keeps
+            // exactly one source of truth for each tool's schema.
             if (CALLBACK_PUBLISHED.contains(clazz)
                 || clazz.isAnnotationPresent(ClientOnlyTools.class)) {
                 continue;
             }
-            register(applicationContext, clazz, registeredNames, callbacksList);
+            registerBeanTools(applicationContext, clazz, registeredNames, callbacksList);
         }
 
         log.info("Total shared MCP Server Tools registered: {}", callbacksList.size());
@@ -132,7 +105,7 @@ public class McpToolsConfig {
         Set<String> registeredNames = new HashSet<>();
         for (Class<?> clazz : scanToolClasses()) {
             if (clazz.isAnnotationPresent(ClientOnlyTools.class)) {
-                register(applicationContext, clazz, registeredNames, callbacksList);
+                registerBeanTools(applicationContext, clazz, registeredNames, callbacksList);
             }
         }
         log.info("Total client-only MCP Server Tools registered: {}", callbacksList.size());
@@ -154,41 +127,31 @@ public class McpToolsConfig {
             }
             try {
                 classes.add(Class.forName(className));
-            } catch (Exception e) {
-                log.error("Failed to load MCP Tool candidate: {}", className, e);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("Failed to load MCP tool candidate: " + className,
+                    e);
             }
         }
         classes.sort(Comparator.comparing(Class::getName));
         return classes;
     }
 
-    private static void registerByHand(ToolCallback callback, Set<String> registeredNames,
-        List<ToolCallback> callbacksList) {
+    private static void registerUnique(ToolCallback callback, Set<String> registeredNames,
+        List<ToolCallback> callbacksList, String source) {
         String name = callback.getToolDefinition().name();
-        if (registeredNames.add(name)) {
-            callbacksList.add(callback);
-            log.info("Manually registered Context-Aware Tool callback: {}", name);
-        } else {
-            log.error("Skipped hand-registered tool callback '{}': the name is already taken",
-                name);
+        if (!registeredNames.add(name)) {
+            throw new IllegalStateException(
+                "Duplicate MCP tool name '" + name + "' (" + source + ")");
         }
+        callbacksList.add(callback);
+        log.info("Registered {} MCP tool callback: {}", source, name);
     }
 
-    private static void register(ApplicationContext applicationContext, Class<?> clazz,
+    private static void registerBeanTools(ApplicationContext applicationContext, Class<?> clazz,
         Set<String> registeredNames, List<ToolCallback> callbacksList) {
-        try {
-            Object bean = applicationContext.getBean(clazz);
-            for (ToolCallback callback : ToolCallbacks.from(bean)) {
-                String name = callback.getToolDefinition().name();
-                if (registeredNames.add(name)) {
-                    callbacksList.add(callback);
-                    log.info("Registered MCP Server Tool callback: {}", name);
-                } else {
-                    log.debug("Skipped duplicate MCP Server Tool registration: {}", name);
-                }
-            }
-        } catch (Exception e) {
-            log.error("Failed to register MCP Tool callback for candidate: {}", clazz.getName(), e);
+        Object bean = applicationContext.getBean(clazz);
+        for (ToolCallback callback : ToolCallbacks.from(bean)) {
+            registerUnique(callback, registeredNames, callbacksList, clazz.getSimpleName());
         }
     }
 }

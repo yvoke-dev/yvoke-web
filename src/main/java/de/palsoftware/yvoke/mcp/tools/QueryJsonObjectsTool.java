@@ -123,8 +123,7 @@ public class QueryJsonObjectsTool {
             if (matchedCol == null) {
                 return "Error: Collection '" + col + "' does not exist.";
             }
-            if (matchedCol.area() != null && !matchedCol.area().isBlank()
-                && !AreaAccessContext.canAccessUserArea(matchedCol.area())) {
+            if (!AreaAccessContext.canAccessEffectiveUserArea(matchedCol.area())) {
                 return "Error: Collection '" + col + "' does not exist.";
             }
 

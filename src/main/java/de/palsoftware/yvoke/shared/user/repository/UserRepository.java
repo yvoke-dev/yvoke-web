@@ -45,6 +45,26 @@ public class UserRepository {
             .param("email", email).param("displayName", displayName).update();
     }
 
+    /**
+     * Upserts the caller's identity and returns the resulting row in a single round-trip via
+     * {@code RETURNING}, eliminating the follow-up {@code findByEntraOid} query on bearer requests.
+     */
+    public Optional<User> upsertAndReturn(String entraOid, String email, String displayName) {
+        String sql = """
+            INSERT INTO users (id, entra_oid, email, display_name, last_seen_at, updated_at)
+            VALUES (:id, :entraOid, :email, :displayName, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (entra_oid) DO UPDATE
+            SET email = COALESCE(EXCLUDED.email, users.email),
+                display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                last_seen_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id, entra_oid, email, display_name, last_seen_at
+            """;
+        return jdbcClient.sql(sql).param("id", UUID.randomUUID()).param("entraOid", entraOid)
+            .param("email", email).param("displayName", displayName).query(userRowMapper)
+            .optional();
+    }
+
     public Optional<User> findByEntraOid(String entraOid) {
         String sql = """
             SELECT id, entra_oid, email, display_name, last_seen_at

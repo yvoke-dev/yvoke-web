@@ -133,11 +133,12 @@ public class CollectionRepositoryIT {
     }
 
     @Test
-    public void deleteRemovesByCaseInsensitiveName() {
+    public void deleteByIdRemovesTargetCollection() {
         insertWithTags(PREFIX + "DELME", "{x}");
-        assertThat(repository.findByName(PREFIX + "DELME")).isPresent();
+        var found = repository.findByName(PREFIX + "DELME");
+        assertThat(found).isPresent();
 
-        repository.delete((PREFIX + "DELME").toLowerCase());
+        repository.deleteById(found.get().id());
 
         assertThat(repository.findByName(PREFIX + "DELME")).isEmpty();
     }

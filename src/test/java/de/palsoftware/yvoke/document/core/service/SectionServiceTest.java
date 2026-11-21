@@ -170,7 +170,8 @@ class SectionServiceTest {
         // Case A: Root chunk whose heading is the document title -> headingPath becomes empty
         ChunkRow rootChunk = new ChunkRow(chunkId1, docId, "Some text", List.of(), docTitle, 1, 0,
             "?", docTitle, "confluence", "COL", null, 0.0);
-        when(chunkRepository.findByIdPrefix("root123")).thenReturn(Optional.of(rootChunk));
+        when(chunkRepository.findByIdPrefix(eq("root123"), any()))
+            .thenReturn(Optional.of(rootChunk));
 
         SectionResponse rootResponse = sectionService.getChunkContent("root123");
         assertThat(rootResponse.documentTitle()).isEqualTo(docTitle);
@@ -180,7 +181,7 @@ class SectionServiceTest {
         // Case B: Sub-section chunk whose path starts with documentTitle -> documentTitle stripped
         ChunkRow subChunk = new ChunkRow(chunkId2, docId, "Some text", List.of(docTitle),
             "The Connection", 2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
-        when(chunkRepository.findByIdPrefix("sub123")).thenReturn(Optional.of(subChunk));
+        when(chunkRepository.findByIdPrefix(eq("sub123"), any())).thenReturn(Optional.of(subChunk));
 
         SectionResponse subResponse = sectionService.getChunkContent("sub123");
         assertThat(subResponse.headingPath())
@@ -198,7 +199,8 @@ class SectionServiceTest {
             + "The Connection\n\nPosh-SSH was quickly found...";
         ChunkRow chunkWithTitle = new ChunkRow(chunkId1, docId, textWithTitle, List.of(), docTitle,
             1, 0, "?", docTitle, "confluence", "COL", null, 0.0);
-        when(chunkRepository.findByIdPrefix("cite123")).thenReturn(Optional.of(chunkWithTitle));
+        when(chunkRepository.findByIdPrefix(eq("cite123"), any()))
+            .thenReturn(Optional.of(chunkWithTitle));
 
         SectionResponse responseA = sectionService.getChunkContent("cite123");
         assertThat(responseA.text())
@@ -210,7 +212,7 @@ class SectionServiceTest {
         ChunkRow chunkWithSubheading =
             new ChunkRow(chunkId2, docId, textWithSubheading, List.of(docTitle), "The Connection",
                 2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
-        when(chunkRepository.findByIdPrefix("cite456"))
+        when(chunkRepository.findByIdPrefix(eq("cite456"), any()))
             .thenReturn(Optional.of(chunkWithSubheading));
 
         SectionResponse responseB = sectionService.getChunkContent("cite456");

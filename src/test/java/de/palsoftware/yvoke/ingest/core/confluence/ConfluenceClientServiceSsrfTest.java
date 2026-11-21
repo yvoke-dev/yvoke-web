@@ -4,17 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import com.sun.net.httpserver.HttpServer;
+import de.palsoftware.yvoke.ingest.core.confluence.ConfluenceClientService.ConnectionTestResult;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
-import java.net.URI;
-import java.lang.reflect.Method;
 
 class ConfluenceClientServiceSsrfTest {
 
     private final ConfluenceClientService service =
-        new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5);
+        new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5, true,
+            List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
 
     @Test
     void rejectsLoopbackHost() {
@@ -118,7 +125,8 @@ class ConfluenceClientServiceSsrfTest {
     private static String cql(String space, String rootPageId, String includeLabels,
         String excludeLabels) throws Exception {
         ConfluenceClientService client =
-            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5);
+            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5,
+                true, List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         Method m = ConfluenceClientService.class.getDeclaredMethod("buildCqlQuery", String.class,
             String.class, String.class, String.class);
         m.setAccessible(true);
@@ -152,5 +160,67 @@ class ConfluenceClientServiceSsrfTest {
         assertThat(injected).as("a double quote in a label must stay escaped")
             .doesNotContain("space=\"OTHER\"");
         assertThat(injected).contains("\\\"");
+    }
+
+    @Test
+    void rejectsPlainHttpInProductionAndEnforcesAllowedHosts() {
+        assertThatThrownBy(() -> service.getClient("http://203.0.113.5", "e@x.com", "tok"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("https");
+
+        ConfluenceClientService allowlisted =
+            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 1, 1, 5,
+                true, List.of("*.atlassian.net", "wiki.corp.example"), 1024);
+        assertThatThrownBy(() -> allowlisted.getClient("https://203.0.113.5", "e@x.com", "tok"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("allowed-hosts");
+        assertThatThrownBy(
+            () -> allowlisted.getClient("https://evil-atlassian.net", "e@x.com", "tok"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("allowed-hosts");
+    }
+
+    @Test
+    void testConnectionNeverLeaksRemoteResponseBodyAndStreamingDownloadEnforcesByteCap()
+        throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/rest/api/space/SEC", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] secret = "AWS_IMDS_SECRET_TOKEN_XYZ".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(403, secret.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(secret);
+            }
+        });
+        server.createContext("/download/huge", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] big = new byte[2048];
+            exchange.sendResponseHeaders(200, 0); // chunked: no Content-Length header
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(big);
+            }
+        });
+        server.start();
+        try {
+            String base = "http://127.0.0.1:" + server.getAddress().getPort();
+            ConfluenceClientService localService = new ConfluenceClientService(
+                mock(SecretCipher.class), RestClient.builder(), 1, 1, 5, false, List.of(), 512) {
+                @Override
+                public RestClient getClient(String domain, String email, String apiToken) {
+                    return RestClient.builder().baseUrl(base).build();
+                }
+            };
+
+            ConnectionTestResult res = localService.testConnection("https://203.0.113.5", "a@b.com",
+                "tok", "SEC", "1", null, null);
+            assertThat(res.ok()).isFalse();
+            assertThat(res.message()).isEqualTo("Atlassian API returned HTTP 403");
+            assertThat(res.message()).doesNotContain("AWS_IMDS_SECRET_TOKEN_XYZ");
+
+            ConfluenceInstance inst = new ConfluenceInstance(UUID.randomUUID(), "Local", "local",
+                "https://203.0.113.5/wiki", "a@b.com", "tok", null, "SEC", "1", null, null, "coll",
+                null, false, true, null, null);
+            assertThatThrownBy(() -> localService.downloadAttachment(inst, "/download/huge"))
+                .isInstanceOf(AttachmentTooLargeException.class);
+        } finally {
+            server.stop(0);
+        }
     }
 }
