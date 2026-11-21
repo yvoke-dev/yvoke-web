@@ -9,9 +9,9 @@ import de.palsoftware.yvoke.chat.core.service.CostCalculationService.UsedModelPr
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -41,16 +41,11 @@ public class ModelPricingAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public ModelPricingAdminController(CostCalculationService costCalculationService,
         AdminAuditLogger auditLogger) {
         this.costCalculationService = costCalculationService;
         this.objectMapper = new ObjectMapper();
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public ModelPricingAdminController(CostCalculationService costCalculationService) {
-        this(costCalculationService, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

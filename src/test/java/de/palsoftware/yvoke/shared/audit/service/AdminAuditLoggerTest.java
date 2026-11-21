@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.shared.audit.service;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,5 +39,16 @@ class AdminAuditLoggerTest {
             .setAuthentication(new TestingAuthenticationToken("area-admin-sub", "x", "ROLE_ADMIN"));
         logger.log("DELETE_AREA", "OIM", Map.of());
         verify(repo).log("area-admin-sub", "DELETE_AREA", "OIM", Map.of());
+    }
+
+    @Test
+    void constructorRejectsNullDependencies() {
+        AuditLogRepository repo = mock(AuditLogRepository.class);
+        UserService userService = mock(UserService.class);
+
+        assertThatThrownBy(() -> new AdminAuditLogger(null, userService))
+            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new AdminAuditLogger(repo, null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

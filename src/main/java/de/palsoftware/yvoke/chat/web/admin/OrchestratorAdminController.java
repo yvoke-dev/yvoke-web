@@ -15,10 +15,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -51,7 +51,6 @@ public class OrchestratorAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public OrchestratorAdminController(OrchestratorProfileService profileService,
         PlaybookService playbookService, ChatConversationService chatConversationService,
         OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper,
@@ -62,14 +61,7 @@ public class OrchestratorAdminController {
         this.chatConversationService = chatConversationService;
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public OrchestratorAdminController(OrchestratorProfileService profileService,
-        PlaybookService playbookService, ChatConversationService chatConversationService,
-        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper) {
-        this(profileService, playbookService, chatConversationService, properties, areaService,
-            objectMapper, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping

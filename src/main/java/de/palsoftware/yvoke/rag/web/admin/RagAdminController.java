@@ -21,13 +21,13 @@ import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.web.BoundedUploadReader;
 import de.palsoftware.yvoke.shared.web.PagingParams;
-import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -90,7 +90,6 @@ public class RagAdminController {
     private final AreaService areaService;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public RagAdminController(HybridSearch hybridSearch,
         RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
         CollectionService collectionService, PlaybookService playbookService,
@@ -111,18 +110,7 @@ public class RagAdminController {
         this.objectMapper = objectMapper;
         this.logQueryMaxChars = logQueryMaxChars;
         this.maxLimit = maxLimit;
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public RagAdminController(HybridSearch hybridSearch,
-        RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
-        CollectionService collectionService, PlaybookService playbookService,
-        SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
-        RetrievalTelemetryService telemetryService, int logQueryMaxChars, int maxLimit,
-        AreaService areaService) {
-        this(hybridSearch, retrievalLogRepository, ragAdminViewService, collectionService,
-            playbookService, systemPromptService, ragService, objectMapper, telemetryService,
-            logQueryMaxChars, maxLimit, areaService, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @SuppressWarnings("unchecked")

@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.area.web.admin;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,7 @@ import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.area.core.AreaMembers;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +38,9 @@ class AreaAdminControllerTest {
     @BeforeEach
     void setUp() {
         areaService = mock(AreaService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new AreaAdminController(areaService)).build();
+        mvc = MockMvcBuilders
+            .standaloneSetup(new AreaAdminController(areaService, mock(AdminAuditLogger.class)))
+            .build();
         SecurityContextHolder.getContext()
             .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
     }
@@ -148,5 +152,11 @@ class AreaAdminControllerTest {
 
         mvc.perform(post("/admin/areas/delete").param("name", "OIM"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void constructorRejectsNullAuditLogger() {
+        assertThatThrownBy(() -> new AreaAdminController(areaService, null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

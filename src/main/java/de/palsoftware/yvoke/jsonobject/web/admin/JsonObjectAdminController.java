@@ -11,6 +11,7 @@ import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -26,7 +27,6 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.web.PagingParams;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -43,19 +43,13 @@ public class JsonObjectAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public JsonObjectAdminController(JsonObjectService jsonObjectService,
         CollectionService collectionService, ObjectMapper objectMapper,
         AdminAuditLogger auditLogger) {
         this.jsonObjectService = jsonObjectService;
         this.collectionService = collectionService;
         this.objectMapper = objectMapper;
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public JsonObjectAdminController(JsonObjectService jsonObjectService,
-        CollectionService collectionService, ObjectMapper objectMapper) {
-        this(jsonObjectService, collectionService, objectMapper, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping

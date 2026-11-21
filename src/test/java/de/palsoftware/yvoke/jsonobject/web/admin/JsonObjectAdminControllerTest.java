@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -44,8 +45,8 @@ public class JsonObjectAdminControllerTest {
         jsonObjectService = mock(JsonObjectService.class);
         collectionService = mock(CollectionService.class);
         objectMapper = new ObjectMapper();
-        controller =
-            new JsonObjectAdminController(jsonObjectService, collectionService, objectMapper);
+        controller = new JsonObjectAdminController(jsonObjectService, collectionService,
+            objectMapper, mock(AdminAuditLogger.class));
         model = new ConcurrentModel();
 
         SecurityContextHolder.getContext()
@@ -200,5 +201,12 @@ public class JsonObjectAdminControllerTest {
         assertThat(rebuildView).isEqualTo("redirect:/admin/json-objects");
         assertThat(rebuildRedirect.asMap()).containsEntry("collection", "OIM & DB #1")
             .containsEntry("tag", "9.3&evil=1");
+    }
+
+    @Test
+    public void constructorRejectsNullAuditLogger() {
+        assertThrows(NullPointerException.class,
+            () -> new JsonObjectAdminController(jsonObjectService, collectionService, objectMapper,
+                null));
     }
 }

@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.web.admin;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.UsedModelPricingStatus;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -43,6 +45,9 @@ public class ModelPricingAdminControllerTest {
 
     @Mock
     private CostCalculationService costCalculationService;
+
+    @Mock
+    private AdminAuditLogger auditLogger;
 
     @Mock
     private UserService userService;
@@ -282,5 +287,11 @@ public class ModelPricingAdminControllerTest {
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/pricing"));
 
         verify(costCalculationService).deleteModelPricing("custom-model");
+    }
+
+    @Test
+    public void constructorRejectsNullAuditLogger() {
+        assertThatThrownBy(() -> new ModelPricingAdminController(costCalculationService, null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

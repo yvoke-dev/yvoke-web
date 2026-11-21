@@ -51,6 +51,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.RagAdminViewService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -103,10 +104,10 @@ class RagAdminControllerTest {
 
         telemetryService = mock(RetrievalTelemetryService.class);
 
-        controller =
-            new RagAdminController(hybridSearch, retrievalLogRepository, ragAdminViewService,
-                collectionService, playbookService, systemPromptService, ragService, objectMapper,
-                telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM", "Finance"));
+        controller = new RagAdminController(hybridSearch, retrievalLogRepository,
+            ragAdminViewService, collectionService, playbookService, systemPromptService,
+            ragService, objectMapper, telemetryService, 100, MAX_LIMIT,
+            TestAreas.withAreas("OIM", "Finance"), mock(AdminAuditLogger.class));
 
         model = mock(Model.class);
     }
@@ -590,5 +591,14 @@ class RagAdminControllerTest {
 
         mvc.perform(multipart("/admin/prompts/import").file(file).param("area", "Finance"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void constructorRejectsNullAuditLogger() {
+        assertThatThrownBy(
+            () -> new RagAdminController(hybridSearch, retrievalLogRepository, ragAdminViewService,
+                collectionService, playbookService, systemPromptService, ragService, objectMapper,
+                telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM", "Finance"), null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

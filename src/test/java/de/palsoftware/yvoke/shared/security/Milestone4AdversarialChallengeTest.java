@@ -49,6 +49,7 @@ import de.palsoftware.yvoke.rag.retrieval.RetrievalLogRepository;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
 import de.palsoftware.yvoke.rag.web.admin.RagAdminController;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
+import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
@@ -349,11 +350,11 @@ class Milestone4AdversarialChallengeTest {
             SystemPromptService promptService = mock(SystemPromptService.class);
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            RagAdminController ragController =
-                new RagAdminController(mock(HybridSearch.class), mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), mock(CollectionService.class), playbookService,
-                    promptService, mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController ragController = new RagAdminController(mock(HybridSearch.class),
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                mock(CollectionService.class), playbookService, promptService,
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             Playbook existingB = new Playbook("cross-pb", "Cross PB", "desc", "tmpl", List.of(),
                 false, "specialist", false, Instant.now(), Instant.now(), false, "AreaB");
@@ -378,11 +379,11 @@ class Milestone4AdversarialChallengeTest {
             SystemPromptService promptService = mock(SystemPromptService.class);
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            RagAdminController ragController =
-                new RagAdminController(mock(HybridSearch.class), mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), mock(CollectionService.class), playbookService,
-                    promptService, mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController ragController = new RagAdminController(mock(HybridSearch.class),
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                mock(CollectionService.class), playbookService, promptService,
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             Playbook existingB = new Playbook("cross-pb", "Cross PB", "desc", "tmpl", List.of(),
                 false, "specialist", false, Instant.now(), Instant.now(), false, "AreaB");
@@ -411,11 +412,11 @@ class Milestone4AdversarialChallengeTest {
             SystemPromptService promptService = mock(SystemPromptService.class);
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            RagAdminController ragController =
-                new RagAdminController(mock(HybridSearch.class), mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), mock(CollectionService.class), playbookService,
-                    promptService, mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController ragController = new RagAdminController(mock(HybridSearch.class),
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                mock(CollectionService.class), playbookService, promptService,
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.KG, "prompt",
                 "desc", Instant.now(), Instant.now(), false, "AreaB");
@@ -439,11 +440,11 @@ class Milestone4AdversarialChallengeTest {
             SystemPromptService promptService = mock(SystemPromptService.class);
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            RagAdminController ragController =
-                new RagAdminController(mock(HybridSearch.class), mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), mock(CollectionService.class), playbookService,
-                    promptService, mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController ragController = new RagAdminController(mock(HybridSearch.class),
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                mock(CollectionService.class), playbookService, promptService,
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             SystemPrompt existingB = new SystemPrompt("cross-prompt", SystemPromptType.KG, "prompt",
                 "desc", Instant.now(), Instant.now(), false, "AreaB");
@@ -473,9 +474,9 @@ class Milestone4AdversarialChallengeTest {
                 new OrchestratorProperties(3, 8, 10, 50, null, List.of());
             AreaService areaService = TestAreas.withAreas("AreaA", "AreaB");
 
-            OrchestratorAdminController controller =
-                new OrchestratorAdminController(profileService, playbookService, convService, props,
-                    areaService, new ObjectMapper().findAndRegisterModules());
+            OrchestratorAdminController controller = new OrchestratorAdminController(profileService,
+                playbookService, convService, props, areaService,
+                new ObjectMapper().findAndRegisterModules(), mock(AdminAuditLogger.class));
 
             OrchestratorProfile existingB = new OrchestratorProfile("profile-b", 2, 8, "orch",
                 "rev", List.of(), null, null, null, null, null, null, false, null, null, "AreaB");
@@ -668,11 +669,11 @@ class Milestone4AdversarialChallengeTest {
             // Empty collections for this admin
             when(collectionService.listForAdminUser()).thenReturn(Collections.emptyList());
 
-            RagAdminController controller =
-                new RagAdminController(hybridSearch, mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), collectionService, mock(PlaybookService.class),
-                    mock(SystemPromptService.class), mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController controller = new RagAdminController(hybridSearch,
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                collectionService, mock(PlaybookService.class), mock(SystemPromptService.class),
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             String view =
                 controller.testSearch("sensitive query", null, null, 8, true, true, model);
@@ -699,11 +700,11 @@ class Milestone4AdversarialChallengeTest {
                 List.of(), OffsetDateTime.now(), "OIM");
             when(collectionService.getCollection("OIM")).thenReturn(Optional.of(oimCol));
 
-            RagAdminController controller =
-                new RagAdminController(hybridSearch, mock(RetrievalLogRepository.class),
-                    mock(RagAdminViewService.class), collectionService, mock(PlaybookService.class),
-                    mock(SystemPromptService.class), mock(RagService.class), new ObjectMapper(),
-                    mock(RetrievalTelemetryService.class), 200, 20, areaService);
+            RagAdminController controller = new RagAdminController(hybridSearch,
+                mock(RetrievalLogRepository.class), mock(RagAdminViewService.class),
+                collectionService, mock(PlaybookService.class), mock(SystemPromptService.class),
+                mock(RagService.class), new ObjectMapper(), mock(RetrievalTelemetryService.class),
+                200, 20, areaService, mock(AdminAuditLogger.class));
 
             assertThatThrownBy(
                 () -> controller.testSearch("query", "OIM", null, 8, true, true, model))

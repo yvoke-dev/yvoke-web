@@ -9,11 +9,11 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -38,18 +38,12 @@ public class CollectionAdminController {
     private final AreaService areaService;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public CollectionAdminController(CollectionService collectionService, TagService tagService,
         AreaService areaService, AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.collectionService = collectionService;
         this.tagService = tagService;
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public CollectionAdminController(CollectionService collectionService, TagService tagService,
-        AreaService areaService) {
-        this(collectionService, tagService, areaService, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping("/collections")

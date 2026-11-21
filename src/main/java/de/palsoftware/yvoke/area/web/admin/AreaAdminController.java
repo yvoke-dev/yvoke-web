@@ -4,7 +4,7 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.audit.service.AdminAuditLogger;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -27,14 +27,9 @@ public class AreaAdminController {
     private final AreaService areaService;
     private final AdminAuditLogger auditLogger;
 
-    @Autowired
     public AreaAdminController(AreaService areaService, AdminAuditLogger auditLogger) {
         this.areaService = areaService;
-        this.auditLogger = auditLogger != null ? auditLogger : AdminAuditLogger.noop();
-    }
-
-    public AreaAdminController(AreaService areaService) {
-        this(areaService, AdminAuditLogger.noop());
+        this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
     }
 
     @GetMapping("/areas")
