@@ -289,7 +289,7 @@ class McpErrorContractAndCollectionAccessTest {
         assertThat(unannotatedTool.annotations().readOnlyHint()).isFalse();
         assertThat(unannotatedTool.annotations().destructiveHint()).isTrue();
         assertThat(unannotatedTool.annotations().idempotentHint()).isFalse();
-        assertThat(unannotatedTool.annotations().openWorldHint()).isFalse();
+        assertThat(unannotatedTool.annotations().openWorldHint()).isTrue();
     }
 
     @Test

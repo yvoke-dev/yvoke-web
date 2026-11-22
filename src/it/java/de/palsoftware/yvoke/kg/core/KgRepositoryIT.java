@@ -359,7 +359,8 @@ public class KgRepositoryIT {
 
     @Test
     public void testListPredicates() {
-        // Insert mixed-case / whitespace variants to verify case-insensitive deduplication.
+        // Insert mixed-case duplicate to verify case-insensitive deduplication matching
+        // relationshipPredicateExists (lower(r.predicate)).
         insertRelationship(
                 UUID.randomUUID(),
                 COLLECTION,
@@ -370,21 +371,18 @@ public class KgRepositoryIT {
                 procYId,
                 "9.3",
                 "Duplicate predicate in uppercase");
-        insertRelationship(
-                UUID.randomUUID(),
-                COLLECTION,
-                "TableA",
-                "  FK_TO  ",
-                "TableB",
-                tableAId,
-                tableBId,
-                "9.3",
-                "Duplicate predicate with whitespace and uppercase");
 
         List<String> predicates = kgRepository.listPredicates(COLLECTION);
         assertThat(predicates).hasSize(3);
         assertThat(predicates.stream().map(String::toLowerCase).toList())
                 .containsExactly("calls", "fk_to", "references_table");
+        for (String predicate : predicates) {
+            assertThat(kgRepository.relationshipPredicateExists(predicate, List.of(COLLECTION)))
+                    .as(
+                            "listed predicate '%s' must be accepted by relationshipPredicateExists",
+                            predicate)
+                    .isTrue();
+        }
         assertThat(kgRepository.listPredicates(COLLECTION, 2)).hasSize(2);
         assertThat(kgRepository.listPredicates("NO-SUCH-COLLECTION")).isEmpty();
         assertThat(kgRepository.listPredicates("")).isEmpty();

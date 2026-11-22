@@ -142,8 +142,8 @@ public final class McpSyncToolAdapter {
     /**
      * Resolves {@link McpSchema.ToolAnnotations} from a declared {@link McpToolHints} marker. When
      * a standalone callback carries no marker (e.g. a bare test stub), falls back to conservative
-     * MCP defaults ({@code readOnlyHint=false, destructiveHint=true, idempotentHint=false}) — never
-     * assuming read-only by default.
+     * MCP specification defaults ({@code readOnlyHint=false, destructiveHint=true,
+     * idempotentHint=false, openWorldHint=true}) — never assuming read-only by default.
      */
     static McpSchema.ToolAnnotations resolveAnnotations(ToolCallback callback) {
         if (callback instanceof AnnotatedToolCallback annotated) {
@@ -157,7 +157,7 @@ public final class McpSyncToolAdapter {
                 .readOnlyHint(false)
                 .destructiveHint(true)
                 .idempotentHint(false)
-                .openWorldHint(false)
+                .openWorldHint(true)
                 .build();
     }
 
