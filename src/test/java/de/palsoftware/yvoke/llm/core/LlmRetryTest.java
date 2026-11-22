@@ -14,13 +14,17 @@ import com.openai.errors.OpenAIServiceException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.SocketTimeoutException;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.random.RandomGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -237,21 +241,54 @@ class LlmRetryTest {
     // --- Backoff. Pure so the quota-scale wait can be asserted without the test sleeping for it.
     // ---
 
+    private static final RandomGenerator MIN_JITTER =
+            new RandomGenerator() {
+                @Override
+                public long nextLong() {
+                    return 0L;
+                }
+
+                @Override
+                public long nextLong(long bound) {
+                    return 0L;
+                }
+            };
+
+    private static final RandomGenerator MAX_JITTER =
+            new RandomGenerator() {
+                @Override
+                public long nextLong() {
+                    return Long.MAX_VALUE;
+                }
+
+                @Override
+                public long nextLong(long bound) {
+                    return bound - 1;
+                }
+            };
+
     /**
      * A 429 is a quota window, not a blip. Retrying it after half a second re-spends the very quota
      * that produced it — which is exactly what happened in the incident, where each attempt
-     * re-uploaded a ~600k-token prompt into an exhausted limit.
+     * re-uploaded a ~600k-token prompt into an exhausted limit. Equal jitter keeps the minimum wait
+     * quota-scale (7.5 s on attempt 1, 15 s on attempt 2) while spreading parallel callers.
      */
     @Test
     void backoff_forRateLimitIsQuotaScaled() {
-        long first = LlmRetry.backoffMs(1, new ApiException(429, "", ""));
+        long firstMin = LlmRetry.backoffMs(1, new ApiException(429, "", ""), MIN_JITTER);
+        long firstMax = LlmRetry.backoffMs(1, new ApiException(429, "", ""), MAX_JITTER);
+        long secondMin = LlmRetry.backoffMs(2, new ApiException(429, "", ""), MIN_JITTER);
+        long secondMax = LlmRetry.backoffMs(2, new ApiException(429, "", ""), MAX_JITTER);
 
-        assertTrue(first >= 10_000L, "429 backoff must be quota-scale, was " + first + "ms");
-        assertTrue(LlmRetry.backoffMs(2, new ApiException(429, "", "")) > first, "must grow");
+        assertEquals(7_500L, firstMin, "equal jitter floor on attempt 1 must stay quota-scale");
+        assertEquals(15_000L, firstMax);
+        assertEquals(15_000L, secondMin, "attempt 2 window must not dip below attempt 1 ceiling");
+        assertEquals(30_000L, secondMax);
     }
 
     @Test
     void backoff_forRateLimitIsCapped() {
+        assertEquals(60_000L, LlmRetry.backoffMs(9, new ApiException(429, "", ""), MAX_JITTER));
         assertTrue(LlmRetry.backoffMs(9, new ApiException(429, "", "")) <= 60_000L);
     }
 
@@ -265,13 +302,15 @@ class LlmRetryTest {
 
     @Test
     void anOpenAiRateLimitGetsTheQuotaScaleBackoff() {
-        long openAiBackoff = LlmRetry.backoffMs(1, openAiError(429));
+        long openAiBackoff = LlmRetry.backoffMs(1, openAiError(429), new SplittableRandom(7));
+        long geminiBackoff =
+                LlmRetry.backoffMs(1, new ApiException(429, "", ""), new SplittableRandom(7));
 
         assertTrue(
-                openAiBackoff >= 10_000L,
+                openAiBackoff >= 7_500L && openAiBackoff <= 15_000L,
                 "429 backoff must be quota-scale, was " + openAiBackoff + "ms");
         assertEquals(
-                LlmRetry.backoffMs(1, new ApiException(429, "", "")),
+                geminiBackoff,
                 openAiBackoff,
                 "the provider must not change how long a rate limit is waited out");
         assertTrue(
@@ -283,11 +322,15 @@ class LlmRetryTest {
     void aRetryAfterHeaderBeatsTheGuessedBackoff() {
         assertEquals(
                 42_000L,
-                LlmRetry.backoffMs(1, openAiError(429, "42")),
-                "the server's own interval must win over the quota-scale guess");
+                LlmRetry.backoffMs(1, openAiError(429, "42"), MIN_JITTER),
+                "the server's own interval must remain the minimum wait");
+        assertEquals(
+                43_000L,
+                LlmRetry.backoffMs(1, openAiError(429, "42"), MAX_JITTER),
+                "small additive jitter spreads concurrent callers obeying the same header");
         assertEquals(
                 42_000L,
-                LlmRetry.backoffMs(3, openAiError(429, "42")),
+                LlmRetry.backoffMs(3, openAiError(429, "42"), MIN_JITTER),
                 "and it does not compound with the attempt number");
     }
 
@@ -295,19 +338,20 @@ class LlmRetryTest {
     void anAbsurdOrUnparseableRetryAfterFallsBackToTheSchedule() {
         assertEquals(
                 ProviderRateLimit.MAX_RETRY_AFTER_SECONDS * 1000L,
-                LlmRetry.backoffMs(1, openAiError(429, "3600")),
-                "clamped, not obeyed");
+                LlmRetry.backoffMs(1, openAiError(429, "3600"), MAX_JITTER),
+                "clamped, not obeyed, even after additive jitter");
         assertEquals(
                 15_000L,
-                LlmRetry.backoffMs(1, openAiError(429, "Wed, 21 Oct 2026 07:28:00 GMT")),
+                LlmRetry.backoffMs(
+                        1, openAiError(429, "Wed, 21 Oct 2026 07:28:00 GMT"), MAX_JITTER),
                 "an HTTP-date Retry-After is not honoured; the quota schedule applies");
         assertEquals(
                 15_000L,
-                LlmRetry.backoffMs(1, openAiError(429, (String) null)),
+                LlmRetry.backoffMs(1, openAiError(429, (String) null), MAX_JITTER),
                 "no header at all keeps the existing quota-scale backoff");
         assertEquals(
                 500L,
-                LlmRetry.backoffMs(1, openAiError(503, "42")),
+                LlmRetry.backoffMs(1, openAiError(503, "42"), MAX_JITTER),
                 "Retry-After only governs rate limits; an ordinary blip keeps the fast schedule");
     }
 
@@ -324,7 +368,7 @@ class LlmRetryTest {
 
         assertEquals(9L, info.retryAfterSeconds(), "Retry-After must be found in any casing");
         assertEquals("0", info.remainingTokens());
-        assertEquals(9_000L, LlmRetry.backoffMs(1, failure));
+        assertEquals(9_000L, LlmRetry.backoffMs(1, failure, MIN_JITTER));
     }
 
     @Test
@@ -445,5 +489,30 @@ class LlmRetryTest {
         assertTrue(
                 LlmRetry.isTransient(new TimeoutException("gave up")),
                 "a reactive timeout is a transient failure, not a permanent one");
+    }
+
+    @Test
+    void backoffSpreadsConcurrentCallersWithJitterInsteadOfRetryingInLockstep() {
+        Set<Long> rateLimitWaits = new HashSet<>();
+        Set<Long> retryAfterWaits = new HashSet<>();
+        for (int i = 0; i < 32; i++) {
+            long wait = LlmRetry.backoffMs(1, new ApiException(429, "", ""));
+            assertTrue(
+                    wait >= 7_500L && wait <= 15_000L,
+                    "429 backoff with equal jitter must stay in [7500, 15000] ms, was " + wait);
+            rateLimitWaits.add(wait);
+
+            long retryAfterWait = LlmRetry.backoffMs(1, openAiError(429, "42"));
+            assertTrue(
+                    retryAfterWait >= 42_000L && retryAfterWait <= 43_000L,
+                    "Retry-After backoff must stay in [42000, 43000] ms, was " + retryAfterWait);
+            retryAfterWaits.add(retryAfterWait);
+        }
+        assertTrue(
+                rateLimitWaits.size() > 1,
+                "32 concurrent 429 callers must spread out instead of retrying in lockstep");
+        assertTrue(
+                retryAfterWaits.size() > 1,
+                "32 concurrent Retry-After callers must spread out instead of retrying in lockstep");
     }
 }

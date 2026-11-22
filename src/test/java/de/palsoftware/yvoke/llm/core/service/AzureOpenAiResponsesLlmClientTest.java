@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.Timeout;
 import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.FunctionTool;
@@ -30,6 +31,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import okhttp3.OkHttpClient;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -91,6 +94,46 @@ class AzureOpenAiResponsesLlmClientTest {
         assertThatThrownBy(() -> AzureOpenAiResponsesLlmClient.baseUrl("  "))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("endpoint is required");
+    }
+
+    @Test
+    void aPlainHttpNonLoopbackEndpointIsRejectedSoTheApiKeyNeverTravelsInCleartext() {
+        assertThatThrownBy(() ->
+                        AzureOpenAiResponsesLlmClient.baseUrl("http://res.services.ai.azure.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HTTPS");
+        assertThatThrownBy(() ->
+                        new AzureOpenAiResponsesLlmClient(
+                                "http://res.services.ai.azure.com",
+                                "super-secret-azure-key",
+                                true,
+                                "high",
+                                ""))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining("super-secret-azure-key");
+        assertThat(AzureOpenAiResponsesLlmClient.baseUrl("http://127.0.0.1:8080"))
+                .isEqualTo("http://127.0.0.1:8080/openai/v1");
+    }
+
+    @Test
+    void transportTimeoutsUseReadTimeoutWithNoWholeCallCapSoLongStreamsSurvive() {
+        try (AzureOpenAiResponsesLlmClient built =
+                new AzureOpenAiResponsesLlmClient(
+                        "https://res.services.ai.azure.com", "test-key", true, "high", "")) {
+            Timeout timeout = OpenAiTransportTestSupport.timeoutOf(built);
+            assertThat(timeout.connect()).isEqualTo(Duration.ofSeconds(10));
+            assertThat(timeout.read()).isEqualTo(AzureOpenAiResponsesLlmClient.HTTP_TIMEOUT);
+            assertThat(timeout.write()).isEqualTo(AzureOpenAiResponsesLlmClient.HTTP_TIMEOUT);
+            assertThat(timeout.request()).isEqualTo(Duration.ZERO);
+
+            OkHttpClient okHttp = OpenAiTransportTestSupport.okHttpClientOf(built);
+            assertThat(okHttp.connectTimeoutMillis()).isEqualTo(10_000);
+            assertThat(okHttp.readTimeoutMillis()).isEqualTo(300_000);
+            assertThat(okHttp.writeTimeoutMillis()).isEqualTo(300_000);
+            assertThat(okHttp.callTimeoutMillis())
+                    .as("callTimeout must be 0 so healthy SSE streams are not killed at 5 minutes")
+                    .isEqualTo(0);
+        }
     }
 
     // ------------------------------------------------------- request building
@@ -175,8 +218,7 @@ class AzureOpenAiResponsesLlmClientTest {
     void aFullAgenticTurnIsTranslatedIntoTheResponsesItemShapes() {
         // buildInput is the translation layer between yvoke's model and the wire, and it has no
         // other safety net: a wrong role or a transposed callId surfaces as a 400 on turn 2, or as
-        // an agent that silently loses its own tool results. AzureOpenAiLlmClientTest pins the
-        // equivalent mapping for the chat client.
+        // an agent that silently loses its own tool results.
         List<ResponseInputItem> items = inputItems(client("medium").buildParams(agenticTurn()));
 
         assertThat(items).hasSize(5);
@@ -497,9 +539,8 @@ class AzureOpenAiResponsesLlmClientTest {
 
     @Test
     void aTruncatedTurnIsNotTreatedAsAFailure() throws IOException {
-        // AzureOpenAiLlmClient puts TOKEN_LIMIT_REACHED in BENIGN_FINISH_REASONS, so a truncated
-        // answer is delivered rather than raised. Diverging here would turn today's usable partial
-        // answers into hard errors on one provider only.
+        // Output-budget truncation is benign across all providers so usable partial answers are
+        // delivered rather than turned into hard errors.
         List<LlmResponseChunk> chunks = replay("truncated-incomplete.sse");
 
         assertThat(joined(chunks, LlmResponseChunk::content)).isEqualTo("9 sheep are left.");
@@ -678,8 +719,8 @@ class AzureOpenAiResponsesLlmClientTest {
 
     @Test
     void aTruncatedNonStreamingTurnIsDeliveredRatherThanRaised() throws IOException {
-        // Matches the streaming path and AzureOpenAiLlmClient's BENIGN_FINISH_REASONS: a partial
-        // answer is usable, and making one provider stricter than its siblings is a divergence.
+        // Matches the streaming path across all providers: a partial answer is usable, and making
+        // one provider stricter than its siblings is a divergence.
         assertThat(blocking(INCOMPLETE_RESPONSE).content()).isEqualTo("9 sheep are");
     }
 

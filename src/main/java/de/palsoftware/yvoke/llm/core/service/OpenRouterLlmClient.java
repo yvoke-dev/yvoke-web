@@ -1,8 +1,8 @@
 package de.palsoftware.yvoke.llm.core.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.JsonField;
 import com.openai.core.JsonValue;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.FunctionDefinition;
@@ -20,7 +20,7 @@ import com.openai.models.chat.completions.ChatCompletionStreamOptions;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
-import de.palsoftware.yvoke.llm.core.EmptyTurnRetry;
+import com.openai.models.completions.CompletionUsage;
 import de.palsoftware.yvoke.llm.core.LlmRetry;
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -38,8 +38,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -56,7 +56,10 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     static final String DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
     static final String APP_TITLE = "Yvoke";
     static final String APP_REFERER = "https://app.yvoke.dev";
-    static final Duration HTTP_TIMEOUT = Duration.ofSeconds(300);
+
+    /** Per-read/write socket silence timeout (300 s); whole-call timeout is disabled for SSE. */
+    static final Duration HTTP_TIMEOUT = OpenAiHttpTimeouts.READ_TIMEOUT;
+
     static final Set<String> FATAL_FINISH_REASONS = Set.of("content_filter");
     static final Set<String> BENIGN_FINISH_REASONS =
             Set.of("stop", "end_turn", "length", "tool_calls", "function_call");
@@ -70,7 +73,6 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
             List.of("low", "medium", "high", "max");
 
     private final OpenAIClient client;
-    private final ObjectMapper objectMapper;
     private final boolean enableThinking;
     private final String thinkingLevel;
     private final Set<String> reasoningModels;
@@ -86,36 +88,31 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         while (trimmed.endsWith("/")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
-        return trimmed.isEmpty() ? DEFAULT_BASE_URL : trimmed;
+        if (trimmed.isEmpty()) {
+            return DEFAULT_BASE_URL;
+        }
+        return ProviderEndpointValidator.requireHttpsOrLoopback(trimmed, "OpenRouter");
     }
 
-    public OpenRouterLlmClient(String baseUrl, String apiKey, ObjectMapper objectMapper) {
-        this(baseUrl, apiKey, objectMapper, true, "high", "");
+    public OpenRouterLlmClient(String baseUrl, String apiKey) {
+        this(baseUrl, apiKey, true, "high", "");
     }
 
     public OpenRouterLlmClient(
             String baseUrl,
             String apiKey,
-            ObjectMapper objectMapper,
             boolean enableThinking,
             String thinkingLevel,
             String reasoningModelsCsv) {
-        this(
-                buildClient(baseUrl, apiKey),
-                objectMapper,
-                enableThinking,
-                thinkingLevel,
-                reasoningModelsCsv);
+        this(buildClient(baseUrl, apiKey), enableThinking, thinkingLevel, reasoningModelsCsv);
     }
 
     OpenRouterLlmClient(
             OpenAIClient client,
-            ObjectMapper objectMapper,
             boolean enableThinking,
             String thinkingLevel,
             String reasoningModelsCsv) {
         this.client = client;
-        this.objectMapper = objectMapper;
         this.enableThinking = enableThinking;
         this.thinkingLevel = thinkingLevel;
         this.reasoningModels = parseReasoningModels(reasoningModelsCsv);
@@ -130,7 +127,7 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
                 .putHeader("HTTP-Referer", APP_REFERER)
                 .putHeader("X-Title", APP_TITLE)
                 .maxRetries(0)
-                .timeout(HTTP_TIMEOUT)
+                .timeout(OpenAiHttpTimeouts.forReadTimeout(HTTP_TIMEOUT))
                 .build();
     }
 
@@ -232,7 +229,7 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
                             finishReason = choice.finishReason().asString();
                         }
                     }
-                    LlmUsage usage = parseUsage(completion.usage().orElse(null));
+                    LlmUsage usage = usageOf(completion.usage().orElse(null));
 
                     if (finishReason != null
                             && FATAL_FINISH_REASONS.contains(
@@ -262,61 +259,46 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         log.info("Sending streaming request to OpenRouter: model={}", request.model());
         ChatCompletionCreateParams params = buildCreateParams(request, true);
 
-        EmptyTurnRetry.run(
+        StreamingLlmExecution.<ChatCompletionChunk>run(
                 "OpenRouter",
+                "OpenRouter.generateStream",
                 request.model(),
-                attempt -> {
-                    StreamOutcome outcome = new StreamOutcome();
-
-                    StreamResponse<ChatCompletionChunk> established =
-                            LlmRetry.withRetry(
-                                    "OpenRouter.generateStream",
-                                    3,
-                                    () -> client.chat().completions().createStreaming(params));
-
-                    try (StreamResponse<ChatCompletionChunk> stream = established) {
-                        stream.stream()
-                                .forEach(chunk -> {
-                                    if (Thread.currentThread().isInterrupted()) {
-                                        throw new CancellationException(
-                                                "OpenRouter stream interrupted");
+                "finishReason",
+                onChunk,
+                attempt ->
+                        new StreamingLlmExecution.StreamAttempt<>() {
+                            @Override
+                            public StreamingLlmExecution.StreamSource<ChatCompletionChunk>
+                                    establish() {
+                                StreamResponse<ChatCompletionChunk> stream =
+                                        client.chat().completions().createStreaming(params);
+                                return new StreamingLlmExecution.StreamSource<>() {
+                                    @Override
+                                    public void forEach(Consumer<ChatCompletionChunk> action) {
+                                        stream.stream().forEach(action);
                                     }
-                                    parseChunk(chunk, outcome, onChunk);
-                                });
-                    } catch (RuntimeException e) {
-                        if (Thread.currentThread().isInterrupted()
-                                || e instanceof CancellationException
-                                || e.getCause() instanceof InterruptedException
-                                || e.getCause() instanceof CancellationException) {
-                            log.info("OpenRouter stream cancelled/interrupted");
-                            throw new CancellationException("OpenRouter stream interrupted");
-                        }
-                        log.error("OpenRouter streaming call failed", e);
-                        throw e;
-                    }
 
-                    // Closes this HTTP call for accounting BEFORE evaluating verdict
-                    onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
+                                    @Override
+                                    public void close() {
+                                        stream.close();
+                                    }
+                                };
+                            }
 
-                    if (outcome.fatalFinishReason != null) {
-                        throw new LlmCallFailedException(
-                                "OpenRouter stream failed with finish_reason="
-                                        + outcome.fatalFinishReason,
-                                null,
-                                outcome.usage);
-                    }
-
-                    return new EmptyTurnRetry.Turn(
-                            !outcome.isEmpty(),
-                            outcome.cleanlyCompleted(),
-                            outcome.usage,
-                            outcome.describe());
-                });
+                            @Override
+                            public void onEvent(
+                                    ChatCompletionChunk chunk,
+                                    StreamingLlmExecution.StreamOutcome outcome,
+                                    Consumer<LlmResponseChunk> emit) {
+                                parseChunk(chunk, outcome, emit);
+                            }
+                        });
     }
 
     private void parseChunk(
-            ChatCompletionChunk chunk, StreamOutcome outcome, Consumer<LlmResponseChunk> onChunk) {
-        outcome.events++;
+            ChatCompletionChunk chunk,
+            StreamingLlmExecution.StreamOutcome outcome,
+            Consumer<LlmResponseChunk> onChunk) {
         String content = null;
         String reasoning = null;
         List<LlmToolCallDelta> toolDeltas = null;
@@ -370,22 +352,23 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
             }
 
             if (content != null && !content.isEmpty()) {
-                outcome.sawContent = true;
+                outcome.markContent();
             }
             if (toolDeltas != null && !toolDeltas.isEmpty()) {
-                outcome.sawToolCall = true;
+                outcome.markToolCall();
             }
 
             if (choice.finishReason().isPresent()) {
                 String rawReason = choice.finishReason().get().asString();
-                outcome.finishReason = rawReason;
-                if (rawReason != null) {
+                if (rawReason != null && !rawReason.isBlank()) {
                     String normalized = rawReason.trim().toLowerCase(Locale.ROOT);
+                    boolean clean = "stop".equals(normalized) || "end_turn".equals(normalized);
+                    outcome.recordTerminal(rawReason, clean);
                     if (FATAL_FINISH_REASONS.contains(normalized)) {
                         log.warn(
                                 "OpenRouter stream finished abnormally: finishReason={}",
                                 rawReason);
-                        outcome.fatalFinishReason = rawReason;
+                        outcome.fail("OpenRouter stream failed with finish_reason=" + rawReason);
                     } else if (!BENIGN_FINISH_REASONS.contains(normalized)) {
                         log.warn(
                                 "OpenRouter reported an unrecognised finishReason: {}. Delivering the answer — an unknown reason is not evidence of a failure.",
@@ -396,8 +379,8 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         }
 
         if (chunk.usage().isPresent()) {
-            usage = parseUsage(chunk.usage().get());
-            outcome.usage = usage;
+            usage = usageOf(chunk.usage().get());
+            outcome.recordUsage(usage);
         }
 
         if (content != null || reasoning != null || toolDeltas != null || usage != null) {
@@ -541,82 +524,43 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         builder.responseFormat(ResponseFormatJsonObject.builder().build());
     }
 
-    private LlmUsage parseUsage(Object usageObj) {
-        if (usageObj == null) {
+    static LlmUsage usageOf(CompletionUsage usage) {
+        if (usage == null) {
             return null;
         }
-        int promptTokens = 0;
-        int completionTokens = 0;
-        int totalTokens = 0;
-        int cachedTokens = 0;
-        int thoughtTokens = 0;
         try {
-            String json = objectMapper.writeValueAsString(usageObj);
-            Map<?, ?> map = objectMapper.readValue(json, Map.class);
-            if (map.containsKey("prompt_tokens")) {
-                promptTokens = ((Number) map.get("prompt_tokens")).intValue();
-            }
-            if (map.containsKey("completion_tokens")) {
-                completionTokens = ((Number) map.get("completion_tokens")).intValue();
-            }
-            if (map.containsKey("total_tokens")) {
-                totalTokens = ((Number) map.get("total_tokens")).intValue();
-            }
-            if (map.containsKey("prompt_tokens_details")) {
-                Map<?, ?> ptd = (Map<?, ?>) map.get("prompt_tokens_details");
-                if (ptd != null && ptd.containsKey("cached_tokens")) {
-                    cachedTokens = ((Number) ptd.get("cached_tokens")).intValue();
-                }
-            }
-            if (map.containsKey("completion_tokens_details")) {
-                Map<?, ?> ctd = (Map<?, ?>) map.get("completion_tokens_details");
-                if (ctd != null && ctd.containsKey("reasoning_tokens")) {
-                    thoughtTokens = ((Number) ctd.get("reasoning_tokens")).intValue();
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to parse usage details", e);
+            int promptTokens = knownInt(usage._promptTokens());
+            int completionTokens = knownInt(usage._completionTokens());
+            int totalTokens = knownInt(usage._totalTokens());
+            int cachedTokens =
+                    usage._promptTokensDetails() != null
+                            ? usage._promptTokensDetails()
+                                    .asKnown()
+                                    .flatMap(details -> knownLong(details._cachedTokens()))
+                                    .map(Long::intValue)
+                                    .orElse(0)
+                            : 0;
+            int thoughtTokens =
+                    usage._completionTokensDetails() != null
+                            ? usage._completionTokensDetails()
+                                    .asKnown()
+                                    .flatMap(details -> knownLong(details._reasoningTokens()))
+                                    .map(Long::intValue)
+                                    .orElse(0)
+                            : 0;
+            return new LlmUsage(
+                    promptTokens, completionTokens, totalTokens, cachedTokens, thoughtTokens);
+        } catch (RuntimeException e) {
+            log.warn("Failed to read OpenRouter usage details: {}", e.getMessage(), e);
+            return null;
         }
-        return new LlmUsage(
-                promptTokens, completionTokens, totalTokens, cachedTokens, thoughtTokens);
     }
 
-    private static final class StreamOutcome {
-        private boolean sawContent;
-        private boolean sawToolCall;
-        private String finishReason;
-        private String fatalFinishReason;
-        private int events;
-        private LlmUsage usage;
+    private static int knownInt(JsonField<Long> field) {
+        return knownLong(field).map(Long::intValue).orElse(0);
+    }
 
-        boolean isEmpty() {
-            return !sawContent && !sawToolCall;
-        }
-
-        boolean cleanlyCompleted() {
-            if (finishReason == null) {
-                return false;
-            }
-            String normalized = finishReason.trim().toLowerCase(Locale.ROOT);
-            return "stop".equals(normalized) || "end_turn".equals(normalized);
-        }
-
-        String describe() {
-            StringBuilder out = new StringBuilder();
-            out.append("finishReason=").append(finishReason == null ? "none" : finishReason);
-            out.append(", events=").append(events);
-            if (usage != null) {
-                out.append(", completionTokens=")
-                        .append(usage.completionTokens())
-                        .append(" of which reasoning=")
-                        .append(usage.thoughtTokens());
-            }
-            if (finishReason == null) {
-                out.append(
-                        " — the stream ended without a finish reason, which means it was cut "
-                                + "short rather than completed");
-            }
-            return out.toString();
-        }
+    private static Optional<Long> knownLong(JsonField<Long> field) {
+        return field == null ? Optional.empty() : field.asKnown();
     }
 }

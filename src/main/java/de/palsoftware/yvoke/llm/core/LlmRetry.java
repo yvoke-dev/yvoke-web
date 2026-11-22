@@ -4,8 +4,10 @@ import com.google.genai.errors.GenAiIOException;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +26,12 @@ public final class LlmRetry {
     private static final long RATE_LIMIT_BASE_BACKOFF_MS = 15_000L;
 
     private static final long RATE_LIMIT_MAX_BACKOFF_MS = 60_000L;
+
+    /**
+     * Small additive jitter layered on top of a server-supplied {@code Retry-After} header so a
+     * burst of parallel batch callers that all received the same header do not wake up in lockstep.
+     */
+    static final long RETRY_AFTER_MAX_JITTER_MS = 1_000L;
 
     private LlmRetry() {}
 
@@ -73,10 +81,18 @@ public final class LlmRetry {
     }
 
     /**
-     * Backoff before the next attempt. Pure and package-private so the quota-scale wait for a 429
-     * can be asserted without a test actually sleeping through it.
+     * Backoff before the next attempt, using equal jitter ({@code [ceiling/2, ceiling]}) on
+     * exponential schedules so parallel batch workers do not retry in lockstep while 429 waits
+     * remain quota-scaled. A server-supplied {@code Retry-After} stays authoritative as the minimum
+     * wait, with small additive jitter on top (still clamped to {@link
+     * ProviderRateLimit#MAX_RETRY_AFTER_SECONDS}).
      */
     static long backoffMs(int attempt, Throwable t) {
+        return backoffMs(attempt, t, ThreadLocalRandom.current());
+    }
+
+    /** Package-private pure overload so tests can assert exact bounds deterministically. */
+    static long backoffMs(int attempt, Throwable t, RandomGenerator random) {
         boolean rateLimited = isRateLimit(t);
         if (rateLimited) {
             // The server's own instruction beats any schedule we could invent. It matters most
@@ -86,14 +102,18 @@ public final class LlmRetry {
             // response. Clamped, because obeying an hour-long Retry-After would park the run.
             Long serverInterval = ProviderRateLimit.from(t).retryAfterMillisClamped();
             if (serverInterval != null) {
-                return serverInterval;
+                long cap = ProviderRateLimit.MAX_RETRY_AFTER_SECONDS * 1000L;
+                long jitter = random.nextLong(RETRY_AFTER_MAX_JITTER_MS + 1);
+                return Math.min(cap, serverInterval + jitter);
             }
         }
         long base = rateLimited ? RATE_LIMIT_BASE_BACKOFF_MS : BASE_BACKOFF_MS;
         long cap = rateLimited ? RATE_LIMIT_MAX_BACKOFF_MS : MAX_BACKOFF_MS;
         int shift = Math.min(Math.max(attempt - 1, 0), 20);
         long scaled = base << shift;
-        return scaled <= 0 ? cap : Math.min(cap, scaled);
+        long ceiling = scaled <= 0 ? cap : Math.min(cap, scaled);
+        long half = ceiling / 2;
+        return half + random.nextLong(ceiling - half + 1);
     }
 
     private static boolean isRateLimit(Throwable t) {

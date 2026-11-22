@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -93,6 +94,11 @@ public class AccountingLlmClient implements LlmClient {
         AtomicLong callStartNanos = new AtomicLong(System.nanoTime());
         AtomicReference<LlmUsage> observedUsage = new AtomicReference<>();
         AtomicReference<LlmGatewayInfo> observedGateway = new AtomicReference<>();
+        // Tracks whether the latest HTTP call was already closed by an explicit endOfCall marker
+        // so catching a subsequent LlmCallFailedException never double-publishes the same call,
+        // while a delegate that throws LlmCallFailedException without emitting endOfCall still gets
+        // its billed usage recorded.
+        AtomicBoolean closedByMarker = new AtomicBoolean(false);
         try {
             delegate.generateStream(
                     request,
@@ -108,6 +114,7 @@ public class AccountingLlmClient implements LlmClient {
                             observedGateway.set(chunk.gateway());
                         }
                         if (chunk != null && chunk.endOfCall()) {
+                            closedByMarker.set(true);
                             publish(
                                     request,
                                     observedUsage.getAndSet(null),
@@ -115,10 +122,17 @@ public class AccountingLlmClient implements LlmClient {
                                     callStartNanos.getAndSet(System.nanoTime()));
                             return;
                         }
+                        closedByMarker.set(false);
                         onChunk.accept(chunk);
                     });
         } catch (RuntimeException e) {
-            publish(request, observedUsage.get(), observedGateway.get(), callStartNanos.get());
+            if (!closedByMarker.get()) {
+                LlmUsage usage = observedUsage.get();
+                if (e instanceof LlmCallFailedException failed && failed.usage() != null) {
+                    usage = failed.usage();
+                }
+                publish(request, usage, observedGateway.get(), callStartNanos.get());
+            }
             throw e;
         }
         publish(request, observedUsage.get(), observedGateway.get(), callStartNanos.get());
