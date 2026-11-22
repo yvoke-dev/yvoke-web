@@ -17,6 +17,7 @@ import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
 import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -422,5 +423,44 @@ class JsonObjectServiceTest {
         ArgumentCaptor<List<JsonObject>> inserted = ArgumentCaptor.forClass(List.class);
         verify(repo).saveBatch(inserted.capture());
         assertThat(inserted.getValue()).hasSize(3);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rebuildSchemaWalksKeysetBatchesPastMaxLimitAndMergesAllBatches() {
+        JsonObjectRepository repo = mock(JsonObjectRepository.class);
+        JsonSchemaRepository schemaRepo = mock(JsonSchemaRepository.class);
+        JsonSchemaExtractor extractor = new JsonSchemaExtractor();
+        UUID collectionId = UUID.randomUUID();
+        UUID page1LastId = UUID.fromString("00000000-0000-0000-0000-000000000500");
+        UUID page2LastId = UUID.fromString("00000000-0000-0000-0000-000000000502");
+
+        when(schemaRepo.findByCollectionId(collectionId, "10.0")).thenReturn(Optional.empty());
+
+        List<Map<String, Object>> page1Payloads =
+                Collections.nCopies(JsonObjectRepository.MAX_LIMIT, Map.of("commonField", "v"));
+        List<Map<String, Object>> page2Payloads =
+                List.of(Map.of("commonField", "v"), Map.of("tailOnlyField", 42));
+
+        when(repo.findDataBatchAfterId(
+                        collectionId, List.of("10.0"), null, JsonObjectRepository.MAX_LIMIT))
+                .thenReturn(
+                        new JsonObjectRepository.JsonObjectDataBatch(page1Payloads, page1LastId));
+        when(repo.findDataBatchAfterId(
+                        collectionId, List.of("10.0"), page1LastId, JsonObjectRepository.MAX_LIMIT))
+                .thenReturn(
+                        new JsonObjectRepository.JsonObjectDataBatch(page2Payloads, page2LastId));
+
+        boolean rebuilt =
+                new JsonObjectService(repo, schemaRepo, extractor)
+                        .rebuildSchema(collectionId, "10.0");
+
+        assertThat(rebuilt).isTrue();
+        ArgumentCaptor<JsonSchema> saved = ArgumentCaptor.forClass(JsonSchema.class);
+        verify(schemaRepo).upsert(saved.capture());
+        Map<String, Object> properties =
+                (Map<String, Object>) saved.getValue().schemaData().get("properties");
+        assertThat(properties).containsKeys("commonField", "tailOnlyField");
+        verify(repo, never()).findByCollectionId(any(), any(), anyInt(), anyInt());
     }
 }

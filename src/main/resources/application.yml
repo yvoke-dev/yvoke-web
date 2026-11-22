@@ -92,6 +92,7 @@ spring:
           mcp-endpoint: "/mcp"
         annotation-scanner:
           enabled: false
+        tool-callback-converter: false
         capabilities:
           tool: true
           prompt: true

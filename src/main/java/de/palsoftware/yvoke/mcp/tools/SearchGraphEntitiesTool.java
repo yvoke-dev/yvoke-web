@@ -1,17 +1,14 @@
 package de.palsoftware.yvoke.mcp.tools;
 
-import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -30,53 +27,32 @@ public class SearchGraphEntitiesTool {
         this.collectionService = collectionService;
     }
 
-    @McpTool(
-            name = "search_graph_entities",
-            description =
-                    "Search the knowledge graph for entities by name to discover exact entity names (e.g. database tables, columns, or code modules). Exact entity names are required to query neighbors using 'get_graph_neighbors'. If 'query' is omitted or '*', lists all entities (useful when filtering by 'kind'). Returns a markdown table with columns: entity_name, kind, tag, document_id, description. Identity is (collection, kind, name, tag), so the same name can appear once per kind AND once per tag (product version) \u2014 rows that differ only by tag are the same object in different versions and have different document_ids.")
     @Tool(
             name = "search_graph_entities",
             description =
                     "Search the knowledge graph for entities by name to discover exact entity names (e.g. database tables, columns, or code modules). Exact entity names are required to query neighbors using 'get_graph_neighbors'. If 'query' is omitted or '*', lists all entities (useful when filtering by 'kind'). Returns a markdown table with columns: entity_name, kind, tag, document_id, description. Identity is (collection, kind, name, tag), so the same name can appear once per kind AND once per tag (product version) \u2014 rows that differ only by tag are the same object in different versions and have different document_ids.")
     public String searchGraphEntities(
-            @McpToolParam(
-                            description =
-                                    "Search term for fuzzy entity name matching (trigram-based). Partial names work. Leave blank or use '*' to list all entities (e.g. to list all modules).",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Search term for fuzzy entity name matching (trigram-based). Partial names work. Leave blank or use '*' to list all entities (e.g. to list all modules).",
                             required = false)
                     @Nullable
                     String query,
-            @McpToolParam(description = "The collection to search.", required = true)
-                    @ToolParam(description = "The collection to search.", required = true)
+            @ToolParam(description = "The collection to search.", required = true)
                     String collection,
-            @McpToolParam(
-                            description =
-                                    "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
                             required = false)
                     @Nullable
                     String tag,
-            @McpToolParam(
-                            description =
-                                    "Filter by entity kind (e.g. 'table', 'module', 'procedure'). When nothing is specified all kinds are considered.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Filter by entity kind (e.g. 'table', 'module', 'procedure'). When nothing is specified all kinds are considered.",
                             required = false)
                     @Nullable
                     String kind,
-            @McpToolParam(
-                            description =
-                                    "Max matches to return. When nothing is specified 20 is used. Max is 200.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Max matches to return. When nothing is specified 20 is used. Max is 200.",
                             required = false)
@@ -91,48 +67,30 @@ public class SearchGraphEntitiesTool {
             return "Error: 'collection' parameter is required.";
         }
         String col = collection.trim();
-
-        List<Collection> allCols = collectionService.listCollections();
-        Collection matchedCol =
-                allCols.stream()
-                        .filter(c -> c.name().equalsIgnoreCase(col))
-                        .findFirst()
-                        .orElse(null);
-        if (matchedCol == null) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-        if (!AreaAccessContext.canAccessEffectiveUserArea(matchedCol.area())) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-
-        // Validate tag (optional)
-        String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-        // A tag-scoped collection must be read at exactly one tag: untagged reads either
-        // duplicate every hit across product versions or merge unrelated datasets, and
-        // neither failure is visible in the result. Conditional on the collection, so an
-        // untagged collection exempts itself.
-        String tagRequired = McpToolUtils.requireTag(matchedCol, parsedTag);
-        if (tagRequired != null) {
-            return tagRequired;
-        }
-        if (parsedTag != null) {
-            if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + col + "'.";
-            }
-        }
-
         String knd = (kind != null && !kind.isBlank()) ? kind.trim() : null;
         // Clamp to the repository's own ceiling here rather than passing the raw request through:
         // the repository clamps silently, so an unclamped `lim` would make the truncation test
         // below miss every over-cap request (200 rows returned for a requested 500 is truncated).
-        int lim = Math.min((limit != null) ? limit : 20, KgGraphReadRepository.MAX_LIMIT);
+        int lim =
+                Math.max(
+                        1, Math.min((limit != null) ? limit : 20, KgGraphReadRepository.MAX_LIMIT));
         try {
+            CollectionResolution resolution =
+                    McpToolUtils.resolveReadableCollection(
+                            collectionService, collection, tag, null);
+            if (resolution instanceof CollectionResolution.Refused refused) {
+                return refused.errorMessage();
+            }
+            CollectionResolution.Allowed allowed = (CollectionResolution.Allowed) resolution;
+            String colName = allowed.collection().name();
+            String parsedTag = allowed.tag();
+
             List<KgEntity> entities;
             boolean isListAll = query == null || query.isBlank() || query.trim().equals("*");
             if (isListAll) {
-                entities = kgRepository.listEntities(col, parsedTag, knd, lim, 0);
+                entities = kgRepository.listEntities(colName, parsedTag, knd, lim, 0);
             } else {
-                entities = kgRepository.fuzzySearchEntities(query, lim, parsedTag, col, knd);
+                entities = kgRepository.fuzzySearchEntities(query, lim, parsedTag, colName, knd);
             }
 
             if (entities.isEmpty()) {

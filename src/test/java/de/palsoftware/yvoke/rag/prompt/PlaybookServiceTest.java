@@ -4,17 +4,23 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.area.TestAreas;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpError;
+import io.modelcontextprotocol.spec.McpSchema.ErrorCodes;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class PlaybookServiceTest {
 
@@ -28,6 +34,21 @@ class PlaybookServiceTest {
         mcpSyncServer = mock(McpSyncServer.class);
         playbookService =
                 new PlaybookService(playbookRepository, mcpSyncServer, TestAreas.withAreas("OIM"));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticateWithRoles(String... roles) {
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "test-user",
+                                "n/a",
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of(roles), "Admin", "User")));
     }
 
     @Test
@@ -201,6 +222,8 @@ class PlaybookServiceTest {
         // Registration-time metadata
         assertEquals(2, spec.prompt().meta().get("version"));
 
+        authenticateWithRoles("OIM.User");
+
         // Execution-time dynamic lookup metadata
         var result = spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
         assertEquals(2, result.meta().get("version"));
@@ -227,6 +250,92 @@ class PlaybookServiceTest {
         var updatedResult =
                 spec.promptHandler().apply(null, new GetPromptRequest("pb-mcp", Map.of()));
         assertEquals(4, updatedResult.meta().get("version"));
+    }
+
+    @Test
+    void mcpPromptHandlerEnforcesPerAreaAuthorizationAndFailsClosed() {
+        Playbook pingPb =
+                new Playbook(
+                        "ping-secret",
+                        "Ping Secret",
+                        "Ping Desc",
+                        "CONFIDENTIAL PingID template",
+                        List.of("search_corpus"),
+                        false,
+                        "specialist",
+                        false,
+                        null,
+                        null,
+                        false,
+                        "PingID",
+                        1);
+        when(playbookRepository.findAll()).thenReturn(List.of(pingPb));
+        when(playbookRepository.findByName("ping-secret")).thenReturn(Optional.of(pingPb));
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+                ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+        var handler = captor.getValue().promptHandler();
+        GetPromptRequest request = new GetPromptRequest("ping-secret", Map.of());
+
+        // 1. Wrong area (OIM.User cannot read PingID) -> opaque INVALID_PARAMS McpError
+        authenticateWithRoles("OIM.User");
+        McpError wrongArea = assertThrows(McpError.class, () -> handler.apply(null, request));
+        assertEquals(ErrorCodes.INVALID_PARAMS, wrongArea.getJsonRpcError().code());
+        assertEquals("Invalid prompt name", wrongArea.getJsonRpcError().message());
+
+        // 2. Zero-area caller -> opaque INVALID_PARAMS McpError
+        authenticateWithRoles();
+        McpError zeroArea = assertThrows(McpError.class, () -> handler.apply(null, request));
+        assertEquals(ErrorCodes.INVALID_PARAMS, zeroArea.getJsonRpcError().code());
+
+        // 3. Unauthenticated caller -> opaque INVALID_PARAMS McpError
+        SecurityContextHolder.clearContext();
+        McpError unauth = assertThrows(McpError.class, () -> handler.apply(null, request));
+        assertEquals(ErrorCodes.INVALID_PARAMS, unauth.getJsonRpcError().code());
+
+        // 4. Positive control: PingID.User receives the template
+        authenticateWithRoles("PingID.User");
+        var ok = handler.apply(null, request);
+        assertEquals("Ping Desc", ok.description());
+        assertFalse(ok.messages().isEmpty());
+    }
+
+    @Test
+    void mcpPromptHandlerRefusesDeletedPlaybookInsteadOfServingStaleSnapshot() {
+        Playbook oimPb =
+                new Playbook(
+                        "oim-temp",
+                        "OIM Temp",
+                        "Desc",
+                        "Stale snapshot text",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        null,
+                        null,
+                        false,
+                        "OIM",
+                        1);
+        when(playbookRepository.findAll()).thenReturn(List.of(oimPb));
+        when(playbookRepository.findByName("oim-temp")).thenReturn(Optional.empty());
+
+        ArgumentCaptor<SyncPromptSpecification> captor =
+                ArgumentCaptor.forClass(SyncPromptSpecification.class);
+        playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
+        verify(mcpSyncServer).addPrompt(captor.capture());
+
+        authenticateWithRoles("OIM.User");
+        McpError deleted =
+                assertThrows(
+                        McpError.class,
+                        () ->
+                                captor.getValue()
+                                        .promptHandler()
+                                        .apply(null, new GetPromptRequest("oim-temp", Map.of())));
+        assertEquals(ErrorCodes.INVALID_PARAMS, deleted.getJsonRpcError().code());
     }
 
     @Test
@@ -311,8 +420,9 @@ class PlaybookServiceTest {
 
     @Test
     void testDeletePlaybookSuccess() {
-        playbookService.deletePlaybook("db-playbook");
+        playbookService.deletePlaybook(" db-playbook ");
         verify(playbookRepository).delete("db-playbook");
+        verify(mcpSyncServer).removePrompt("db-playbook");
     }
 
     @Test

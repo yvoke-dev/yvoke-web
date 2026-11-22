@@ -7,7 +7,6 @@ import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
-import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 
@@ -63,7 +62,6 @@ public class AreaTools {
         this.objectMapper = objectMapper;
     }
 
-    @McpTool(name = "list_areas", description = DESCRIPTION)
     @Tool(name = "list_areas", description = DESCRIPTION)
     public String listAreas() {
         try {

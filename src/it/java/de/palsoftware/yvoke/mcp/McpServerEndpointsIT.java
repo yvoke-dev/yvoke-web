@@ -12,6 +12,12 @@ import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaRepository;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
+import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
+import de.palsoftware.yvoke.jsonobject.core.repository.JsonSchemaRepository;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -23,11 +29,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -39,6 +48,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -64,6 +74,14 @@ public class McpServerEndpointsIT {
 
     @Autowired private OrchestratorProfileRepository orchestratorProfileRepository;
 
+    @Autowired private CollectionRepository collectionRepository;
+
+    @Autowired private JsonObjectRepository jsonObjectRepository;
+
+    @Autowired private JsonSchemaRepository jsonSchemaRepository;
+
+    @Autowired private JdbcTemplate jdbcTemplate;
+
     @Autowired private ObjectMapper objectMapper;
 
     /**
@@ -78,20 +96,27 @@ public class McpServerEndpointsIT {
 
     private class McpSession implements AutoCloseable {
         private final String sessionId;
+        private final String bearerToken;
         private final HttpClient httpClient;
         private final CompletableFuture<HttpResponse<Stream<String>>> sseFuture;
 
         public McpSession(
                 String sessionId,
+                String bearerToken,
                 HttpClient httpClient,
                 CompletableFuture<HttpResponse<Stream<String>>> sseFuture) {
             this.sessionId = sessionId;
+            this.bearerToken = bearerToken;
             this.httpClient = httpClient;
             this.sseFuture = sseFuture;
         }
 
         public String getSessionId() {
             return sessionId;
+        }
+
+        public String getBearerToken() {
+            return bearerToken;
         }
 
         public HttpClient getHttpClient() {
@@ -105,7 +130,7 @@ public class McpServerEndpointsIT {
                     HttpRequest deleteRequest =
                             HttpRequest.newBuilder()
                                     .uri(URI.create("http://localhost:" + port + "/mcp"))
-                                    .header("Authorization", "Bearer mock-jwt-token")
+                                    .header("Authorization", "Bearer " + bearerToken)
                                     .header("Mcp-Session-Id", sessionId)
                                     .DELETE()
                                     .build();
@@ -123,6 +148,10 @@ public class McpServerEndpointsIT {
     }
 
     private McpSession establishSession() throws Exception {
+        return establishSession("mock-jwt-token");
+    }
+
+    private McpSession establishSession(String bearerToken) throws Exception {
         HttpClient httpClient =
                 HttpClient.newBuilder()
                         .version(HttpClient.Version.HTTP_1_1)
@@ -133,7 +162,7 @@ public class McpServerEndpointsIT {
         HttpRequest initRequest =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + port + "/mcp"))
-                        .header("Authorization", "Bearer mock-jwt-token")
+                        .header("Authorization", "Bearer " + bearerToken)
                         .header("Content-Type", "application/json")
                         .header("Accept", "application/json, text/event-stream")
                         .POST(
@@ -226,7 +255,7 @@ public class McpServerEndpointsIT {
         HttpRequest sseRequest =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + port + "/mcp"))
-                        .header("Authorization", "Bearer mock-jwt-token")
+                        .header("Authorization", "Bearer " + bearerToken)
                         .header("Accept", "text/event-stream")
                         .header("Mcp-Session-Id", sessionId)
                         .GET()
@@ -235,13 +264,13 @@ public class McpServerEndpointsIT {
         CompletableFuture<HttpResponse<Stream<String>>> sseFuture =
                 httpClient.sendAsync(sseRequest, HttpResponse.BodyHandlers.ofLines());
 
-        McpSession session = new McpSession(sessionId, httpClient, sseFuture);
+        McpSession session = new McpSession(sessionId, bearerToken, httpClient, sseFuture);
 
         // 3. Send initialized notification (no response expected, returns 202)
         HttpRequest initializedNotificationRequest =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + port + "/mcp"))
-                        .header("Authorization", "Bearer mock-jwt-token")
+                        .header("Authorization", "Bearer " + bearerToken)
                         .header("Mcp-Session-Id", sessionId)
                         .header("Content-Type", "application/json")
                         .header("Accept", "application/json, text/event-stream")
@@ -793,12 +822,28 @@ public class McpServerEndpointsIT {
         }
     }
 
+    private HttpResponse<String> callRpc(McpSession session, String payloadJson) throws Exception {
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + "/mcp"))
+                        .header("Authorization", "Bearer " + session.getBearerToken())
+                        .header("Mcp-Session-Id", session.getSessionId())
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json, text/event-stream")
+                        .POST(HttpRequest.BodyPublishers.ofString(payloadJson))
+                        .build();
+        HttpResponse<String> response =
+                session.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), "JSON-RPC POST failed — BODY=" + response.body());
+        return response;
+    }
+
     private HttpResponse<String> callTool(
             McpSession session, String id, String tool, String argumentsJson) throws Exception {
         HttpRequest request =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + port + "/mcp"))
-                        .header("Authorization", "Bearer mock-jwt-token")
+                        .header("Authorization", "Bearer " + session.getBearerToken())
                         .header("Mcp-Session-Id", session.getSessionId())
                         .header("Content-Type", "application/json")
                         .header("Accept", "application/json, text/event-stream")
@@ -867,9 +912,8 @@ public class McpServerEndpointsIT {
             String unknown =
                     callTool(session, "10", "get_playbook", "{ \"name\": \"no-such-playbook\" }")
                             .body();
-            assertTrue(
-                    unknown.contains("ERROR: playbook 'no-such-playbook' not found."),
-                    "an unknown name is an ERROR: body — BODY=" + unknown);
+            assertThat(extractToolCallText(unknown, true))
+                    .contains("ERROR: playbook 'no-such-playbook' not found.");
 
             // Straight to the row, as the exports tooling or another replica would do. Going
             // through deletePlaybook would also push prompts/list_changed down this session's
@@ -885,12 +929,10 @@ public class McpServerEndpointsIT {
             String fetchedAfterDelete =
                     callTool(session, "12", "get_playbook", "{ \"name\": \"" + name + "\" }")
                             .body();
-            assertTrue(
-                    fetchedAfterDelete.contains("ERROR: playbook '" + name + "' not found."),
-                    "a deleted playbook cannot be fetched any more — BODY=" + fetchedAfterDelete);
-            assertFalse(
-                    fetchedAfterDelete.contains("PLAYBOOK TOOLS instructions"),
-                    "no stale text from a cache — BODY=" + fetchedAfterDelete);
+            String fetchedAfterDeleteText = extractToolCallText(fetchedAfterDelete, true);
+            assertThat(fetchedAfterDeleteText)
+                    .contains("ERROR: playbook '" + name + "' not found.")
+                    .doesNotContain("PLAYBOOK TOOLS instructions");
         } finally {
             try {
                 playbookService.deletePlaybook(name);
@@ -1131,10 +1173,9 @@ public class McpServerEndpointsIT {
                 assertThat(got.get("maxReviewRounds").intValue()).isEqualTo(3);
                 assertThat(got.get("maxSpecialistCalls").intValue()).isEqualTo(8);
 
-                // 5. get_profile unknown (DefaultToolCallResultConverter JSON-encodes plain
-                // strings)
+                // 5. get_profile unknown -> isError=true with JSON-encoded error string
                 JsonNode unknownProfile =
-                        extractToolCallJson(
+                        extractToolCallErrorJson(
                                 callTool(
                                                 session,
                                                 "24",
@@ -1145,9 +1186,9 @@ public class McpServerEndpointsIT {
                 assertThat(unknownProfile.asText())
                         .isEqualTo("ERROR: profile 'no-such-profile' not found.");
 
-                // 6. get_profile blank name
+                // 6. get_profile blank name -> isError=true
                 JsonNode blankName =
-                        extractToolCallJson(
+                        extractToolCallErrorJson(
                                 callTool(session, "25", "get_profile", "{ \"name\": \"   \" }")
                                         .body());
                 assertThat(blankName.isTextual()).isTrue();
@@ -1194,7 +1235,7 @@ public class McpServerEndpointsIT {
                 assertThat(remainingNames).doesNotContain(profileName);
 
                 JsonNode afterDeleteGet =
-                        extractToolCallJson(
+                        extractToolCallErrorJson(
                                 callTool(
                                                 session,
                                                 "28",
@@ -1217,6 +1258,559 @@ public class McpServerEndpointsIT {
         }
     }
 
+    /**
+     * End-to-end per-area authorization matrix over the real {@code /mcp} HTTP transport (T1, S1,
+     * B2, B3). Exercises three distinct bearer tokens — zero areas ({@code mock:}), single area
+     * ({@code mock:IT_AUTHZ_OIM.User}), and both areas ({@code
+     * mock:IT_AUTHZ_OIM.User,IT_AUTHZ_PING.User}) — against MCP prompts ({@code prompts/list},
+     * {@code prompts/get}, live {@code deletePlaybook}) and the area-scoped MCP tools.
+     */
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    public void perAreaAuthorizationIsEnforcedAcrossPromptsAndToolsOverMcp() throws Exception {
+        String oimArea = "IT_AUTHZ_OIM";
+        String pingArea = "IT_AUTHZ_PING";
+        String oimCol = "IT-AUTHZ-OIM-COL";
+        String pingCol = "IT-AUTHZ-PING-COL";
+        String oimPlaybook = "it-authz-oim-playbook";
+        String pingPlaybook = "it-authz-ping-playbook";
+        String oimProfile = "it-authz-oim-profile";
+        String pingProfile = "it-authz-ping-profile";
+        UUID oimDocId = UUID.randomUUID();
+        UUID pingDocId = UUID.randomUUID();
+        UUID oimChunkId = UUID.randomUUID();
+        UUID pingChunkId = UUID.randomUUID();
+        Instant now = Instant.now();
+
+        areaRepository.upsert(
+                new Area(oimArea, "OIM test area", null, false, null, null, null, null));
+        areaRepository.upsert(
+                new Area(pingArea, "PingID test area", null, false, null, null, null, null));
+        try {
+            collectionRepository.create(oimCol, "OIM test collection", oimArea);
+            collectionRepository.create(pingCol, "PingID test collection", pingArea);
+            UUID oimColId =
+                    collectionRepository.findByName(oimCol).map(Collection::id).orElseThrow();
+            UUID pingColId =
+                    collectionRepository.findByName(pingCol).map(Collection::id).orElseThrow();
+
+            jdbcTemplate.update(
+                    "INSERT INTO documents (id, collection_id, kind, title, ingestion_status) VALUES (?, ?, 'guide', ?, 'completed')",
+                    oimDocId,
+                    oimColId,
+                    "OIM Authz Guide");
+            jdbcTemplate.update(
+                    "INSERT INTO documents (id, collection_id, kind, title, ingestion_status) VALUES (?, ?, 'guide', ?, 'completed')",
+                    pingDocId,
+                    pingColId,
+                    "PingID Secret Guide");
+            jdbcTemplate.update(
+                    "INSERT INTO chunks (id, document_id, text, heading_path, heading, depth, sort_order, collection_id) VALUES (?, ?, ?, ARRAY['Overview'], 'Overview', 1, 1, ?)",
+                    oimChunkId,
+                    oimDocId,
+                    "OIM public overview passage.",
+                    oimColId);
+            jdbcTemplate.update(
+                    "INSERT INTO chunks (id, document_id, text, heading_path, heading, depth, sort_order, collection_id) VALUES (?, ?, ?, ARRAY['Secrets'], 'Secrets', 1, 1, ?)",
+                    pingChunkId,
+                    pingDocId,
+                    "PINGID-TOP-SECRET-CHUNK-CONTENT.",
+                    pingColId);
+
+            jsonSchemaRepository.upsert(
+                    new JsonSchema(
+                            UUID.randomUUID(),
+                            oimColId,
+                            null,
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "properties",
+                                    Map.of("name", Map.of("type", "string"))),
+                            "manual",
+                            OffsetDateTime.now()));
+            jsonSchemaRepository.upsert(
+                    new JsonSchema(
+                            UUID.randomUUID(),
+                            pingColId,
+                            null,
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "properties",
+                                    Map.of("secretKey", Map.of("type", "string"))),
+                            "manual",
+                            OffsetDateTime.now()));
+            jsonObjectRepository.save(
+                    new JsonObject(
+                            UUID.randomUUID(),
+                            oimColId,
+                            oimCol,
+                            Map.of("name", "OimRecord"),
+                            "oim.json",
+                            OffsetDateTime.now()));
+            jsonObjectRepository.save(
+                    new JsonObject(
+                            UUID.randomUUID(),
+                            pingColId,
+                            pingCol,
+                            Map.of("secretKey", "PINGID-JSON-SECRET"),
+                            "ping.json",
+                            OffsetDateTime.now()));
+
+            playbookService.savePlaybook(
+                    oimPlaybook,
+                    "OIM Authz Playbook",
+                    "OIM-ONLY-DESCRIPTION",
+                    "OIM-PLAYBOOK-SECRET-BODY",
+                    List.of("search_corpus"),
+                    false,
+                    "specialist",
+                    false,
+                    oimArea,
+                    1);
+            playbookService.savePlaybook(
+                    pingPlaybook,
+                    "PingID Authz Playbook",
+                    "PINGID-ONLY-DESCRIPTION",
+                    "PINGID-PLAYBOOK-SECRET-BODY",
+                    List.of("search_corpus"),
+                    false,
+                    "orchestrator",
+                    false,
+                    pingArea,
+                    1);
+
+            orchestratorProfileRepository.upsert(
+                    new OrchestratorProfile(
+                            oimProfile,
+                            2,
+                            4,
+                            oimPlaybook,
+                            "it-authz-oim-rev",
+                            List.of(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            false,
+                            now,
+                            now,
+                            oimArea));
+            orchestratorProfileRepository.upsert(
+                    new OrchestratorProfile(
+                            pingProfile,
+                            2,
+                            4,
+                            pingPlaybook,
+                            "it-authz-ping-rev",
+                            List.of(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            false,
+                            now,
+                            now,
+                            pingArea));
+
+            // 1. Zero-area token ("mock-roles--") sees neither area on prompts or tools
+            try (McpSession zeroSession = establishSession("mock-roles--")) {
+                String zeroPrompts =
+                        callRpc(
+                                        zeroSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/list","id":"z-1"}
+                                        """)
+                                .body();
+                assertThat(zeroPrompts)
+                        .doesNotContain(oimPlaybook)
+                        .doesNotContain(pingPlaybook)
+                        .doesNotContain("PINGID-ONLY-DESCRIPTION");
+
+                JsonNode zeroPromptGet =
+                        parseJsonRpc(
+                                callRpc(
+                                                zeroSession,
+                                                """
+                                                {"jsonrpc":"2.0","method":"prompts/get","params":{"name":"%s"},"id":"z-2"}
+                                                """
+                                                        .formatted(pingPlaybook))
+                                        .body());
+                assertThat(zeroPromptGet.has("error")).isTrue();
+                assertThat(zeroPromptGet.toString()).doesNotContain("PINGID-PLAYBOOK-SECRET-BODY");
+
+                String zeroAreas =
+                        extractToolCallText(
+                                callTool(zeroSession, "z-3", "list_areas", "{}").body(), false);
+                assertThat(zeroAreas).doesNotContain(oimArea).doesNotContain(pingArea);
+
+                String zeroGetSection =
+                        extractToolCallText(
+                                callTool(
+                                                zeroSession,
+                                                "z-4",
+                                                "get_section",
+                                                "{ \"document_id\": \"" + pingDocId + "\" }")
+                                        .body(),
+                                true);
+                assertThat(zeroGetSection)
+                        .contains("Document not found")
+                        .doesNotContain("PINGID-TOP-SECRET-CHUNK-CONTENT")
+                        .doesNotContain("failed to complete the request");
+            }
+
+            // 2. Single-area token ("mock-roles--IT_AUTHZ_OIM.User") sees OIM only; PingID is
+            // opaque across every surface
+            try (McpSession oimSession = establishSession("mock-roles--" + oimArea + ".User")) {
+                // prompts/list & prompts/get (S1)
+                String oimPrompts =
+                        callRpc(
+                                        oimSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/list","id":"o-1"}
+                                        """)
+                                .body();
+                assertThat(oimPrompts)
+                        .contains(oimPlaybook)
+                        .doesNotContain(pingPlaybook)
+                        .doesNotContain("PINGID-ONLY-DESCRIPTION");
+
+                String oimPromptAllowed =
+                        callRpc(
+                                        oimSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/get","params":{"name":"%s"},"id":"o-2"}
+                                        """
+                                                .formatted(oimPlaybook))
+                                .body();
+                assertThat(oimPromptAllowed).contains("OIM-PLAYBOOK-SECRET-BODY");
+
+                JsonNode oimPromptDenied =
+                        parseJsonRpc(
+                                callRpc(
+                                                oimSession,
+                                                """
+                                                {"jsonrpc":"2.0","method":"prompts/get","params":{"name":"%s"},"id":"o-3"}
+                                                """
+                                                        .formatted(pingPlaybook))
+                                        .body());
+                assertThat(oimPromptDenied.has("error"))
+                        .as(
+                                "unauthorized prompts/get must return JSON-RPC error — %s",
+                                oimPromptDenied)
+                        .isTrue();
+                assertThat(oimPromptDenied.path("error").path("code").asInt()).isEqualTo(-32602);
+                assertThat(oimPromptDenied.toString())
+                        .doesNotContain("PINGID-PLAYBOOK-SECRET-BODY");
+
+                // list_areas / list_playbooks / get_playbook / list_profiles / get_profile
+                assertThat(
+                                extractToolCallText(
+                                        callTool(oimSession, "o-4", "list_areas", "{}").body(),
+                                        false))
+                        .contains(oimArea)
+                        .doesNotContain(pingArea);
+                assertThat(
+                                extractToolCallText(
+                                        callTool(oimSession, "o-5", "list_playbooks", "{}").body(),
+                                        false))
+                        .contains(oimPlaybook)
+                        .doesNotContain(pingPlaybook);
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-6",
+                                                        "get_playbook",
+                                                        "{ \"name\": \"" + pingPlaybook + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("not found")
+                        .doesNotContain("PINGID-PLAYBOOK-SECRET-BODY");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(oimSession, "o-7", "list_profiles", "{}").body(),
+                                        false))
+                        .contains(oimProfile)
+                        .doesNotContain(pingProfile);
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-8",
+                                                        "get_profile",
+                                                        "{ \"name\": \"" + pingProfile + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("not found");
+
+                // Collection-scoped & document-scoped tools: allowed OIM succeeds (isError=false),
+                // denied PingID fails (isError=true)
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-9",
+                                                        "list_documents",
+                                                        "{ \"collection\": \"" + oimCol + "\" }")
+                                                .body(),
+                                        false))
+                        .contains("OIM Authz Guide");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-10",
+                                                        "list_documents",
+                                                        "{ \"collection\": \"" + pingCol + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist")
+                        .doesNotContain("PingID Secret Guide");
+
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-11",
+                                                        "search_corpus",
+                                                        "{ \"query\": \"secret\", \"collection\": \""
+                                                                + pingCol
+                                                                + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist");
+
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-12",
+                                                        "get_toc",
+                                                        "{ \"document_id\": \""
+                                                                + pingDocId
+                                                                + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("not found")
+                        .doesNotContain("PingID Secret Guide");
+
+                // get_section: allowed doc succeeds, unauthorized doc & chunk return clean
+                // not-found, bad id returns validation error (B2)
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-13",
+                                                        "get_section",
+                                                        "{ \"document_id\": \"" + oimDocId + "\" }")
+                                                .body(),
+                                        false))
+                        .contains("OIM public overview passage.");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-14",
+                                                        "get_section",
+                                                        "{ \"document_id\": \""
+                                                                + pingDocId
+                                                                + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("Document not found")
+                        .doesNotContain("PINGID-TOP-SECRET-CHUNK-CONTENT")
+                        .doesNotContain("failed to complete the request");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-15",
+                                                        "get_section",
+                                                        "{ \"chunk_id\": \"" + pingChunkId + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("Chunk not found")
+                        .doesNotContain("PINGID-TOP-SECRET-CHUNK-CONTENT");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-16",
+                                                        "get_section",
+                                                        "{ \"document_id\": \"not-hex-zzz\" }")
+                                                .body(),
+                                        true))
+                        .contains("Invalid 'document_id'")
+                        .doesNotContain("failed to complete the request");
+
+                // Graph & JSON tools
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-17",
+                                                        "search_graph_entities",
+                                                        "{ \"collection\": \""
+                                                                + pingCol
+                                                                + "\", \"query\": \"x\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-18",
+                                                        "get_graph_neighbors",
+                                                        "{ \"collection\": \""
+                                                                + pingCol
+                                                                + "\", \"entity_name\": \"x\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-19",
+                                                        "get_json_schema",
+                                                        "{ \"collection\": \"" + pingCol + "\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist")
+                        .doesNotContain("secretKey");
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        oimSession,
+                                                        "o-20",
+                                                        "query_json_objects",
+                                                        "{ \"collection\": \""
+                                                                + pingCol
+                                                                + "\", \"fields\": \"secretKey\" }")
+                                                .body(),
+                                        true))
+                        .contains("does not exist")
+                        .doesNotContain("PINGID-JSON-SECRET");
+
+                // verify_citations: OIM chunk resolves, PingID chunk is reported FABRICATED
+                String verifyReport =
+                        extractToolCallText(
+                                callTool(
+                                                oimSession,
+                                                "o-21",
+                                                "verify_citations",
+                                                "{ \"citations\": [\"[chunk_id="
+                                                        + oimChunkId
+                                                        + "]\", \"[chunk_id="
+                                                        + pingChunkId
+                                                        + "]\"] }")
+                                        .body(),
+                                false);
+                assertThat(verifyReport)
+                        .contains(oimChunkId.toString())
+                        .contains(pingChunkId.toString())
+                        .contains("FABRICATED");
+            }
+
+            // 3. Positive control ("mock-roles--IT_AUTHZ_OIM.User+IT_AUTHZ_PING.User") accesses
+            // both areas
+            try (McpSession bothSession =
+                    establishSession("mock-roles--" + oimArea + ".User+" + pingArea + ".User")) {
+                String bothPrompts =
+                        callRpc(
+                                        bothSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/list","id":"b-1"}
+                                        """)
+                                .body();
+                assertThat(bothPrompts).contains(oimPlaybook).contains(pingPlaybook);
+
+                String pingPromptAllowed =
+                        callRpc(
+                                        bothSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/get","params":{"name":"%s"},"id":"b-2"}
+                                        """
+                                                .formatted(pingPlaybook))
+                                .body();
+                assertThat(pingPromptAllowed).contains("PINGID-PLAYBOOK-SECRET-BODY");
+
+                assertThat(
+                                extractToolCallText(
+                                        callTool(
+                                                        bothSession,
+                                                        "b-3",
+                                                        "query_json_objects",
+                                                        "{ \"collection\": \""
+                                                                + pingCol
+                                                                + "\", \"fields\": \"secretKey\" }")
+                                                .body(),
+                                        false))
+                        .contains("PINGID-JSON-SECRET");
+            }
+
+            // 4. Live deletion removes the playbook immediately from prompts/list AND prompts/get
+            // (S1)
+            playbookService.deletePlaybook(pingPlaybook);
+            try (McpSession afterDeleteSession =
+                    establishSession("mock-roles--" + oimArea + ".User+" + pingArea + ".User")) {
+                String promptsAfterDelete =
+                        callRpc(
+                                        afterDeleteSession,
+                                        """
+                                        {"jsonrpc":"2.0","method":"prompts/list","id":"d-1"}
+                                        """)
+                                .body();
+                assertThat(promptsAfterDelete).contains(oimPlaybook).doesNotContain(pingPlaybook);
+
+                JsonNode getAfterDelete =
+                        parseJsonRpc(
+                                callRpc(
+                                                afterDeleteSession,
+                                                """
+                                                {"jsonrpc":"2.0","method":"prompts/get","params":{"name":"%s"},"id":"d-2"}
+                                                """
+                                                        .formatted(pingPlaybook))
+                                        .body());
+                assertThat(getAfterDelete.has("error")).isTrue();
+                assertThat(getAfterDelete.toString()).doesNotContain("PINGID-PLAYBOOK-SECRET-BODY");
+            }
+        } finally {
+            try {
+                orchestratorProfileRepository.delete(oimProfile);
+            } catch (Exception ignored) {
+            }
+            try {
+                orchestratorProfileRepository.delete(pingProfile);
+            } catch (Exception ignored) {
+            }
+            try {
+                playbookService.deletePlaybook(oimPlaybook);
+            } catch (Exception ignored) {
+            }
+            try {
+                playbookService.deletePlaybook(pingPlaybook);
+            } catch (Exception ignored) {
+            }
+            jdbcTemplate.update("DELETE FROM collections WHERE name IN (?, ?)", oimCol, pingCol);
+            try {
+                areaRepository.delete(oimArea);
+            } catch (Exception ignored) {
+            }
+            try {
+                areaRepository.delete(pingArea);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     private JsonNode parseJsonRpc(String rawBody) throws Exception {
         String trimmed = rawBody.trim();
         if (trimmed.startsWith("{")) {
@@ -1233,16 +1827,25 @@ public class McpServerEndpointsIT {
         throw new IllegalStateException("No JSON-RPC payload found in response body: " + rawBody);
     }
 
-    private JsonNode extractToolCallJson(String rawBody) throws Exception {
+    private String extractToolCallText(String rawBody, boolean expectError) throws Exception {
         JsonNode rpc = parseJsonRpc(rawBody);
         JsonNode result = rpc.path("result");
-        assertFalse(
+        assertEquals(
+                expectError,
                 result.path("isError").asBoolean(false),
-                "tools/call must not set isError=true — BODY=" + rawBody);
+                "unexpected tools/call isError flag — BODY=" + rawBody);
         JsonNode content = result.path("content");
         assertTrue(
                 content.isArray() && !content.isEmpty(),
                 "tools/call result.content must be a non-empty array — BODY=" + rawBody);
-        return objectMapper.readTree(content.get(0).path("text").asText());
+        return content.get(0).path("text").asText();
+    }
+
+    private JsonNode extractToolCallJson(String rawBody) throws Exception {
+        return objectMapper.readTree(extractToolCallText(rawBody, false));
+    }
+
+    private JsonNode extractToolCallErrorJson(String rawBody) throws Exception {
+        return objectMapper.readTree(extractToolCallText(rawBody, true));
     }
 }

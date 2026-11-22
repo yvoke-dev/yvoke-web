@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -661,5 +662,54 @@ public class JsonObjectRepositoryIT {
                 jsonObjectRepository.countGroupedByJsonPath(collectionId, null, "name", null);
 
         assertThat(grouped).hasSize(7);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void rebuildSchemaReadsPastMaxLimitUsingKeysetPaginationWithoutDroppingTailFields() {
+        int totalRows = JsonObjectRepository.MAX_LIMIT + 5;
+        List<JsonObject> objs = new ArrayList<>(totalRows + 1);
+        OffsetDateTime now = OffsetDateTime.now();
+        for (int i = 1; i <= totalRows; i++) {
+            // Deterministic ascending UUIDs guarantee row #505 lands on keyset page 2 (after #500).
+            UUID id = new UUID(0L, i);
+            Map<String, Object> payload =
+                    (i == totalRows)
+                            ? Map.of("commonField", "v" + i, "tailOnlyField", "present-past-500")
+                            : Map.of("commonField", "v" + i);
+            objs.add(
+                    new JsonObject(
+                            id,
+                            collectionId,
+                            COLLECTION_NAME,
+                            payload,
+                            "bulk.json",
+                            List.of("10.0"),
+                            now));
+        }
+        // A row under another tag whose unique field must NOT leak into a tag-scoped rebuild.
+        objs.add(
+                new JsonObject(
+                        new UUID(0L, totalRows + 1L),
+                        collectionId,
+                        COLLECTION_NAME,
+                        Map.of("otherTagOnlyField", true),
+                        "other.json",
+                        List.of("9.3"),
+                        now));
+        jsonObjectRepository.saveBatch(objs);
+
+        boolean rebuilt = jsonObjectService.rebuildSchema(collectionId, "10.0");
+
+        assertThat(rebuilt).isTrue();
+        JsonSchema schema = jsonObjectService.getSchema(collectionId, "10.0").orElseThrow();
+        Map<String, Object> properties =
+                (Map<String, Object>) schema.schemaData().get("properties");
+        assertThat(properties)
+                .as(
+                        "schema rebuild must read past MAX_LIMIT=%d and stay tag-scoped",
+                        JsonObjectRepository.MAX_LIMIT)
+                .containsKeys("commonField", "tailOnlyField")
+                .doesNotContainKey("otherTagOnlyField");
     }
 }

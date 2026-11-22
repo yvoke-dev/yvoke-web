@@ -34,6 +34,7 @@ import de.palsoftware.yvoke.rag.core.model.RagResult;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationStatus;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.annotation.Nullable;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -226,7 +227,8 @@ class RagServiceAreaAdversarialStressTest {
                         new SearchCorpusToolCallback(
                                 new SearchCorpusTool(hybridSearch, collectionService, 10, 50),
                                 mapper,
-                                50));
+                                50,
+                                mock(UserService.class)));
         ragService
                 .getToolRegistry()
                 .put(

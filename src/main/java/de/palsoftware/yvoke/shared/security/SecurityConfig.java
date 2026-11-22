@@ -10,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -181,7 +182,57 @@ public class SecurityConfig {
                 assertPinnedEntraTenant(
                         "spring.security.oauth2.client.provider.entra.authorization-uri", authUri);
             }
+            assertNonLocalhostResourceUrl(resourceUrl);
         }
+    }
+
+    private static void assertNonLocalhostResourceUrl(String resourceUrl) {
+        if (resourceUrl == null || resourceUrl.isBlank()) {
+            throw new IllegalStateException(
+                    "app.security.mcp.resource-url must not be blank outside development profiles; "
+                            + "set APP_SECURITY_MCP_RESOURCE_URL to your public MCP URL.");
+        }
+        URI parsed;
+        try {
+            parsed = URI.create(resourceUrl.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "app.security.mcp.resource-url is not a valid URI ("
+                            + resourceUrl
+                            + "); set APP_SECURITY_MCP_RESOURCE_URL to your public MCP URL.",
+                    e);
+        }
+        String host = parsed.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalStateException(
+                    "app.security.mcp.resource-url must include a host ("
+                            + resourceUrl
+                            + "); set APP_SECURITY_MCP_RESOURCE_URL to your public MCP URL.");
+        }
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        if ("localhost".equals(lowerHost)
+                || lowerHost.endsWith(".localhost")
+                || "127.0.0.1".equals(lowerHost)
+                || "::1".equals(lowerHost)
+                || "[::1]".equals(lowerHost)
+                || "0.0.0.0".equals(lowerHost)) {
+            throw new IllegalStateException(
+                    "app.security.mcp.resource-url points to a local address ("
+                            + resourceUrl
+                            + "), which breaks OAuth discovery outside development profiles; "
+                            + "set APP_SECURITY_MCP_RESOURCE_URL to your public MCP URL.");
+        }
+    }
+
+    /**
+     * Derives the RFC 9728 protected-resource metadata URL from {@code resourceUrl} using URI
+     * resolution rather than string replacement, so hosts containing {@code mcp} (e.g. {@code
+     * https://mcp.example.com/mcp}) are preserved intact.
+     */
+    static String resolveResourceMetadataUrl(String resourceUrl) {
+        return URI.create(resourceUrl.trim())
+                .resolve("/.well-known/oauth-protected-resource")
+                .toString();
     }
 
     private static void assertPinnedEntraTenant(String propertyName, String uri) {
@@ -312,8 +363,7 @@ public class SecurityConfig {
     @Order(1)
     @Bean
     public SecurityFilterChain mcpSecurityFilterChain(HttpSecurity http) throws Exception {
-        String resourceMetadataUrl =
-                resourceUrl.replace("/mcp", "") + "/.well-known/oauth-protected-resource";
+        String resourceMetadataUrl = resolveResourceMetadataUrl(resourceUrl);
         http.securityMatcher("/mcp/**", "/mcp")
                 .authorizeHttpRequests(authorize ->
                         authorize
@@ -574,12 +624,35 @@ public class SecurityConfig {
         if (mockAuth) {
             return token -> {
                 Map<String, Object> headers = Map.of("alg", "none");
+                List<String> roles;
+                String subject = "mock-mcp-user-sub";
+                String oid = "mock-mcp-user-oid";
+                if (token != null && token.startsWith("mock-roles--")) {
+                    // RFC 6750 b64token charset ([A-Za-z0-9-._~+/]+=*) forbids ':' and ',';
+                    // tests encode mock role sets as "mock-roles--<Role1>+<Role2>" (or
+                    // "mock-roles--" for a scope-only token carrying zero app roles).
+                    String roleSpec = token.substring("mock-roles--".length()).trim();
+                    if (roleSpec.isEmpty()) {
+                        roles = List.of();
+                    } else {
+                        roles =
+                                Arrays.stream(roleSpec.split("\\+"))
+                                        .map(String::trim)
+                                        .filter(r -> !r.isEmpty())
+                                        .toList();
+                    }
+                    String idSuffix = roleSpec.isEmpty() ? "no-roles" : roleSpec;
+                    subject = "mock-mcp-" + idSuffix;
+                    oid = "mock-mcp-oid-" + idSuffix;
+                } else {
+                    roles = List.of(userClaim);
+                }
                 Map<String, Object> claims =
                         Map.of(
                                 "sub",
-                                "mock-mcp-user-sub",
+                                subject,
                                 "oid",
-                                "mock-mcp-user-oid",
+                                oid,
                                 "preferred_username",
                                 "mock-mcp-user@palsoftware.local",
                                 "name",
@@ -589,7 +662,7 @@ public class SecurityConfig {
                                 "scp",
                                 List.of(requiredScope),
                                 "roles",
-                                List.of(userClaim));
+                                roles);
                 return new Jwt(
                         token, Instant.now(), Instant.now().plusSeconds(3600), headers, claims);
             };

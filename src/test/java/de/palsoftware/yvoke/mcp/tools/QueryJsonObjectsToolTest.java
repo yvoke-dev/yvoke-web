@@ -567,4 +567,134 @@ public class QueryJsonObjectsToolTest {
         assertEquals("Error: Collection 'Ping - JSON' does not exist.", output);
         verifyNoInteractions(jsonObjectService);
     }
+
+    @Test
+    public void testLimitAboveMaxIsClampedAndNextPageUsesClampedLimit() {
+        UUID colId = UUID.randomUUID();
+        List<JsonObject> fullPage = new ArrayList<>();
+        for (int i = 0; i < 500; i++) {
+            fullPage.add(
+                    new JsonObject(
+                            UUID.randomUUID(),
+                            colId,
+                            "JSON-Col-1",
+                            Map.of("role", "user"),
+                            "f.json",
+                            List.of("v1"),
+                            OffsetDateTime.now()));
+        }
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(fullPage);
+
+        String output =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 10_000_000, 10, null, null);
+
+        verify(jsonObjectService).listObjectsByOffset(any(), any(), eq(500), eq(10));
+        assertTrue(output.contains("limit=500"), "output must report clamped limit: " + output);
+        assertTrue(
+                output.contains("offset=510"),
+                "next page offset must use clamped limit: " + output);
+    }
+
+    @Test
+    public void testZeroAndNegativeLimitAreFlooredAtOne() {
+        UUID colId = UUID.randomUUID();
+        JsonObject oneRow =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        colId,
+                        "JSON-Col-1",
+                        Map.of("role", "admin"),
+                        "f.json",
+                        List.of("v1"),
+                        OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(oneRow));
+
+        String zeroOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 0, 0, null, null);
+        verify(jsonObjectService).listObjectsByOffset(any(), any(), eq(1), eq(0));
+        assertTrue(zeroOut.contains("admin"), "limit=0 must floor to 1, not return empty");
+
+        queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", "role", -5, 0, null, null);
+        verify(jsonObjectService, times(2)).listObjectsByOffset(any(), any(), eq(1), eq(0));
+    }
+
+    @Test
+    public void testNegativeOffsetReturnsActionableErrorWithoutQuerying() {
+        String output =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 10, -1, null, null);
+
+        assertEquals("Error: 'offset' must be 0 or greater.", output);
+        verifyNoInteractions(jsonObjectService);
+    }
+
+    @Test
+    public void wildcardProjectionTreatsRegexMetacharactersLiterallyAndNeverBacktracks() {
+        UUID colId = UUID.randomUUID();
+        String longKey = "a".repeat(60) + "!";
+        JsonObject obj =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        colId,
+                        "JSON-Col-1",
+                        Map.of(
+                                "cost[USD]_net",
+                                42,
+                                "costU_net",
+                                99,
+                                "a(b)+c_val",
+                                "ok",
+                                longKey,
+                                "sentinel"),
+                        "f.json",
+                        List.of("v1"),
+                        OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(obj));
+
+        // 1. Regex brackets/parens/plus in a wildcard segment must match LITERAL characters,
+        // never throw PatternSyntaxException (unclosed '[' or '(') or interpret '[USD]' as a
+        // character class matching 'U'.
+        String metachars =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1",
+                        null,
+                        "v1",
+                        "cost[usd]*,a(b)+*,unclosed[*",
+                        10,
+                        0,
+                        null,
+                        null);
+        assertTrue(
+                metachars.startsWith("Found 1 JSON objects"),
+                "regex metacharacters in fields wildcard must not fail the query: " + metachars);
+        assertTrue(
+                metachars.contains("cost[USD]_net"),
+                "literal bracket key must match: " + metachars);
+        assertFalse(
+                metachars.contains("costU_net"),
+                "'[usd]' must not act as a regex character class matching 'U': " + metachars);
+        assertTrue(
+                metachars.contains("a(b)+c_val"),
+                "literal parens/plus key must match: " + metachars);
+
+        // 2. Classic ReDoS shape must finish cleanly without hanging or throwing
+        String redos =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1",
+                        null,
+                        "v1",
+                        "(a+)+b*,*a*a*a*a*a*a*a*a*a*a*a*a*b",
+                        10,
+                        0,
+                        null,
+                        null);
+        assertTrue(
+                redos.startsWith("Found 1 JSON objects"),
+                "ReDoS-shaped wildcard pattern must finish cleanly: " + redos);
+    }
 }

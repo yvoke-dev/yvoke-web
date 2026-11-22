@@ -11,8 +11,6 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -86,12 +84,8 @@ public class ProfileTools {
         this.objectMapper = objectMapper;
     }
 
-    @McpTool(name = "list_profiles", description = LIST_DESCRIPTION)
     @Tool(name = "list_profiles", description = LIST_DESCRIPTION)
-    public String listProfiles(
-            @McpToolParam(description = AREA_PARAM, required = false)
-                    @ToolParam(description = AREA_PARAM, required = false)
-                    String area) {
+    public String listProfiles(@ToolParam(description = AREA_PARAM, required = false) String area) {
         try {
             Predicate<OrchestratorProfile> inArea =
                     McpToolUtils.inArea(areaService, area, OrchestratorProfile::area);
@@ -108,12 +102,8 @@ public class ProfileTools {
         }
     }
 
-    @McpTool(name = "get_profile", description = GET_DESCRIPTION)
     @Tool(name = "get_profile", description = GET_DESCRIPTION)
-    public String getProfile(
-            @McpToolParam(description = NAME_PARAM, required = true)
-                    @ToolParam(description = NAME_PARAM, required = true)
-                    String name) {
+    public String getProfile(@ToolParam(description = NAME_PARAM, required = true) String name) {
         if (name == null || name.isBlank()) {
             return "ERROR: 'name' is required for get_profile.";
         }

@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,21 @@ public class JsonObjectRepository {
      * as the whole picture.
      */
     public static final int MAX_GROUPS = 100;
+
+    /**
+     * Hard per-page row ceiling for paged JSON-object reads, bounding heap materialization and
+     * query time. Public so tools and tests compute pagination and next-page offsets from the same
+     * ceiling the repository enforces.
+     */
+    public static final int MAX_LIMIT = 500;
+
+    private static int clampLimit(int limit) {
+        return Math.max(1, Math.min(limit, MAX_LIMIT));
+    }
+
+    private static int clampOffset(int offset) {
+        return Math.max(0, offset);
+    }
 
     private final JdbcClient jdbcClient;
     private final JdbcTemplate jdbcTemplate;
@@ -220,6 +236,52 @@ public class JsonObjectRepository {
         return findByCollectionId(collectionId, null, limit, offset);
     }
 
+    /**
+     * One keyset-paginated batch of raw JSON payloads returned by {@link #findDataBatchAfterId}.
+     */
+    public record JsonObjectDataBatch(List<Map<String, Object>> payloads, @Nullable UUID lastId) {}
+
+    /**
+     * Keyset-paginated read of raw JSON payloads ordered by primary key ({@code id ASC}), for
+     * internal full-collection scans such as schema rebuilding. Walking by {@code id > :afterId}
+     * keeps each DB round-trip bounded (≤ {@link #MAX_LIMIT} rows), avoids {@code OFFSET} scan
+     * cost, and never skips rows if concurrent deletes shift earlier rows.
+     */
+    public JsonObjectDataBatch findDataBatchAfterId(
+            UUID collectionId, @Nullable List<String> tags, @Nullable UUID afterId, int batchSize) {
+        StringBuilder sql =
+                new StringBuilder(
+                        "SELECT j.id, j.data FROM json_objects j WHERE j.collection_id = :collectionId ");
+        if (afterId != null) {
+            sql.append("AND j.id > :afterId ");
+        }
+        sql.append(tagsFilter(tags));
+        sql.append("ORDER BY j.id ASC LIMIT :limit");
+
+        var client =
+                jdbcClient
+                        .sql(sql.toString())
+                        .param("collectionId", collectionId)
+                        .param("limit", clampLimit(batchSize));
+        if (afterId != null) {
+            client = client.param("afterId", afterId);
+        }
+        if (tags != null && !tags.isEmpty()) {
+            client = client.param("tags", tags.toArray(new String[0]));
+        }
+
+        List<Map<String, Object>> payloads = new ArrayList<>();
+        UUID[] lastIdHolder = new UUID[1];
+        client.query(
+                        (rs, rowNum) -> {
+                            lastIdHolder[0] = rs.getObject("id", UUID.class);
+                            payloads.add(JdbcMappers.jsonbToMap(rs, "data", objectMapper));
+                            return null;
+                        })
+                .list();
+        return new JsonObjectDataBatch(payloads, lastIdHolder[0]);
+    }
+
     public List<JsonObject> findByCollectionId(
             UUID collectionId, @Nullable List<String> tags, int limit, int offset) {
         String querySql =
@@ -234,8 +296,8 @@ public class JsonObjectRepository {
                 jdbcClient
                         .sql(querySql)
                         .param("collectionId", collectionId)
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }
@@ -298,8 +360,8 @@ public class JsonObjectRepository {
                         .sql(querySql)
                         .param("collectionId", collectionId)
                         .param("searchText", "%" + searchText + "%")
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }
@@ -373,8 +435,8 @@ public class JsonObjectRepository {
                         .sql(querySql)
                         .param("collectionId", collectionId)
                         .param("jsonPath", jsonPath)
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }

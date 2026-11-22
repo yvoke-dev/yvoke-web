@@ -41,6 +41,7 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.annotation.Nullable;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -180,7 +181,8 @@ class RagServiceAreaIsolationTest {
                         new SearchCorpusToolCallback(
                                 new SearchCorpusTool(hybridSearch, collectionService, 10, 50),
                                 mapper,
-                                50));
+                                50,
+                                mock(UserService.class)));
         ragService
                 .getToolRegistry()
                 .put(

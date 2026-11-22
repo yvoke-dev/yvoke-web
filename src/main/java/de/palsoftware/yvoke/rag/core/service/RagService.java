@@ -18,6 +18,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmToolCallDelta;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.rag.core.CitationStreamingFilter;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.ToolResultClassifier;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
@@ -591,8 +592,7 @@ public class RagService {
                     String guarded = guardToolExecution(tc, ctx);
                     if (guarded != null) {
                         responseData = guarded;
-                        isError =
-                            responseData.startsWith("Error:") || responseData.startsWith("Error ");
+                        isError = ToolResultClassifier.isErrorResult(responseData);
                         log.info("Tool {} intercepted by area guard: {}", tc.name(), responseData);
                     } else {
                         if (callback instanceof ContextAwareToolCallback contextAware) {
@@ -605,8 +605,7 @@ public class RagService {
                                 TurnAreaScopeHolder.clear();
                             }
                         }
-                        if (responseData != null && (responseData.startsWith("Error:")
-                            || responseData.startsWith("Error "))) {
+                        if (ToolResultClassifier.isErrorResult(responseData)) {
                             isError = true;
                         }
                         log.info("Tool {} executed successfully, response length: {}", tc.name(),

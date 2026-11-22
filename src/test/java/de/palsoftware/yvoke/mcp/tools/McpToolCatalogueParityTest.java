@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolsConfig;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,21 +22,39 @@ import org.springframework.stereotype.Component;
 
 /**
  * {@link McpToolsConfig} publishes annotation-driven tool classes in {@code mcp.tools} via {@code
- * ToolCallbacks.from(bean)}, which reads {@code @Tool}/{@code @ToolParam}, while the classes in
- * {@link McpToolsConfig#CALLBACK_PUBLISHED} ship hand-written {@code ContextAwareToolCallback}
- * schemas instead. Annotation-published methods also carry {@code @McpTool}/{@code @McpToolParam}
- * alongside {@code @Tool}/{@code @ToolParam}; keeping both annotation sets in lockstep prevents
- * silent schema divergence across tool catalogues.
+ * ToolCallbacks.from(bean)}, which reads {@code @Tool}/{@code @ToolParam} exclusively ({@code
+ * spring.ai.mcp.server.annotation-scanner.enabled=false}), while classes in {@link
+ * McpToolsConfig#CALLBACK_PUBLISHED} ship hand-written {@code ContextAwareToolCallback} schemas.
  *
- * <p>This is pure reflection and classpath metadata scanning: no Spring context, so it cannot
- * affect the TestContext cache.
+ * <p>Because the MCP annotation scanner is disabled, {@code @McpTool}/{@code @McpToolParam} are
+ * never read at runtime — both the MCP server and the in-app assistant read one catalogue from
+ * {@code @Tool}/{@code @ToolParam}. This test forbids dead {@code @McpTool}/{@code @McpToolParam}
+ * annotations across all {@code mcp.tools} classes and dead {@code @Tool}/{@code @ToolParam}
+ * annotations on {@link McpToolsConfig#CALLBACK_PUBLISHED} classes.
+ *
+ * <p>Pure reflection and classpath metadata scanning: no Spring context, so it cannot affect the
+ * TestContext cache.
  */
 class McpToolCatalogueParityTest {
 
+    private static final List<Class<?>> ALL_TOOLS = McpToolsConfig.scanToolClasses();
+
     private static final List<Class<?>> TOOLS =
-            McpToolsConfig.scanToolClasses().stream()
-                    .filter(c -> !McpToolsConfig.CALLBACK_PUBLISHED.contains(c))
-                    .toList();
+            ALL_TOOLS.stream().filter(c -> !McpToolsConfig.CALLBACK_PUBLISHED.contains(c)).toList();
+
+    @Test
+    void mcpAnnotationScannerIsDisabledSoToolAnnotationsAreSingleSourceOfTruth() throws Exception {
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            assertThat(in).isNotNull();
+            String yaml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(yaml)
+                    .as(
+                            "spring.ai.mcp.server.annotation-scanner.enabled must stay false so "
+                                    + "McpToolsConfig (@Tool + hand-registered callbacks) is the "
+                                    + "single catalogue for both MCP and in-app chat")
+                    .containsPattern("annotation-scanner:\\s*\\n\\s*enabled:\\s*false");
+        }
+    }
 
     @Test
     void everyAnnotationPublishedToolClassDeclaresAtLeastOneTool() {
@@ -53,6 +73,36 @@ class McpToolCatalogueParityTest {
         }
         assertThat(emptyTools)
                 .as("every annotation-published tool class must declare at least one @Tool method")
+                .isEmpty();
+    }
+
+    @Test
+    void noToolClassCarriesDeadMcpToolAnnotations() {
+        List<String> deadAnnotations = new ArrayList<>();
+        for (Class<?> tool : ALL_TOOLS) {
+            for (Method m : tool.getDeclaredMethods()) {
+                if (m.isAnnotationPresent(McpTool.class)) {
+                    deadAnnotations.add(
+                            tool.getSimpleName() + "." + m.getName() + " carries dead @McpTool");
+                }
+                for (Parameter p : m.getParameters()) {
+                    if (p.isAnnotationPresent(McpToolParam.class)) {
+                        deadAnnotations.add(
+                                tool.getSimpleName()
+                                        + "."
+                                        + m.getName()
+                                        + "("
+                                        + p.getName()
+                                        + ") carries dead @McpToolParam");
+                    }
+                }
+            }
+        }
+        assertThat(deadAnnotations)
+                .as(
+                        "spring.ai.mcp.server.annotation-scanner.enabled=false means @McpTool and "
+                                + "@McpToolParam are never read at runtime; annotate with @Tool / "
+                                + "@ToolParam only")
                 .isEmpty();
     }
 
@@ -126,119 +176,5 @@ class McpToolCatalogueParityTest {
                     .as(clazz.getSimpleName() + " must be present in annotation-published TOOLS")
                     .contains(clazz);
         }
-    }
-
-    @Test
-    void everyToolMethodDeclaresBothCatalogues() {
-        List<String> mismatches = new ArrayList<>();
-        for (Class<?> tool : TOOLS) {
-            for (Method m : tool.getDeclaredMethods()) {
-                boolean mcp = m.isAnnotationPresent(McpTool.class);
-                boolean agentic = m.isAnnotationPresent(Tool.class);
-                if (mcp != agentic) {
-                    mismatches.add(
-                            tool.getSimpleName()
-                                    + "."
-                                    + m.getName()
-                                    + ": @McpTool="
-                                    + mcp
-                                    + " but @Tool="
-                                    + agentic);
-                }
-            }
-        }
-        assertThat(mismatches)
-                .as("a tool must be published to both catalogues or neither")
-                .isEmpty();
-    }
-
-    @Test
-    void everyParameterIsDeclaredInBothCataloguesWithMatchingRequiredAndDescription() {
-        List<String> mismatches = new ArrayList<>();
-        for (Class<?> tool : TOOLS) {
-            for (Method m : tool.getDeclaredMethods()) {
-                if (!m.isAnnotationPresent(McpTool.class) && !m.isAnnotationPresent(Tool.class)) {
-                    continue;
-                }
-                for (Parameter p : m.getParameters()) {
-                    McpToolParam mcpParam = p.getAnnotation(McpToolParam.class);
-                    ToolParam toolParam = p.getAnnotation(ToolParam.class);
-                    boolean mcp = mcpParam != null;
-                    boolean agentic = toolParam != null;
-                    if (mcp != agentic) {
-                        mismatches.add(
-                                tool.getSimpleName()
-                                        + "."
-                                        + m.getName()
-                                        + "("
-                                        + p.getName()
-                                        + "): @McpToolParam="
-                                        + mcp
-                                        + " but @ToolParam="
-                                        + agentic);
-                        continue;
-                    }
-                    if (mcpParam != null) {
-                        if (mcpParam.required() != toolParam.required()) {
-                            mismatches.add(
-                                    tool.getSimpleName()
-                                            + "."
-                                            + m.getName()
-                                            + "("
-                                            + p.getName()
-                                            + "): required differs (@McpToolParam="
-                                            + mcpParam.required()
-                                            + " vs @ToolParam="
-                                            + toolParam.required()
-                                            + ")");
-                        }
-                        if (!mcpParam.description().equals(toolParam.description())) {
-                            mismatches.add(
-                                    tool.getSimpleName()
-                                            + "."
-                                            + m.getName()
-                                            + "("
-                                            + p.getName()
-                                            + "): description differs between @McpToolParam and @ToolParam");
-                        }
-                    }
-                }
-            }
-        }
-        assertThat(mismatches)
-                .as(
-                        "parameters must match across @McpToolParam and @ToolParam in presence, required flag, and description")
-                .isEmpty();
-    }
-
-    @Test
-    void bothCataloguesAgreeOnNameAndDescription() {
-        List<String> mismatches = new ArrayList<>();
-        for (Class<?> tool : TOOLS) {
-            for (Method m : tool.getDeclaredMethods()) {
-                McpTool mcp = m.getAnnotation(McpTool.class);
-                Tool agentic = m.getAnnotation(Tool.class);
-                if (mcp == null || agentic == null) {
-                    continue;
-                }
-                if (!mcp.name().equals(agentic.name())) {
-                    mismatches.add(
-                            tool.getSimpleName()
-                                    + ": name '"
-                                    + mcp.name()
-                                    + "' vs '"
-                                    + agentic.name()
-                                    + "'");
-                }
-                if (!mcp.description().equals(agentic.description())) {
-                    mismatches.add(
-                            tool.getSimpleName()
-                                    + " ("
-                                    + mcp.name()
-                                    + "): descriptions differ between the two catalogues");
-                }
-            }
-        }
-        assertThat(mismatches).as("the two catalogues must describe the same contract").isEmpty();
     }
 }

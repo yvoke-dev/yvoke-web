@@ -3,6 +3,10 @@ package de.palsoftware.yvoke.mcp;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.rag.core.ToolResultClassifier;
+import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.text.MarkdownTableFormatter;
 import jakarta.annotation.Nullable;
 import java.util.List;
@@ -28,6 +32,79 @@ public class McpToolUtils {
     public static String toolError(String toolName, Throwable e) {
         log.error("MCP tool '{}' failed", toolName, e);
         return "ERROR: the '" + toolName + "' tool failed to complete the request.";
+    }
+
+    /**
+     * Recognizes a tool-returned error payload across both raw callback strings ({@code "Error: …"}
+     * / {@code "ERROR: …"}) and JSON-encoded strings ({@code "\"Error: …\""}) produced by Spring
+     * AI's {@code DefaultToolCallResultConverter}.
+     */
+    public static boolean isErrorResult(@Nullable String rawText) {
+        return ToolResultClassifier.isErrorResult(rawText);
+    }
+
+    /**
+     * Single fail-closed area-authorization predicate shared by all MCP and in-app RAG tools.
+     * Unassigned ({@code null}/blank) areas are permitted only to callers/contexts with
+     * unrestricted area access ({@code *}).
+     */
+    public static boolean isAreaAllowed(
+            @Nullable String area, @Nullable AgenticChatContext context) {
+        if (context != null) {
+            return context.isAreaAllowed(area);
+        }
+        return AreaAccessContext.canAccessEffectiveUserArea(area);
+    }
+
+    /** Result of resolving and authorizing a collection plus optional tag for a tool call. */
+    public sealed interface CollectionResolution
+            permits CollectionResolution.Allowed, CollectionResolution.Refused {
+        /** Authorized collection (holding its stored DB spelling) and validated/trimmed tag. */
+        record Allowed(Collection collection, @Nullable String tag)
+                implements CollectionResolution {}
+
+        /** Opaque refusal or tag-validation error ready to return verbatim to the caller. */
+        record Refused(String errorMessage) implements CollectionResolution {}
+    }
+
+    /**
+     * Resolves {@code rawCollection} case-insensitively, enforces fail-closed per-area access via
+     * {@link #isAreaAllowed}, and validates {@code rawTag} (requiring one when the collection is
+     * tag-scoped and rejecting unknown tags). Callers receive the stored {@link Collection} record
+     * so they never forward the caller's raw casing to case-sensitive SQL queries.
+     */
+    public static CollectionResolution resolveReadableCollection(
+            CollectionService collectionService,
+            String rawCollection,
+            @Nullable String rawTag,
+            @Nullable AgenticChatContext context) {
+        String col = rawCollection.trim();
+        Collection matchedCol =
+                collectionService.listCollections().stream()
+                        .filter(c -> c.name().equalsIgnoreCase(col))
+                        .findFirst()
+                        .orElse(null);
+        if (matchedCol == null || !isAreaAllowed(matchedCol.area(), context)) {
+            return new CollectionResolution.Refused(
+                    "Error: Collection '" + col + "' does not exist.");
+        }
+
+        String parsedTag = (rawTag != null && !rawTag.isBlank()) ? rawTag.trim() : null;
+        String tagRequired = requireTag(matchedCol, parsedTag);
+        if (tagRequired != null) {
+            return new CollectionResolution.Refused(tagRequired);
+        }
+        if (parsedTag != null) {
+            if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
+                return new CollectionResolution.Refused(
+                        "Error: Tag '"
+                                + parsedTag
+                                + "' does not exist in collection '"
+                                + col
+                                + "'.");
+            }
+        }
+        return new CollectionResolution.Allowed(matchedCol, parsedTag);
     }
 
     /**

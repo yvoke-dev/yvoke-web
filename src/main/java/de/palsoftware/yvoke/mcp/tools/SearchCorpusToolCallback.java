@@ -1,9 +1,13 @@
 package de.palsoftware.yvoke.mcp.tools;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.shared.user.model.User;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -12,6 +16,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
 
     private final SearchCorpusTool tool;
     private final ObjectMapper objectMapper;
+    private final UserService userService;
     private final ToolDefinition definition;
 
     /**
@@ -23,9 +28,13 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
      *     is given is impossible to follow.
      */
     public SearchCorpusToolCallback(
-            SearchCorpusTool tool, ObjectMapper objectMapper, int maxLimit) {
+            SearchCorpusTool tool,
+            ObjectMapper objectMapper,
+            int maxLimit,
+            UserService userService) {
         this.tool = tool;
         this.objectMapper = objectMapper;
+        this.userService = userService;
         this.definition =
                 new ToolDefinition() {
                     @Override
@@ -59,22 +68,6 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
                             "limit": {
                               "type": "integer",
                               "description": "Max chunks to return. Omit to use the server default (small — around 10). A full page means the result is CAPPED and more may match: raise this (max %d) or narrow the query. To read a whole named section rather than its top-ranked chunks, use 'get_section'."
-                            },
-                            "conversation_id": {
-                              "type": "string",
-                              "description": "Optional conversation ID (UUID) for attributing search/embedding costs."
-                            },
-                            "message_id": {
-                              "type": "string",
-                              "description": "Optional message ID (UUID) for attributing search/embedding costs."
-                            },
-                            "agent_run_id": {
-                              "type": "string",
-                              "description": "Optional agent run ID (UUID) for attributing search/embedding costs."
-                            },
-                            "user_id": {
-                              "type": "string",
-                              "description": "Optional user ID (UUID) for attributing search/embedding costs."
                             }
                           },
                           "required": ["query", "collection"]
@@ -97,64 +90,46 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
 
     @Override
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
-        LlmCallContextHolder.Context outerCtx = LlmCallContextHolder.get();
-        boolean setCustomContext = false;
+        String query;
+        String collection;
+        String tag;
+        Integer limit;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
-            String query = (String) args.get("query");
-            String collection = (String) args.get("collection");
-            String tag = (String) args.get("tag");
+            if (args == null) {
+                return "Error parsing arguments: expected a JSON object.";
+            }
+            query = asString(args.get("query"));
+            collection = asString(args.get("collection"));
+            tag = asString(args.get("tag"));
+            limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
+        } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
+            return "Error parsing arguments: " + e.getMessage();
+        }
 
-            UUID convId = parseUuid(args.get("conversation_id"));
-            if (convId == null) convId = parseUuid(args.get("conversationId"));
-            if (convId == null && outerCtx != null) convId = outerCtx.conversationId();
-
-            UUID msgId = parseUuid(args.get("message_id"));
-            if (msgId == null) msgId = parseUuid(args.get("messageId"));
-            if (msgId == null && outerCtx != null) msgId = outerCtx.messageId();
-
-            UUID runId = parseUuid(args.get("agent_run_id"));
-            if (runId == null) runId = parseUuid(args.get("agentRunId"));
-            if (runId == null && outerCtx != null) runId = outerCtx.agentRunId();
-
-            UUID userId = parseUuid(args.get("user_id"));
-            if (userId == null) userId = parseUuid(args.get("userId"));
-            if (userId == null && outerCtx != null) userId = outerCtx.userId();
-
-            LlmCallContextHolder.set(
-                    convId,
-                    msgId,
-                    runId,
-                    userId,
-                    outerCtx != null ? outerCtx.source() : null,
-                    outerCtx != null ? outerCtx.role() : null);
-
-            Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
+        // Cost attribution must NEVER come from caller/model tool arguments: in-app runs already
+        // hold a trusted server-side LlmCallContextHolder; external MCP requests derive userId
+        // strictly from the authenticated principal.
+        LlmCallContextHolder.Context outerCtx = LlmCallContextHolder.get();
+        boolean installedMcpContext = false;
+        try {
+            if (outerCtx == null) {
+                UUID userId = userService.getCurrentUser().map(User::id).orElse(null);
+                LlmCallContextHolder.set(null, null, null, userId, "mcp", "mcp");
+                installedMcpContext = true;
+            }
             return tool.searchCorpus(query, collection, tag, limit, context);
         } catch (Exception e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.toolError("search_corpus", e);
         } finally {
-            if (outerCtx != null) {
-                LlmCallContextHolder.set(
-                        outerCtx.conversationId(),
-                        outerCtx.messageId(),
-                        outerCtx.agentRunId(),
-                        outerCtx.userId(),
-                        outerCtx.source(),
-                        outerCtx.role());
-            } else {
+            if (installedMcpContext) {
                 LlmCallContextHolder.clear();
             }
         }
     }
 
-    private static UUID parseUuid(Object raw) {
-        if (raw == null) return null;
-        try {
-            return UUID.fromString(raw.toString());
-        } catch (Exception e) {
-            return null;
-        }
+    private static String asString(Object raw) {
+        return raw == null ? null : raw.toString();
     }
 }

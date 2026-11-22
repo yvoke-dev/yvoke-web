@@ -12,8 +12,6 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -59,15 +57,11 @@ public class GetTocTool {
      */
     private static final int READ_WHOLE_CHAR_BUDGET = 30_000;
 
-    @McpTool(name = "get_toc", description = DESCRIPTION)
     @Tool(name = "get_toc", description = DESCRIPTION)
     public String getToc(
-            @McpToolParam(description = "Document ID (full UUID).", required = true)
-                    @ToolParam(description = "Document ID (full UUID).", required = true)
+            @ToolParam(description = "Document ID (full UUID).", required = true)
                     String document_id,
-            @McpToolParam(description = PATH_PARAM, required = false)
-                    @ToolParam(description = PATH_PARAM, required = false)
-                    String heading_path) {
+            @ToolParam(description = PATH_PARAM, required = false) String heading_path) {
         log.info(
                 "GetTocTool: fetching TOC for document '{}', heading_path='{}'",
                 document_id,

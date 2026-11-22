@@ -22,6 +22,7 @@ data:
   ENTRA_CLIENT_ID: "a1824d0a-79eb-4dde-8c0b-242dde321967"
   APP_SECURITY_MCP_AUDIENCE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967"
   APP_SECURITY_MCP_SCOPE: "api://a1824d0a-79eb-4dde-8c0b-242dde321967/desktop"
+  APP_SECURITY_MCP_RESOURCE_URL: "https://app.yvoke.dev/mcp"
 
   # ── Models and providers ───────────────────────────────────────────────────────────────────
   # The DEFAULT route, used for any model AI_MODEL_ROUTES does not map.

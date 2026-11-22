@@ -16,10 +16,12 @@ import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -165,8 +167,9 @@ public class LlmCallContextIT {
                     return "Searched OK";
                 });
 
+        UserService mockUserService = mock(UserService.class);
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(mockTool, objectMapper, 20);
+                new SearchCorpusToolCallback(mockTool, objectMapper, 20, mockUserService);
 
         // The frame an orchestrated run is already in when the model asks for search_corpus.
         LlmCallContextHolder.set(
@@ -216,14 +219,21 @@ public class LlmCallContextIT {
     }
 
     @Test
-    void testSearchCorpusToolCallback_parsesAndBindsContextArguments() {
+    void testSearchCorpusToolCallback_ignoresForgedIdsAndBindsPrincipalUser() {
         SearchCorpusTool mockTool = mock(SearchCorpusTool.class);
+        AtomicReference<LlmCallContextHolder.Context> seenInsideTool = new AtomicReference<>();
         when(mockTool.searchCorpus("test query", "OIM", null, null, null))
-                .thenReturn("Searched OK");
+                .thenAnswer(inv -> {
+                    seenInsideTool.set(LlmCallContextHolder.get());
+                    return "Searched OK";
+                });
 
+        UserService mockUserService = mock(UserService.class);
+        when(mockUserService.getCurrentUser()).thenReturn(Optional.of(testUser));
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(mockTool, objectMapper, 20);
+                new SearchCorpusToolCallback(mockTool, objectMapper, 20, mockUserService);
 
+        UUID forgedUserId = UUID.randomUUID();
         String jsonArgs =
                 String.format(
                         """
@@ -236,13 +246,16 @@ public class LlmCallContextIT {
                             "user_id": "%s"
                         }
                         """,
-                        testConversation.id(), testMessage.id(), testAgentRunId, testUser.id());
+                        testConversation.id(), testMessage.id(), testAgentRunId, forgedUserId);
 
         assertThat(LlmCallContextHolder.get()).isNull();
 
         String result = callback.callWithContext(jsonArgs, null);
 
         assertThat(result).isEqualTo("Searched OK");
+        assertThat(seenInsideTool.get()).isNotNull();
+        assertThat(seenInsideTool.get().userId()).isEqualTo(testUser.id());
+        assertThat(seenInsideTool.get().conversationId()).isNull();
         assertThat(LlmCallContextHolder.get()).isNull(); // Context cleaned up after tool call
     }
 }

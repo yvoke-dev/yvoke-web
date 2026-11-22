@@ -8,15 +8,17 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
+import de.palsoftware.yvoke.shared.user.model.User;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import jakarta.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -40,7 +42,10 @@ public class SearchCorpusToolCallbackTest {
 
     private static String schemaFor(int maxLimit) {
         return new SearchCorpusToolCallback(
-                        mock(SearchCorpusTool.class), new ObjectMapper(), maxLimit)
+                        mock(SearchCorpusTool.class),
+                        new ObjectMapper(),
+                        maxLimit,
+                        mock(UserService.class))
                 .getToolDefinition()
                 .inputSchema();
     }
@@ -96,10 +101,6 @@ public class SearchCorpusToolCallbackTest {
      */
     @Test
     public void theHandWrittenSchemaMatchesTheJavaSignatureOfSearchCorpus() throws Exception {
-        // Consumed by the CALLBACK for cost attribution; deliberately not parameters of the tool.
-        Set<String> attributionOnly =
-                Set.of("conversation_id", "message_id", "agent_run_id", "user_id");
-
         Method method =
                 SearchCorpusTool.class.getMethod(
                         "searchCorpus",
@@ -141,93 +142,80 @@ public class SearchCorpusToolCallbackTest {
                 .containsExactlyInAnyOrderElementsOf(mandatory);
         assertThat(properties.keySet())
                 .as(
-                        "a schema property that is neither a parameter nor cost attribution is a key the "
-                                + "model will populate and nothing will read")
-                .containsExactlyInAnyOrderElementsOf(
-                        Stream.concat(modelFacing.stream(), attributionOnly.stream()).toList());
+                        "no client-controlled cost-attribution ids or extra keys may be advertised in "
+                                + "the schema — attribution must come strictly from server context / principal")
+                .containsExactlyInAnyOrderElementsOf(modelFacing);
         assertThat(properties.keySet())
                 .as("a required key must be a declared property")
                 .containsAll(required);
     }
 
-    /**
-     * The tool must RESTORE the caller's cost-attribution context, not leave its own behind.
-     *
-     * <p>{@code LlmCallContextHolder} is a ThreadLocal that decides which conversation, message and
-     * agent run every subsequent LLM call is billed to. This callback overrides it so the tool's
-     * own embedding and rerank calls are attributed to the conversation named in the tool arguments
-     * — and must put the outer value back in a {@code finally}, because the calling thread goes on
-     * to make more calls after the tool returns.
-     *
-     * <p>Without the restore, every later call on that thread is billed to whatever the last tool
-     * invocation happened to name. Nothing fails: the answer is correct, the totals are correct,
-     * and only the attribution is wrong — so the cost explorer confidently shows spend against the
-     * wrong conversation and there is no symptom to notice.
-     */
     @Test
-    public void theOuterCostAttributionContextIsRestoredAfterTheToolRuns() {
+    public void outerCostAttributionContextAlwaysWinsOverCallerSuppliedArguments() {
         UUID outerConv = UUID.randomUUID();
-        UUID innerConv = UUID.randomUUID();
+        UUID outerMsg = UUID.randomUUID();
+        UUID outerRun = UUID.randomUUID();
+        UUID outerUser = UUID.randomUUID();
+        UUID forgedConv = UUID.randomUUID();
+        UUID forgedMsg = UUID.randomUUID();
+        UUID forgedRun = UUID.randomUUID();
+        UUID forgedUser = UUID.randomUUID();
         SearchCorpusTool tool = mock(SearchCorpusTool.class);
-        List<UUID> seenByTool = new ArrayList<>();
+        List<LlmCallContextHolder.Context> seenByTool = new ArrayList<>();
         when(tool.searchCorpus(any(), any(), any(), any(), any()))
                 .thenAnswer(inv -> {
-                    seenByTool.add(LlmCallContextHolder.get().conversationId());
+                    seenByTool.add(LlmCallContextHolder.get());
                     return "ok";
                 });
+        UserService userService = mock(UserService.class);
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20);
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
 
         try {
-            LlmCallContextHolder.set(outerConv, null, null, null, "chat", "assistant");
+            LlmCallContextHolder.set(outerConv, outerMsg, outerRun, outerUser, "chat", "assistant");
 
             callback.callWithContext(
                     "{\"query\":\"q\",\"collection\":\"OIM\","
                             + "\"conversation_id\":\""
-                            + innerConv
+                            + forgedConv
+                            + "\",\"message_id\":\""
+                            + forgedMsg
+                            + "\",\"agent_run_id\":\""
+                            + forgedRun
+                            + "\",\"user_id\":\""
+                            + forgedUser
+                            + "\",\"userId\":\""
+                            + forgedUser
                             + "\"}",
                     null);
 
-            assertThat(seenByTool)
-                    .as("the tool's own calls bill to the id it was given")
-                    .containsExactly(innerConv);
+            assertThat(seenByTool).hasSize(1);
+            LlmCallContextHolder.Context seen = seenByTool.get(0);
+            assertThat(seen.conversationId()).isEqualTo(outerConv);
+            assertThat(seen.messageId()).isEqualTo(outerMsg);
+            assertThat(seen.agentRunId()).isEqualTo(outerRun);
+            assertThat(seen.userId()).isEqualTo(outerUser);
             assertThat(LlmCallContextHolder.get()).isNotNull();
-            assertThat(LlmCallContextHolder.get().conversationId())
-                    .as("the caller's context must survive the tool call")
-                    .isEqualTo(outerConv);
+            assertThat(LlmCallContextHolder.get().conversationId()).isEqualTo(outerConv);
+            assertThat(LlmCallContextHolder.get().userId()).isEqualTo(outerUser);
         } finally {
             LlmCallContextHolder.clear();
         }
     }
 
     /**
-     * The four attribution ids are read from MODEL-authored arguments, in BOTH spellings, and a
-     * value that is not a UUID must degrade to the outer context rather than abort the search.
-     *
-     * <p>The tool schema advertises {@code conversation_id} / {@code message_id} / {@code
-     * agent_run_id} / {@code user_id}, but the model routinely emits the camelCase forms — it is
-     * generating a JSON argument object, where camelCase is the overwhelming prior, and nothing in
-     * the protocol rejects an unrecognised key. Dropping the camelCase lookups therefore breaks
-     * nothing visible: every one of those calls still runs, still returns the right chunks, and is
-     * simply billed to whatever the outer context happened to be. The cost explorer then attributes
-     * a specialist's embedding and rerank spend to the parent conversation — or, on a bearer-token
-     * MCP thread with no outer context, to nothing at all — and the only symptom is a number on a
-     * dashboard that nothing cross-checks.
-     *
-     * <p>The garbage half is the same contract in the opposite direction. {@code parseUuid}
-     * swallows the failure deliberately, because these ids are advisory metadata and a model that
-     * hallucinates {@code "conv-123"} must not lose its search over it. Were that to become a
-     * throw, it would surface as {@code "Error parsing arguments: …"} — which the model reads as
-     * "my query was malformed", so its repair attempt is to rewrite the query, which cannot
-     * possibly help.
+     * On an external MCP call (no outer context), userId comes strictly from the authenticated
+     * principal via {@link UserService#getCurrentUser()}, forged argument IDs are ignored, and the
+     * ThreadLocal is cleared afterwards.
      */
     @Test
-    public void camelCaseAttributionIdsAreAcceptedAndGarbageFallsBackToTheOuterContext() {
-        UUID outerConv = UUID.randomUUID();
-        UUID camelConv = UUID.randomUUID();
-        UUID camelMsg = UUID.randomUUID();
-        UUID camelRun = UUID.randomUUID();
-        UUID camelUser = UUID.randomUUID();
+    public void aToolCallOnACleanThreadDerivesUserIdFromPrincipalAndLeavesNoContextBehind() {
+        UUID realUserId = UUID.randomUUID();
+        User realUser =
+                new User(realUserId, "entra-oid", "alice@example.com", "Alice", Instant.now());
+        UserService userService = mock(UserService.class);
+        when(userService.getCurrentUser()).thenReturn(Optional.of(realUser));
+
         SearchCorpusTool tool = mock(SearchCorpusTool.class);
         List<LlmCallContextHolder.Context> seenByTool = new ArrayList<>();
         when(tool.searchCorpus(any(), any(), any(), any(), any()))
@@ -236,68 +224,50 @@ public class SearchCorpusToolCallbackTest {
                     return "ok";
                 });
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20);
-
-        try {
-            LlmCallContextHolder.set(outerConv, null, null, null, "chat", "assistant");
-
-            callback.callWithContext(
-                    "{\"query\":\"q\",\"collection\":\"OIM\","
-                            + "\"conversationId\":\""
-                            + camelConv
-                            + "\","
-                            + "\"messageId\":\""
-                            + camelMsg
-                            + "\","
-                            + "\"agentRunId\":\""
-                            + camelRun
-                            + "\","
-                            + "\"userId\":\""
-                            + camelUser
-                            + "\"}",
-                    null);
-
-            assertThat(seenByTool).hasSize(1);
-            LlmCallContextHolder.Context camel = seenByTool.get(0);
-            assertThat(camel.conversationId()).as("camelCase conversationId").isEqualTo(camelConv);
-            assertThat(camel.messageId()).as("camelCase messageId").isEqualTo(camelMsg);
-            assertThat(camel.agentRunId()).as("camelCase agentRunId").isEqualTo(camelRun);
-            assertThat(camel.userId()).as("camelCase userId").isEqualTo(camelUser);
-
-            String out =
-                    callback.callWithContext(
-                            "{\"query\":\"q\",\"collection\":\"OIM\",\"conversation_id\":\"not-a-uuid\"}",
-                            null);
-
-            assertThat(out)
-                    .as("an unparseable advisory id must not abort the search")
-                    .isEqualTo("ok");
-            assertThat(seenByTool).hasSize(2);
-            assertThat(seenByTool.get(1).conversationId())
-                    .as("garbage falls back to the outer context rather than blanking attribution")
-                    .isEqualTo(outerConv);
-        } finally {
-            LlmCallContextHolder.clear();
-        }
-    }
-
-    /** With no outer context there is nothing to restore, so the holder must be left CLEAR. */
-    @Test
-    public void aToolCallOnACleanThreadLeavesNoContextBehind() {
-        SearchCorpusTool tool = mock(SearchCorpusTool.class);
-        when(tool.searchCorpus(any(), any(), any(), any(), any())).thenReturn("ok");
-        SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20);
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
 
         LlmCallContextHolder.clear();
+        UUID forgedUser = UUID.randomUUID();
+        UUID forgedConv = UUID.randomUUID();
         callback.callWithContext(
-                "{\"query\":\"q\",\"collection\":\"OIM\",\"conversation_id\":\""
-                        + UUID.randomUUID()
+                "{\"query\":\"q\",\"collection\":\"OIM\",\"user_id\":\""
+                        + forgedUser
+                        + "\",\"conversation_id\":\""
+                        + forgedConv
                         + "\"}",
                 null);
 
+        assertThat(seenByTool).hasSize(1);
+        LlmCallContextHolder.Context seen = seenByTool.get(0);
+        assertThat(seen).isNotNull();
+        assertThat(seen.userId())
+                .as("spend must be attributed to the authenticated principal, never the forged arg")
+                .isEqualTo(realUserId);
+        assertThat(seen.conversationId()).isNull();
+        assertThat(seen.messageId()).isNull();
+        assertThat(seen.agentRunId()).isNull();
         assertThat(LlmCallContextHolder.get())
                 .as("a tool must not leak its attribution onto a thread that had none")
                 .isNull();
+    }
+
+    @Test
+    public void infrastructureExceptionDuringExecutionIsNotLabelledAsArgumentParseError() {
+        UserService userService = mock(UserService.class);
+        when(userService.getCurrentUser()).thenReturn(Optional.empty());
+        SearchCorpusTool tool = mock(SearchCorpusTool.class);
+        when(tool.searchCorpus(any(), any(), any(), any(), any()))
+                .thenThrow(
+                        new RuntimeException("PSQLException: connection to db-host:5432 refused"));
+        SearchCorpusToolCallback callback =
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
+
+        String result = callback.callWithContext("{\"query\":\"q\",\"collection\":\"OIM\"}", null);
+
+        assertThat(result)
+                .doesNotContain("Error parsing arguments")
+                .doesNotContain("db-host")
+                .doesNotContain("PSQLException")
+                .isEqualTo("ERROR: the 'search_corpus' tool failed to complete the request.");
     }
 }

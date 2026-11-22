@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -397,5 +398,62 @@ public class GetSectionToolTest {
         assertEquals(
                 "Error: Chunk not found: chunk-123",
                 getSectionTool.getSection(null, null, "chunk-123"));
+    }
+
+    @Test
+    public void missingDocumentReturnsSameOpaqueNotFoundAsUnauthorizedDocument() {
+        when(sectionService.getSectionChunksByDocumentId(eq(DOC.toString()), any()))
+                .thenThrow(new NoSuchElementException("(no document found for id '" + DOC + "')"));
+
+        String output = getSectionTool.getSection(DOC.toString(), null, null);
+
+        assertEquals("Error: Document not found: " + DOC, output);
+    }
+
+    @Test
+    public void invalidDocumentUuidAndInvalidChunkPrefixReturnActionableErrorsNotToolFailed() {
+        when(sectionService.getSectionChunksByDocumentId(eq("not-a-uuid"), any()))
+                .thenThrow(new IllegalArgumentException("Invalid UUID format: not-a-uuid"));
+        when(sectionService.getSectionChunksByChunkId(eq("short")))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Chunk ID prefix must be at least 8 hex characters"));
+
+        assertThat(getSectionTool.getSection("not-a-uuid", null, null))
+                .startsWith("Error: Invalid 'document_id':")
+                .doesNotContain("tool failed");
+        assertThat(getSectionTool.getSection(null, null, "short"))
+                .startsWith("Error: Invalid 'chunk_id':")
+                .doesNotContain("tool failed");
+    }
+
+    @Test
+    public void missingChunkReturnsOpaqueNotFoundAndMissingSectionPreservesHeadingGuidance() {
+        when(sectionService.getSectionChunksByChunkId(eq(CHUNK_A.toString())))
+                .thenThrow(
+                        new NoSuchElementException(
+                                "(no chunk with id starting '" + CHUNK_A + "')"));
+        when(sectionService.getSectionChunksByDocumentId(eq(DOC.toString()), eq("Bad > Path")))
+                .thenThrow(
+                        new NoSuchElementException(
+                                "(no section matched 'Bad > Path' in this document. Sections:\n  Ch1)"));
+
+        assertEquals(
+                "Error: Chunk not found: " + CHUNK_A,
+                getSectionTool.getSection(null, null, CHUNK_A.toString()));
+        assertThat(getSectionTool.getSection(DOC.toString(), "Bad > Path", null))
+                .startsWith("Error: (no section matched 'Bad > Path'")
+                .contains("Ch1")
+                .doesNotContain("tool failed");
+    }
+
+    @Test
+    public void unexpectedFailureStillReturnsGenericToolError() {
+        when(sectionService.getSectionChunksByDocumentId(eq(DOC.toString()), any()))
+                .thenThrow(new RuntimeException("PSQLException: connection refused"));
+
+        assertEquals(
+                "ERROR: the 'get_section' tool failed to complete the request.",
+                getSectionTool.getSection(DOC.toString(), null, null));
     }
 }

@@ -9,6 +9,7 @@ import de.palsoftware.yvoke.mcp.tools.GetSectionTool;
 import de.palsoftware.yvoke.mcp.tools.ListDocumentsTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -24,6 +25,7 @@ class McpToolsConfigTest {
         ApplicationContext ctx = mock(ApplicationContext.class);
         ToolCallbackProvider clientOnly = ToolCallbackProvider.from();
         when(ctx.getBean(ObjectMapper.class)).thenReturn(new ObjectMapper());
+        when(ctx.getBean(UserService.class)).thenReturn(mock(UserService.class));
         when(ctx.getBean(SearchCorpusTool.class))
                 .thenThrow(new NoSuchBeanDefinitionException(SearchCorpusTool.class));
 
@@ -46,6 +48,7 @@ class McpToolsConfigTest {
         ToolCallbackProvider clientOnly = ToolCallbackProvider.from(conflicting);
 
         when(ctx.getBean(ObjectMapper.class)).thenReturn(new ObjectMapper());
+        when(ctx.getBean(UserService.class)).thenReturn(mock(UserService.class));
         when(ctx.getBean(SearchCorpusTool.class)).thenReturn(mock(SearchCorpusTool.class));
         when(ctx.getBean(GetSectionTool.class)).thenReturn(mock(GetSectionTool.class));
         when(ctx.getBean(ListDocumentsTool.class)).thenReturn(mock(ListDocumentsTool.class));

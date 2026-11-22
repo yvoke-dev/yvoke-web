@@ -279,4 +279,51 @@ public class JsonObjectsToolsIT {
         String emptyResponse = schemaTool.getJsonSchema("non-existent-collection", null);
         assertThat(emptyResponse).contains("Error");
     }
+
+    @Test
+    public void repositoryAndToolBoundLimitAndOffsetAgainstPostgres() {
+        // Seed 505 rows total (1 already seeded in setUp + 504 more) to prove MAX_LIMIT=500 cap
+        List<JsonObject> batch = new ArrayList<>(504);
+        OffsetDateTime now = OffsetDateTime.now();
+        for (int i = 0; i < 504; i++) {
+            batch.add(
+                    new JsonObject(
+                            UUID.randomUUID(),
+                            collectionId,
+                            COLLECTION_NAME,
+                            Map.of("name", "User-" + i, "role", "member"),
+                            "bulk.json",
+                            now));
+        }
+        jsonObjectRepository.saveBatch(batch);
+
+        // Repository clamps oversized limit to MAX_LIMIT (500), zero/negative limit to 1, and
+        // negative offset to 0 (never throwing Postgres LIMIT/OFFSET error)
+        assertThat(jsonObjectRepository.findByCollectionId(collectionId, null, 10_000, 0))
+                .hasSize(JsonObjectRepository.MAX_LIMIT);
+        assertThat(jsonObjectRepository.findByCollectionId(collectionId, null, 0, 0)).hasSize(1);
+        assertThat(jsonObjectRepository.findByCollectionId(collectionId, null, -5, -10)).hasSize(1);
+        assertThat(
+                        jsonObjectRepository.queryByJsonPath(
+                                collectionId, "$.role ? (@ == \"member\")", null, 10_000, 0))
+                .hasSize(JsonObjectRepository.MAX_LIMIT);
+        assertThat(
+                        jsonObjectRepository.queryByJsonPath(
+                                collectionId, "$.role ? (@ == \"member\")", null, 0, -3))
+                .hasSize(1);
+
+        // Tool rejects negative offset explicitly and floors limit=0 to 1 (never false-empty)
+        assertThat(
+                        queryTool.queryJsonObjects(
+                                COLLECTION_NAME, null, null, "name", 10, -1, null, null))
+                .startsWith("Error:")
+                .contains("offset");
+        String floored =
+                queryTool.queryJsonObjects(COLLECTION_NAME, null, null, "name", 0, 0, null, null);
+        assertThat(floored)
+                .contains("Found 1 JSON objects in collection " + COLLECTION_NAME)
+                .contains("limit=1")
+                .contains("use offset=1")
+                .doesNotContain("No JSON objects found");
+    }
 }

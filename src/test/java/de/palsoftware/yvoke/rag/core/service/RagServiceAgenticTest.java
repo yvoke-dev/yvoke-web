@@ -27,6 +27,7 @@ import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
@@ -157,7 +158,8 @@ public class RagServiceAgenticTest {
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
             new ObjectMapper(), 6, 4096, 0);
         service.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
-            new SearchCorpusTool(search, collections, 10, 20), new ObjectMapper(), 20));
+            new SearchCorpusTool(search, collections, 10, 20), new ObjectMapper(), 20,
+            mock(UserService.class)));
 
         String args = "{\"query\":\"Person\",\"collection\":\"OIM\",\"tag\":\"9.3\"}";
         // Driven off the transcript rather than a call counter, so the second conversation starts

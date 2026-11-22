@@ -1,18 +1,15 @@
 package de.palsoftware.yvoke.mcp.tools;
 
-import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.kg.core.model.KgEntityKindEdgeCount;
 import de.palsoftware.yvoke.kg.core.model.KgNeighborEdges;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -34,60 +31,36 @@ public class GetGraphNeighborsTool {
         this.collectionService = collectionService;
     }
 
-    @McpTool(
-            name = "get_graph_neighbors",
-            description =
-                    "Query connections (edges) for a starting node/entity in the knowledge graph. A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
     @Tool(
             name = "get_graph_neighbors",
             description =
                     "Query connections (edges) for a starting node/entity in the knowledge graph. A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
     public String getGraphNeighbors(
-            @McpToolParam(
-                            description = "Exact name of the node/entity (case-insensitive).",
-                            required = true)
-                    @ToolParam(
+            @ToolParam(
                             description = "Exact name of the node/entity (case-insensitive).",
                             required = true)
                     String entity_name,
-            @McpToolParam(description = "The collection to search.", required = true)
-                    @ToolParam(description = "The collection to search.", required = true)
+            @ToolParam(description = "The collection to search.", required = true)
                     String collection,
-            @McpToolParam(
-                            description =
-                                    "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
                             required = false)
                     @Nullable
                     String tag,
-            @McpToolParam(
-                            description =
-                                    "Filter by edge relationship predicate (e.g. 'fk_to', 'calls', 'references_table'). When nothing is specified all predicates are considered.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Filter by edge relationship predicate (e.g. 'fk_to', 'calls', 'references_table'). When nothing is specified all predicates are considered.",
                             required = false)
                     @Nullable
                     String relation_type,
-            @McpToolParam(
-                            description =
-                                    "Edge direction to traverse relative to the starting node ('incoming' points to the node, 'outgoing' points from the node, 'both' traverses both). When nothing is specified 'both' is used.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Edge direction to traverse relative to the starting node ('incoming' points to the node, 'outgoing' points from the node, 'both' traverses both). When nothing is specified 'both' is used.",
                             required = false)
                     @Nullable
                     String direction,
-            @McpToolParam(
-                            description =
-                                    "Disambiguating node/entity kind (e.g. 'table', 'process', 'module'). Only needed when several kinds share the same name; when nothing is specified and the name is ambiguous, the candidate kinds are returned instead of edges. The name may instead be prefixed as '<kind>:<name>'.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Disambiguating node/entity kind (e.g. 'table', 'process', 'module'). Only needed when several kinds share the same name; when nothing is specified and the name is ambiguous, the candidate kinds are returned instead of edges. The name may instead be prefixed as '<kind>:<name>'.",
                             required = false)
@@ -107,51 +80,6 @@ public class GetGraphNeighborsTool {
             return "Error: 'collection' parameter is required for get_graph_neighbors.";
         }
         String col = collection.trim();
-
-        List<Collection> allCols = collectionService.listCollections();
-        Collection matchedCol =
-                allCols.stream()
-                        .filter(c -> c.name().equalsIgnoreCase(col))
-                        .findFirst()
-                        .orElse(null);
-        if (matchedCol == null) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-        if (!AreaAccessContext.canAccessEffectiveUserArea(matchedCol.area())) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-        // The stored spelling, not the caller's: the match above is case-insensitive but every
-        // KgGraphReadRepository query is `c.name = :collection` / `c.name IN (:collections)`,
-        // i.e. case-SENSITIVE. Forwarding `col` rejects valid relation types and returns an empty
-        // neighbour set for a graph that exists.
-        String colName = matchedCol.name();
-
-        // Validate tag (optional)
-        String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-        // A tag-scoped collection must be read at exactly one tag: untagged reads either
-        // duplicate every hit across product versions or merge unrelated datasets, and
-        // neither failure is visible in the result. Conditional on the collection, so an
-        // untagged collection exempts itself.
-        String tagRequired = McpToolUtils.requireTag(matchedCol, parsedTag);
-        if (tagRequired != null) {
-            return tagRequired;
-        }
-        if (parsedTag != null) {
-            if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + col + "'.";
-            }
-        }
-
-        // Validate relation_type (optional)
-        if (relation_type != null && !relation_type.isBlank()) {
-            if (!kgRepository.relationshipPredicateExists(relation_type, List.of(colName))) {
-                return "Error: Relation type '"
-                        + relation_type
-                        + "' does not exist in collection '"
-                        + col
-                        + "'.";
-            }
-        }
 
         // Validate direction (optional)
         if (direction != null && !direction.isBlank()) {
@@ -177,6 +105,27 @@ public class GetGraphNeighborsTool {
         String kindHint = ref.kind();
 
         try {
+            CollectionResolution resolution =
+                    McpToolUtils.resolveReadableCollection(
+                            collectionService, collection, tag, null);
+            if (resolution instanceof CollectionResolution.Refused refused) {
+                return refused.errorMessage();
+            }
+            CollectionResolution.Allowed allowed = (CollectionResolution.Allowed) resolution;
+            // Stored spelling, never the caller's raw casing (KgGraphReadRepository matches exact).
+            String colName = allowed.collection().name();
+            String parsedTag = allowed.tag();
+
+            // Validate relation_type (optional)
+            if (relType != null) {
+                if (!kgRepository.relationshipPredicateExists(relation_type, List.of(colName))) {
+                    return "Error: Relation type '"
+                            + relation_type
+                            + "' does not exist in collection '"
+                            + col
+                            + "'.";
+                }
+            }
             // Resolve the candidate kinds FIRST: when the caller pinned no kind and the name lives
             // under several kinds, those are different objects and merging their edges into one
             // capped table buries the ones actually asked for. Hard-stop with the candidates

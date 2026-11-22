@@ -34,7 +34,6 @@ import java.util.TreeSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -194,9 +193,7 @@ class ProfileToolsTest {
 
         for (String desc :
                 List.of(
-                        listMethod.getAnnotation(McpTool.class).description(),
                         listMethod.getAnnotation(Tool.class).description(),
-                        getMethod.getAnnotation(McpTool.class).description(),
                         getMethod.getAnnotation(Tool.class).description())) {
             for (String expected : EXPECTED_KEYS) {
                 assertThat(desc).contains(expected);
