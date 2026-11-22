@@ -252,7 +252,7 @@ public class KgGraphReadRepository {
                 """
                         + dirClause
                         + (predicate != null
-                                ? "  AND lower(r.predicate) = lower(:predicate)\n"
+                                ? "  AND lower(btrim(r.predicate)) = lower(:predicate)\n"
                                 : "")
                         + tc(tag, "r")
                         + """
@@ -265,7 +265,7 @@ public class KgGraphReadRepository {
         params.put("ids", startIds.stream().map(UUID::toString).toArray(String[]::new));
         params.put("limit", safeLim);
         if (predicate != null) {
-            params.put("predicate", predicate);
+            params.put("predicate", predicate.trim());
         }
         if (tag != null) {
             params.put("tag", tag);
@@ -317,7 +317,7 @@ public class KgGraphReadRepository {
                 """
                         + dirClause
                         + (relationType != null
-                                ? " AND lower(r.predicate) = lower(:predicate) "
+                                ? " AND lower(btrim(r.predicate)) = lower(:predicate) "
                                 : " ")
                         + tc(tag, "r")
                         + """
@@ -338,7 +338,7 @@ public class KgGraphReadRepository {
             params.put("tag", tag);
         }
         if (relationType != null) {
-            params.put("predicate", relationType);
+            params.put("predicate", relationType.trim());
         }
 
         return jdbcClient
@@ -728,7 +728,7 @@ public class KgGraphReadRepository {
                                 """
                                 SELECT 1 FROM relationships r
                                 JOIN collections c ON r.collection_id = c.id
-                                WHERE lower(r.predicate) = lower(:predicate)
+                                WHERE lower(btrim(r.predicate)) = lower(:predicate)
                                   AND c.name IN (:collections)
                                 LIMIT 1
                                 """)
@@ -756,12 +756,12 @@ public class KgGraphReadRepository {
         return jdbcClient
                 .sql(
                         """
-                        SELECT DISTINCT ON (lower(r.predicate)) r.predicate
+                        SELECT DISTINCT ON (lower(btrim(r.predicate))) btrim(r.predicate) AS predicate
                         FROM relationships r
                         WHERE r.collection_id = :collectionId
                           AND r.predicate IS NOT NULL
                           AND btrim(r.predicate) <> ''
-                        ORDER BY lower(r.predicate) ASC, r.predicate ASC
+                        ORDER BY lower(btrim(r.predicate)) ASC, btrim(r.predicate) ASC
                         LIMIT :limit
                         """)
                 .param("collectionId", collectionId)
