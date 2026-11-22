@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.mcp;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.collection.core.model.Collection;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,12 +24,49 @@ public class McpToolUtils {
 
     private static final Logger log = LoggerFactory.getLogger(McpToolUtils.class);
 
+    private static final Pattern SAFE_FIELD_PATH = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
+
     /**
      * Character budget for a single markdown table cell, so one long value cannot dominate a tool
      * result. Public so callers and tests can reason about what fits rather than rediscovering the
      * number; a cell clipped to it is always marked (see {@link #formatTableRows}).
      */
     public static final int MAX_CELL_CHARS = MarkdownTableFormatter.MAX_CELL_CHARS;
+
+    public static final String INVALID_ARGUMENTS_ERROR =
+            "Error parsing arguments: invalid JSON or argument types; check the tool schema.";
+
+    public static String invalidArgumentsError(String toolName, Throwable e) {
+        log.warn("Failed to parse arguments for MCP tool '{}': {}", toolName, e.getMessage());
+        String field = extractInvalidFieldName(e);
+        if (field != null) {
+            return "Error parsing arguments: invalid value for field '"
+                    + field
+                    + "'; check the tool schema.";
+        }
+        return INVALID_ARGUMENTS_ERROR;
+    }
+
+    @Nullable
+    private static String extractInvalidFieldName(@Nullable Throwable e) {
+        Throwable cur = e;
+        for (int depth = 0; cur != null && depth < 8; depth++, cur = cur.getCause()) {
+            if (cur instanceof JsonMappingException jme) {
+                List<JsonMappingException.Reference> path = jme.getPath();
+                if (path != null && !path.isEmpty()) {
+                    String joined =
+                            path.stream()
+                                    .map(JsonMappingException.Reference::getFieldName)
+                                    .filter(name -> name != null && !name.isBlank())
+                                    .collect(Collectors.joining("."));
+                    if (SAFE_FIELD_PATH.matcher(joined).matches()) {
+                        return joined;
+                    }
+                }
+            }
+        }
+        return null;
+    }
 
     public static String toolError(String toolName, Throwable e) {
         log.error("MCP tool '{}' failed", toolName, e);
@@ -96,12 +135,17 @@ public class McpToolUtils {
         }
         if (parsedTag != null) {
             if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
+                String validSuffix =
+                        (matchedCol.tags() != null && !matchedCol.tags().isEmpty())
+                                ? " Valid tags: " + String.join(", ", matchedCol.tags()) + "."
+                                : "";
                 return new CollectionResolution.Refused(
                         "Error: Tag '"
                                 + parsedTag
                                 + "' does not exist in collection '"
                                 + col
-                                + "'.");
+                                + "'."
+                                + validSuffix);
             }
         }
         return new CollectionResolution.Allowed(matchedCol, parsedTag);

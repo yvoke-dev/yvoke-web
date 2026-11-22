@@ -181,6 +181,7 @@ class RagServiceAreaIsolationTest {
                         new SearchCorpusToolCallback(
                                 new SearchCorpusTool(hybridSearch, collectionService, 10, 50),
                                 mapper,
+                                10,
                                 50,
                                 mock(UserService.class)));
         ragService

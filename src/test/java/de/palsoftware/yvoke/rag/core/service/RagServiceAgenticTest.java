@@ -158,7 +158,7 @@ public class RagServiceAgenticTest {
         RagService service = new RagService(hybridSearch, llmClient, citationVerifier,
             new ObjectMapper(), 6, 4096, 0);
         service.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
-            new SearchCorpusTool(search, collections, 10, 20), new ObjectMapper(), 20,
+            new SearchCorpusTool(search, collections, 10, 20), new ObjectMapper(), 10, 20,
             mock(UserService.class)));
 
         String args = "{\"query\":\"Person\",\"collection\":\"OIM\",\"tag\":\"9.3\"}";

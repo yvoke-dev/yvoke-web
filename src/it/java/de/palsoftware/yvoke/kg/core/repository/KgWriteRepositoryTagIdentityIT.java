@@ -505,4 +505,90 @@ public class KgWriteRepositoryTagIdentityIT {
                         collectionId);
         assertThat(edges).isEqualTo(2);
     }
+
+    @Test
+    void insertRelationshipsBatchDeduplicatesLegacyPaddedPredicatesAndStripsOnInsert() {
+        Map<String, UUID> ids =
+                writeRepository.upsertEntitiesBatch(
+                        COLLECTION,
+                        List.of(V1),
+                        List.of(
+                                table("doc-9.3.1"),
+                                new KgWriteRepository.EntityUpsert(
+                                        "ADSGroup",
+                                        "table",
+                                        null,
+                                        null,
+                                        Map.of("document_id", "doc-9.3.1-b"))));
+        UUID subjectId = ids.get("table:adsaccount");
+        UUID objectId = ids.get("table:adsgroup");
+
+        // Pre-change legacy row with padded whitespace in predicate.
+        jdbcTemplate.update(
+                """
+                INSERT INTO relationships
+                    (id, collection_id, subject, predicate, object, subject_id, object_id, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ARRAY[?]::text[])
+                """,
+                UUID.randomUUID(),
+                collectionId,
+                "ADSAccount",
+                "  fk_to  ",
+                "ADSGroup",
+                subjectId,
+                objectId,
+                V1);
+
+        int reingestInserted =
+                writeRepository.insertRelationshipsBatch(
+                        COLLECTION,
+                        List.of(V1),
+                        List.of(
+                                new KgWriteRepository.RelationshipUpsert(
+                                        "ADSAccount",
+                                        "fk_to",
+                                        "ADSGroup",
+                                        subjectId,
+                                        objectId,
+                                        null,
+                                        null)));
+
+        assertThat(reingestInserted)
+                .as("stripped re-ingest matches the legacy padded row and inserts no duplicate")
+                .isZero();
+        assertThat(edgeCount()).isEqualTo(1);
+
+        int batchInserted =
+                writeRepository.insertRelationshipsBatch(
+                        COLLECTION,
+                        List.of(V1),
+                        List.of(
+                                new KgWriteRepository.RelationshipUpsert(
+                                        "ADSAccount",
+                                        "  calls  ",
+                                        "ADSGroup",
+                                        subjectId,
+                                        objectId,
+                                        null,
+                                        null),
+                                new KgWriteRepository.RelationshipUpsert(
+                                        "ADSAccount",
+                                        "CALLS",
+                                        "ADSGroup",
+                                        subjectId,
+                                        objectId,
+                                        null,
+                                        null)));
+
+        assertThat(batchInserted)
+                .as("same-batch whitespace/case variants collapse to a single edge")
+                .isEqualTo(1);
+        List<String> predicates =
+                jdbcTemplate.queryForList(
+                        "SELECT predicate FROM relationships "
+                                + "WHERE collection_id = ? AND lower(btrim(predicate)) = 'calls'",
+                        String.class,
+                        collectionId);
+        assertThat(predicates).containsExactly("calls");
+    }
 }

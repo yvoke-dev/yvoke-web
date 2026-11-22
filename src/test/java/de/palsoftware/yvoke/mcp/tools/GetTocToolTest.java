@@ -286,4 +286,72 @@ public class GetTocToolTest {
         assertEquals("Error: Document with ID '" + pingDocId + "' not found.", output);
         verify(tocService, never()).getToc(any(UUID.class), any());
     }
+
+    @Test
+    public void testNullCollectionIdDocumentFailsClosedForRestrictedUser() {
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "oim-user",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+
+        UUID orphanDocId = UUID.randomUUID();
+        DocumentRow orphanDoc =
+                new DocumentRow(
+                        orphanDocId,
+                        null,
+                        "Orphan",
+                        "hierarchical",
+                        "Orphan Doc",
+                        Map.of(),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
+        when(documentRepository.findById(eq(orphanDocId))).thenReturn(Optional.of(orphanDoc));
+
+        String output = getTocTool.getToc(orphanDocId.toString(), null);
+        assertEquals("Error: Document with ID '" + orphanDocId + "' not found.", output);
+        verify(tocService, never()).getToc(any(UUID.class), any());
+    }
+
+    @Test
+    public void testGetTocUsesDocumentWordingAndCorrectEntryPluralization() {
+        UUID docId = UUID.randomUUID();
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        null,
+                        "OIM - Docs",
+                        "confluence",
+                        "Confluence Guide",
+                        Map.of(),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
+        when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
+
+        when(tocService.getToc(eq(docId), any())).thenReturn(List.of());
+        String emptyOut = getTocTool.getToc(docId.toString(), null);
+        assertEquals("(no sections found for this document)", emptyOut);
+
+        when(tocService.getToc(eq(docId), any()))
+                .thenReturn(List.of(new TocNode(List.of("Intro"), 1, 1, 100, null)));
+        String oneOut = getTocTool.getToc(docId.toString(), null);
+        assertTrue(oneOut.contains("full document"), oneOut);
+        assertTrue(oneOut.contains("1 entry"), oneOut);
+        assertFalse(oneOut.contains("manual"), oneOut);
+
+        when(tocService.getToc(eq(docId), any()))
+                .thenReturn(
+                        List.of(
+                                new TocNode(List.of("Intro"), 1, 1, 100, null),
+                                new TocNode(List.of("Setup"), 2, 2, 200, null)));
+        String twoOut = getTocTool.getToc(docId.toString(), null);
+        assertTrue(twoOut.contains("2 entries"), twoOut);
+        assertFalse(twoOut.contains("entryies"), twoOut);
+    }
 }

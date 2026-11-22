@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import org.springframework.ai.tool.annotation.Tool;
@@ -18,12 +19,14 @@ import org.springframework.stereotype.Component;
  * AreaWithMembers}); anything else would start a session on an item the setup band does not list.
  */
 @ClientOnlyTools
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 @Component
 public class AreaTools {
 
     private static final String DESCRIPTION =
-            "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
-                    + "tells you to. Lists the Yvoke areas (knowledge bases) as a JSON array of "
+            "For Yvoke clients only: call this when a Yvoke playbook skill or the Yvoke plugin "
+                    + "tells you to, or when you need to discover available areas and collection names. "
+                    + "Lists the Yvoke areas (knowledge bases) as a JSON array of "
                     + "{name, title, description, prototype, defaultPlaybook, defaultProfile, "
                     + "collections, playbooks, profiles}, where the last three are the names of the area's "
                     + "members. It does not answer questions about the knowledge base.";

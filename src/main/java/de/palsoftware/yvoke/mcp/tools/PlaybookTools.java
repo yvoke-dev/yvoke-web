@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.chat.api.model.PlaybookDto;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Component;
  * get_playbook} resolves any name, as MCP {@code prompts/get} does.
  */
 @ClientOnlyTools
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 @Component
 public class PlaybookTools {
 

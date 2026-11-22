@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
 import de.palsoftware.yvoke.chat.orchestration.ResolvedProfile;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Component;
  * thinking-level bindings.
  */
 @ClientOnlyTools
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 @Component
 public class ProfileTools {
 

@@ -263,6 +263,69 @@ class CustomIngestServiceTest {
     }
 
     @Test
+    void buildRelationshipSpecsTrimsPredicateWhitespace() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Map<String, UUID> idByKey = Map.of("table:demo_table", id1, "table:other_table", id2);
+
+        List<Map<String, Object>> relationships =
+                List.of(
+                        Map.of(
+                                "source",
+                                "table:DEMO_TABLE",
+                                "type",
+                                "  fk_to\t\n",
+                                "target",
+                                "table:OTHER_TABLE"),
+                        Map.of(
+                                "subject_name",
+                                "DEMO_TABLE",
+                                "predicate",
+                                "\t references \n",
+                                "object_name",
+                                "OTHER_TABLE"),
+                        Map.of(
+                                "source",
+                                "table:DEMO_TABLE",
+                                "type",
+                                "\u2003fk_to\u2003",
+                                "target",
+                                "table:OTHER_TABLE"));
+
+        List<KgWriteRepository.RelationshipUpsert> specs =
+                CustomIngestService.buildRelationshipSpecs(relationships, idByKey);
+
+        assertThat(specs).hasSize(3);
+        assertThat(specs.get(0).predicate()).isEqualTo("fk_to");
+        assertThat(specs.get(1).predicate()).isEqualTo("references");
+        assertThat(specs.get(2).predicate()).isEqualTo("fk_to");
+    }
+
+    @Test
+    void buildRelationshipSpecsRejectsWhitespaceOnlyPredicateAsMalformed() {
+        Map<String, UUID> idByKey =
+                Map.of(
+                        "table:demo_table",
+                        UUID.randomUUID(),
+                        "table:other_table",
+                        UUID.randomUUID());
+        List<Map<String, Object>> relationships =
+                List.of(
+                        Map.of(
+                                "source",
+                                "table:DEMO_TABLE",
+                                "type",
+                                "   ",
+                                "target",
+                                "table:OTHER_TABLE"));
+
+        assertThatThrownBy(() -> CustomIngestService.buildRelationshipSpecs(relationships, idByKey))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Malformed edge")
+                .hasMessageContaining("table:DEMO_TABLE");
+    }
+
+    @Test
     void buildRelationshipSpecsUsesKindPrefixToPickTheRightHomonymEndpoint() {
         // Same name "ADS" exists as both a module and a connector; the "kind:" prefix must select
         // the correct endpoint rather than collapsing the edge into a module→module self-loop.

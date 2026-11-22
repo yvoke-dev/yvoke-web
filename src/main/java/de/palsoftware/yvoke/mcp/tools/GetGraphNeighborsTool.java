@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.kg.core.model.KgNeighborEdges;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
@@ -15,12 +16,13 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class GetGraphNeighborsTool {
 
     private static final Logger log = LoggerFactory.getLogger(GetGraphNeighborsTool.class);
 
     /** Cap on returned edges — keeps hub nodes from flooding the DB query and the MCP response. */
-    private static final int MAX_EDGES = 200;
+    public static final int MAX_EDGES = 200;
 
     private final KgGraphReadRepository kgRepository;
     private final CollectionService collectionService;
@@ -34,13 +36,18 @@ public class GetGraphNeighborsTool {
     @Tool(
             name = "get_graph_neighbors",
             description =
-                    "Query connections (edges) for a starting node/entity in the knowledge graph. A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
+                    "Query connections (edges) for a starting node/entity in the knowledge graph (returns up to "
+                            + MAX_EDGES
+                            + " edges; narrow with relation_type/direction if capped). A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
     public String getGraphNeighbors(
             @ToolParam(
                             description = "Exact name of the node/entity (case-insensitive).",
                             required = true)
                     String entity_name,
-            @ToolParam(description = "The collection to search.", required = true)
+            @ToolParam(
+                            description =
+                                    "The collection to search (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections).",
+                            required = true)
                     String collection,
             @ToolParam(
                             description =
@@ -98,11 +105,13 @@ public class GetGraphNeighborsTool {
         String relType =
                 (relation_type != null && !relation_type.isBlank()) ? relation_type.trim() : null;
 
-        // A "<kind>:<name>" prefix is a kind hint (playbooks/models pass e.g. "table:ADSAccount");
-        // an explicit kind param wins over the prefix. Both narrow the node to a single identity.
-        EntityRef ref = parseEntityRef(entity_name, kind);
-        String bareName = ref.name();
-        String kindHint = ref.kind();
+        String trimmedRaw = entity_name.trim();
+        String explicitKind = (kind != null && !kind.isBlank()) ? kind.trim() : null;
+        // A "<kind>:<name>" prefix is supported as shorthand (e.g. "table:ADSAccount"), but real
+        // entity names can also contain colons (e.g. "ns:Name", "urn:oim:sync"). Resolve verbatim
+        // first whenever a colon is present so colon-containing names are never mangled.
+        EntityRef parsedRef = parseEntityRef(trimmedRaw, explicitKind);
+        boolean hasPrefixSplit = !parsedRef.name().equals(trimmedRaw);
 
         try {
             CollectionResolution resolution =
@@ -119,34 +128,123 @@ public class GetGraphNeighborsTool {
             // Validate relation_type (optional)
             if (relType != null) {
                 if (!kgRepository.relationshipPredicateExists(relation_type, List.of(colName))) {
+                    List<String> validPredicates =
+                            kgRepository.listPredicates(
+                                    colName, KgGraphReadRepository.MAX_LISTED_PREDICATES + 1);
+                    String validSuffix = "";
+                    if (validPredicates != null && !validPredicates.isEmpty()) {
+                        boolean moreExist =
+                                validPredicates.size()
+                                        > KgGraphReadRepository.MAX_LISTED_PREDICATES;
+                        List<String> shown =
+                                moreExist
+                                        ? validPredicates.subList(
+                                                0, KgGraphReadRepository.MAX_LISTED_PREDICATES)
+                                        : validPredicates;
+                        validSuffix =
+                                " Valid relation types in this collection: "
+                                        + String.join(", ", shown)
+                                        + (moreExist
+                                                ? ", … (showing first "
+                                                        + KgGraphReadRepository
+                                                                .MAX_LISTED_PREDICATES
+                                                        + ", more exist)"
+                                                : "")
+                                        + ".";
+                    }
                     return "Error: Relation type '"
                             + relation_type
                             + "' does not exist in collection '"
                             + col
-                            + "'.";
-                }
-            }
-            // Resolve the candidate kinds FIRST: when the caller pinned no kind and the name lives
-            // under several kinds, those are different objects and merging their edges into one
-            // capped table buries the ones actually asked for. Hard-stop with the candidates
-            // instead — and skip the expensive merged edge fetch entirely.
-            // Only the kind can be ambiguous here. Identity is also tag-scoped, but a tag-scoped
-            // collection now rejects an untagged call outright (McpToolUtils.requireTag), so the
-            // candidates are already narrowed to one product version by the time we get here.
-            if (kindHint == null) {
-                List<KgEntityKindEdgeCount> candidates =
-                        kgRepository.findEntityKindsWithEdgeCounts(
-                                bareName, parsedTag, colName, relType, dir);
-                if (distinctKinds(candidates) > 1) {
-                    return renderDisambiguation(bareName, col, parsedTag, candidates);
+                            + "'."
+                            + validSuffix;
                 }
             }
 
-            // Predicate and direction are filtered in SQL, and the result is capped so a hub
-            // node cannot return an unbounded edge set.
-            KgNeighborEdges result =
-                    kgRepository.getEntityRelationships(
-                            bareName, kindHint, parsedTag, colName, relType, dir, MAX_EDGES);
+            String displayName;
+            KgNeighborEdges result;
+
+            if (!hasPrefixSplit) {
+                displayName = trimmedRaw;
+                if (explicitKind == null) {
+                    List<KgEntityKindEdgeCount> candidates =
+                            kgRepository.findEntityKindsWithEdgeCounts(
+                                    displayName, parsedTag, colName, relType, dir);
+                    if (distinctKinds(candidates) > 1) {
+                        return renderDisambiguation(displayName, col, parsedTag, candidates);
+                    }
+                }
+                result =
+                        kgRepository.getEntityRelationships(
+                                displayName,
+                                explicitKind,
+                                parsedTag,
+                                colName,
+                                relType,
+                                dir,
+                                MAX_EDGES);
+            } else if (explicitKind != null) {
+                KgNeighborEdges verbatimResult =
+                        kgRepository.getEntityRelationships(
+                                trimmedRaw,
+                                explicitKind,
+                                parsedTag,
+                                colName,
+                                relType,
+                                dir,
+                                MAX_EDGES);
+                if (hasEntityMatch(verbatimResult)) {
+                    displayName = trimmedRaw;
+                    result = verbatimResult;
+                } else {
+                    String prefix = trimmedRaw.substring(0, trimmedRaw.indexOf(':')).trim();
+                    boolean prefixIsKnownKind =
+                            prefix.equalsIgnoreCase(explicitKind)
+                                    || matchesCollectionKind(colName, parsedTag, prefix);
+                    if (prefixIsKnownKind) {
+                        displayName = parsedRef.name();
+                        result =
+                                kgRepository.getEntityRelationships(
+                                        displayName,
+                                        explicitKind,
+                                        parsedTag,
+                                        colName,
+                                        relType,
+                                        dir,
+                                        MAX_EDGES);
+                    } else {
+                        displayName = trimmedRaw;
+                        result =
+                                verbatimResult != null
+                                        ? verbatimResult
+                                        : new KgNeighborEdges(List.of(), List.of());
+                    }
+                }
+            } else {
+                List<KgEntityKindEdgeCount> verbatimCandidates =
+                        kgRepository.findEntityKindsWithEdgeCounts(
+                                trimmedRaw, parsedTag, colName, relType, dir);
+                if (verbatimCandidates != null && !verbatimCandidates.isEmpty()) {
+                    if (distinctKinds(verbatimCandidates) > 1) {
+                        return renderDisambiguation(trimmedRaw, col, parsedTag, verbatimCandidates);
+                    }
+                    displayName = trimmedRaw;
+                    result =
+                            kgRepository.getEntityRelationships(
+                                    trimmedRaw, null, parsedTag, colName, relType, dir, MAX_EDGES);
+                } else {
+                    displayName = parsedRef.name();
+                    result =
+                            kgRepository.getEntityRelationships(
+                                    displayName,
+                                    parsedRef.kind(),
+                                    parsedTag,
+                                    colName,
+                                    relType,
+                                    dir,
+                                    MAX_EDGES);
+                }
+            }
 
             // Direction and counterpart come resolved from the repository (by endpoint id).
             // Re-deriving them from the name text here reported every edge between two same-named
@@ -167,7 +265,7 @@ public class GetGraphNeighborsTool {
                 String relSuffix = (relType != null) ? " of type '" + relType + "'" : "";
                 return String.format(
                         "(no relationships%s found for '%s' in collection '%s'%s)",
-                        relSuffix, bareName, col, suffix);
+                        relSuffix, displayName, col, suffix);
             }
 
             int total = rows.size();
@@ -182,7 +280,7 @@ public class GetGraphNeighborsTool {
             out.add(
                     String.format(
                             "### Connections for '%s' in %s%s (%s)",
-                            bareName, col, tagSuffix, countLabel));
+                            displayName, col, tagSuffix, countLabel));
             out.add(
                     McpToolUtils.formatTableRows(
                             rows,
@@ -197,6 +295,19 @@ public class GetGraphNeighborsTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("get_graph_neighbors", e);
         }
+    }
+
+    private static boolean hasEntityMatch(@Nullable KgNeighborEdges result) {
+        return result != null && (!result.matchedKinds().isEmpty() || !result.edges().isEmpty());
+    }
+
+    private boolean matchesCollectionKind(
+            String colName, @Nullable String parsedTag, String candidateKind) {
+        List<String> kinds = kgRepository.listKinds(colName, parsedTag);
+        if (kinds == null || kinds.isEmpty()) {
+            return false;
+        }
+        return kinds.stream().anyMatch(k -> candidateKind.equalsIgnoreCase(k));
     }
 
     /** How many distinct kinds the candidates span — tag twins share one kind. */

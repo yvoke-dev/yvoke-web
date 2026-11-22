@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
@@ -14,9 +15,12 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class SearchGraphEntitiesTool {
 
     private static final Logger log = LoggerFactory.getLogger(SearchGraphEntitiesTool.class);
+
+    public static final int DEFAULT_LIMIT = 20;
 
     private final KgGraphReadRepository kgRepository;
     private final CollectionService collectionService;
@@ -38,7 +42,10 @@ public class SearchGraphEntitiesTool {
                             required = false)
                     @Nullable
                     String query,
-            @ToolParam(description = "The collection to search.", required = true)
+            @ToolParam(
+                            description =
+                                    "The collection to search (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections).",
+                            required = true)
                     String collection,
             @ToolParam(
                             description =
@@ -54,7 +61,11 @@ public class SearchGraphEntitiesTool {
                     String kind,
             @ToolParam(
                             description =
-                                    "Max matches to return. When nothing is specified 20 is used. Max is 200.",
+                                    "Max matches to return. When nothing is specified "
+                                            + DEFAULT_LIMIT
+                                            + " is used. Max is "
+                                            + KgGraphReadRepository.MAX_LIMIT
+                                            + ".",
                             required = false)
                     @Nullable
                     Integer limit) {
@@ -73,7 +84,10 @@ public class SearchGraphEntitiesTool {
         // below miss every over-cap request (200 rows returned for a requested 500 is truncated).
         int lim =
                 Math.max(
-                        1, Math.min((limit != null) ? limit : 20, KgGraphReadRepository.MAX_LIMIT));
+                        1,
+                        Math.min(
+                                (limit != null) ? limit : DEFAULT_LIMIT,
+                                KgGraphReadRepository.MAX_LIMIT));
         try {
             CollectionResolution resolution =
                     McpToolUtils.resolveReadableCollection(
@@ -134,12 +148,23 @@ public class SearchGraphEntitiesTool {
             // A full page is indistinguishable from a complete result set unless we say so, and
             // most kinds in a real corpus exceed the cap — an unlabelled page reads as "that is
             // all of them" and gets counted. Same wording as get_graph_neighbors, deliberately.
-            String countLabel =
-                    (entities.size() >= lim)
-                            ? "showing first "
-                                    + lim
-                                    + ", more exist — narrow with query/kind, or raise limit"
-                            : "total: " + entities.size();
+            String countLabel;
+            if (entities.size() >= lim) {
+                countLabel =
+                        (lim >= KgGraphReadRepository.MAX_LIMIT)
+                                ? "showing first "
+                                        + lim
+                                        + ", more exist — at maximum limit ("
+                                        + KgGraphReadRepository.MAX_LIMIT
+                                        + "); narrow with query/kind"
+                                : "showing first "
+                                        + lim
+                                        + ", more exist — narrow with query/kind, or raise limit (max "
+                                        + KgGraphReadRepository.MAX_LIMIT
+                                        + ")";
+            } else {
+                countLabel = "total: " + entities.size();
+            }
             String subject =
                     isListAll
                             ? "### All graph entities"

@@ -410,10 +410,15 @@ public class SearchCorpusToolTest {
                 .thenReturn(
                         new SearchWithId(Collections.nCopies(MAX_LIMIT, hit), UUID.randomUUID()));
 
+        String atMax = searchCorpusTool.searchCorpus("q", "OIM", "9.3", 100, null);
+        assertTrue(atMax.contains("the result is capped"), atMax);
+        assertFalse(
+                atMax.contains("Raise `limit`"),
+                "at maxLimit the truncation notice must not tell the model to raise limit: "
+                        + atMax);
         assertTrue(
-                searchCorpusTool
-                        .searchCorpus("q", "OIM", "9.3", 100, null)
-                        .contains("the result is capped"));
+                atMax.contains("maximum limit (" + MAX_LIMIT + ")"),
+                "at maxLimit the truncation notice should state the ceiling: " + atMax);
     }
 
     // -------------------------------------------------------------------------------------------

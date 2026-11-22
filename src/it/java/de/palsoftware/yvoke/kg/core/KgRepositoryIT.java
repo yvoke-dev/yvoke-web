@@ -356,4 +356,72 @@ public class KgRepositoryIT {
         assertThat(neighborhood10.outgoing().get(0).tag()).isEqualTo("10.0");
         assertThat(neighborhood10.incoming()).isEmpty(); // ProcX references TableA only in 9.3
     }
+
+    @Test
+    public void testListPredicates() {
+        // Insert mixed-case duplicate, padded duplicate, and padded-only predicate to verify
+        // case- and whitespace-insensitive deduplication and full round-trip through lookups.
+        insertRelationship(
+                UUID.randomUUID(),
+                COLLECTION,
+                "ProcX",
+                "CALLS",
+                "ProcY",
+                procXId,
+                procYId,
+                "9.3",
+                "Duplicate predicate in uppercase");
+        insertRelationship(
+                UUID.randomUUID(),
+                COLLECTION,
+                "TableA",
+                "  FK_TO  ",
+                "TableB",
+                tableAId,
+                tableBId,
+                "9.3",
+                "Duplicate predicate with surrounding whitespace");
+        insertRelationship(
+                UUID.randomUUID(),
+                COLLECTION,
+                "TableA",
+                "  padded_rel  ",
+                "TableC",
+                tableAId,
+                tableCId,
+                "9.3",
+                "Padded-only predicate from custom ingest");
+
+        List<String> predicates = kgRepository.listPredicates(COLLECTION);
+        assertThat(predicates).hasSize(4);
+        assertThat(predicates.stream().map(String::toLowerCase).toList())
+                .containsExactly("calls", "fk_to", "padded_rel", "references_table");
+        for (String predicate : predicates) {
+            assertThat(kgRepository.relationshipPredicateExists(predicate, List.of(COLLECTION)))
+                    .as(
+                            "listed predicate '%s' must be accepted by relationshipPredicateExists",
+                            predicate)
+                    .isTrue();
+        }
+        assertThat(
+                        kgRepository
+                                .getEntityRelationships(
+                                        "TableA",
+                                        "table",
+                                        "9.3",
+                                        COLLECTION,
+                                        "padded_rel",
+                                        "both",
+                                        10)
+                                .edges())
+                .hasSize(1);
+        assertThat(
+                        kgRepository.findEntityKindsWithEdgeCounts(
+                                "TableA", "9.3", COLLECTION, "padded_rel", "both"))
+                .singleElement()
+                .satisfies(c -> assertThat(c.edgeCount()).isEqualTo(1));
+        assertThat(kgRepository.listPredicates(COLLECTION, 2)).hasSize(2);
+        assertThat(kgRepository.listPredicates("NO-SUCH-COLLECTION")).isEmpty();
+        assertThat(kgRepository.listPredicates("")).isEmpty();
+    }
 }

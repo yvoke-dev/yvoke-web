@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class SearchCorpusToolCallback implements ContextAwareToolCallback {
 
     private final SearchCorpusTool tool;
@@ -20,6 +22,8 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
     private final ToolDefinition definition;
 
     /**
+     * @param defaultLimit {@code app.retrieval.default-limit}, woven into the schema text so the
+     *     advertised default always tracks configuration.
      * @param maxLimit {@code app.retrieval.max-limit}, woven into the schema text the MODEL reads.
      *     It must be the same number {@code HybridSearch} clamps to: the description used to
      *     hardcode "max 200" (a constant that no longer exists) while the server clamped to 20, so
@@ -30,6 +34,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
     public SearchCorpusToolCallback(
             SearchCorpusTool tool,
             ObjectMapper objectMapper,
+            int defaultLimit,
             int maxLimit,
             UserService userService) {
         this.tool = tool;
@@ -44,7 +49,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
 
                     @Override
                     public String description() {
-                        return "Hybrid search (semantic + full-text) the corpus in a collection. Requires a 'query'. Do not use this tool to list/catalog available documents or for browsing-only hierarchical document kinds (use 'list_documents' instead). Returns matching text chunks as markdown, each with breadcrumbs (heading path), citation IDs, and relevance scores.";
+                        return "Hybrid search (semantic + full-text) the corpus in a collection. Requires a 'query'. Do not use this tool to list/catalog available documents or for browsing-only hierarchical document kinds (use 'list_documents' instead). Returns matching text chunks as markdown, each with breadcrumbs (heading path), passage/document IDs (cite with [chunk_id=<id>]), and relevance scores.";
                     }
 
                     @Override
@@ -59,7 +64,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
                             },
                             "collection": {
                               "type": "string",
-                              "description": "The collection to search."
+                              "description": "The collection to search (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections)."
                             },
                             "tag": {
                               "type": "string",
@@ -67,13 +72,13 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
                             },
                             "limit": {
                               "type": "integer",
-                              "description": "Max chunks to return. Omit to use the server default (small — around 10). A full page means the result is CAPPED and more may match: raise this (max %d) or narrow the query. To read a whole named section rather than its top-ranked chunks, use 'get_section'."
+                              "description": "Max chunks to return (1–%d). Omit to use the server default (%d). A full page means the result is CAPPED and more may match: raise this (max %d) or narrow the query. To read a whole named section rather than its top-ranked chunks, use 'get_section'."
                             }
                           },
                           "required": ["query", "collection"]
                         }
                         """
-                                .formatted(maxLimit);
+                                .formatted(maxLimit, defaultLimit, maxLimit);
                     }
                 };
     }
@@ -105,7 +110,7 @@ public class SearchCorpusToolCallback implements ContextAwareToolCallback {
             tag = asString(args.get("tag"));
             limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.invalidArgumentsError("search_corpus", e);
         }
 
         // Cost attribution must NEVER come from caller/model tool arguments: in-app runs already

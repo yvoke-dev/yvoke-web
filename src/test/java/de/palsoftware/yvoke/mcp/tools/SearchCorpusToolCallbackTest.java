@@ -41,9 +41,14 @@ import org.junit.jupiter.api.Test;
 public class SearchCorpusToolCallbackTest {
 
     private static String schemaFor(int maxLimit) {
+        return schemaFor(10, maxLimit);
+    }
+
+    private static String schemaFor(int defaultLimit, int maxLimit) {
         return new SearchCorpusToolCallback(
                         mock(SearchCorpusTool.class),
                         new ObjectMapper(),
+                        defaultLimit,
                         maxLimit,
                         mock(UserService.class))
                 .getToolDefinition()
@@ -52,11 +57,13 @@ public class SearchCorpusToolCallbackTest {
 
     @Test
     public void theAdvertisedLimitCeilingIsTheConfiguredOne() {
-        assertThat(schemaFor(20)).contains("(max 20)");
-        assertThat(schemaFor(75))
-                .as("the ceiling must track configuration, not a literal")
+        assertThat(schemaFor(10, 20)).contains("(max 20)").contains("server default (10)");
+        assertThat(schemaFor(15, 75))
+                .as("both default and ceiling must track configuration, not literals")
                 .contains("(max 75)")
-                .doesNotContain("(max 20)");
+                .contains("server default (15)")
+                .doesNotContain("(max 20)")
+                .doesNotContain("around 10");
     }
 
     /**
@@ -169,7 +176,7 @@ public class SearchCorpusToolCallbackTest {
                 });
         UserService userService = mock(UserService.class);
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 10, 20, userService);
 
         try {
             LlmCallContextHolder.set(outerConv, outerMsg, outerRun, outerUser, "chat", "assistant");
@@ -224,7 +231,7 @@ public class SearchCorpusToolCallbackTest {
                     return "ok";
                 });
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 10, 20, userService);
 
         LlmCallContextHolder.clear();
         UUID forgedUser = UUID.randomUUID();
@@ -260,7 +267,7 @@ public class SearchCorpusToolCallbackTest {
                 .thenThrow(
                         new RuntimeException("PSQLException: connection to db-host:5432 refused"));
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(tool, new ObjectMapper(), 20, userService);
+                new SearchCorpusToolCallback(tool, new ObjectMapper(), 10, 20, userService);
 
         String result = callback.callWithContext("{\"query\":\"q\",\"collection\":\"OIM\"}", null);
 

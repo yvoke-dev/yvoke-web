@@ -35,10 +35,18 @@ running corpus scripts and the evaluation harness.
 
 - **Every search and browse from an AI client must name one knowledge area**, and a version where the
   area holds several. An unknown name is refused rather than answered with an empty result, so a typo
-  can never look like "this is not in the knowledge base" — but only a *missing* tag and an invalid
-  document kind list the valid values back; an unknown knowledge area or tag says only that it does
-  not exist. *Reading a table of contents, reading a section, or checking a citation works from an id
-  and needs neither.*
+  can never look like "this is not in the knowledge base". A missing or unknown tag on an authorized
+  knowledge area, an invalid document kind, and an unknown graph relationship type list the valid
+  values back; an unknown or unauthorized knowledge area says only that it does not exist. *Reading a
+  table of contents, reading a section, or checking a citation works from an id and needs neither.*
+- **Structured-record filters use PostgreSQL jsonpath consistently across row, count, and grouped-count
+  modes.** Filters must start with `$`, and mistyped jsonpath syntax returns an actionable syntax error
+  rather than a generic tool failure.
+- **MCP tools advertise standard read-only/idempotent hints.** All knowledge-base lookup tools declare
+  `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, and `openWorldHint: false`;
+  `submit_feedback` declares `readOnlyHint: false`, `destructiveHint: true` (re-rating a turn
+  overwrites the earlier rating and comment in place), `idempotentHint: true`, and
+  `openWorldHint: false`.
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients are read-only over the knowledge base.** Nothing reachable over that connection can add, change

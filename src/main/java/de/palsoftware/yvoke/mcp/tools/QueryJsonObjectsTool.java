@@ -8,7 +8,9 @@ import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -19,9 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class QueryJsonObjectsTool {
 
     private static final Logger log = LoggerFactory.getLogger(QueryJsonObjectsTool.class);
@@ -42,12 +46,16 @@ public class QueryJsonObjectsTool {
     @Tool(
             name = "query_json_objects",
             description =
-                    "Query structured JSON objects stored in a collection. Use this tool when the collection contains structured/tabular data (e.g. sensor readings, configuration records, metadata entries) rather than prose documents — for prose, use 'search_corpus' instead. Supports PostgreSQL jsonpath filter expressions and field projection. Returns a markdown table with columns matching the requested fields. Set countOnly=true to get just the count without fetching rows.")
+                    "Query structured JSON objects stored in a collection. Use this tool when the collection contains structured/tabular data (e.g. configuration records, change histories, metadata entries) rather than prose documents — for prose, use 'search_corpus' instead. Supports PostgreSQL jsonpath filter expressions and field projection. Returns a markdown table with columns matching the requested fields. Set countOnly=true to get just the count without fetching rows.")
     public String queryJsonObjects(
-            @ToolParam(description = "The collection to query.", required = true) String collection,
             @ToolParam(
                             description =
-                                    "PostgreSQL jsonpath filter expression, e.g. '$.sensors[*] ? (@.temperature > 30)'. Uses SQL/JSON path syntax (not JQ or XPath). Use 'get_json_schema' first to discover available fields. When nothing is specified all objects are returned.",
+                                    "The collection to query (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections).",
+                            required = true)
+                    String collection,
+            @ToolParam(
+                            description =
+                                    "PostgreSQL jsonpath filter expression starting with '$', e.g. '$ ? (@.status == \"active\")' or '$.items[*] ? (@.count > 10)'. Uses SQL/JSON path syntax (not JQ or XPath). Use 'get_json_schema' first to discover available fields. When nothing is specified all objects are returned.",
                             required = false)
                     @Nullable
                     String jsonPath,
@@ -59,13 +67,17 @@ public class QueryJsonObjectsTool {
                     String tag,
             @ToolParam(
                             description =
-                                    "Comma-separated list of JSON keys/paths to retrieve (e.g. 'name,address.city'). At least one field path must be specified unless countOnly is true. Use 'get_json_schema' to find valid field paths. The output table columns will match these paths.",
+                                    "Comma-separated list of JSON keys/paths to retrieve (e.g. 'name,address.city'). Supports '*' wildcards in key segments (case-insensitive, e.g. 'addr*.city'). At least one field path must be specified unless countOnly is true. Use 'get_json_schema' to find valid field paths. The output table columns will match these paths.",
                             required = false)
                     @Nullable
                     String fields,
             @ToolParam(
                             description =
-                                    "Max results (1–500). When nothing is specified 500 is used.",
+                                    "Max results (1–"
+                                            + JsonObjectRepository.MAX_LIMIT
+                                            + "). When nothing is specified "
+                                            + JsonObjectRepository.MAX_LIMIT
+                                            + " is used.",
                             required = false)
                     @Nullable
                     Integer limit,
@@ -83,7 +95,9 @@ public class QueryJsonObjectsTool {
                     Boolean countOnly,
             @ToolParam(
                             description =
-                                    "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns a markdown table of counts per distinct value.",
+                                    "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns up to "
+                                            + JsonObjectRepository.MAX_GROUPS
+                                            + " groups ordered by count descending as a markdown table.",
                             required = false)
                     @Nullable
                     String groupBy) {
@@ -101,6 +115,15 @@ public class QueryJsonObjectsTool {
         List<String> fieldPaths = isCountOnly ? List.of() : parseCsv(fields);
         if (!isCountOnly && fieldPaths.isEmpty()) {
             return "Error: 'fields' parameter cannot be empty. At least one field path must be specified.";
+        }
+
+        String normalizedJsonPath =
+                (jsonPath != null && !jsonPath.isBlank()) ? jsonPath.trim() : null;
+        if (normalizedJsonPath != null && !normalizedJsonPath.startsWith("$")) {
+            return "Error: filter '"
+                    + normalizedJsonPath
+                    + "' is not a valid PostgreSQL jsonPath expression — it must start with '$' "
+                    + "(e.g. '$ ? (@.status == \"active\")').";
         }
 
         try {
@@ -132,23 +155,9 @@ public class QueryJsonObjectsTool {
                                 + "break down a nested or spaced value, filter with jsonPath and run "
                                 + "one countOnly query per value instead.";
                     }
-                    // JsonObjectService.countGroupedObjects keeps the filter only when it starts
-                    // with '$' and otherwise drops it, so a free-text filter would count the whole
-                    // collection while the header still quoted the filter — a collection-wide
-                    // breakdown that reads as a filtered one. The ungrouped path has no such hole
-                    // (it falls back to countSearch), so reject rather than silently widen.
-                    if (jsonPath != null
-                            && !jsonPath.isBlank()
-                            && !jsonPath.trim().startsWith("$")) {
-                        return "Error: filter '"
-                                + jsonPath.trim()
-                                + "' is not a jsonPath, and a grouped count can only apply a jsonPath "
-                                + "filter (it must start with '$'). Free-text filtering is supported "
-                                + "without groupBy; with groupBy, express the filter as a jsonPath.";
-                    }
                     Map<String, Long> counts =
                             jsonObjectService.countGroupedObjects(
-                                    matchedCol.id(), jsonPath, groupBy.trim(), tagList);
+                                    matchedCol.id(), normalizedJsonPath, groupBy.trim(), tagList);
                     // The repository fetches one group beyond the cap purely as a probe: seeing it
                     // means there are more groups than we are about to show. Trim it back off so
                     // the extra never reaches the caller as data.
@@ -177,8 +186,8 @@ public class QueryJsonObjectsTool {
                     return "Grouped counts for collection "
                             + col
                             + (parsedTag != null ? " (tag: " + parsedTag + ")" : "")
-                            + (jsonPath != null && !jsonPath.isBlank()
-                                    ? " with filter: " + jsonPath
+                            + (normalizedJsonPath != null
+                                    ? " with filter: " + normalizedJsonPath
                                     : "")
                             + " grouped by "
                             + groupBy.trim()
@@ -188,10 +197,10 @@ public class QueryJsonObjectsTool {
                                     countRows, List.of(groupBy.trim(), "Count"));
                 } else {
                     long count;
-                    if (jsonPath != null && !jsonPath.isBlank()) {
+                    if (normalizedJsonPath != null) {
                         count =
                                 jsonObjectService.countSearchObjects(
-                                        matchedCol.id(), jsonPath, tagList);
+                                        matchedCol.id(), normalizedJsonPath, tagList);
                     } else {
                         count = jsonObjectService.countObjects(matchedCol.id(), tagList);
                     }
@@ -200,8 +209,8 @@ public class QueryJsonObjectsTool {
                             + " objects match in collection "
                             + col
                             + (parsedTag != null ? " (tag: " + parsedTag + ")" : "")
-                            + (jsonPath != null && !jsonPath.isBlank()
-                                    ? " with filter: " + jsonPath
+                            + (normalizedJsonPath != null
+                                    ? " with filter: " + normalizedJsonPath
                                     : "")
                             + ".";
                 }
@@ -220,10 +229,10 @@ public class QueryJsonObjectsTool {
 
             List<JsonObject> results;
 
-            if (jsonPath != null && !jsonPath.isBlank()) {
+            if (normalizedJsonPath != null) {
                 results =
                         jsonObjectService.queryObjects(
-                                matchedCol.id(), jsonPath, tagList, lim, off);
+                                matchedCol.id(), normalizedJsonPath, tagList, lim, off);
             } else {
                 // Offset-based, matching the filtered branch above. Passing `off / lim` to the
                 // page-based overload rounded any non-multiple offset down to its page start.
@@ -264,9 +273,40 @@ public class QueryJsonObjectsTool {
                     + paginationNote
                     + ".\n\n"
                     + McpToolUtils.formatTableRows(rows, headers);
+        } catch (DataAccessException e) {
+            if (normalizedJsonPath != null && isPostgresJsonPathError(e)) {
+                log.warn(
+                        "Invalid PostgreSQL jsonPath '{}' for collection '{}': {}",
+                        normalizedJsonPath,
+                        col,
+                        e.getMessage());
+                return "Error: Invalid PostgreSQL jsonPath expression '"
+                        + normalizedJsonPath
+                        + "' — check SQL/JSON path syntax (e.g. '$ ? (@.field == \"value\")'; "
+                        + "use '==' for equality and double quotes for strings).";
+            }
+            return McpToolUtils.toolError("query_json_objects", e);
         } catch (Exception e) {
             return McpToolUtils.toolError("query_json_objects", e);
         }
+    }
+
+    private static boolean isPostgresJsonPathError(Throwable t) {
+        Throwable cursor = t;
+        int depth = 0;
+        while (cursor != null && depth < 16) {
+            if (cursor instanceof SQLException sqlEx) {
+                String state = sqlEx.getSQLState();
+                if ("42601".equals(state)
+                        || "22023".equals(state)
+                        || (state != null && state.startsWith("2203"))) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return false;
     }
 
     private List<String> parseCsv(String input) {
