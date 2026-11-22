@@ -35,7 +35,8 @@ class DesktopSyncDtoValidationTest {
     @Test
     void rejectsBatchLargerThanTheAllowedMaximum() {
         List<NewMessageDto> tooMany =
-            Collections.nCopies(101, new NewMessageDto("user", "hi", null, null, null, null, null));
+                Collections.nCopies(
+                        101, new NewMessageDto("user", "hi", null, null, null, null, null));
         AppendMessagesRequest request = new AppendMessagesRequest(tooMany);
 
         assertThat(validator.validate(request)).isNotEmpty();
@@ -44,15 +45,17 @@ class DesktopSyncDtoValidationTest {
     @Test
     void acceptsBatchAtTheAllowedMaximum() {
         List<NewMessageDto> ok =
-            Collections.nCopies(100, new NewMessageDto("user", "hi", null, null, null, null, null));
+                Collections.nCopies(
+                        100, new NewMessageDto("user", "hi", null, null, null, null, null));
         assertThat(validator.validate(new AppendMessagesRequest(ok))).isEmpty();
     }
 
     @Test
     void rejectsMessageWithOverlongContent() {
         String huge = "x".repeat(200_001);
-        AppendMessagesRequest request = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", huge, null, null, null, null, null)));
+        AppendMessagesRequest request =
+                new AppendMessagesRequest(
+                        List.of(new NewMessageDto("user", huge, null, null, null, null, null)));
 
         // Cascade validation (@Valid on the list element) flags the oversized content.
         assertThat(validator.validate(request)).isNotEmpty();
@@ -60,8 +63,9 @@ class DesktopSyncDtoValidationTest {
 
     @Test
     void rejectsMessageWithBlankRole() {
-        AppendMessagesRequest request = new AppendMessagesRequest(
-            List.of(new NewMessageDto("  ", "hi", null, null, null, null, null)));
+        AppendMessagesRequest request =
+                new AppendMessagesRequest(
+                        List.of(new NewMessageDto("  ", "hi", null, null, null, null, null)));
         assertThat(validator.validate(request)).isNotEmpty();
     }
 
@@ -73,118 +77,340 @@ class DesktopSyncDtoValidationTest {
 
     @Test
     void rejectsOrchestratorRunWithMissingConversationId() {
-        OrchestratorRunRequest req = new OrchestratorRunRequest(null, null, "profile", null, null,
-            null, null, null, null, null, null, null, null, null);
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        null, null, "profile", null, null, null, null, null, null, null, null, null,
+                        null, null);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunWithMissingProfileName() {
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, null, null,
-            null, null, null, null, null, null, null, null, null, null);
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunWithOverlongProfileName() {
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null,
-            "p".repeat(256), null, null, null, null, null, null, null, null, null, null, null);
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "p".repeat(256),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunWithStepsExceedingLimit() {
         List<OrchestratorRunRequest.Step> steps =
-            Collections.nCopies(201, new OrchestratorRunRequest.Step(0, "spec", 0, "pb", "m",
-                "high", null, null, null, null, null, null, null, null, null));
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
-            null, null, null, null, null, null, null, null, null, null, steps);
+                Collections.nCopies(
+                        201,
+                        new OrchestratorRunRequest.Step(
+                                0, "spec", 0, "pb", "m", "high", null, null, null, null, null, null,
+                                null, null, null));
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        steps);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void acceptsOrchestratorRunWithStepsAtLimit() {
         List<OrchestratorRunRequest.Step> steps =
-            Collections.nCopies(200, new OrchestratorRunRequest.Step(0, "spec", 0, "pb", "m",
-                "high", null, null, null, null, null, null, null, null, null));
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
-            null, null, null, null, null, null, null, null, null, null, steps);
+                Collections.nCopies(
+                        200,
+                        new OrchestratorRunRequest.Step(
+                                0, "spec", 0, "pb", "m", "high", null, null, null, null, null, null,
+                                null, null, null));
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        steps);
         assertThat(validator.validate(req)).isEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunStepWithOverlongRole() {
         List<OrchestratorRunRequest.Step> steps =
-            List.of(new OrchestratorRunRequest.Step(0, "r".repeat(201), 0, "pb", "m", "high", null,
-                null, null, null, null, null, null, null, null));
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
-            null, null, null, null, null, null, null, null, null, null, steps);
+                List.of(
+                        new OrchestratorRunRequest.Step(
+                                0,
+                                "r".repeat(201),
+                                0,
+                                "pb",
+                                "m",
+                                "high",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null));
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        steps);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunStepWithOverlongPlaybookName() {
-        List<OrchestratorRunRequest.Step> steps = List.of(new OrchestratorRunRequest.Step(0, "spec",
-            0, "p".repeat(256), "m", "high", null, null, null, null, null, null, null, null, null));
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "profile",
-            null, null, null, null, null, null, null, null, null, null, steps);
+        List<OrchestratorRunRequest.Step> steps =
+                List.of(
+                        new OrchestratorRunRequest.Step(
+                                0,
+                                "spec",
+                                0,
+                                "p".repeat(256),
+                                "m",
+                                "high",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null));
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        steps);
         assertThat(validator.validate(req)).isNotEmpty();
     }
 
     @Test
     void rejectsNewMessageWithNonPositivePlaybookVersionAndAcceptsPositiveOrNull() {
-        AppendMessagesRequest zeroVer = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", 0)));
+        AppendMessagesRequest zeroVer =
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user", "hi", null, null, null, null, null, "pb", 0)));
         assertThat(validator.validate(zeroVer)).isNotEmpty();
 
-        AppendMessagesRequest zeroVerNullPlaybook = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, null, 0)));
+        AppendMessagesRequest zeroVerNullPlaybook =
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user", "hi", null, null, null, null, null, null, 0)));
         assertThat(validator.validate(zeroVerNullPlaybook)).isNotEmpty();
 
-        AppendMessagesRequest zeroVerBlankPlaybook = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "   ", 0)));
+        AppendMessagesRequest zeroVerBlankPlaybook =
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user", "hi", null, null, null, null, null, "   ", 0)));
         assertThat(validator.validate(zeroVerBlankPlaybook)).isNotEmpty();
 
-        AppendMessagesRequest negVer = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", -1)));
+        AppendMessagesRequest negVer =
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user", "hi", null, null, null, null, null, "pb", -1)));
         assertThat(validator.validate(negVer)).isNotEmpty();
 
-        AppendMessagesRequest validVer = new AppendMessagesRequest(
-            List.of(new NewMessageDto("user", "hi", null, null, null, null, null, "pb", 2),
-                new NewMessageDto("assistant", "ok", null, null, null, null, null, null, null)));
+        AppendMessagesRequest validVer =
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user", "hi", null, null, null, null, null, "pb", 2),
+                                new NewMessageDto(
+                                        "assistant",
+                                        "ok",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null)));
         assertThat(validator.validate(validVer)).isEmpty();
     }
 
     @Test
     void rejectsOrchestratorRunStepWithNonPositivePlaybookVersionEvenWhenPlaybookNullOrBlank() {
-        OrchestratorRunRequest zeroVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
-            "profile", null, null, null, null, null, null, null, null, null, null,
-            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", 0, "m", "high", null, null,
-                null, null, null, null, null, null, null)));
+        OrchestratorRunRequest zeroVer =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new OrchestratorRunRequest.Step(
+                                        0, "spec", 0, "pb", 0, "m", "high", null, null, null, null,
+                                        null, null, null, null, null)));
         assertThat(validator.validate(zeroVer)).isNotEmpty();
 
-        OrchestratorRunRequest zeroVerNullPlaybook = new OrchestratorRunRequest(UUID.randomUUID(),
-            null, "profile", null, null, null, null, null, null, null, null, null, null,
-            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, null, 0, "m", "high", null, null,
-                null, null, null, null, null, null, null)));
+        OrchestratorRunRequest zeroVerNullPlaybook =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new OrchestratorRunRequest.Step(
+                                        0, "spec", 0, null, 0, "m", "high", null, null, null, null,
+                                        null, null, null, null, null)));
         assertThat(validator.validate(zeroVerNullPlaybook)).isNotEmpty();
 
-        OrchestratorRunRequest zeroVerBlankPlaybook = new OrchestratorRunRequest(UUID.randomUUID(),
-            null, "profile", null, null, null, null, null, null, null, null, null, null,
-            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "   ", 0, "m", "high", null, null,
-                null, null, null, null, null, null, null)));
+        OrchestratorRunRequest zeroVerBlankPlaybook =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new OrchestratorRunRequest.Step(
+                                        0, "spec", 0, "   ", 0, "m", "high", null, null, null, null,
+                                        null, null, null, null, null)));
         assertThat(validator.validate(zeroVerBlankPlaybook)).isNotEmpty();
 
-        OrchestratorRunRequest negVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
-            "profile", null, null, null, null, null, null, null, null, null, null,
-            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", -2, "m", "high", null, null,
-                null, null, null, null, null, null, null)));
+        OrchestratorRunRequest negVer =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new OrchestratorRunRequest.Step(
+                                        0, "spec", 0, "pb", -2, "m", "high", null, null, null, null,
+                                        null, null, null, null, null)));
         assertThat(validator.validate(negVer)).isNotEmpty();
 
-        OrchestratorRunRequest validVer = new OrchestratorRunRequest(UUID.randomUUID(), null,
-            "profile", null, null, null, null, null, null, null, null, null, null,
-            List.of(new OrchestratorRunRequest.Step(0, "spec", 0, "pb", 2, "m", "high", null, null,
-                null, null, null, null, null, null, null)));
+        OrchestratorRunRequest validVer =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new OrchestratorRunRequest.Step(
+                                        0, "spec", 0, "pb", 2, "m", "high", null, null, null, null,
+                                        null, null, null, null, null)));
         assertThat(validator.validate(validVer)).isEmpty();
     }
 }

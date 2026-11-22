@@ -39,9 +39,11 @@ public class JobRepositoryTest {
         // handler").
         EnqueueRequest req = new EnqueueRequest("  ", "source-ref", "some-tag", "collection");
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            jobRepository.enqueue(req);
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    jobRepository.enqueue(req);
+                });
     }
 
     @Test
@@ -52,8 +54,9 @@ public class JobRepositoryTest {
         // auto-creates missing collections.
         when(collectionIdResolver.requireId("collection")).thenReturn(UUID.randomUUID());
 
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND + ":param", "source-ref",
-            "some-tag", "collection");
+        EnqueueRequest req =
+                new EnqueueRequest(
+                        ItTestJobHandler.KIND + ":param", "source-ref", "some-tag", "collection");
         EnqueueResult result = jobRepository.enqueue(req);
 
         assertThat(result).isEqualTo(EnqueueResult.created(inserted));
@@ -71,21 +74,23 @@ public class JobRepositoryTest {
         when(collectionIdResolver.requireId("collection")).thenReturn(UUID.randomUUID());
 
         jobRepository.enqueue(
-            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
+                new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
 
         verify(jdbcClient)
-            .sql(argThat(sql -> sql.contains("ON CONFLICT (kind, source_ref, collection_id, tags)")
-                && sql.contains("WHERE status IN ('queued', 'running')")
-                && sql.contains("DO NOTHING") && sql.contains("RETURNING id")));
+                .sql(
+                        argThat(sql ->
+                                sql.contains("ON CONFLICT (kind, source_ref, collection_id, tags)")
+                                        && sql.contains("WHERE status IN ('queued', 'running')")
+                                        && sql.contains("DO NOTHING")
+                                        && sql.contains("RETURNING id")));
     }
 
     /**
      * S7.3: enqueue is a LOOP of two passes, and the second pass is the whole point.
      *
-     * <p>
-     * "Inserted nothing AND found nothing" is a real, reachable state, not a paranoid branch: the
-     * job holding the admission slot can reach a terminal status between the {@code INSERT ... ON
-     * CONFLICT DO NOTHING} and the {@code SELECT}, which takes it out of the partial index. The
+     * <p>"Inserted nothing AND found nothing" is a real, reachable state, not a paranoid branch:
+     * the job holding the admission slot can reach a terminal status between the {@code INSERT ...
+     * ON CONFLICT DO NOTHING} and the {@code SELECT}, which takes it out of the partial index. The
      * conflict is real, the lookup is empty, and the work still needs doing — so a second pass
      * inserts cleanly. Collapse the loop to one pass (the natural "why is this a for-loop?" edit)
      * and that race becomes an {@link IllegalStateException}, which nothing maps: {@code POST
@@ -94,8 +99,7 @@ public class JobRepositoryTest {
      * before the crawl's own catch was added. The window is widest exactly when the queue is
      * busiest.
      *
-     * <p>
-     * {@code testEnqueue_validKindSucceeds} and {@code testEnqueue_duplicateAdoptsTheActiveJob}
+     * <p>{@code testEnqueue_validKindSucceeds} and {@code testEnqueue_duplicateAdoptsTheActiveJob}
      * both stub a SINGLE insert/select pair, so pass two and the terminal throw are unexecuted
      * today; both of those tests stay green with the loop bound reduced to one. Four consecutive
      * empty answers below are what makes the give-up condition observable as "both passes failed"
@@ -114,25 +118,35 @@ public class JobRepositoryTest {
         UUID insertedOnSecondPass = UUID.randomUUID();
         // Pass 1: the INSERT hits the partial index (empty), and the SELECT finds nothing because
         // the job holding the slot finished in between. Pass 2: the slot is free, the INSERT lands.
-        doReturn(Optional.empty(), Optional.empty(), Optional.of(insertedOnSecondPass)).when(mapped)
-            .optional();
+        doReturn(Optional.empty(), Optional.empty(), Optional.of(insertedOnSecondPass))
+                .when(mapped)
+                .optional();
 
-        EnqueueResult result = jobRepository.enqueue(
-            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
+        EnqueueResult result =
+                jobRepository.enqueue(
+                        new EnqueueRequest(
+                                ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
 
         assertThat(result)
-            .as("a duplicate that finishes between the INSERT and the SELECT must be re-inserted, "
-                + "not reported as a server fault")
-            .isEqualTo(EnqueueResult.created(insertedOnSecondPass));
+                .as(
+                        "a duplicate that finishes between the INSERT and the SELECT must be re-inserted, "
+                                + "not reported as a server fault")
+                .isEqualTo(EnqueueResult.created(insertedOnSecondPass));
 
         // Only when BOTH passes come up empty is it an IllegalStateException.
         doReturn(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty())
-            .when(mapped).optional();
+                .when(mapped)
+                .optional();
 
-        assertThatThrownBy(() -> jobRepository.enqueue(
-            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection")))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("kept appearing and finishing");
+        assertThatThrownBy(() ->
+                        jobRepository.enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "source-ref",
+                                        "some-tag",
+                                        "collection")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("kept appearing and finishing");
     }
 
     /**
@@ -146,8 +160,10 @@ public class JobRepositoryTest {
         stubJdbc(Optional.empty(), Optional.of(active));
         when(collectionIdResolver.requireId("collection")).thenReturn(UUID.randomUUID());
 
-        EnqueueResult result = jobRepository.enqueue(
-            new EnqueueRequest(ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
+        EnqueueResult result =
+                jobRepository.enqueue(
+                        new EnqueueRequest(
+                                ItTestJobHandler.KIND, "source-ref", "some-tag", "collection"));
 
         assertThat(result).isEqualTo(EnqueueResult.adopted(active));
     }
@@ -155,9 +171,9 @@ public class JobRepositoryTest {
     @Test
     public void testCancelQueued_rejectsBlankKind() {
         assertThatThrownBy(() -> jobRepository.cancelQueued("  "))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> jobRepository.cancelQueued(null))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -168,7 +184,7 @@ public class JobRepositoryTest {
     private static JdbcClient.MappedQuerySpec<UUID> mockUuidQuery(int rows) {
         JdbcClient.MappedQuerySpec<UUID> query = mock(JdbcClient.MappedQuerySpec.class);
         when(query.list())
-            .thenReturn(IntStream.range(0, rows).mapToObj(i -> UUID.randomUUID()).toList());
+                .thenReturn(IntStream.range(0, rows).mapToObj(i -> UUID.randomUUID()).toList());
         return query;
     }
 
@@ -250,16 +266,20 @@ public class JobRepositoryTest {
 
         jobRepository.markCompleted(UUID.randomUUID(), new JobCounts(1, 1, 0, 0, 0));
 
-        verify(jdbcClient).sql(argThat(sql -> sql.contains("SET status = 'completed'")
-            && sql.contains("WHERE id = :id AND status <> 'cancelled'")));
+        verify(jdbcClient)
+                .sql(
+                        argThat(sql ->
+                                sql.contains("SET status = 'completed'")
+                                        && sql.contains(
+                                                "WHERE id = :id AND status <> 'cancelled'")));
     }
 
     /**
      * The PROGRESS side of the same guard. Cancellation is cooperative, so a handler stopped
-     * between two checkpoints keeps reporting: a crawl cancelled after its last batch calls
-     * {@code ctx.report(...)} one more time, which would write progress=100 and a final step onto a
-     * row whose status correctly stays 'cancelled'. The status and counts would be right and only
-     * the progress bar and step text would lie, which is the worst kind of wrong.
+     * between two checkpoints keeps reporting: a crawl cancelled after its last batch calls {@code
+     * ctx.report(...)} one more time, which would write progress=100 and a final step onto a row
+     * whose status correctly stays 'cancelled'. The status and counts would be right and only the
+     * progress bar and step text would lie, which is the worst kind of wrong.
      */
     @Test
     public void testUpdateProgressLeavesACancelledJobAlone() {
@@ -270,8 +290,12 @@ public class JobRepositoryTest {
 
         jobRepository.updateProgress(UUID.randomUUID(), JobStep.INSERT, 100);
 
-        verify(jdbcClient).sql(argThat(sql -> sql.contains("SET step = :step")
-            && sql.contains("WHERE id = :id AND status <> 'cancelled'")));
+        verify(jdbcClient)
+                .sql(
+                        argThat(sql ->
+                                sql.contains("SET step = :step")
+                                        && sql.contains(
+                                                "WHERE id = :id AND status <> 'cancelled'")));
     }
 
     /** Stubs the enqueue round-trip: the INSERT ... RETURNING, then the active-job lookup. */

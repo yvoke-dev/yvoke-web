@@ -16,15 +16,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class AgentRunRepositoryIT {
 
-    @Autowired
-    private AgentRunRepository agentRunRepository;
+    @Autowired private AgentRunRepository agentRunRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private UUID userId;
     private UUID conversationId;
@@ -34,17 +35,26 @@ public class AgentRunRepositoryIT {
     void setUp() {
         userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
-            "oid-" + userId, "run-" + userId + "@example.com", "Run User");
+                "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+                userId,
+                "oid-" + userId,
+                "run-" + userId + "@example.com",
+                "Run User");
 
         conversationId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
-            conversationId, userId, "Run Conversation");
+        jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+                conversationId,
+                userId,
+                "Run Conversation");
 
         messageId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
-            messageId, conversationId, "assistant", "Agent response");
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+                messageId,
+                conversationId,
+                "assistant",
+                "Agent response");
     }
 
     @AfterEach
@@ -62,18 +72,18 @@ public class AgentRunRepositoryIT {
 
         // Create older run
         agentRunRepository.create(olderRunId, conversationId, "default", null);
-        agentRunRepository.finish(olderRunId, messageId, "completed", 1, null, 10, 20, 30, 0, 0,
-            null);
+        agentRunRepository.finish(
+                olderRunId, messageId, "completed", 1, null, 10, 20, 30, 0, 0, null);
 
         // Adjust started_at of older run to the past
         jdbcTemplate.update(
-            "UPDATE agent_runs SET started_at = started_at - INTERVAL '10 seconds' WHERE id = ?",
-            olderRunId);
+                "UPDATE agent_runs SET started_at = started_at - INTERVAL '10 seconds' WHERE id = ?",
+                olderRunId);
 
         // Create newer run for same message
         agentRunRepository.create(newerRunId, conversationId, "default", null);
-        agentRunRepository.finish(newerRunId, messageId, "completed", 2, null, 40, 50, 90, 5, 0,
-            null);
+        agentRunRepository.finish(
+                newerRunId, messageId, "completed", 2, null, 40, 50, 90, 5, 0, null);
 
         Optional<AgentRun> found = agentRunRepository.findByMessageId(messageId);
         assertThat(found).isPresent();
@@ -94,11 +104,13 @@ public class AgentRunRepositoryIT {
         UUID userMsgId = UUID.randomUUID();
         UUID assistantMsgId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Question')",
-            userMsgId, conversationId);
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Question')",
+                userMsgId,
+                conversationId);
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'Answer')",
-            assistantMsgId, conversationId);
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'Answer')",
+                assistantMsgId,
+                conversationId);
 
         UUID runId = UUID.randomUUID();
         agentRunRepository.create(runId, conversationId, "mas-profile", null);
@@ -133,8 +145,8 @@ public class AgentRunRepositoryIT {
 
         // Set identical started_at timestamp
         jdbcTemplate.update(
-            "UPDATE agent_runs SET started_at = '2026-01-01 12:00:00+00' WHERE conversation_id = ?",
-            conversationId);
+                "UPDATE agent_runs SET started_at = '2026-01-01 12:00:00+00' WHERE conversation_id = ?",
+                conversationId);
 
         Optional<AgentRun> found = agentRunRepository.findByMessageId(messageId);
         assertThat(found).isPresent();
@@ -145,58 +157,71 @@ public class AgentRunRepositoryIT {
     @Test
     void testBackfillQueryLinksAssistantMessageId() throws IOException {
         UUID desktopConvId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
-            desktopConvId, userId, "Desktop Conv");
+        jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+                desktopConvId,
+                userId,
+                "Desktop Conv");
 
         UUID webConvId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
-            webConvId, userId, "Web Conv");
+        jdbcTemplate.update(
+                "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+                webConvId,
+                userId,
+                "Web Conv");
 
         // 1. Desktop run: message_id is the assistant message, assistant_message_id is null
         UUID desktopAsstMsgId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'Desktop answer')",
-            desktopAsstMsgId, desktopConvId);
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'Desktop answer')",
+                desktopAsstMsgId,
+                desktopConvId);
         UUID desktopRunId = UUID.randomUUID();
         agentRunRepository.create(desktopRunId, desktopConvId, "desktop-profile", null);
-        agentRunRepository.finish(desktopRunId, desktopAsstMsgId, "done", 1, null, 10, 20, 30, 0, 0,
-            null);
-        jdbcTemplate.update("UPDATE agent_runs SET assistant_message_id = NULL WHERE id = ?",
-            desktopRunId);
+        agentRunRepository.finish(
+                desktopRunId, desktopAsstMsgId, "done", 1, null, 10, 20, 30, 0, 0, null);
+        jdbcTemplate.update(
+                "UPDATE agent_runs SET assistant_message_id = NULL WHERE id = ?", desktopRunId);
 
         // 2. Web run: message_id is user message, assistant_message_id is null
         UUID webUserMsgId = UUID.randomUUID();
         UUID webAsstMsgId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'Web question', CURRENT_TIMESTAMP - INTERVAL '5 seconds')",
-            webUserMsgId, webConvId);
+                "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'Web question', CURRENT_TIMESTAMP - INTERVAL '5 seconds')",
+                webUserMsgId,
+                webConvId);
         jdbcTemplate.update(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'Web answer', CURRENT_TIMESTAMP)",
-            webAsstMsgId, webConvId);
+                "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'Web answer', CURRENT_TIMESTAMP)",
+                webAsstMsgId,
+                webConvId);
         UUID webRunId = UUID.randomUUID();
         agentRunRepository.create(webRunId, webConvId, "web-profile", null);
         agentRunRepository.finish(webRunId, webUserMsgId, "done", 1, null, 10, 20, 30, 0, 0, null);
-        jdbcTemplate.update("UPDATE agent_runs SET assistant_message_id = NULL WHERE id = ?",
-            webRunId);
+        jdbcTemplate.update(
+                "UPDATE agent_runs SET assistant_message_id = NULL WHERE id = ?", webRunId);
 
         // Read and execute the backfill queries directly from the V13 migration script file
         Path v13Path = Path.of("docker/db/migration/V13__agent_runs_assistant_message_id.sql");
         String v13Sql = Files.readString(v13Path);
-        assertThat(v13Sql).as("V13 migration must contain assistant_message_id backfill queries")
-            .contains("UPDATE agent_runs r");
+        assertThat(v13Sql)
+                .as("V13 migration must contain assistant_message_id backfill queries")
+                .contains("UPDATE agent_runs r");
 
         List<String> backfillStatements =
-            Arrays.stream(v13Sql.split(";")).map(stmt -> stmt.replaceAll("(?m)^--.*$", "").trim())
-                .filter(stmt -> stmt.startsWith("UPDATE agent_runs")).toList();
-        assertThat(backfillStatements).as("V13 must define exactly 2 backfill UPDATE statements")
-            .hasSize(2);
+                Arrays.stream(v13Sql.split(";"))
+                        .map(stmt -> stmt.replaceAll("(?m)^--.*$", "").trim())
+                        .filter(stmt -> stmt.startsWith("UPDATE agent_runs"))
+                        .toList();
+        assertThat(backfillStatements)
+                .as("V13 must define exactly 2 backfill UPDATE statements")
+                .hasSize(2);
         for (String stmt : backfillStatements) {
             jdbcTemplate.update(stmt);
         }
 
         // Verify both runs now have assistant_message_id populated
         AgentRun backfilledDesktop =
-            agentRunRepository.findByMessageId(desktopAsstMsgId).orElseThrow();
+                agentRunRepository.findByMessageId(desktopAsstMsgId).orElseThrow();
         assertThat(backfilledDesktop.id()).isEqualTo(desktopRunId);
         assertThat(backfilledDesktop.assistantMessageId()).isEqualTo(desktopAsstMsgId);
 
@@ -205,11 +230,11 @@ public class AgentRunRepositoryIT {
         assertThat(backfilledWeb.assistantMessageId()).isEqualTo(webAsstMsgId);
 
         // Clean up extra conversations
-        jdbcTemplate.update("DELETE FROM agent_runs WHERE conversation_id IN (?, ?)", desktopConvId,
-            webConvId);
-        jdbcTemplate.update("DELETE FROM messages WHERE conversation_id IN (?, ?)", desktopConvId,
-            webConvId);
-        jdbcTemplate.update("DELETE FROM conversations WHERE id IN (?, ?)", desktopConvId,
-            webConvId);
+        jdbcTemplate.update(
+                "DELETE FROM agent_runs WHERE conversation_id IN (?, ?)", desktopConvId, webConvId);
+        jdbcTemplate.update(
+                "DELETE FROM messages WHERE conversation_id IN (?, ?)", desktopConvId, webConvId);
+        jdbcTemplate.update(
+                "DELETE FROM conversations WHERE id IN (?, ?)", desktopConvId, webConvId);
     }
 }

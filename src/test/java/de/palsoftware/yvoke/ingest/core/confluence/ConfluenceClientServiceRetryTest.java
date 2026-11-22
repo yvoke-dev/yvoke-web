@@ -31,8 +31,7 @@ import org.springframework.web.client.RestClient;
  * A swallowed fetch failure used to be indistinguishable from an empty page: a throttled crawl of
  * ~616 pages produced an empty corpus while every job reported success.
  *
- * <p>
- * The SSRF guard in {@code getClient} refuses loopback addresses, so a local mock {@code
+ * <p>The SSRF guard in {@code getClient} refuses loopback addresses, so a local mock {@code
  * HttpServer} cannot be reached through this service — the fetch is stubbed at the
  * (package-private) {@code fetchPageContent} seam instead, which keeps the retry policy assertions
  * deterministic.
@@ -45,8 +44,24 @@ class ConfluenceClientServiceRetryTest {
     private static final Object ABSENT = new Object();
 
     static final ConfluenceInstance INSTANCE =
-        new ConfluenceInstance(UUID.randomUUID(), "Docs", "docs", "https://wiki.example.com",
-            "e@x.com", "tok", null, "SPACE", "123", "", "", "coll", "v1", false, true, null, null);
+            new ConfluenceInstance(
+                    UUID.randomUUID(),
+                    "Docs",
+                    "docs",
+                    "https://wiki.example.com",
+                    "e@x.com",
+                    "tok",
+                    null,
+                    "SPACE",
+                    "123",
+                    "",
+                    "",
+                    "coll",
+                    "v1",
+                    false,
+                    true,
+                    null,
+                    null);
 
     /** Records the requested body types and replays a scripted outcome for each call. */
     private static final class ScriptedClient extends ConfluenceClientService {
@@ -62,8 +77,15 @@ class ConfluenceClientServiceRetryTest {
         }
 
         private ScriptedClient(int maxAttempts, Object... outcomes) {
-            super(mock(SecretCipher.class), RestClient.builder(), maxAttempts, 1, 5, true,
-                List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+            super(
+                    mock(SecretCipher.class),
+                    RestClient.builder(),
+                    maxAttempts,
+                    1,
+                    5,
+                    true,
+                    List.of(),
+                    ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             script.addAll(List.of(outcomes));
         }
 
@@ -76,8 +98,8 @@ class ConfluenceClientServiceRetryTest {
         }
 
         @Override
-        Optional<ConfluencePageContent> fetchPageContent(ConfluenceInstance instance, String pageId,
-            String bodyType) {
+        Optional<ConfluencePageContent> fetchPageContent(
+                ConfluenceInstance instance, String pageId, String bodyType) {
             if ("storage".equals(bodyType)) {
                 storageCalls.incrementAndGet();
             } else {
@@ -115,14 +137,14 @@ class ConfluenceClientServiceRetryTest {
         if (retryAfter != null) {
             headers.set(HttpHeaders.RETRY_AFTER, retryAfter);
         }
-        return HttpClientErrorException.create(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests",
-            headers, new byte[0], null);
+        return HttpClientErrorException.create(
+                HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", headers, new byte[0], null);
     }
 
     @Test
     void rateLimitedFetchIsRetriedAndEventuallySucceeds() {
         ScriptedClient client =
-            new ScriptedClient(tooManyRequests("1"), tooManyRequests(null), "<p>body</p>");
+                new ScriptedClient(tooManyRequests("1"), tooManyRequests(null), "<p>body</p>");
 
         String body = client.getPageContent(INSTANCE, "page-1").xhtml();
 
@@ -133,12 +155,17 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void persistentRateLimitingFailsInsteadOfReturningAnEmptyBody() {
-        ScriptedClient client = new ScriptedClient(tooManyRequests("1"), tooManyRequests("1"),
-            tooManyRequests("1"), tooManyRequests("1"));
+        ScriptedClient client =
+                new ScriptedClient(
+                        tooManyRequests("1"),
+                        tooManyRequests("1"),
+                        tooManyRequests("1"),
+                        tooManyRequests("1"));
 
         assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1")
-            .hasMessageContaining("429");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1")
+                .hasMessageContaining("429");
 
         assertThat(client.storageCalls.get()).isEqualTo(MAX_ATTEMPTS);
     }
@@ -146,8 +173,14 @@ class ConfluenceClientServiceRetryTest {
     @Test
     void serverErrorFallsBackToBodyViewAndSucceeds() {
         ScriptedClient client =
-            new ScriptedClient(HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR,
-                "boom", HttpHeaders.EMPTY, new byte[0], null), "<p>view body</p>");
+                new ScriptedClient(
+                        HttpServerErrorException.create(
+                                HttpStatus.INTERNAL_SERVER_ERROR,
+                                "boom",
+                                HttpHeaders.EMPTY,
+                                new byte[0],
+                                null),
+                        "<p>view body</p>");
 
         assertThat(client.getPageContent(INSTANCE, "page-1").xhtml()).isEqualTo("<p>view body</p>");
         assertThat(client.viewCalls.get()).isEqualTo(1);
@@ -155,14 +188,20 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void failingFallbackFailsTheJobInsteadOfReturningAnEmptyBody() {
-        ScriptedClient client = new ScriptedClient(
-            HttpClientErrorException.create(HttpStatus.NOT_FOUND, "nope", HttpHeaders.EMPTY,
-                new byte[0], null),
-            HttpClientErrorException.create(HttpStatus.NOT_FOUND, "nope", HttpHeaders.EMPTY,
-                new byte[0], null));
+        ScriptedClient client =
+                new ScriptedClient(
+                        HttpClientErrorException.create(
+                                HttpStatus.NOT_FOUND, "nope", HttpHeaders.EMPTY, new byte[0], null),
+                        HttpClientErrorException.create(
+                                HttpStatus.NOT_FOUND,
+                                "nope",
+                                HttpHeaders.EMPTY,
+                                new byte[0],
+                                null));
 
         assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1");
     }
 
     @Test
@@ -183,7 +222,8 @@ class ConfluenceClientServiceRetryTest {
         ScriptedClient client = new ScriptedClient(ABSENT, ABSENT);
 
         assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1");
     }
 
     @Test
@@ -203,7 +243,8 @@ class ConfluenceClientServiceRetryTest {
         ScriptedClient client = new ScriptedClient(new ResourceAccessException("connection reset"));
 
         assertThatThrownBy(() -> client.getPageContent(INSTANCE, "page-1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1");
     }
 
     @Test
@@ -228,8 +269,7 @@ class ConfluenceClientServiceRetryTest {
      * every other test in this class green, because all of them script either a numeric value ("1",
      * "600") or no header at all.
      *
-     * <p>
-     * What breaks is not the parse — it is the RETRY. The exception is thrown from inside the
+     * <p>What breaks is not the parse — it is the RETRY. The exception is thrown from inside the
      * {@code catch} block of {@code withRateLimitRetry}, so it is not caught there; it propagates
      * into {@code getPageContent}'s generic {@code catch (RuntimeException)} and comes back out as
      * a hard failure of the page job. In other words the recovery path becomes the thing that kills
@@ -237,26 +277,27 @@ class ConfluenceClientServiceRetryTest {
      * has told us is survivable. On a throttled site that is every in-flight page job at once, and
      * the reported error names a number-format problem rather than rate limiting.
      *
-     * <p>
-     * The assertion is that the fetch SUCCEEDS on the second attempt through the storage path — a
-     * date must be ignored, not honoured, not fatal — and that no {@code body.view} round-trip was
-     * burned, which is what distinguishes "the header was ignored" from "something threw and a
+     * <p>The assertion is that the fetch SUCCEEDS on the second attempt through the storage path —
+     * a date must be ignored, not honoured, not fatal — and that no {@code body.view} round-trip
+     * was burned, which is what distinguishes "the header was ignored" from "something threw and a
      * fallback rescued it".
      */
     @Test
     void anHttpDateRetryAfterFallsBackToTheExponentialDelayInsteadOfKillingTheRetry() {
         ScriptedClient client =
-            new ScriptedClient(tooManyRequests("Wed, 21 Oct 2026 07:28:00 GMT"), "<p>body</p>");
+                new ScriptedClient(tooManyRequests("Wed, 21 Oct 2026 07:28:00 GMT"), "<p>body</p>");
 
         long start = System.nanoTime();
         assertThat(client.getPageContent(INSTANCE, "page-1").xhtml())
-            .as("an HTTP-date Retry-After is ignored, so the ordinary backoff retries and succeeds")
-            .isEqualTo("<p>body</p>");
+                .as(
+                        "an HTTP-date Retry-After is ignored, so the ordinary backoff retries and succeeds")
+                .isEqualTo("<p>body</p>");
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertThat(client.storageCalls.get()).as("one 429, then the retry").isEqualTo(2);
         assertThat(client.viewCalls.get())
-            .as("a plain retry, not a rescue by the body.view fallback").isZero();
+                .as("a plain retry, not a rescue by the body.view fallback")
+                .isZero();
         // The exponential delay applies (1ms base, 5ms cap in this fixture): a date must never be
         // coerced into a sleep either.
         assertThat(elapsedMs).isLessThan(2_000);
@@ -288,8 +329,11 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void rateLimitedCrawlPagingIsRetriedInsteadOfFailingMidCrawl() {
-        ScriptedClient client = new ScriptedClient(tooManyRequests("1"), tooManyRequests(null),
-            Map.of("results", List.of(Map.of("id", "page-1"))));
+        ScriptedClient client =
+                new ScriptedClient(
+                        tooManyRequests("1"),
+                        tooManyRequests(null),
+                        Map.of("results", List.of(Map.of("id", "page-1"))));
 
         List<Map<String, Object>> seen = new ArrayList<>();
         client.crawlAllDescendantPages(INSTANCE, seen::addAll);
@@ -300,12 +344,17 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void persistentlyRateLimitedCrawlFailsLoudly() {
-        ScriptedClient client = new ScriptedClient(tooManyRequests("1"), tooManyRequests("1"),
-            tooManyRequests("1"), tooManyRequests("1"));
+        ScriptedClient client =
+                new ScriptedClient(
+                        tooManyRequests("1"),
+                        tooManyRequests("1"),
+                        tooManyRequests("1"),
+                        tooManyRequests("1"));
 
-        assertThatThrownBy(() -> client.crawlAllDescendantPages(INSTANCE, batch -> {
-        })).isInstanceOf(IllegalStateException.class).hasMessageContaining("SPACE")
-            .hasMessageContaining("429");
+        assertThatThrownBy(() -> client.crawlAllDescendantPages(INSTANCE, batch -> {}))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SPACE")
+                .hasMessageContaining("429");
         assertThat(client.searchCalls.get()).isEqualTo(MAX_ATTEMPTS);
     }
 
@@ -318,37 +367,49 @@ class ConfluenceClientServiceRetryTest {
     /**
      * Runs the real {@code fetchPageContent} against a local mock Confluence.
      *
-     * <p>
-     * Only {@code getClient(ConfluenceInstance)} is overridden: the SSRF guard on the credentials
-     * overload refuses loopback, and replacing the client here leaves the response parsing — the
-     * thing under test — untouched.
+     * <p>Only {@code getClient(ConfluenceInstance)} is overridden: the SSRF guard on the
+     * credentials overload refuses loopback, and replacing the client here leaves the response
+     * parsing — the thing under test — untouched.
      */
     private static final class LocalServerClient extends ConfluenceClientService
-        implements AutoCloseable {
+            implements AutoCloseable {
 
         private final HttpServer server;
         private final RestClient client;
 
         private LocalServerClient(String... jsonBodies) throws IOException {
-            super(mock(SecretCipher.class), RestClient.builder(), MAX_ATTEMPTS, 1, 5, true,
-                List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+            super(
+                    mock(SecretCipher.class),
+                    RestClient.builder(),
+                    MAX_ATTEMPTS,
+                    1,
+                    5,
+                    true,
+                    List.of(),
+                    ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             Deque<String> bodies = new ArrayDeque<>(List.of(jsonBodies));
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/rest/api/content/", exchange -> {
-                // Consume the request body before responding, or the socket closes early and the
-                // client sees a flaky 400 (documented project pitfall).
-                exchange.getRequestBody().readAllBytes();
-                byte[] payload =
-                    (bodies.isEmpty() ? "{}" : bodies.poll()).getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, payload.length);
-                try (OutputStream out = exchange.getResponseBody()) {
-                    out.write(payload);
-                }
-            });
+            server.createContext(
+                    "/rest/api/content/",
+                    exchange -> {
+                        // Consume the request body before responding, or the socket closes early
+                        // and the
+                        // client sees a flaky 400 (documented project pitfall).
+                        exchange.getRequestBody().readAllBytes();
+                        byte[] payload =
+                                (bodies.isEmpty() ? "{}" : bodies.poll())
+                                        .getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().add("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(200, payload.length);
+                        try (OutputStream out = exchange.getResponseBody()) {
+                            out.write(payload);
+                        }
+                    });
             server.start();
-            client = RestClient.builder()
-                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).build();
+            client =
+                    RestClient.builder()
+                            .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                            .build();
         }
 
         @Override
@@ -374,8 +435,12 @@ class ConfluenceClientServiceRetryTest {
      */
     @Test
     void aResponseWithNoExpandedBodyFieldIsAbsentNotEmpty() throws IOException {
-        try (LocalServerClient client = new LocalServerClient("{}", "{\"body\":{}}",
-            "{\"body\":{\"storage\":{}}}", "{\"body\":{\"storage\":{\"value\":\"\"}}}")) {
+        try (LocalServerClient client =
+                new LocalServerClient(
+                        "{}",
+                        "{\"body\":{}}",
+                        "{\"body\":{\"storage\":{}}}",
+                        "{\"body\":{\"storage\":{\"value\":\"\"}}}")) {
 
             // No body at all, no body.storage, and a body.storage with no value: all "not
             // expanded", none of which threw, so only the Optional can tell the caller.
@@ -385,7 +450,8 @@ class ConfluenceClientServiceRetryTest {
 
             // A page that genuinely has no content: present, and empty.
             assertThat(client.fetchPageContent(INSTANCE, "page-4", "storage"))
-                .map(ConfluencePageContent::xhtml).contains("");
+                    .map(ConfluencePageContent::xhtml)
+                    .contains("");
         }
     }
 
@@ -397,8 +463,10 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void rateLimitedAttachmentListingIsRetriedAndEventuallySucceeds() {
-        ScriptedClient client = new ScriptedClient(tooManyRequests("1"),
-            Map.of("results", List.of(Map.of("title", "spec.pdf"))));
+        ScriptedClient client =
+                new ScriptedClient(
+                        tooManyRequests("1"),
+                        Map.of("results", List.of(Map.of("title", "spec.pdf"))));
 
         assertThat(client.getPageAttachments(INSTANCE, "page-1")).hasSize(1);
         assertThat(client.attachmentListCalls.get()).isEqualTo(2);
@@ -406,21 +474,29 @@ class ConfluenceClientServiceRetryTest {
 
     @Test
     void failingAttachmentListingPropagatesInsteadOfReturningAnEmptyList() {
-        ScriptedClient client = new ScriptedClient(HttpClientErrorException
-            .create(HttpStatus.FORBIDDEN, "nope", HttpHeaders.EMPTY, new byte[0], null));
+        ScriptedClient client =
+                new ScriptedClient(
+                        HttpClientErrorException.create(
+                                HttpStatus.FORBIDDEN,
+                                "nope",
+                                HttpHeaders.EMPTY,
+                                new byte[0],
+                                null));
 
         assertThatThrownBy(() -> client.getPageAttachments(INSTANCE, "page-1"))
-            .isInstanceOf(HttpClientErrorException.class);
+                .isInstanceOf(HttpClientErrorException.class);
     }
 
     @Test
     void persistentlyRateLimitedAttachmentListingFailsLoudly() {
         ScriptedClient client =
-            new ScriptedClient(tooManyRequests("1"), tooManyRequests("1"), tooManyRequests("1"));
+                new ScriptedClient(
+                        tooManyRequests("1"), tooManyRequests("1"), tooManyRequests("1"));
 
         assertThatThrownBy(() -> client.getPageAttachments(INSTANCE, "page-1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1")
-            .hasMessageContaining("429");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1")
+                .hasMessageContaining("429");
         assertThat(client.attachmentListCalls.get()).isEqualTo(MAX_ATTEMPTS);
     }
 }

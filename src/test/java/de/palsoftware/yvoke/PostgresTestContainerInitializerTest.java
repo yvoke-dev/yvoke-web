@@ -20,14 +20,16 @@ class PostgresTestContainerInitializerTest {
     @Test
     void serviceLoaderRegistersInitializerAsCreateContainerCmdModifierForAllTestcontainers() {
         List<CreateContainerCmdModifier> modifiers =
-            ServiceLoader.load(CreateContainerCmdModifier.class).stream()
-                .map(ServiceLoader.Provider::get).toList();
+                ServiceLoader.load(CreateContainerCmdModifier.class).stream()
+                        .map(ServiceLoader.Provider::get)
+                        .toList();
 
         assertThat(modifiers)
-            .as("Testcontainers creates RyukContainer internally via ServiceLoader-discovered "
-                + "CreateContainerCmdModifiers; without this registration Ryuk and any container "
-                + "without an explicit modifier still bind [::]:0 on macOS")
-            .anyMatch(PostgresTestContainerInitializer.class::isInstance);
+                .as(
+                        "Testcontainers creates RyukContainer internally via ServiceLoader-discovered "
+                                + "CreateContainerCmdModifiers; without this registration Ryuk and any container "
+                                + "without an explicit modifier still bind [::]:0 on macOS")
+                .anyMatch(PostgresTestContainerInitializer.class::isInstance);
     }
 
     @Test
@@ -35,10 +37,16 @@ class PostgresTestContainerInitializerTest {
         String previous = System.getProperty("docker.host");
         try {
             System.setProperty("docker.host", "unix:///var/run/docker.sock");
-            HostConfig hostConfig = new HostConfig().withPortBindings(List.of(
-                new PortBinding(Binding.empty(), ExposedPort.tcp(5432)),
-                new PortBinding(Binding.bindPort(15432), ExposedPort.tcp(8080)),
-                new PortBinding(Binding.bindIpAndPort("10.0.0.1", 9000), ExposedPort.tcp(9000))));
+            HostConfig hostConfig =
+                    new HostConfig()
+                            .withPortBindings(
+                                    List.of(
+                                            new PortBinding(Binding.empty(), ExposedPort.tcp(5432)),
+                                            new PortBinding(
+                                                    Binding.bindPort(15432), ExposedPort.tcp(8080)),
+                                            new PortBinding(
+                                                    Binding.bindIpAndPort("10.0.0.1", 9000),
+                                                    ExposedPort.tcp(9000))));
             CreateContainerCmd cmd = mock(CreateContainerCmd.class);
             when(cmd.getHostConfig()).thenReturn(hostConfig);
 
@@ -48,11 +56,11 @@ class PostgresTestContainerInitializerTest {
 
             Ports ports = hostConfig.getPortBindings();
             assertThat(ports.getBindings().get(ExposedPort.tcp(5432)))
-                .containsExactly(new Binding("127.0.0.1", null));
+                    .containsExactly(new Binding("127.0.0.1", null));
             assertThat(ports.getBindings().get(ExposedPort.tcp(8080)))
-                .containsExactly(new Binding("127.0.0.1", "15432"));
+                    .containsExactly(new Binding("127.0.0.1", "15432"));
             assertThat(ports.getBindings().get(ExposedPort.tcp(9000)))
-                .containsExactly(new Binding("10.0.0.1", "9000"));
+                    .containsExactly(new Binding("10.0.0.1", "9000"));
         } finally {
             if (previous == null) {
                 System.clearProperty("docker.host");
@@ -68,26 +76,31 @@ class PostgresTestContainerInitializerTest {
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("")).isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("   ")).isFalse();
         assertThat(
-            PostgresTestContainerInitializer.isRemoteTcpDockerHost("unix:///var/run/docker.sock"))
-            .isFalse();
+                        PostgresTestContainerInitializer.isRemoteTcpDockerHost(
+                                "unix:///var/run/docker.sock"))
+                .isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://localhost:2375"))
-            .isFalse();
+                .isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("TCP://LOCALHOST:2375"))
-            .isFalse();
+                .isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://127.0.0.1:2375"))
-            .isFalse();
+                .isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://[::1]:2375"))
-            .isFalse();
+                .isFalse();
         assertThat(PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://10.0.0.5:2375"))
-            .isTrue();
+                .isTrue();
         assertThat(
-            PostgresTestContainerInitializer.isRemoteTcpDockerHost("tcp://docker.example.com:2376"))
-            .isTrue();
+                        PostgresTestContainerInitializer.isRemoteTcpDockerHost(
+                                "tcp://docker.example.com:2376"))
+                .isTrue();
         assertThat(
-            PostgresTestContainerInitializer.isRemoteTcpDockerHost("ssh://user@remote-docker-host"))
-            .isTrue();
-        assertThat(PostgresTestContainerInitializer
-            .isRemoteTcpDockerHost("SSH://user@remote-docker-host:22")).isTrue();
+                        PostgresTestContainerInitializer.isRemoteTcpDockerHost(
+                                "ssh://user@remote-docker-host"))
+                .isTrue();
+        assertThat(
+                        PostgresTestContainerInitializer.isRemoteTcpDockerHost(
+                                "SSH://user@remote-docker-host:22"))
+                .isTrue();
     }
 
     @Test
@@ -95,8 +108,12 @@ class PostgresTestContainerInitializerTest {
         String previous = System.getProperty("docker.host");
         try {
             System.setProperty("docker.host", "ssh://user@remote-docker-host");
-            HostConfig hostConfig = new HostConfig()
-                .withPortBindings(List.of(new PortBinding(Binding.empty(), ExposedPort.tcp(5432))));
+            HostConfig hostConfig =
+                    new HostConfig()
+                            .withPortBindings(
+                                    List.of(
+                                            new PortBinding(
+                                                    Binding.empty(), ExposedPort.tcp(5432))));
             CreateContainerCmd cmd = mock(CreateContainerCmd.class);
             when(cmd.getHostConfig()).thenReturn(hostConfig);
 
@@ -104,7 +121,7 @@ class PostgresTestContainerInitializerTest {
 
             Ports ports = hostConfig.getPortBindings();
             assertThat(ports.getBindings().get(ExposedPort.tcp(5432)))
-                .containsExactly(Binding.empty());
+                    .containsExactly(Binding.empty());
         } finally {
             if (previous == null) {
                 System.clearProperty("docker.host");

@@ -31,19 +31,19 @@ public class EmbeddingService implements EmbeddingModel {
 
     @Autowired
     public EmbeddingService(
-        @Qualifier("embeddingRestClientBuilder") RestClient.Builder restClientBuilder,
-        @Value("${app.ai.embedding.api-key}") String apiKey,
-        @Value("${app.ai.embedding.model}") String model,
-        @Value("${app.ai.embedding.base-url}") String baseUrl,
-        @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
+            @Qualifier("embeddingRestClientBuilder") RestClient.Builder restClientBuilder,
+            @Value("${app.ai.embedding.api-key}") String apiKey,
+            @Value("${app.ai.embedding.model}") String model,
+            @Value("${app.ai.embedding.base-url}") String baseUrl,
+            @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
         this.restClient = restClientBuilder.baseUrl(baseUrl).build();
         this.apiKey = apiKey;
         this.model = model;
         this.eventPublisher = eventPublisher;
     }
 
-    public EmbeddingService(RestClient.Builder restClientBuilder, String apiKey, String model,
-        String baseUrl) {
+    public EmbeddingService(
+            RestClient.Builder restClientBuilder, String apiKey, String model, String baseUrl) {
         this(restClientBuilder, apiKey, model, baseUrl, null);
     }
 
@@ -79,7 +79,7 @@ public class EmbeddingService implements EmbeddingModel {
             // chars),
             // submit the current batch first.
             if (currentBatch.size() >= MAX_BATCH_SIZE
-                || (currentBatchCharCount + textLength > 400000 && !currentBatch.isEmpty())) {
+                    || (currentBatchCharCount + textLength > 400000 && !currentBatch.isEmpty())) {
                 allResults.addAll(doEmbedBatch(currentBatch));
                 currentBatch.clear();
                 currentBatchCharCount = 0;
@@ -96,15 +96,23 @@ public class EmbeddingService implements EmbeddingModel {
     }
 
     private List<float[]> doEmbedBatch(List<String> texts) {
-        log.info("Voyage Embedding Request: calling model `{}` with batch of {} texts", model,
-            texts.size());
-        VoyageResponse response = restClient.post().uri("/embeddings")
-            .header("Authorization", "Bearer " + apiKey).contentType(MediaType.APPLICATION_JSON)
-            .body(Map.of("model", model, "input", texts)).retrieve().body(VoyageResponse.class);
+        log.info(
+                "Voyage Embedding Request: calling model `{}` with batch of {} texts",
+                model,
+                texts.size());
+        VoyageResponse response =
+                restClient
+                        .post()
+                        .uri("/embeddings")
+                        .header("Authorization", "Bearer " + apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("model", model, "input", texts))
+                        .retrieve()
+                        .body(VoyageResponse.class);
 
         if (response == null || response.getData() == null) {
             throw new IllegalStateException(
-                "Failed to get embeddings from Voyage AI; empty response.");
+                    "Failed to get embeddings from Voyage AI; empty response.");
         }
 
         List<VoyageData> dataList = new ArrayList<>(response.getData());
@@ -114,17 +122,28 @@ public class EmbeddingService implements EmbeddingModel {
             try {
                 int totalTokens = 0;
                 if (response.getUsage() != null
-                    && response.getUsage().get("total_tokens") != null) {
+                        && response.getUsage().get("total_tokens") != null) {
                     totalTokens = ((Number) response.getUsage().get("total_tokens")).intValue();
                 } else {
-                    totalTokens = texts.stream()
-                        .mapToInt(t -> t != null ? Math.max(1, t.length() / 4) : 0).sum();
+                    totalTokens =
+                            texts.stream()
+                                    .mapToInt(t -> t != null ? Math.max(1, t.length() / 4) : 0)
+                                    .sum();
                 }
                 LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
-                eventPublisher.publishEvent(new LlmCallLoggedEvent(
-                    ctx != null ? ctx.conversationId() : null, ctx != null ? ctx.messageId() : null,
-                    ctx != null ? ctx.agentRunId() : null, ctx != null ? ctx.userId() : null,
-                    "embedding", "embedding", model, totalTokens, 0, 0, 0));
+                eventPublisher.publishEvent(
+                        new LlmCallLoggedEvent(
+                                ctx != null ? ctx.conversationId() : null,
+                                ctx != null ? ctx.messageId() : null,
+                                ctx != null ? ctx.agentRunId() : null,
+                                ctx != null ? ctx.userId() : null,
+                                "embedding",
+                                "embedding",
+                                model,
+                                totalTokens,
+                                0,
+                                0,
+                                0));
             } catch (Exception e) {
                 log.warn("Failed to publish embedding usage event: {}", e.getMessage());
             }

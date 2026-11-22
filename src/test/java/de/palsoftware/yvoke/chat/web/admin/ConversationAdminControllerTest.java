@@ -38,18 +38,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 @ExtendWith(MockitoExtension.class)
 class ConversationAdminControllerTest {
 
-    @Mock
-    private ConversationAdminService conversationAdminService;
+    @Mock private ConversationAdminService conversationAdminService;
 
-    @InjectMocks
-    private ConversationAdminController controller;
+    @InjectMocks private ConversationAdminController controller;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -63,36 +61,49 @@ class ConversationAdminControllerTest {
         UUID convId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         AdminConversation sampleConv =
-            new AdminConversation(convId, userId, "Alice", "alice@example.com", "Help needed",
-                "web", OffsetDateTime.now(), OffsetDateTime.now(), 2, 0);
+                new AdminConversation(
+                        convId,
+                        userId,
+                        "Alice",
+                        "alice@example.com",
+                        "Help needed",
+                        "web",
+                        OffsetDateTime.now(),
+                        OffsetDateTime.now(),
+                        2,
+                        0);
         ConversationUserOption userOption =
-            new ConversationUserOption(userId, "Alice", "alice@example.com");
+                new ConversationUserOption(userId, "Alice", "alice@example.com");
 
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(1L, 2L, 0L, 0L, 0L, List.of());
-        ConversationAdminView mockView = new ConversationAdminView(List.of(sampleConv),
-            List.of(userOption), stats, 0, 1, 1L, 20);
+                new ConversationOverviewStats(1L, 2L, 0L, 0L, 0L, List.of());
+        ConversationAdminView mockView =
+                new ConversationAdminView(
+                        List.of(sampleConv), List.of(userOption), stats, 0, 1, 1L, 20);
 
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
-        mockMvc.perform(get("/admin/conversations")).andExpect(status().isOk())
-            .andExpect(view().name("admin/conversations"))
-            .andExpect(model().attribute("currentPage", 0))
-            .andExpect(model().attribute("totalPages", 1))
-            .andExpect(model().attribute("totalCount", 1L))
-            .andExpect(model().attribute("pageSize", 20))
-            .andExpect(model().attribute("activeTab", "conversations"))
-            .andExpect(model().attribute("selectedTimeRange", "all"))
-            .andExpect(model().attribute("selectedFeedback", "all"))
-            .andExpect(model().attribute("fromDate", "")).andExpect(model().attribute("toDate", ""))
-            .andExpect(model().attribute("selectedUserIds", List.of()))
-            .andExpect(model().attribute("conversations", List.of(sampleConv)))
-            .andExpect(model().attribute("userOptions", List.of(userOption)))
-            .andExpect(model().attribute("stats", stats));
+        mockMvc.perform(get("/admin/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("admin/conversations"))
+                .andExpect(model().attribute("currentPage", 0))
+                .andExpect(model().attribute("totalPages", 1))
+                .andExpect(model().attribute("totalCount", 1L))
+                .andExpect(model().attribute("pageSize", 20))
+                .andExpect(model().attribute("activeTab", "conversations"))
+                .andExpect(model().attribute("selectedTimeRange", "all"))
+                .andExpect(model().attribute("selectedFeedback", "all"))
+                .andExpect(model().attribute("fromDate", ""))
+                .andExpect(model().attribute("toDate", ""))
+                .andExpect(model().attribute("selectedUserIds", List.of()))
+                .andExpect(model().attribute("conversations", List.of(sampleConv)))
+                .andExpect(model().attribute("userOptions", List.of(userOption)))
+                .andExpect(model().attribute("stats", stats));
 
         ArgumentCaptor<ConversationFilter> captor =
-            ArgumentCaptor.forClass(ConversationFilter.class);
+                ArgumentCaptor.forClass(ConversationFilter.class);
         verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
         ConversationFilter filter = captor.getValue();
         assertThat(filter.userIds()).isEmpty();
@@ -105,20 +116,24 @@ class ConversationAdminControllerTest {
     void testFilteringByUsers_AnonymousAndUuid() throws Exception {
         UUID validUserId = UUID.randomUUID();
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
-        mockMvc
-            .perform(
-                get("/admin/conversations").param("userIds", "anonymous", validUserId.toString()))
-            .andExpect(status().isOk()).andExpect(
-                model().attribute("selectedUserIds", List.of("anonymous", validUserId.toString())));
+        mockMvc.perform(
+                        get("/admin/conversations")
+                                .param("userIds", "anonymous", validUserId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(
+                        model().attribute(
+                                        "selectedUserIds",
+                                        List.of("anonymous", validUserId.toString())));
 
         ArgumentCaptor<ConversationFilter> captor =
-            ArgumentCaptor.forClass(ConversationFilter.class);
+                ArgumentCaptor.forClass(ConversationFilter.class);
         verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
         ConversationFilter filter = captor.getValue();
         assertThat(filter.includeAnonymous()).isTrue();
@@ -128,21 +143,25 @@ class ConversationAdminControllerTest {
     @Test
     void testFilteringByCustomDates_Valid() throws Exception {
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
-        mockMvc
-            .perform(get("/admin/conversations").param("timeRange", "custom")
-                .param("fromDate", "2026-09-01").param("toDate", "2026-09-10"))
-            .andExpect(status().isOk()).andExpect(model().attribute("selectedTimeRange", "custom"))
-            .andExpect(model().attribute("fromDate", "2026-09-01"))
-            .andExpect(model().attribute("toDate", "2026-09-10"));
+        mockMvc.perform(
+                        get("/admin/conversations")
+                                .param("timeRange", "custom")
+                                .param("fromDate", "2026-09-01")
+                                .param("toDate", "2026-09-10"))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedTimeRange", "custom"))
+                .andExpect(model().attribute("fromDate", "2026-09-01"))
+                .andExpect(model().attribute("toDate", "2026-09-10"));
 
         ArgumentCaptor<ConversationFilter> captor =
-            ArgumentCaptor.forClass(ConversationFilter.class);
+                ArgumentCaptor.forClass(ConversationFilter.class);
         verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
         ConversationFilter filter = captor.getValue();
         assertThat(filter.timeFilter().preset()).isEqualTo("custom");
@@ -153,21 +172,25 @@ class ConversationAdminControllerTest {
     @Test
     void testFilteringByInvertedCustomDates_NormalizedInModelAndFilter() throws Exception {
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
-        mockMvc
-            .perform(get("/admin/conversations").param("timeRange", "custom")
-                .param("fromDate", "2026-09-20").param("toDate", "2026-09-10"))
-            .andExpect(status().isOk()).andExpect(model().attribute("selectedTimeRange", "custom"))
-            .andExpect(model().attribute("fromDate", "2026-09-10"))
-            .andExpect(model().attribute("toDate", "2026-09-20"));
+        mockMvc.perform(
+                        get("/admin/conversations")
+                                .param("timeRange", "custom")
+                                .param("fromDate", "2026-09-20")
+                                .param("toDate", "2026-09-10"))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedTimeRange", "custom"))
+                .andExpect(model().attribute("fromDate", "2026-09-10"))
+                .andExpect(model().attribute("toDate", "2026-09-20"));
 
         ArgumentCaptor<ConversationFilter> captor =
-            ArgumentCaptor.forClass(ConversationFilter.class);
+                ArgumentCaptor.forClass(ConversationFilter.class);
         verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
         ConversationFilter filter = captor.getValue();
         assertThat(filter.timeFilter().fromDate()).isEqualTo(LocalDate.of(2026, 9, 10));
@@ -176,85 +199,98 @@ class ConversationAdminControllerTest {
 
     @Test
     void testValidation_MalformedDateRejectedWith400() throws Exception {
-        mockMvc.perform(get("/admin/conversations").param("timeRange", "custom").param("fromDate",
-            "not-a-valid-date")).andExpect(status().isBadRequest());
+        mockMvc.perform(
+                        get("/admin/conversations")
+                                .param("timeRange", "custom")
+                                .param("fromDate", "not-a-valid-date"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testValidation_MalformedUuidRejectedWith400() throws Exception {
         mockMvc.perform(get("/admin/conversations").param("userIds", "not-a-valid-uuid"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testValidation_UnknownFeedbackFilterRejectedWith400() throws Exception {
         mockMvc.perform(get("/admin/conversations").param("feedback", "garbage-feedback"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testValidation_UnknownTimeRangePresetRejectedWith400() throws Exception {
         mockMvc.perform(get("/admin/conversations").param("timeRange", "garbage-timerange"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testFeedbackFilterOptions_Valid() throws Exception {
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), emptyStats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
         mockMvc.perform(get("/admin/conversations").param("feedback", "positive"))
-            .andExpect(status().isOk())
-            .andExpect(model().attribute("selectedFeedback", "positive"));
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedFeedback", "positive"));
 
         mockMvc.perform(get("/admin/conversations").param("feedback", "negative"))
-            .andExpect(status().isOk())
-            .andExpect(model().attribute("selectedFeedback", "negative"));
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedFeedback", "negative"));
 
         mockMvc.perform(get("/admin/conversations").param("feedback", "none"))
-            .andExpect(status().isOk()).andExpect(model().attribute("selectedFeedback", "none"));
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedFeedback", "none"));
 
         mockMvc.perform(get("/admin/conversations").param("feedback", "any"))
-            .andExpect(status().isOk()).andExpect(model().attribute("selectedFeedback", "any"));
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("selectedFeedback", "any"));
     }
 
     @Test
     void testPaginationParametersDelegatedToService() throws Exception {
         ConversationOverviewStats emptyStats =
-            new ConversationOverviewStats(100L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(100L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), emptyStats, 2, 4, 100L, 30);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(2),
-            eq(30))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), emptyStats, 2, 4, 100L, 30);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(2), eq(30)))
+                .thenReturn(mockView);
 
         mockMvc.perform(get("/admin/conversations").param("page", "2").param("size", "30"))
-            .andExpect(status().isOk()).andExpect(model().attribute("currentPage", 2))
-            .andExpect(model().attribute("pageSize", 30))
-            .andExpect(model().attribute("totalPages", 4));
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("currentPage", 2))
+                .andExpect(model().attribute("pageSize", 30))
+                .andExpect(model().attribute("totalPages", 4));
         verify(conversationAdminService).getConversationAdminView(any(), eq(2), eq(30));
     }
 
     @Test
     void testAreaAdminFiltersByAdministeredAreas() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
+                new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
         ConversationAdminView mockView =
-            new ConversationAdminView(List.of(), List.of(), stats, 0, 1, 0L, 20);
-        when(conversationAdminService.getConversationAdminView(any(ConversationFilter.class), eq(0),
-            eq(20))).thenReturn(mockView);
+                new ConversationAdminView(List.of(), List.of(), stats, 0, 1, 0L, 20);
+        when(conversationAdminService.getConversationAdminView(
+                        any(ConversationFilter.class), eq(0), eq(20)))
+                .thenReturn(mockView);
 
         mockMvc.perform(get("/admin/conversations")).andExpect(status().isOk());
 
         ArgumentCaptor<ConversationFilter> captor =
-            ArgumentCaptor.forClass(ConversationFilter.class);
+                ArgumentCaptor.forClass(ConversationFilter.class);
         verify(conversationAdminService).getConversationAdminView(captor.capture(), eq(0), eq(20));
         ConversationFilter filter = captor.getValue();
         assertThat(filter.allowedAreasLower()).containsExactly("finance");

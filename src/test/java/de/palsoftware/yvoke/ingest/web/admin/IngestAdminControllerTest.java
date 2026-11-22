@@ -47,8 +47,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 public class IngestAdminControllerTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     private CollectionService collectionService;
     private SystemPromptService systemPromptService;
@@ -63,7 +62,7 @@ public class IngestAdminControllerTest {
     @BeforeEach
     public void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         collectionService = mock(CollectionService.class);
         systemPromptService = mock(SystemPromptService.class);
@@ -73,12 +72,24 @@ public class IngestAdminControllerTest {
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
-            OffsetDateTime.now(), "OIM");
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM",
+                        "desc",
+                        List.of("9.3"),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.getCollection("OIM")).thenReturn(Optional.of(oimCol));
 
-        controller = new IngestAdminController(collectionService, systemPromptService, jobService,
-            auditLogRepository, userService, tempDir.toString());
+        controller =
+                new IngestAdminController(
+                        collectionService,
+                        systemPromptService,
+                        jobService,
+                        auditLogRepository,
+                        userService,
+                        tempDir.toString());
 
         model = new ConcurrentModel();
         redirectAttributes = mock(RedirectAttributes.class);
@@ -99,23 +110,53 @@ public class IngestAdminControllerTest {
 
     @Test
     public void ingestView_filtersCollectionsAndPromptsByAdministeredArea() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
-            OffsetDateTime.now(), "OIM");
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM",
+                        "desc",
+                        List.of("9.3"),
+                        OffsetDateTime.now(),
+                        "OIM");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.listCollections()).thenReturn(List.of(oimCol, finCol));
 
-        SystemPrompt oimKg = new SystemPrompt("kg-oim", SystemPromptType.KG, "KG OIM", "",
-            Instant.now(), Instant.now(), false, "OIM");
-        SystemPrompt finKg = new SystemPrompt("kg-fin", SystemPromptType.KG, "KG Fin", "",
-            Instant.now(), Instant.now(), false, "Finance");
+        SystemPrompt oimKg =
+                new SystemPrompt(
+                        "kg-oim",
+                        SystemPromptType.KG,
+                        "KG OIM",
+                        "",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
+        SystemPrompt finKg =
+                new SystemPrompt(
+                        "kg-fin",
+                        SystemPromptType.KG,
+                        "KG Fin",
+                        "",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "Finance");
         when(systemPromptService.listPromptsByType(SystemPromptType.KG))
-            .thenReturn(List.of(oimKg, finKg));
+                .thenReturn(List.of(oimKg, finKg));
         when(systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE))
-            .thenReturn(List.of());
+                .thenReturn(List.of());
 
         String view = controller.ingestView(model, null);
         assertThat(view).isEqualTo("admin/ingest");
@@ -129,20 +170,41 @@ public class IngestAdminControllerTest {
 
     @Test
     public void uploadIngest_unauthorizedArea_throwsNotFound() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
 
-        assertThatThrownBy(
-            () -> controller.uploadIngest(file, "Finance", null, IngestJobKind.STANDARD.getValue(),
-                null, null, null, null, null, false, null, null, redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+        assertThatThrownBy(() ->
+                        controller.uploadIngest(
+                                file,
+                                "Finance",
+                                null,
+                                IngestJobKind.STANDARD.getValue(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                false,
+                                null,
+                                null,
+                                redirectAttributes))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test
@@ -150,8 +212,21 @@ public class IngestAdminControllerTest {
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(true);
 
-        String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            null, null, null, null, null, true, null, null, redirectAttributes);
+        String view =
+                controller.uploadIngest(
+                        file,
+                        "OIM",
+                        "9.3",
+                        IngestJobKind.STANDARD.getValue(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null,
+                        redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/ingest");
         verify(redirectAttributes).addFlashAttribute(eq("error"), anyString());
@@ -163,26 +238,38 @@ public class IngestAdminControllerTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("manual.md");
         when(file.getInputStream())
-            .thenReturn(new ByteArrayInputStream("Markdown content".getBytes()));
+                .thenReturn(new ByteArrayInputStream("Markdown content".getBytes()));
 
         UUID jobId = UUID.randomUUID();
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.created(jobId));
+                .thenReturn(EnqueueResult.created(jobId));
 
-        String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            null, null, null, null, null, true, null, null, redirectAttributes);
+        String view =
+                controller.uploadIngest(
+                        file,
+                        "OIM",
+                        "9.3",
+                        IngestJobKind.STANDARD.getValue(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null,
+                        redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         verify(jobService).enqueue(any(EnqueueRequest.class));
-        verify(auditLogRepository).log(eq("anonymous_admin"), eq("INGEST_DATA"),
-            eq(jobId.toString()), anyMap());
+        verify(auditLogRepository)
+                .log(eq("anonymous_admin"), eq("INGEST_DATA"), eq(jobId.toString()), anyMap());
     }
 
     /**
      * When the enqueue ADOPTS a job already in flight, the form must warn — never report success.
      *
-     * <p>
-     * Enqueue is idempotent per {@code (kind, source_ref, collection_id, tags)} while a job for
+     * <p>Enqueue is idempotent per {@code (kind, source_ref, collection_id, tags)} while a job for
      * that key is queued or running, so a duplicate returns {@code EnqueueResult.adopted(id)}: the
      * pre-existing job's id, and that job runs with the settings IT was enqueued with. Every option
      * on this form — the KG prompt, the summarize prompt, the document glob, the graph flag, the
@@ -194,11 +281,10 @@ public class IngestAdminControllerTest {
      * discarded — the only remedy (cancel that job and submit again) is precisely what the warning
      * text spells out.
      *
-     * <p>
-     * The distinction is one boolean deep — {@code result.created()} — and both branches redirect
-     * to the same place and write the same audit row, so the flash key is the ONLY observable
-     * difference. Every existing upload test stubs {@code EnqueueResult.created(...)}, so the
-     * adopted branch has no witness at all and could flash success without failing anything.
+     * <p>The distinction is one boolean deep — {@code result.created()} — and both branches
+     * redirect to the same place and write the same audit row, so the flash key is the ONLY
+     * observable difference. Every existing upload test stubs {@code EnqueueResult.created(...)},
+     * so the adopted branch has no witness at all and could flash success without failing anything.
      */
     @Test
     public void anAdoptedUploadWarnsThatTheChosenSettingsWereNotApplied() throws IOException {
@@ -206,23 +292,37 @@ public class IngestAdminControllerTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("manual.md");
         when(file.getInputStream())
-            .thenReturn(new ByteArrayInputStream("Markdown content".getBytes()));
+                .thenReturn(new ByteArrayInputStream("Markdown content".getBytes()));
 
         UUID activeJob = UUID.randomUUID();
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.adopted(activeJob));
+                .thenReturn(EnqueueResult.adopted(activeJob));
 
-        String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(),
-            "kg-prompt", "summarize-prompt", null, null, null, true, null, null,
-            redirectAttributes);
+        String view =
+                controller.uploadIngest(
+                        file,
+                        "OIM",
+                        "9.3",
+                        IngestJobKind.STANDARD.getValue(),
+                        "kg-prompt",
+                        "summarize-prompt",
+                        null,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null,
+                        redirectAttributes);
 
         // The redirect goes to the job that already exists — "showing that job".
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + activeJob);
 
         ArgumentCaptor<String> warning = ArgumentCaptor.forClass(String.class);
         verify(redirectAttributes).addFlashAttribute(eq("warning"), warning.capture());
-        assertThat(warning.getValue()).contains("already queued or running").contains("OIM")
-            .contains("were not applied");
+        assertThat(warning.getValue())
+                .contains("already queued or running")
+                .contains("OIM")
+                .contains("were not applied");
         verify(redirectAttributes, never()).addFlashAttribute(eq("success"), any());
     }
 
@@ -232,8 +332,7 @@ public class IngestAdminControllerTest {
      * because two downstream behaviours are built on top of it and both break silently if it
      * changes.
      *
-     * <p>
-     * First, the kind is the operator's ONLY diagnostic. {@code JobService.execute} fails an
+     * <p>First, the kind is the operator's ONLY diagnostic. {@code JobService.execute} fails an
      * unroutable job with the literal message {@code "no handler for kind=" + job.kind()}, which is
      * what the job-detail page shows; a controller that trimmed, lower-cased or defaulted the value
      * would make that message describe something the operator never typed, and a typo would become
@@ -243,21 +342,20 @@ public class IngestAdminControllerTest {
      * dir, or "just use the original filename") produces a job that dies minutes later with a path
      * error that has nothing to do with what the operator did.
      *
-     * <p>
-     * The absence of the allowlist is deliberate to record here rather than to "fix" in passing.
+     * <p>The absence of the allowlist is deliberate to record here rather than to "fix" in passing.
      * {@code POST /api/ingest/v1/upload} goes through {@code IngestService.uploadAndEnqueue}, which
      * checks {@code UPLOAD_KINDS} (standard, hierarchical, json-import) and answers 400; this path
      * calls {@code jobService.enqueue} directly and has no such check, so the same mistake surfaces
      * as a failed job an operator must interpret instead of a rejected form. That is a usability
-     * gap, NOT a privilege gap: {@code /admin/**} is already {@code hasRole("ADMIN")}, so
-     * {@code PrivilegedJobKindGuard.requireAdminForPrivilegedKind} — which only rejects a caller
-     * lacking ROLE_ADMIN — would be a strict no-op here, and CSRF stays enabled on the browser
-     * chain so the form cannot be driven cross-site. Nothing else in the suite posts a kind this
-     * endpoint does not serve.
+     * gap, NOT a privilege gap: {@code /admin/**} is already {@code hasRole("ADMIN")}, so {@code
+     * PrivilegedJobKindGuard.requireAdminForPrivilegedKind} — which only rejects a caller lacking
+     * ROLE_ADMIN — would be a strict no-op here, and CSRF stays enabled on the browser chain so the
+     * form cannot be driven cross-site. Nothing else in the suite posts a kind this endpoint does
+     * not serve.
      */
     @Test
     public void anUnrecognisedKindIsStagedAndEnqueuedVerbatimRatherThanRejected()
-        throws IOException {
+            throws IOException {
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("space-export.zip");
@@ -265,24 +363,39 @@ public class IngestAdminControllerTest {
 
         UUID jobId = UUID.randomUUID();
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture())).thenReturn(EnqueueResult.created(jobId));
 
         // A kind this form's upload path cannot serve: confluence-import's handler crawls a space
         // through a stored connector token and would be handed a staged FILE as its sourceRef.
-        String view = controller.uploadIngest(file, "OIM", "9.3", "confluence-import", null, null,
-            null, null, null, false, null, null, redirectAttributes);
+        String view =
+                controller.uploadIngest(
+                        file,
+                        "OIM",
+                        "9.3",
+                        "confluence-import",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         EnqueueRequest enqueued = requestCaptor.getValue();
         assertThat(enqueued.kind())
-            .as("the kind reaches the job row unchanged — 'no handler for kind=…' can name nothing "
-                + "else, so a normalized value would describe something the operator never typed")
-            .isEqualTo("confluence-import");
+                .as(
+                        "the kind reaches the job row unchanged — 'no handler for kind=…' can name nothing "
+                                + "else, so a normalized value would describe something the operator never typed")
+                .isEqualTo("confluence-import");
         assertThat(enqueued.sourceRef())
-            .as("a staged upload must live under app.upload-dir, or UploadPathGuard kills the job "
-                + "at execution time long after the enqueue reported success")
-            .startsWith(tempDir.toAbsolutePath().toString());
+                .as(
+                        "a staged upload must live under app.upload-dir, or UploadPathGuard kills the job "
+                                + "at execution time long after the enqueue reported success")
+                .startsWith(tempDir.toAbsolutePath().toString());
         // No allowlist on this path: nothing is rejected at submit time.
         verify(redirectAttributes, never()).addFlashAttribute(eq("error"), any());
     }
@@ -296,11 +409,24 @@ public class IngestAdminControllerTest {
 
         UUID jobId = UUID.randomUUID();
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture())).thenReturn(EnqueueResult.created(jobId));
 
-        String view = controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.CUSTOM.getValue(),
-            null, null, null, null, null, false, null, null, redirectAttributes);
+        String view =
+                controller.uploadIngest(
+                        file,
+                        "OIM",
+                        "9.3",
+                        IngestJobKind.CUSTOM.getValue(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        redirectAttributes);
 
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + jobId);
         EnqueueRequest captured = requestCaptor.getValue();
@@ -308,19 +434,17 @@ public class IngestAdminControllerTest {
     }
 
     /**
-     * An UNCHECKED graph checkbox must be written into the job settings as an explicit
-     * {@code enableGraph=false}, not left out.
+     * An UNCHECKED graph checkbox must be written into the job settings as an explicit {@code
+     * enableGraph=false}, not left out.
      *
-     * <p>
-     * An unchecked HTML checkbox posts no value at all, so the binder hands the controller
+     * <p>An unchecked HTML checkbox posts no value at all, so the binder hands the controller
      * {@code null} — and {@code CustomIngestService.isGraphEnabled} defaults to TRUE when the key
      * is ABSENT. The {@code else} branch that writes the false is therefore the only thing standing
      * between "the operator unticked graph injection" and "graph injection ran anyway": it inverts
      * the operator's explicit choice. That branch reads like redundant bookkeeping — writing a
      * value that is already the field's default — which is exactly the shape a cleanup deletes.
      *
-     * <p>
-     * The failure is not cosmetic and not visible on this page. Against a corpus zip that ships
+     * <p>The failure is not cosmetic and not visible on this page. Against a corpus zip that ships
      * {@code graph/entities.jsonl}, injection runs and writes entities and relationships into a
      * collection the operator deliberately kept graph-free; against one whose entities do not all
      * resolve to a document it aborts the job with a message about the knowledge graph the operator
@@ -328,8 +452,7 @@ public class IngestAdminControllerTest {
      * disagreement is only discoverable by reading {@code ingestion_jobs.settings} and knowing the
      * default.
      *
-     * <p>
-     * No existing test passes {@code null} here: {@code testUploadIngestCustomWithGraphDisabled}
+     * <p>No existing test passes {@code null} here: {@code testUploadIngestCustomWithGraphDisabled}
      * passes {@code Boolean.FALSE} (the ticked-then-unticked case, which takes the OTHER branch)
      * and {@code theJsonUniqueFieldChosenOnTheFormReachesTheJobSettings} passes {@code false}. The
      * unchecked-checkbox case — the ordinary one — has never been exercised.
@@ -338,14 +461,13 @@ public class IngestAdminControllerTest {
      * Section summarisation on the standard ingest is opt-in, and the operator's choice reaches the
      * handler only through {@code ingestion_jobs.settings}. That makes it the same three-way
      * contract that silently dropped {@code jsonUniqueField} for two releases: the form input's
-     * {@code name=}, this controller's {@code @RequestParam}, and
-     * {@code DocumentIngestService.isSectionSummariesEnabled}. Spring binds what you declare and
-     * drops the rest with no warning, so nothing would fail — the job would simply run without
-     * summaries while the page showed a ticked box.
+     * {@code name=}, this controller's {@code @RequestParam}, and {@code
+     * DocumentIngestService.isSectionSummariesEnabled}. Spring binds what you declare and drops the
+     * rest with no warning, so nothing would fail — the job would simply run without summaries
+     * while the page showed a ticked box.
      *
-     * <p>
-     * The unchecked case is asserted alongside it because an absent checkbox posts no value at all,
-     * and the default must be OFF: summarising costs an LLM call per uncached section.
+     * <p>The unchecked case is asserted alongside it because an absent checkbox posts no value at
+     * all, and the default must be OFF: summarising costs an LLM call per uncached section.
      */
     @Test
     void theSectionSummaryCheckboxChosenOnTheFormReachesTheJobSettings() throws IOException {
@@ -355,17 +477,30 @@ public class IngestAdminControllerTest {
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream("# T".getBytes()));
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
-        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(), null, null,
-            null, null, null, null, null, true, redirectAttributes);
+        controller.uploadIngest(
+                file,
+                "OIM",
+                "9.3",
+                IngestJobKind.STANDARD.getValue(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
-            .as("a ticked box that never reaches the job settings means the ingest silently "
-                + "produces no summaries and get_toc stays empty")
-            .containsEntry(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
+                .as(
+                        "a ticked box that never reaches the job settings means the ingest silently "
+                                + "produces no summaries and get_toc stays empty")
+                .containsEntry(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES, true);
     }
 
     @Test
@@ -376,16 +511,28 @@ public class IngestAdminControllerTest {
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream("# T".getBytes()));
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         // An unchecked checkbox posts no value at all.
-        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.STANDARD.getValue(), null, null,
-            null, null, null, null, null, null, redirectAttributes);
+        controller.uploadIngest(
+                file,
+                "OIM",
+                "9.3",
+                IngestJobKind.STANDARD.getValue(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
-            .doesNotContainKey(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES);
+                .doesNotContainKey(DocumentIngestService.SETTING_BUILD_SECTION_SUMMARIES);
     }
 
     @Test
@@ -396,27 +543,40 @@ public class IngestAdminControllerTest {
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream("zip bytes".getBytes()));
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         // enableGraph = null: an unchecked checkbox posts no value at all.
-        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.CUSTOM.getValue(), null, null,
-            null, null, null, null, null, null, redirectAttributes);
+        controller.uploadIngest(
+                file,
+                "OIM",
+                "9.3",
+                IngestJobKind.CUSTOM.getValue(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
-            .as("an absent key means isGraphEnabled defaults to TRUE — graph injection would run on"
-                + " a corpus the operator opted out of")
-            .containsEntry("enableGraph", false);
+                .as(
+                        "an absent key means isGraphEnabled defaults to TRUE — graph injection would run on"
+                                + " a corpus the operator opted out of")
+                .containsEntry("enableGraph", false);
     }
 
     /**
-     * The form has always posted {@code jsonUniqueField} (ingest.html) and
-     * {@code JsonImportJobHandler} has always read it from {@code ingestion_jobs.settings} — but
-     * the controller never bound it, so an admin-initiated json-import silently ignored the
-     * operator's choice and INSERTED every object instead of upserting. Re-importing a corpus
-     * through the admin page therefore duplicated every row, with the job reporting a normal count.
-     * The only other producer of that settings key is POST /api/ingest/v1/upload.
+     * The form has always posted {@code jsonUniqueField} (ingest.html) and {@code
+     * JsonImportJobHandler} has always read it from {@code ingestion_jobs.settings} — but the
+     * controller never bound it, so an admin-initiated json-import silently ignored the operator's
+     * choice and INSERTED every object instead of upserting. Re-importing a corpus through the
+     * admin page therefore duplicated every row, with the job reporting a normal count. The only
+     * other producer of that settings key is POST /api/ingest/v1/upload.
      */
     @Test
     void theJsonUniqueFieldChosenOnTheFormReachesTheJobSettings() throws Exception {
@@ -426,15 +586,27 @@ public class IngestAdminControllerTest {
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(requestCaptor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
-        controller.uploadIngest(file, "OIM", "9.3", IngestJobKind.JSON_IMPORT.getValue(), null,
-            null, null, null, null, false, "  customer.id  ", null, redirectAttributes);
+        controller.uploadIngest(
+                file,
+                "OIM",
+                "9.3",
+                IngestJobKind.JSON_IMPORT.getValue(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                "  customer.id  ",
+                null,
+                redirectAttributes);
 
         assertThat(requestCaptor.getValue().settings())
-            .as("without this the operator's unique field never reaches the handler")
-            .containsEntry("jsonUniqueField", "customer.id");
+                .as("without this the operator's unique field never reaches the handler")
+                .containsEntry("jsonUniqueField", "customer.id");
     }
 }

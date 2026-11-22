@@ -66,27 +66,22 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.util.ServletRequestPathUtils;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.security.mock=true")
 public class ChatAsyncControllerIT {
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private ChatConversationService chatConversationService;
+    @Autowired private ChatConversationService chatConversationService;
 
-    @Autowired
-    private MessageRepository messageRepository;
+    @Autowired private MessageRepository messageRepository;
 
-    @Autowired
-    private PlaybookService playbookService;
+    @Autowired private PlaybookService playbookService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @Autowired private ObjectMapper objectMapper;
 
     @MockitoBean(name = "llmProviderClient")
     private LlmClient llmClient;
@@ -127,8 +122,10 @@ public class ChatAsyncControllerIT {
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
 
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
-            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        List<GrantedAuthority> authorities =
+                List.of(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext secContext = SecurityContextHolder.createEmptyContext();
@@ -136,12 +133,13 @@ public class ChatAsyncControllerIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email,
-        String name) {
+    private static OidcLoginRequestPostProcessor testUserLogin(
+            String oid, String email, String name) {
         return oidcLogin()
-            .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
-                new SimpleGrantedAuthority("AREA_USER_OIM"));
+                .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
     @Test
@@ -158,32 +156,53 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch releaseCall = new CountDownLatch(1);
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            callStarted.countDown();
-            try {
-                releaseCall.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            cb.accept(new LlmResponseChunk("Hello async response!", null, null,
-                new LlmUsage(10, 10, 20, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                            callStarted.countDown();
+                            try {
+                                releaseCall.await(5, TimeUnit.SECONDS);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            cb.accept(
+                                    new LlmResponseChunk(
+                                            "Hello async response!",
+                                            null,
+                                            null,
+                                            new LlmUsage(10, 10, 20, 0, 0)));
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        MvcResult postResult = mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Hello async query").param("promptName", "correct-playbook"))
-            .andExpect(status().isAccepted()).andExpect(jsonPath("$.assistantMessageId").exists())
-            .andReturn();
+        MvcResult postResult =
+                mockMvc.perform(
+                                post("/chat/" + conv.id() + "/send-async")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param("content", "Hello async query")
+                                        .param("promptName", "correct-playbook"))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.assistantMessageId").exists())
+                        .andReturn();
 
         String responseBody = postResult.getResponse().getContentAsString();
         Map<String, String> responseMap = objectMapper.readValue(responseBody, Map.class);
@@ -192,19 +211,26 @@ public class ChatAsyncControllerIT {
         boolean started = callStarted.await(5, TimeUnit.SECONDS);
         assertThat(started).isTrue();
 
-        mockMvc
-            .perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/status")
-                .with(login))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("generating"));
+        mockMvc.perform(
+                        get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/status")
+                                .with(login))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("generating"));
 
         releaseCall.countDown();
 
         boolean done = false;
         for (int i = 0; i < 50; i++) {
-            MvcResult statusResult = mockMvc
-                .perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/status")
-                    .with(login))
-                .andExpect(status().isOk()).andReturn();
+            MvcResult statusResult =
+                    mockMvc.perform(
+                                    get("/chat/"
+                                                    + conv.id()
+                                                    + "/messages/"
+                                                    + assistantMessageId
+                                                    + "/status")
+                                            .with(login))
+                            .andExpect(status().isOk())
+                            .andReturn();
             String statusBody = statusResult.getResponse().getContentAsString();
             Map<String, Object> statusMap = objectMapper.readValue(statusBody, Map.class);
             if ("done".equals(statusMap.get("status"))) {
@@ -219,23 +245,20 @@ public class ChatAsyncControllerIT {
     }
 
     /**
-     * Documents a WART, deliberately: omitting {@code content} entirely is answered with 500
-     * {@code {"error":"Internal server error"}}, not with the 400 the framework would produce on
-     * its own.
+     * Documents a WART, deliberately: omitting {@code content} entirely is answered with 500 {@code
+     * {"error":"Internal server error"}}, not with the 400 the framework would produce on its own.
      *
-     * <p>
-     * {@code ApiExceptionHandler} must declare a catch-all
+     * <p>{@code ApiExceptionHandler} must declare a catch-all
      * {@code @ExceptionHandler(Exception.class)} for SEC-17 (no raw exception detail may reach an
-     * API caller), and an {@code @ExceptionHandler} match is resolved by
-     * {@code ExceptionHandlerExceptionResolver}, which runs AHEAD of
-     * {@code DefaultHandlerExceptionResolver}. So the catch-all claims
-     * {@code MissingServletRequestParameterException} before Spring's built-in 400 mapping ever
-     * gets a turn. That is precisely the mechanism the class documents at ApiExceptionHandler:41-44
-     * as the reason {@code MethodArgumentNotValidException} needed its own branch; the same
-     * reasoning was never applied to a missing request PARAMETER.
+     * API caller), and an {@code @ExceptionHandler} match is resolved by {@code
+     * ExceptionHandlerExceptionResolver}, which runs AHEAD of {@code
+     * DefaultHandlerExceptionResolver}. So the catch-all claims {@code
+     * MissingServletRequestParameterException} before Spring's built-in 400 mapping ever gets a
+     * turn. That is precisely the mechanism the class documents at ApiExceptionHandler:41-44 as the
+     * reason {@code MethodArgumentNotValidException} needed its own branch; the same reasoning was
+     * never applied to a missing request PARAMETER.
      *
-     * <p>
-     * Why it matters to a caller: 400 says "fix your request and it will work", 500 says "the
+     * <p>Why it matters to a caller: 400 says "fix your request and it will work", 500 says "the
      * server failed", and 500 is the one a desktop sync client or a script retries with backoff —
      * so a caller that forgot a parameter hammers an endpoint that can never succeed while the
      * operator watches server errors accumulate for a request that was never the server's fault. It
@@ -243,13 +266,12 @@ public class ChatAsyncControllerIT {
      * unreachable for the missing-parameter case, so the endpoint has two different answers for "no
      * content" depending on whether the parameter was empty or absent.
      *
-     * <p>
-     * This test pins the CURRENT behaviour so that fixing it is a deliberate act (add
-     * {@code @ExceptionHandler(MissingServletRequestParameterException.class)} to
-     * {@code ApiExceptionHandler} and change this assertion in the same commit) rather than
-     * something that drifts either way unnoticed. The body equality is the SEC-17 half and must
-     * stay whatever the status becomes: the exception message names the missing parameter and its
-     * type, and nothing generated from an exception may be echoed to an API caller.
+     * <p>This test pins the CURRENT behaviour so that fixing it is a deliberate act (add
+     * {@code @ExceptionHandler(MissingServletRequestParameterException.class)} to {@code
+     * ApiExceptionHandler} and change this assertion in the same commit) rather than something that
+     * drifts either way unnoticed. The body equality is the SEC-17 half and must stay whatever the
+     * status becomes: the exception message names the missing parameter and its type, and nothing
+     * generated from an exception may be echoed to an API caller.
      */
     @Test
     public void aMissingContentParameterIsAFiveHundredNotAFourHundred() throws Exception {
@@ -261,42 +283,51 @@ public class ChatAsyncControllerIT {
         // limited at 20/min per "user:" + auth.getName(), and every other test in this shared
         // context
         // authenticates as the default oidcLogin() subject.
-        var login = oidcLogin()
-            .idToken(token -> token.subject("missing-content-probe").claim("oid", userOid)
-                .claim("name", "User A").claim("email", "user-a-async@local"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
-                new SimpleGrantedAuthority("AREA_USER_OIM"));
+        var login =
+                oidcLogin()
+                        .idToken(token ->
+                                token.subject("missing-content-probe")
+                                        .claim("oid", userOid)
+                                        .claim("name", "User A")
+                                        .claim("email", "user-a-async@local"))
+                        .authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority("AREA_USER_OIM"));
 
         // No conversation is needed: @RequestParam resolution fails before the handler body runs.
-        String body = mockMvc
-            .perform(post("/chat/" + UUID.randomUUID() + "/send-async").with(login).with(csrf())
-                .param("promptName", "correct-playbook"))
-            .andExpect(status().isInternalServerError()).andReturn().getResponse()
-            .getContentAsString();
+        String body =
+                mockMvc.perform(
+                                post("/chat/" + UUID.randomUUID() + "/send-async")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param("promptName", "correct-playbook"))
+                        .andExpect(status().isInternalServerError())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
-        assertThat(body).as("SEC-17: the missing parameter's name and type must not be echoed back")
-            .isEqualTo("{\"error\":\"Internal server error\"}");
+        assertThat(body)
+                .as("SEC-17: the missing parameter's name and type must not be echoed back")
+                .isEqualTo("{\"error\":\"Internal server error\"}");
     }
 
     /**
      * An over-limit generation must be refused BEFORE the SSE response is committed, and it must be
      * refused out of the caller's OWN bucket. Two rules, one request.
      *
-     * <p>
-     * <b>The ordering.</b> {@code RateLimitInterceptor} runs in {@code preHandle}, so an over-limit
-     * send is a clean 429 with a JSON body a client can retry. Move the check into the handler (the
-     * natural edit when someone wants the limiter to see the resolved conversation, or to exempt a
-     * conversation the user owns) and {@code ChatSseController} has already returned an
+     * <p><b>The ordering.</b> {@code RateLimitInterceptor} runs in {@code preHandle}, so an
+     * over-limit send is a clean 429 with a JSON body a client can retry. Move the check into the
+     * handler (the natural edit when someone wants the limiter to see the resolved conversation, or
+     * to exempt a conversation the user owns) and {@code ChatSseController} has already returned an
      * {@code SseEmitter}: the response is committed as {@code 200 text/event-stream}, the user's
      * question has already been persisted by {@code prepare()}, and the browser gets a truncated
-     * answer instead of a retryable status. {@code RateLimitInterceptorTest} calls
-     * {@code preHandle} by hand, so it proves nothing about WHEN the container calls it, and
-     * {@code onlyTheTwoSendRoutesCarryTheRateLimiterWhileEveryChatRouteCarriesTheChatGate} pins
-     * only the route list — an interceptor mapped to the right route but consulted too late throws
-     * nothing, logs nothing and alters no response.
+     * answer instead of a retryable status. {@code RateLimitInterceptorTest} calls {@code
+     * preHandle} by hand, so it proves nothing about WHEN the container calls it, and {@code
+     * onlyTheTwoSendRoutesCarryTheRateLimiterWhileEveryChatRouteCarriesTheChatGate} pins only the
+     * route list — an interceptor mapped to the right route but consulted too late throws nothing,
+     * logs nothing and alters no response.
      *
-     * <p>
-     * <b>The bucket key.</b> SEC-03 partitions on {@code "user:" + auth.getName()}, which for an
+     * <p><b>The bucket key.</b> SEC-03 partitions on {@code "user:" + auth.getName()}, which for an
      * OIDC session is the {@code sub} claim — NOT the {@code oid} this application uses everywhere
      * else as its user identity. They are two different keys for the same person and nothing pinned
      * which one is used, so re-keying the limiter (to the remote address, to the oid, to the email)
@@ -304,15 +335,15 @@ public class ChatAsyncControllerIT {
      * request gets a fresh bucket and the limit stops existing. This test drains the bucket named
      * by the {@code sub} it then authenticates with, so the 429 can only arrive if that is the key.
      *
-     * <p>
-     * A distinct {@code sub} is used so this test draws on a bucket of its own — every other test
-     * in this shared context authenticates as the default {@code oidcLogin()} subject, and draining
-     * that one would 429 them. The drain assertions are the non-vacuity guard: with rate limiting
-     * disabled the loop would never empty the bucket and everything below would prove nothing.
+     * <p>A distinct {@code sub} is used so this test draws on a bucket of its own — every other
+     * test in this shared context authenticates as the default {@code oidcLogin()} subject, and
+     * draining that one would 429 them. The drain assertions are the non-vacuity guard: with rate
+     * limiting disabled the loop would never empty the bucket and everything below would prove
+     * nothing.
      */
     @Test
     public void anOverLimitSendIsRejectedBeforeTheSseStreamCommitsAndPersistsNothing()
-        throws Exception {
+            throws Exception {
         String userOid = "rate-limit-probe-oid";
         String subject = "rate-limit-probe-sub";
         userRepository.upsert(userOid, "rate-limit-probe@local", "Rate Limit Probe");
@@ -323,38 +354,53 @@ public class ChatAsyncControllerIT {
 
         GenerationRateLimiter limiter = context.getBean(GenerationRateLimiter.class);
         int capacity =
-            context.getEnvironment().getRequiredProperty("app.rate-limit.capacity", Integer.class);
+                context.getEnvironment()
+                        .getRequiredProperty("app.rate-limit.capacity", Integer.class);
         String bucket = "user:" + subject;
         for (int i = 0; i < capacity; i++) {
             assertThat(limiter.tryAcquire(bucket))
-                .as("draining token %d of the configured capacity", i + 1).isTrue();
+                    .as("draining token %d of the configured capacity", i + 1)
+                    .isTrue();
         }
         assertThat(limiter.tryAcquire(bucket))
-            .as("the bucket keyed by the OIDC sub must really be empty, or the 429 below proves "
-                + "nothing")
-            .isFalse();
+                .as(
+                        "the bucket keyed by the OIDC sub must really be empty, or the 429 below proves "
+                                + "nothing")
+                .isFalse();
 
-        var login = oidcLogin()
-            .idToken(token -> token.subject(subject).claim("oid", userOid)
-                .claim("name", "Rate Limit Probe").claim("email", "rate-limit-probe@local"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
-                new SimpleGrantedAuthority("AREA_USER_OIM"));
+        var login =
+                oidcLogin()
+                        .idToken(token ->
+                                token.subject(subject)
+                                        .claim("oid", userOid)
+                                        .claim("name", "Rate Limit Probe")
+                                        .claim("email", "rate-limit-probe@local"))
+                        .authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority("AREA_USER_OIM"));
 
-        MvcResult result = mockMvc
-            .perform(post("/chat/" + conv.id() + "/send").with(login).with(csrf()).param("content",
-                "this question must never reach the model"))
-            .andExpect(status().isTooManyRequests()).andExpect(request().asyncNotStarted())
-            .andReturn();
+        MvcResult result =
+                mockMvc.perform(
+                                post("/chat/" + conv.id() + "/send")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param(
+                                                "content",
+                                                "this question must never reach the model"))
+                        .andExpect(status().isTooManyRequests())
+                        .andExpect(request().asyncNotStarted())
+                        .andReturn();
 
         assertThat(result.getResponse().getContentType())
-            .as("the refusal must not be the streaming response the handler would have opened")
-            .doesNotContain("text/event-stream");
+                .as("the refusal must not be the streaming response the handler would have opened")
+                .doesNotContain("text/event-stream");
         assertThat(result.getResponse().getContentAsString())
-            .as("a retryable 429 the client can act on, not a stream that dies mid-answer")
-            .contains("Rate limit exceeded");
+                .as("a retryable 429 the client can act on, not a stream that dies mid-answer")
+                .contains("Rate limit exceeded");
         assertThat(messageRepository.countByConversationId(conv.id()))
-            .as("preHandle runs before the controller, so the question is never persisted either")
-            .isZero();
+                .as(
+                        "preHandle runs before the controller, so the question is never persisted either")
+                .isZero();
     }
 
     @Test
@@ -368,11 +414,14 @@ public class ChatAsyncControllerIT {
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Hello").param("promptName", "non-existent-playbook"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("The selected playbook is invalid."));
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/send-async")
+                                .with(login)
+                                .with(csrf())
+                                .param("content", "Hello")
+                                .param("promptName", "non-existent-playbook"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("The selected playbook is invalid."));
     }
 
     @Test
@@ -384,23 +433,36 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         String userBOid = "user-b-async-test-oid";
         userRepository.upsert(userBOid, "user-b-async@local", "User B");
         var loginB = testUserLogin(userBOid, "user-b-async@local", "User B");
 
         // User B cannot send message to User A's conversation
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(loginB).with(csrf())
-                .param("content", "Hello").param("promptName", "correct-playbook"))
-            .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/send-async")
+                                .with(loginB)
+                                .with(csrf())
+                                .param("content", "Hello")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isForbidden());
 
         // User B cannot poll message status on User A's conversation
         mockMvc.perform(
-            get("/chat/" + conv.id() + "/messages/" + UUID.randomUUID() + "/status").with(loginB))
-            .andExpect(status().isForbidden());
+                        get("/chat/" + conv.id() + "/messages/" + UUID.randomUUID() + "/status")
+                                .with(loginB))
+                .andExpect(status().isForbidden());
     }
 
     /**
@@ -414,57 +476,73 @@ public class ChatAsyncControllerIT {
      * user believes is theirs and burning their quota, and (unlike the SSE endpoint) it needs no
      * response to be read back to do damage.
      *
-     * <p>
-     * The two halves must be the SAME request but for the token. Asserting only the 403 would pass
-     * against a chain that rejects the request for some unrelated reason — a wrong playbook name,
-     * an unowned conversation — so the accepted half is what proves the token is the only
+     * <p>The two halves must be the SAME request but for the token. Asserting only the 403 would
+     * pass against a chain that rejects the request for some unrelated reason — a wrong playbook
+     * name, an unowned conversation — so the accepted half is what proves the token is the only
      * difference.
      */
     @Test
     public void aSendAsyncWithoutACsrfTokenIsRejectedWhileTheIdenticalRequestWithOneIsAccepted()
-        throws Exception {
+            throws Exception {
         String userAOid = "user-a-async-test-oid";
         userRepository.upsert(userAOid, "user-a-async@local", "User A");
         setSecurityContext(userAOid, "user-a-async@local", "User A");
 
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("ok", null, null, new LlmUsage(1, 1, 2, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                            cb.accept(
+                                    new LlmResponseChunk(
+                                            "ok", null, null, new LlmUsage(1, 1, 2, 0, 0)));
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login)
-                .param("content", "Hello async query").param("promptName", "correct-playbook"))
-            .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/send-async")
+                                .with(login)
+                                .param("content", "Hello async query")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isForbidden());
 
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Hello async query").param("promptName", "correct-playbook"))
-            .andExpect(status().isAccepted());
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/send-async")
+                                .with(login)
+                                .with(csrf())
+                                .param("content", "Hello async query")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isAccepted());
     }
 
     /**
      * The rate limiter's path list is a two-sided decision and each side fails in the opposite
      * direction, silently.
      *
-     * <p>
-     * Too narrow: {@code /chat/{id}/send} and {@code /chat/{id}/send-async} are two doors into the
-     * SAME generation path — the SSE one and the poll-based one — and the browser picks between
+     * <p>Too narrow: {@code /chat/{id}/send} and {@code /chat/{id}/send-async} are two doors into
+     * the SAME generation path — the SSE one and the poll-based one — and the browser picks between
      * them at runtime. Dropping either pattern leaves that door completely unlimited while the
      * other still looks guarded, so SEC-03 appears intact in review and in any manual test that
      * happens to use the other mode, and one principal can spend unbounded LLM budget through the
      * unguarded one.
      *
-     * <p>
-     * Too wide: {@code /chat/{id}/messages/{messageId}/status} is polled every three seconds for
+     * <p>Too wide: {@code /chat/{id}/messages/{messageId}/status} is polled every three seconds for
      * the whole duration of a generation, and {@code /chat/{id}/stop} is how a user cancels one. At
      * the configured 20 requests per 60 seconds, widening the pattern to {@code /chat/**} — the
      * obvious "just cover the whole chat area" edit — exhausts a user's bucket in about a minute of
@@ -472,63 +550,64 @@ public class ChatAsyncControllerIT {
      * user cannot cancel the generation that is burning their quota. That is why the two cheap
      * GET/stop routes are deliberately excluded rather than accidentally missed.
      *
-     * <p>
-     * Nothing else pins this. {@code RateLimitInterceptorTest} drives the interceptor directly with
-     * a hand-built request, so it is green whatever routes it is mapped to; and an interceptor that
-     * is simply never invoked throws nothing, logs nothing and alters no response — the only
+     * <p>Nothing else pins this. {@code RateLimitInterceptorTest} drives the interceptor directly
+     * with a hand-built request, so it is green whatever routes it is mapped to; and an interceptor
+     * that is simply never invoked throws nothing, logs nothing and alters no response — the only
      * evidence is a 429 that never arrives. The chat-gate assertions are the control: they prove
-     * the probe requests really do resolve to chat handlers with interceptors attached, so a
-     * {@code doesNotHaveAnyElementsOfTypes} above cannot pass merely because the chain came back
-     * empty.
+     * the probe requests really do resolve to chat handlers with interceptors attached, so a {@code
+     * doesNotHaveAnyElementsOfTypes} above cannot pass merely because the chain came back empty.
      *
-     * <p>
-     * The chain is resolved through {@code RequestMappingHandlerMapping} rather than by performing
-     * the requests, because performing them would consume rate-limit tokens and start a real
-     * generation — the measurement would perturb the thing being measured.
+     * <p>The chain is resolved through {@code RequestMappingHandlerMapping} rather than by
+     * performing the requests, because performing them would consume rate-limit tokens and start a
+     * real generation — the measurement would perturb the thing being measured.
      */
     @Test
     public void onlyTheTwoSendRoutesCarryTheRateLimiterWhileEveryChatRouteCarriesTheChatGate()
-        throws Exception {
+            throws Exception {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
         List<HandlerInterceptor> send =
-            interceptorsFor("POST", "/chat/" + conversationId + "/send");
+                interceptorsFor("POST", "/chat/" + conversationId + "/send");
         List<HandlerInterceptor> sendAsync =
-            interceptorsFor("POST", "/chat/" + conversationId + "/send-async");
-        List<HandlerInterceptor> statusPoll = interceptorsFor("GET",
-            "/chat/" + conversationId + "/messages/" + messageId + "/status");
+                interceptorsFor("POST", "/chat/" + conversationId + "/send-async");
+        List<HandlerInterceptor> statusPoll =
+                interceptorsFor(
+                        "GET", "/chat/" + conversationId + "/messages/" + messageId + "/status");
         List<HandlerInterceptor> stop =
-            interceptorsFor("POST", "/chat/" + conversationId + "/stop");
+                interceptorsFor("POST", "/chat/" + conversationId + "/stop");
 
-        assertThat(send).as("the SSE generation entry point must be rate limited")
-            .hasAtLeastOneElementOfType(RateLimitInterceptor.class);
-        assertThat(sendAsync).as("the async generation entry point must be rate limited too")
-            .hasAtLeastOneElementOfType(RateLimitInterceptor.class);
+        assertThat(send)
+                .as("the SSE generation entry point must be rate limited")
+                .hasAtLeastOneElementOfType(RateLimitInterceptor.class);
+        assertThat(sendAsync)
+                .as("the async generation entry point must be rate limited too")
+                .hasAtLeastOneElementOfType(RateLimitInterceptor.class);
         assertThat(statusPoll)
-            .as("the 3-second status poll must NOT be limited; it would 429 mid-answer")
-            .doesNotHaveAnyElementsOfTypes(RateLimitInterceptor.class);
-        assertThat(stop).as("Stop must never be rate limited; it is the way out of a runaway run")
-            .doesNotHaveAnyElementsOfTypes(RateLimitInterceptor.class);
+                .as("the 3-second status poll must NOT be limited; it would 429 mid-answer")
+                .doesNotHaveAnyElementsOfTypes(RateLimitInterceptor.class);
+        assertThat(stop)
+                .as("Stop must never be rate limited; it is the way out of a runaway run")
+                .doesNotHaveAnyElementsOfTypes(RateLimitInterceptor.class);
 
         assertThat(send).hasAtLeastOneElementOfType(ChatEnabledInterceptor.class);
         assertThat(sendAsync).hasAtLeastOneElementOfType(ChatEnabledInterceptor.class);
         assertThat(statusPoll).hasAtLeastOneElementOfType(ChatEnabledInterceptor.class);
         assertThat(stop)
-            .as("app.chat.enabled=false must switch off every chat route, not just sends")
-            .hasAtLeastOneElementOfType(ChatEnabledInterceptor.class);
+                .as("app.chat.enabled=false must switch off every chat route, not just sends")
+                .hasAtLeastOneElementOfType(ChatEnabledInterceptor.class);
     }
 
     /**
-     * Resolves the handler execution chain for a route without executing it. A
-     * {@link org.springframework.web.servlet.handler.MappedInterceptor} whose patterns match is
-     * unwrapped by {@code AbstractHandlerMapping}, so the chain holds the raw interceptor
-     * instances. The parsed request path has to be cached explicitly: outside a real dispatch
-     * nothing has done it, and the mapping requires it when {@code PathPatternParser} is in use.
+     * Resolves the handler execution chain for a route without executing it. A {@link
+     * org.springframework.web.servlet.handler.MappedInterceptor} whose patterns match is unwrapped
+     * by {@code AbstractHandlerMapping}, so the chain holds the raw interceptor instances. The
+     * parsed request path has to be cached explicitly: outside a real dispatch nothing has done it,
+     * and the mapping requires it when {@code PathPatternParser} is in use.
      */
     private List<HandlerInterceptor> interceptorsFor(String method, String uri) throws Exception {
         RequestMappingHandlerMapping mapping =
-            context.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
+                context.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
         MockHttpServletRequest request = new MockHttpServletRequest(method, uri);
         ServletRequestPathUtils.parseAndCache(request);
 
@@ -546,32 +625,49 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         CountDownLatch callStarted = new CountDownLatch(1);
         CountDownLatch cancellationHandled = new CountDownLatch(1);
 
-        doAnswer(inv -> {
-            callStarted.countDown();
-            try {
-                // Sleep longer to ensure cancellation is requested from test thread
-                Thread.sleep(10000);
-            } catch (InterruptedException e) {
-                cancellationHandled.countDown();
-                Thread.currentThread().interrupt();
-                throw new CancellationException("Chat generation cancelled");
-            }
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            callStarted.countDown();
+                            try {
+                                // Sleep longer to ensure cancellation is requested from test thread
+                                Thread.sleep(10000);
+                            } catch (InterruptedException e) {
+                                cancellationHandled.countDown();
+                                Thread.currentThread().interrupt();
+                                throw new CancellationException("Chat generation cancelled");
+                            }
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        MvcResult postResult = mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Hello stop query").param("promptName", "correct-playbook"))
-            .andExpect(status().isAccepted()).andExpect(jsonPath("$.assistantMessageId").exists())
-            .andReturn();
+        MvcResult postResult =
+                mockMvc.perform(
+                                post("/chat/" + conv.id() + "/send-async")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param("content", "Hello stop query")
+                                        .param("promptName", "correct-playbook"))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.assistantMessageId").exists())
+                        .andReturn();
 
         String responseBody = postResult.getResponse().getContentAsString();
         Map<String, String> responseMap = objectMapper.readValue(responseBody, Map.class);
@@ -582,7 +678,7 @@ public class ChatAsyncControllerIT {
 
         // Call stop endpoint
         mockMvc.perform(post("/chat/" + conv.id() + "/stop").with(login).with(csrf()))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
 
         boolean cancelled = cancellationHandled.await(5, TimeUnit.SECONDS);
         assertThat(cancelled).isTrue();
@@ -592,17 +688,23 @@ public class ChatAsyncControllerIT {
         // failures as "[Generation stopped by user]".
         boolean cancelledStatus = false;
         for (int i = 0; i < 50; i++) {
-            MvcResult statusResult = mockMvc
-                .perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/status")
-                    .with(login))
-                .andExpect(status().isOk()).andReturn();
+            MvcResult statusResult =
+                    mockMvc.perform(
+                                    get("/chat/"
+                                                    + conv.id()
+                                                    + "/messages/"
+                                                    + assistantMessageId
+                                                    + "/status")
+                                            .with(login))
+                            .andExpect(status().isOk())
+                            .andReturn();
             String statusBody = statusResult.getResponse().getContentAsString();
             Map<String, Object> statusMap = objectMapper.readValue(statusBody, Map.class);
             if ("cancelled".equals(statusMap.get("status"))) {
                 cancelledStatus = true;
                 Map<String, Object> messageMap = (Map<String, Object>) statusMap.get("message");
                 assertThat((String) messageMap.get("content"))
-                    .contains("[Generation stopped by user]");
+                        .contains("[Generation stopped by user]");
                 break;
             }
             Thread.sleep(100);
@@ -623,32 +725,56 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("failure-playbook", "Failure Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "failure-playbook",
+                "Failure Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
-        doAnswer(inv -> {
-            throw new IllegalStateException("simulated provider fault");
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            throw new IllegalStateException("simulated provider fault");
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userOid, "user-fail-async@local", "User Fail");
 
-        MvcResult result = mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "trigger a failure").param("promptName", "failure-playbook"))
-            .andExpect(status().isAccepted()).andReturn();
+        MvcResult result =
+                mockMvc.perform(
+                                post("/chat/" + conv.id() + "/send-async")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param("content", "trigger a failure")
+                                        .param("promptName", "failure-playbook"))
+                        .andExpect(status().isAccepted())
+                        .andReturn();
 
         Map<String, String> responseMap =
-            objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
+                objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
         UUID assistantMessageId = UUID.fromString(responseMap.get("assistantMessageId"));
 
         boolean errored = false;
         for (int i = 0; i < 50; i++) {
-            MvcResult statusResult = mockMvc
-                .perform(get("/chat/" + conv.id() + "/messages/" + assistantMessageId + "/status")
-                    .with(login))
-                .andExpect(status().isOk()).andReturn();
+            MvcResult statusResult =
+                    mockMvc.perform(
+                                    get("/chat/"
+                                                    + conv.id()
+                                                    + "/messages/"
+                                                    + assistantMessageId
+                                                    + "/status")
+                                            .with(login))
+                            .andExpect(status().isOk())
+                            .andReturn();
             Map<String, Object> statusMap =
-                objectMapper.readValue(statusResult.getResponse().getContentAsString(), Map.class);
+                    objectMapper.readValue(
+                            statusResult.getResponse().getContentAsString(), Map.class);
             if ("error".equals(statusMap.get("status"))) {
                 errored = true;
                 Map<String, Object> messageMap = (Map<String, Object>) statusMap.get("message");
@@ -667,18 +793,16 @@ public class ChatAsyncControllerIT {
      * The wire format of {@code Message.createdAt}, which is a real contract and is decided by a
      * framework default that no line of this project states.
      *
-     * <p>
-     * There are two Jackson mappers in this application and they are not the same library. The
-     * {@code ObjectMapper} bean in {@code RestClientConfig} is Jackson 2
-     * ({@code com.fasterxml.jackson.databind}) and is only used where code injects it explicitly —
+     * <p>There are two Jackson mappers in this application and they are not the same library. The
+     * {@code ObjectMapper} bean in {@code RestClientConfig} is Jackson 2 ({@code
+     * com.fasterxml.jackson.databind}) and is only used where code injects it explicitly —
      * repositories, SDK plumbing, this test. Everything that goes out over MVC is written by the
      * Jackson 3 ({@code tools.jackson}) mapper that Boot 4 builds, and {@code DateTimeFeature
      * .WRITE_DATES_AS_TIMESTAMPS} is disabled by default there — so an {@code Instant} serializes
-     * as an ISO-8601 string. Nothing in {@code application.yml} says so: it carries no
-     * {@code spring.jackson} block at all.
+     * as an ISO-8601 string. Nothing in {@code application.yml} says so: it carries no {@code
+     * spring.jackson} block at all.
      *
-     * <p>
-     * Anyone adding a {@code spring.jackson.datatype.datetime.write-dates-as-timestamps} key, a
+     * <p>Anyone adding a {@code spring.jackson.datatype.datetime.write-dates-as-timestamps} key, a
      * mapper-builder customizer, or an {@code @Primary} mapper of their own — all of which are
      * routine and none of which mention this endpoint — flips every timestamp in every JSON
      * response from {@code "2026-08-08T09:12:33.481Z"} to {@code 1786...}. That is a
@@ -686,11 +810,10 @@ public class ChatAsyncControllerIT {
      * receives from {@code /api/chat/v1/conversations/{id}/messages}, and a client parsing a date
      * string gets a hard failure while one doing arithmetic on it silently lands in 1970.
      *
-     * <p>
-     * Nothing in this repository asserts it. {@code thread.js} never reads the field, so no browser
-     * test can notice; the ITs that already read this endpoint's body pull out {@code status} and
-     * {@code content} only; and the change produces no compile error and no failing assertion
-     * anywhere — the JSON is still valid JSON.
+     * <p>Nothing in this repository asserts it. {@code thread.js} never reads the field, so no
+     * browser test can notice; the ITs that already read this endpoint's body pull out {@code
+     * status} and {@code content} only; and the change produces no compile error and no failing
+     * assertion anywhere — the JSON is still valid JSON.
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -704,15 +827,33 @@ public class ChatAsyncControllerIT {
 
         // A terminal message, so the poll returns the serialized Message and not just a status.
         UUID doneMessageId = UUID.randomUUID();
-        messageRepository.save(new Message(doneMessageId, conv.id(), "assistant", "An answer.",
-            null, List.of(), List.of(), Instant.now(), null, null, null, null, null, "done"));
+        messageRepository.save(
+                new Message(
+                        doneMessageId,
+                        conv.id(),
+                        "assistant",
+                        "An answer.",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "done"));
 
         var login = testUserLogin(userOid, "user-a-async@local", "User A");
 
-        String body = mockMvc
-            .perform(
-                get("/chat/" + conv.id() + "/messages/" + doneMessageId + "/status").with(login))
-            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String body =
+                mockMvc.perform(
+                                get("/chat/" + conv.id() + "/messages/" + doneMessageId + "/status")
+                                        .with(login))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         Map<String, Object> statusMap = objectMapper.readValue(body, Map.class);
         assertThat(statusMap.get("status")).isEqualTo("done");
@@ -721,13 +862,18 @@ public class ChatAsyncControllerIT {
         Object createdAt = messageMap.get("createdAt");
 
         assertThat(createdAt)
-            .as("createdAt must be an ISO-8601 STRING; a number means WRITE_DATES_AS_TIMESTAMPS "
-                + "was re-enabled and every client parsing this field breaks. Body: %s", body)
-            .isInstanceOf(String.class);
+                .as(
+                        "createdAt must be an ISO-8601 STRING; a number means WRITE_DATES_AS_TIMESTAMPS "
+                                + "was re-enabled and every client parsing this field breaks. Body: %s",
+                        body)
+                .isInstanceOf(String.class);
         assertThat(Instant.parse((String) createdAt))
-            .as("and it must round-trip back to the instant it represents").isNotNull();
-        assertThat(body).as("no epoch number may stand where the timestamp belongs")
-            .doesNotContain("\"createdAt\":1").doesNotContain("\"createdAt\":[");
+                .as("and it must round-trip back to the instant it represents")
+                .isNotNull();
+        assertThat(body)
+                .as("no epoch number may stand where the timestamp belongs")
+                .doesNotContain("\"createdAt\":1")
+                .doesNotContain("\"createdAt\":[");
     }
 
     @Test
@@ -741,14 +887,30 @@ public class ChatAsyncControllerIT {
 
         // Insert assistant message with status generating
         UUID generatingMsgId = UUID.randomUUID();
-        Message generatingMsg = new Message(generatingMsgId, conv.id(), "assistant", "", null,
-            List.of(), List.of(), Instant.now(), null, null, null, null, null, "generating");
+        Message generatingMsg =
+                new Message(
+                        generatingMsgId,
+                        conv.id(),
+                        "assistant",
+                        "",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "generating");
         messageRepository.save(generatingMsg);
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        MvcResult viewResult = mockMvc.perform(get("/chat/" + conv.id()).with(login))
-            .andExpect(status().isOk()).andReturn();
+        MvcResult viewResult =
+                mockMvc.perform(get("/chat/" + conv.id()).with(login))
+                        .andExpect(status().isOk())
+                        .andReturn();
 
         String htmlContent = viewResult.getResponse().getContentAsString();
         assertThat(htmlContent).contains("sync-loader-container");
@@ -766,40 +928,86 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook Title",
-            "Correct Playbook Desc", "template", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook Title",
+                "Correct Playbook Desc",
+                "template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         // 1. Insert a user message
         UUID userMsgId = UUID.randomUUID();
         Message userMsg =
-            new Message(userMsgId, conv.id(), "user", "First question", "correct-playbook",
-                List.of(), List.of(), Instant.now(), null, null, null, null, null, "done");
+                new Message(
+                        userMsgId,
+                        conv.id(),
+                        "user",
+                        "First question",
+                        "correct-playbook",
+                        List.of(),
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "done");
         messageRepository.save(userMsg);
 
         // 2. Insert a generating assistant message
         UUID generatingMsgId = UUID.randomUUID();
-        Message generatingMsg = new Message(generatingMsgId, conv.id(), "assistant", "Thinking...",
-            null, List.of(), List.of(), Instant.now(), null, null, null, null, null, "generating");
+        Message generatingMsg =
+                new Message(
+                        generatingMsgId,
+                        conv.id(),
+                        "assistant",
+                        "Thinking...",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "generating");
         messageRepository.save(generatingMsg);
 
         // 3. Set up llmClient generateStream mock to capture requests
         CopyOnWriteArrayList<LlmRequest> capturedRequests = new CopyOnWriteArrayList<>();
-        doAnswer(inv -> {
-            LlmRequest req = inv.getArgument(0);
-            capturedRequests.add(req);
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(
-                new LlmResponseChunk("Hello again!", null, null, new LlmUsage(10, 10, 20, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            LlmRequest req = inv.getArgument(0);
+                            capturedRequests.add(req);
+                            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                            cb.accept(
+                                    new LlmResponseChunk(
+                                            "Hello again!",
+                                            null,
+                                            null,
+                                            new LlmUsage(10, 10, 20, 0, 0)));
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
         // 4. Send another message async
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Second question").param("promptName", "correct-playbook"))
-            .andExpect(status().isAccepted());
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/send-async")
+                                .with(login)
+                                .with(csrf())
+                                .param("content", "Second question")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isAccepted());
 
         boolean captured = false;
         for (int i = 0; i < 50; i++) {
@@ -816,7 +1024,7 @@ public class ChatAsyncControllerIT {
 
         // Check that generating message is excluded
         boolean containsGenerating =
-            messages.stream().anyMatch(m -> "Thinking...".equals(m.content()));
+                messages.stream().anyMatch(m -> "Thinking...".equals(m.content()));
         assertThat(containsGenerating).isFalse();
     }
 
@@ -834,36 +1042,61 @@ public class ChatAsyncControllerIT {
         settings.put(ConversationSetting.MODEL.getValue(), "gemini-3.1-flash-lite");
         chatConversationService.updateSettings(conv.id(), settings);
 
-        playbookService.savePlaybook("correct-playbook", "Correct Playbook", "Desc", "Template",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "correct-playbook",
+                "Correct Playbook",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("SSE chunk response!", null, null,
-                new LlmUsage(5, 5, 10, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                            cb.accept(
+                                    new LlmResponseChunk(
+                                            "SSE chunk response!",
+                                            null,
+                                            null,
+                                            new LlmUsage(5, 5, 10, 0, 0)));
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
 
         var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-        MvcResult sseResult = mockMvc
-            .perform(post("/chat/" + conv.id() + "/send").with(login).with(csrf())
-                .param("content", "Hello SSE query").param("promptName", "correct-playbook"))
-            .andExpect(request().asyncStarted()).andReturn();
+        MvcResult sseResult =
+                mockMvc.perform(
+                                post("/chat/" + conv.id() + "/send")
+                                        .with(login)
+                                        .with(csrf())
+                                        .param("content", "Hello SSE query")
+                                        .param("promptName", "correct-playbook"))
+                        .andExpect(request().asyncStarted())
+                        .andReturn();
 
         mockMvc.perform(asyncDispatch(sseResult)).andExpect(status().isOk());
 
         String sseResponse = sseResult.getResponse().getContentAsString();
         String cleaned =
-            sseResponse.replace("data:", "").replace("\n", "").replace("\r", "").trim();
+                sseResponse.replace("data:", "").replace("\n", "").replace("\r", "").trim();
         assertThat(cleaned).contains("SSE chunk response!");
 
         // Wait a bit for status to transition to done in db
         boolean saved = false;
         for (int i = 0; i < 50; i++) {
             List<Message> dbMsgs = messageRepository.findByConversationId(conv.id(), 100, 0);
-            boolean hasAssistantDone = dbMsgs.stream().anyMatch(m -> "assistant".equals(m.role())
-                && "done".equals(m.status()) && m.content().contains("SSE chunk response!"));
+            boolean hasAssistantDone =
+                    dbMsgs.stream()
+                            .anyMatch(m ->
+                                    "assistant".equals(m.role())
+                                            && "done".equals(m.status())
+                                            && m.content().contains("SSE chunk response!"));
             if (hasAssistantDone) {
                 saved = true;
                 break;
@@ -882,44 +1115,84 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("pb-lock-1", "Playbook 1", "Desc", "Template 1", List.of(),
-            false, "specialist", false, "OIM", 1);
-        playbookService.savePlaybook("pb-lock-2", "Playbook 2", "Desc", "Template 2", List.of(),
-            false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "pb-lock-1",
+                "Playbook 1",
+                "Desc",
+                "Template 1",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
+        playbookService.savePlaybook(
+                "pb-lock-2",
+                "Playbook 2",
+                "Desc",
+                "Template 2",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         try {
-            doAnswer(inv -> {
-                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-                cb.accept(
-                    new LlmResponseChunk("Answer 1", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-                return null;
-            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+            doAnswer(
+                            inv -> {
+                                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                cb.accept(
+                                        new LlmResponseChunk(
+                                                "Answer 1",
+                                                null,
+                                                null,
+                                                new LlmUsage(5, 5, 10, 0, 0)));
+                                return null;
+                            })
+                    .when(llmClient)
+                    .generateStream(any(LlmRequest.class), any());
 
             var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
             // First message with pb-lock-1 succeeds
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "First question").param("promptName", "pb-lock-1"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "First question")
+                                    .param("promptName", "pb-lock-1"))
+                    .andExpect(status().isAccepted());
 
             // Follow-up with pb-lock-2 is rejected with 400
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "Second question").param("promptName", "pb-lock-2"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error")
-                    .value("Playbook cannot be changed once a conversation has started."));
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Second question")
+                                    .param("promptName", "pb-lock-2"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(
+                            jsonPath("$.error")
+                                    .value(
+                                            "Playbook cannot be changed once a conversation has started."));
 
             // Follow-up with same pb-lock-1 succeeds
-            mockMvc.perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Second question same playbook").param("promptName", "pb-lock-1"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Second question same playbook")
+                                    .param("promptName", "pb-lock-1"))
+                    .andExpect(status().isAccepted());
 
             // Follow-up omitting promptName succeeds with locked playbook
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "Third question omitted playbook"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Third question omitted playbook"))
+                    .andExpect(status().isAccepted());
         } finally {
             try {
                 playbookService.deletePlaybook("pb-lock-1");
@@ -941,40 +1214,92 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("pb-lock-past100", "Lock Past 100", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", 1);
-        playbookService.savePlaybook("pb-lock-other", "Lock Other", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "pb-lock-past100",
+                "Lock Past 100",
+                "Desc",
+                "Instructions",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
+        playbookService.savePlaybook(
+                "pb-lock-other",
+                "Lock Other",
+                "Desc",
+                "Instructions",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         try {
             // Populate 100 messages without playbook (e.g. desktop synced)
             for (int i = 0; i < 100; i++) {
-                messageRepository
-                    .save(new Message(UUID.randomUUID(), conv.id(), "user", "Desktop " + i, null,
-                        List.of(), List.of(), Instant.now().minusSeconds(200 - i)));
+                messageRepository.save(
+                        new Message(
+                                UUID.randomUUID(),
+                                conv.id(),
+                                "user",
+                                "Desktop " + i,
+                                null,
+                                List.of(),
+                                List.of(),
+                                Instant.now().minusSeconds(200 - i)));
             }
             // Message 101 has playbook pb-lock-past100
-            messageRepository.save(new Message(UUID.randomUUID(), conv.id(), "user", "Message 101",
-                "pb-lock-past100", List.of(), List.of(), Instant.now()));
+            messageRepository.save(
+                    new Message(
+                            UUID.randomUUID(),
+                            conv.id(),
+                            "user",
+                            "Message 101",
+                            "pb-lock-past100",
+                            List.of(),
+                            List.of(),
+                            Instant.now()));
 
-            doAnswer(inv -> {
-                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-                cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-                return null;
-            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+            doAnswer(
+                            inv -> {
+                                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                cb.accept(
+                                        new LlmResponseChunk(
+                                                "Answer",
+                                                null,
+                                                null,
+                                                new LlmUsage(5, 5, 10, 0, 0)));
+                                return null;
+                            })
+                    .when(llmClient)
+                    .generateStream(any(LlmRequest.class), any());
 
             var login = testUserLogin(userAOid, "user-a-async-long@local", "User A");
 
             // Sending with different playbook must be rejected
-            mockMvc.perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Follow up with wrong pb").param("promptName", "pb-lock-other"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error")
-                    .value("Playbook cannot be changed once a conversation has started."));
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Follow up with wrong pb")
+                                    .param("promptName", "pb-lock-other"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(
+                            jsonPath("$.error")
+                                    .value(
+                                            "Playbook cannot be changed once a conversation has started."));
 
             // Sending with same playbook must succeed
-            mockMvc.perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                .param("content", "Follow up with same pb").param("promptName", "pb-lock-past100"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Follow up with same pb")
+                                    .param("promptName", "pb-lock-past100"))
+                    .andExpect(status().isAccepted());
         } finally {
             try {
                 playbookService.deletePlaybook("pb-lock-past100");
@@ -996,33 +1321,59 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("pb-to-delete", "To Delete", "Desc", "Instructions", List.of(),
-            false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "pb-to-delete",
+                "To Delete",
+                "Desc",
+                "Instructions",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         try {
-            doAnswer(inv -> {
-                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-                cb.accept(new LlmResponseChunk("Answer", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-                return null;
-            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+            doAnswer(
+                            inv -> {
+                                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                cb.accept(
+                                        new LlmResponseChunk(
+                                                "Answer",
+                                                null,
+                                                null,
+                                                new LlmUsage(5, 5, 10, 0, 0)));
+                                return null;
+                            })
+                    .when(llmClient)
+                    .generateStream(any(LlmRequest.class), any());
 
             var login = testUserLogin(userAOid, "user-a-async-del@local", "User A");
 
             // Send first message with pb-to-delete
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "First question").param("promptName", "pb-to-delete"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "First question")
+                                    .param("promptName", "pb-to-delete"))
+                    .andExpect(status().isAccepted());
 
             // Admin deletes the locked playbook
             playbookService.deletePlaybook("pb-to-delete");
 
             // Follow up question returns actionable 400 error
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "Second question").param("promptName", "pb-to-delete"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(
-                    "The locked playbook 'pb-to-delete' no longer exists; please start a new conversation."));
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "Second question")
+                                    .param("promptName", "pb-to-delete"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(
+                            jsonPath("$.error")
+                                    .value(
+                                            "The locked playbook 'pb-to-delete' no longer exists; please start a new conversation."));
         } finally {
             try {
                 playbookService.deletePlaybook("pb-to-delete");
@@ -1033,7 +1384,7 @@ public class ChatAsyncControllerIT {
 
     @Test
     public void promptAssemblyCombinesSystemPromptAndPlaybookWithoutPrependingToUser()
-        throws Exception {
+            throws Exception {
         String userAOid = "user-a-async-oid";
         userRepository.upsert(userAOid, "user-a-async@local", "User A");
         setSecurityContext(userAOid, "user-a-async@local", "User A");
@@ -1042,23 +1393,42 @@ public class ChatAsyncControllerIT {
         conversationsToDelete.add(conv.id());
 
         try {
-            playbookService.savePlaybook("pb-assemble", "Assemble Playbook", "Desc",
-                "Special Playbook Instructions", List.of(), false, "specialist", false, "OIM", 1);
+            playbookService.savePlaybook(
+                    "pb-assemble",
+                    "Assemble Playbook",
+                    "Desc",
+                    "Special Playbook Instructions",
+                    List.of(),
+                    false,
+                    "specialist",
+                    false,
+                    "OIM",
+                    1);
 
             ArgumentCaptor<LlmRequest> reqCaptor = ArgumentCaptor.forClass(LlmRequest.class);
-            doAnswer(inv -> {
-                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-                cb.accept(new LlmResponseChunk("Assemble answer", null, null,
-                    new LlmUsage(5, 5, 10, 0, 0)));
-                return null;
-            }).when(llmClient).generateStream(reqCaptor.capture(), any());
+            doAnswer(
+                            inv -> {
+                                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                cb.accept(
+                                        new LlmResponseChunk(
+                                                "Assemble answer",
+                                                null,
+                                                null,
+                                                new LlmUsage(5, 5, 10, 0, 0)));
+                                return null;
+                            })
+                    .when(llmClient)
+                    .generateStream(reqCaptor.capture(), any());
 
             var login = testUserLogin(userAOid, "user-a-async@local", "User A");
 
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "My clean user query").param("promptName", "pb-assemble"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "My clean user query")
+                                    .param("promptName", "pb-assemble"))
+                    .andExpect(status().isAccepted());
 
             // Wait for async task to invoke generateStream
             LlmRequest captured = null;
@@ -1072,19 +1442,28 @@ public class ChatAsyncControllerIT {
             assertThat(captured).isNotNull();
 
             // 1. LLM system prompt has ONLY the playbook templateText
-            LlmMessage sysMsg = captured.messages().stream()
-                .filter(m -> "system".equalsIgnoreCase(m.role())).findFirst().orElseThrow();
+            LlmMessage sysMsg =
+                    captured.messages().stream()
+                            .filter(m -> "system".equalsIgnoreCase(m.role()))
+                            .findFirst()
+                            .orElseThrow();
             assertThat(sysMsg.content()).isEqualTo("Special Playbook Instructions");
 
             // 2. LLM user message has ONLY the user query
-            LlmMessage userMsg = captured.messages().stream()
-                .filter(m -> "user".equalsIgnoreCase(m.role())).findFirst().orElseThrow();
+            LlmMessage userMsg =
+                    captured.messages().stream()
+                            .filter(m -> "user".equalsIgnoreCase(m.role()))
+                            .findFirst()
+                            .orElseThrow();
             assertThat(userMsg.content()).isEqualTo("My clean user query");
 
             // 3. Persisted user message in DB retains playbook and raw user query
             List<Message> saved = messageRepository.findByConversationId(conv.id(), 100, 0);
-            Message dbUserMsg = saved.stream().filter(m -> "user".equalsIgnoreCase(m.role()))
-                .findFirst().orElseThrow();
+            Message dbUserMsg =
+                    saved.stream()
+                            .filter(m -> "user".equalsIgnoreCase(m.role()))
+                            .findFirst()
+                            .orElseThrow();
             assertThat(dbUserMsg.content()).isEqualTo("My clean user query");
             assertThat(dbUserMsg.playbook()).isEqualTo("pb-assemble");
         } finally {
@@ -1097,7 +1476,7 @@ public class ChatAsyncControllerIT {
 
     @Test
     public void changingOrchestratorProfileAfterConversationHasStarted_returnsBadRequest()
-        throws Exception {
+            throws Exception {
         UUID userOid = UUID.randomUUID();
         userRepository.upsert(userOid.toString(), "profile-lock@local", "Profile Lock User");
         setSecurityContext(userOid.toString(), "profile-lock@local", "Profile Lock User");
@@ -1105,30 +1484,53 @@ public class ChatAsyncControllerIT {
         Conversation conv = chatConversationService.createConversation();
         conversationsToDelete.add(conv.id());
 
-        playbookService.savePlaybook("pb-lock-orch", "Lock Orch PB", "Desc", "Instructions",
-            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "pb-lock-orch",
+                "Lock Orch PB",
+                "Desc",
+                "Instructions",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
 
         try {
-            doAnswer(inv -> {
-                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-                cb.accept(
-                    new LlmResponseChunk("Answer 1", null, null, new LlmUsage(5, 5, 10, 0, 0)));
-                return null;
-            }).when(llmClient).generateStream(any(LlmRequest.class), any());
+            doAnswer(
+                            inv -> {
+                                Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                cb.accept(
+                                        new LlmResponseChunk(
+                                                "Answer 1",
+                                                null,
+                                                null,
+                                                new LlmUsage(5, 5, 10, 0, 0)));
+                                return null;
+                            })
+                    .when(llmClient)
+                    .generateStream(any(LlmRequest.class), any());
 
             var login =
-                testUserLogin(userOid.toString(), "profile-lock@local", "Profile Lock User");
+                    testUserLogin(userOid.toString(), "profile-lock@local", "Profile Lock User");
 
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/send-async").with(login).with(csrf())
-                    .param("content", "First turn").param("promptName", "pb-lock-orch"))
-                .andExpect(status().isAccepted());
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/send-async")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("content", "First turn")
+                                    .param("promptName", "pb-lock-orch"))
+                    .andExpect(status().isAccepted());
 
-            mockMvc
-                .perform(post("/chat/" + conv.id() + "/orchestrator-profile").with(login)
-                    .with(csrf()).param("name", "any-profile"))
-                .andExpect(status().isBadRequest()).andExpect(status().reason(
-                    "Orchestrator profile cannot be changed once a conversation has started."));
+            mockMvc.perform(
+                            post("/chat/" + conv.id() + "/orchestrator-profile")
+                                    .with(login)
+                                    .with(csrf())
+                                    .param("name", "any-profile"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(
+                            status().reason(
+                                            "Orchestrator profile cannot be changed once a conversation has started."));
         } finally {
             try {
                 playbookService.deletePlaybook("pb-lock-orch");

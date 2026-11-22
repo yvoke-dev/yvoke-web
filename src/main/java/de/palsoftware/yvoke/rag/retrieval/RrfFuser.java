@@ -12,9 +12,10 @@ public class RrfFuser {
     private final double semanticWeight;
     private final double fulltextWeight;
 
-    public RrfFuser(@Value("${app.retrieval.rrf.k}") int rrfK,
-        @Value("${app.retrieval.rrf.semantic-weight}") double semanticWeight,
-        @Value("${app.retrieval.rrf.fulltext-weight}") double fulltextWeight) {
+    public RrfFuser(
+            @Value("${app.retrieval.rrf.k}") int rrfK,
+            @Value("${app.retrieval.rrf.semantic-weight}") double semanticWeight,
+            @Value("${app.retrieval.rrf.fulltext-weight}") double fulltextWeight) {
         this.rrfK = rrfK;
         this.semanticWeight = semanticWeight;
         this.fulltextWeight = fulltextWeight;
@@ -62,8 +63,9 @@ public class RrfFuser {
         for (IntermediateRrfResult res : combined.values()) {
             double semScore = res.isInSem() ? 1.0 / (rrfK + res.getSemanticRank()) : 0.0;
             double ftScore = res.isInFt() ? 1.0 / (rrfK + res.getFullTextRank()) : 0.0;
-            res.setRrfScore((semScore * semanticWeight + ftScore * fulltextWeight)
-                / (semanticWeight + fulltextWeight));
+            res.setRrfScore(
+                    (semScore * semanticWeight + ftScore * fulltextWeight)
+                            / (semanticWeight + fulltextWeight));
         }
 
         // Sort descending by RRF score, then by id. The tie-break is load-bearing now: with equal
@@ -72,8 +74,10 @@ public class RrfFuser {
         // respect to relevance — an exact tie IS a genuine tie — but it is total and reproducible,
         // unlike the previous fall-through to HashMap iteration order.
         List<IntermediateRrfResult> sorted = new ArrayList<>(combined.values());
-        sorted.sort(Comparator.comparingDouble(IntermediateRrfResult::getRrfScore).reversed()
-            .thenComparing(res -> res.getRow().id()));
+        sorted.sort(
+                Comparator.comparingDouble(IntermediateRrfResult::getRrfScore)
+                        .reversed()
+                        .thenComparing(res -> res.getRow().id()));
 
         // Assign pre-rerank RRF rank (1-indexed)
         for (int i = 0; i < sorted.size(); i++) {

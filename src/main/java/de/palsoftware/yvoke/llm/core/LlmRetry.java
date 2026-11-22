@@ -22,6 +22,7 @@ public final class LlmRetry {
      * into an already exhausted limit and the window never got a chance to reset.
      */
     private static final long RATE_LIMIT_BASE_BACKOFF_MS = 15_000L;
+
     private static final long RATE_LIMIT_MAX_BACKOFF_MS = 60_000L;
 
     private LlmRetry() {}
@@ -42,14 +43,20 @@ public final class LlmRetry {
                     // to spot cancellation, and the caller catches on exception type. Suppression
                     // carries the count without changing either.
                     e.addSuppressed(
-                        new LlmRetryExhausted(operation, attempt, maxAttempts, transientFailure));
+                            new LlmRetryExhausted(
+                                    operation, attempt, maxAttempts, transientFailure));
                     throw e;
                 }
                 long backoffMs = backoffMs(attempt, e);
                 String rateLimit = ProviderRateLimit.from(e).describe();
-                log.warn("{} failed (attempt {}/{}), retrying in {} ms: {}{}", operation, attempt,
-                    maxAttempts, backoffMs, e.toString(),
-                    rateLimit.isEmpty() ? "" : " [" + rateLimit + "]");
+                log.warn(
+                        "{} failed (attempt {}/{}), retrying in {} ms: {}{}",
+                        operation,
+                        attempt,
+                        maxAttempts,
+                        backoffMs,
+                        e.toString(),
+                        rateLimit.isEmpty() ? "" : " [" + rateLimit + "]");
                 try {
                     Thread.sleep(backoffMs);
                 } catch (InterruptedException ie) {
@@ -116,14 +123,13 @@ public final class LlmRetry {
      * Two passes, deliberately: every TYPED signal in the whole cause chain is examined before any
      * message text is guessed from.
      *
-     * <p>
-     * Interleaving them let an incidental substring in an outer wrapper's {@code toString()} decide
-     * the answer before the typed branch below was ever reached — and reactor's wrapper message is
-     * {@code cause.toString()}, which for a transport timeout literally contains the class name
-     * {@code HttpTimeoutException}. The {@code IOException} branch was therefore dead code on every
-     * reactor-wrapped timeout: no wording could avoid it, and no mutation could prove the branch
-     * load-bearing. Ordering the passes makes the typed rule authoritative and leaves the substring
-     * list as the fallback it was always meant to be.
+     * <p>Interleaving them let an incidental substring in an outer wrapper's {@code toString()}
+     * decide the answer before the typed branch below was ever reached — and reactor's wrapper
+     * message is {@code cause.toString()}, which for a transport timeout literally contains the
+     * class name {@code HttpTimeoutException}. The {@code IOException} branch was therefore dead
+     * code on every reactor-wrapped timeout: no wording could avoid it, and no mutation could prove
+     * the branch load-bearing. Ordering the passes makes the typed rule authoritative and leaves
+     * the substring list as the fallback it was always meant to be.
      */
     static boolean isTransient(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
@@ -132,14 +138,20 @@ public final class LlmRetry {
             // a substring check for " 500" would miss genuine 5xx errors.
             Integer status = providerStatus(c);
             if (status != null) {
-                return status == 408 || status == 429 || status == 500 || status == 502
-                    || status == 503 || status == 504;
+                return status == 408
+                        || status == 429
+                        || status == 500
+                        || status == 502
+                        || status == 503
+                        || status == 504;
             }
             // TimeoutException extends Exception, not IOException, and reactor's default message
             // carries none of the needles below — so without this branch a timeout raised anywhere
             // in the reactive plumbing is classified PERMANENT and retries nothing at all.
-            if (c instanceof GenAiIOException || c instanceof SocketTimeoutException
-                || c instanceof IOException || c instanceof TimeoutException) {
+            if (c instanceof GenAiIOException
+                    || c instanceof SocketTimeoutException
+                    || c instanceof IOException
+                    || c instanceof TimeoutException) {
                 return true;
             }
             if (c.getCause() == c) {
@@ -150,10 +162,17 @@ public final class LlmRetry {
             String msg = c.getMessage();
             if (msg != null) {
                 String m = msg.toLowerCase();
-                if (m.contains("429") || m.contains("rate limit") || m.contains("rate-limit")
-                    || m.contains("timeout") || m.contains("timed out") || m.contains("overload")
-                    || m.contains("unavailable") || m.contains(" 500") || m.contains(" 502")
-                    || m.contains(" 503") || m.contains(" 504")) {
+                if (m.contains("429")
+                        || m.contains("rate limit")
+                        || m.contains("rate-limit")
+                        || m.contains("timeout")
+                        || m.contains("timed out")
+                        || m.contains("overload")
+                        || m.contains("unavailable")
+                        || m.contains(" 500")
+                        || m.contains(" 502")
+                        || m.contains(" 503")
+                        || m.contains(" 504")) {
                     return true;
                 }
             }

@@ -51,11 +51,14 @@ public class ChatController {
     private final OrchestratorProperties orchestratorProperties;
     private final OrchestratorProfileService orchestratorProfileService;
 
-    public ChatController(ChatConversationService chatConversationService,
-        ChatMessageService chatMessageService, ChatFeedbackService chatFeedbackService,
-        ChatCancellationService chatCancellationService, PlaybookService playbookService,
-        OrchestratorProperties orchestratorProperties,
-        OrchestratorProfileService orchestratorProfileService) {
+    public ChatController(
+            ChatConversationService chatConversationService,
+            ChatMessageService chatMessageService,
+            ChatFeedbackService chatFeedbackService,
+            ChatCancellationService chatCancellationService,
+            PlaybookService playbookService,
+            OrchestratorProperties orchestratorProperties,
+            OrchestratorProfileService orchestratorProfileService) {
         this.chatConversationService = chatConversationService;
         this.chatMessageService = chatMessageService;
         this.chatFeedbackService = chatFeedbackService;
@@ -96,9 +99,12 @@ public class ChatController {
     @GetMapping("/{id}")
     public String threadView(@PathVariable UUID id, Model model) {
         log.info("Accessing conversation thread view for id: {}", id);
-        Conversation conversation = chatConversationService.getConversation(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + id));
+        Conversation conversation =
+                chatConversationService
+                        .getConversation(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Conversation not found: " + id));
 
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
         addSidebar(model, sidebar);
@@ -107,20 +113,27 @@ public class ChatController {
         List<String> allowedModels = chatConversationService.getAllowedModels();
 
         boolean isReadOnly =
-            !ChatConversationService.isOwner(conversation.userId(), sidebar.currentUserId())
-                || ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source());
+                !ChatConversationService.isOwner(conversation.userId(), sidebar.currentUserId())
+                        || ConversationSource.CLAUDE_PLUGIN
+                                .getValue()
+                                .equals(conversation.source());
 
         // One query for the whole thread; ChatFeedbackService returns an empty map for non-owner
         // public readers (enforcing owner/admin visibility).
         Map<UUID, Feedback> feedbacks = chatFeedbackService.getFeedbackByConversation(id);
 
         List<OrchestratorProfileOption> orchestratorProfiles =
-            new ArrayList<>(AreaAccessContext.filterByUserArea(
-                orchestratorProfileService.listProfileOptions(), OrchestratorProfileOption::area));
-        String currentProfile = ConversationSettings.getString(conversation.settings(),
-            ConversationSetting.ORCHESTRATOR_PROFILE);
-        if (currentProfile != null && !currentProfile.isBlank() && orchestratorProfiles.stream()
-            .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
+                new ArrayList<>(
+                        AreaAccessContext.filterByUserArea(
+                                orchestratorProfileService.listProfileOptions(),
+                                OrchestratorProfileOption::area));
+        String currentProfile =
+                ConversationSettings.getString(
+                        conversation.settings(), ConversationSetting.ORCHESTRATOR_PROFILE);
+        if (currentProfile != null
+                && !currentProfile.isBlank()
+                && orchestratorProfiles.stream()
+                        .noneMatch(p -> p.name().equals(currentProfile.trim()))) {
             orchestratorProfiles.add(new OrchestratorProfileOption(currentProfile.trim(), false));
         }
 
@@ -131,16 +144,23 @@ public class ChatController {
         Integer lockedPlaybookVersion = null;
         if (lockedPlaybookName != null && !lockedPlaybookName.isBlank()) {
             Optional<Playbook> lockedPlaybook = playbookService.getPlaybook(lockedPlaybookName);
-            lockedPlaybookVersion = lockedPlaybook.map(Playbook::version).orElseGet(() -> {
-                Integer fromLockState = lockState.lockedPlaybookVersion();
-                if (fromLockState != null) {
-                    return fromLockState;
-                }
-                return messages.stream()
-                    .filter(m -> "user".equalsIgnoreCase(m.role())
-                        && lockedPlaybookName.equals(m.playbook()) && m.playbookVersion() != null)
-                    .map(Message::playbookVersion).findFirst().orElse(null);
-            });
+            lockedPlaybookVersion =
+                    lockedPlaybook
+                            .map(Playbook::version)
+                            .orElseGet(() -> {
+                                Integer fromLockState = lockState.lockedPlaybookVersion();
+                                if (fromLockState != null) {
+                                    return fromLockState;
+                                }
+                                return messages.stream()
+                                        .filter(m ->
+                                                "user".equalsIgnoreCase(m.role())
+                                                        && lockedPlaybookName.equals(m.playbook())
+                                                        && m.playbookVersion() != null)
+                                        .map(Message::playbookVersion)
+                                        .findFirst()
+                                        .orElse(null);
+                            });
         }
         boolean isModeLocked = lockState.initialPlaybook().isPresent() || !messages.isEmpty();
 
@@ -155,16 +175,21 @@ public class ChatController {
         // NOT settings['model']: a conversation pinned to a retired model has no matching option,
         // so the browser selects the first one and the picker silently claims a model the
         // conversation is not on. This is the value the send path will actually use.
-        model.addAttribute("effectiveModel", chatConversationService.effectiveModel(
-            ConversationSettings.getString(conversation.settings(), ConversationSetting.MODEL)));
+        model.addAttribute(
+                "effectiveModel",
+                chatConversationService.effectiveModel(
+                        ConversationSettings.getString(
+                                conversation.settings(), ConversationSetting.MODEL)));
         model.addAttribute("settings", effectiveSettings);
         model.addAttribute("feedbacks", feedbacks);
-        model.addAttribute("prompts", AreaAccessContext
-            .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area));
+        model.addAttribute(
+                "prompts",
+                AreaAccessContext.filterByUserArea(
+                        playbookService.listSpecializedPlaybooks(), Playbook::area));
         model.addAttribute("defaultPlaybooks", playbookService.listDefaultPlaybookNames());
         model.addAttribute("isReadOnly", isReadOnly);
-        model.addAttribute("playbookValidationEnabled",
-            chatConversationService.isPlaybookValidationEnabled());
+        model.addAttribute(
+                "playbookValidationEnabled", chatConversationService.isPlaybookValidationEnabled());
         model.addAttribute("orchestratorProfiles", orchestratorProfiles);
         model.addAttribute("isPlaybookLocked", isPlaybookLocked);
         model.addAttribute("lockedPlaybookName", lockedPlaybookName);
@@ -174,11 +199,10 @@ public class ChatController {
         return "chat/thread";
     }
 
-
     @PostMapping("/{id}/model")
     @ResponseBody
-    public void updateModel(@PathVariable UUID id,
-        @RequestParam(name = "model") String modelParam) {
+    public void updateModel(
+            @PathVariable UUID id, @RequestParam(name = "model") String modelParam) {
         log.info("Updating model for conversation id: {} to {}", id, modelParam);
         // Whitelist validation lives in the service so every caller is bound by the same rule
         // (SEC-04).
@@ -194,16 +218,16 @@ public class ChatController {
 
     @PostMapping("/{id}/show-thinking")
     @ResponseBody
-    public void updateShowThinking(@PathVariable UUID id,
-        @RequestParam("enabled") boolean enabled) {
+    public void updateShowThinking(
+            @PathVariable UUID id, @RequestParam("enabled") boolean enabled) {
         log.info("Updating show-thinking setting for conversation id: {} to {}", id, enabled);
         chatConversationService.updateSetting(id, ConversationSetting.SHOW_THINKING, enabled);
     }
 
     @PostMapping("/{id}/show-prototypes")
     @ResponseBody
-    public void updateShowPrototypes(@PathVariable UUID id,
-        @RequestParam("enabled") boolean enabled) {
+    public void updateShowPrototypes(
+            @PathVariable UUID id, @RequestParam("enabled") boolean enabled) {
         log.info("Updating show-prototypes setting for conversation id: {} to {}", id, enabled);
         chatConversationService.updateSetting(id, ConversationSetting.SHOW_PROTOTYPES, enabled);
     }
@@ -217,33 +241,40 @@ public class ChatController {
 
     @PostMapping("/{id}/orchestrator-profile")
     @ResponseBody
-    public void updateOrchestratorProfile(@PathVariable UUID id,
-        @RequestParam(name = "name", required = false) String name) {
+    public void updateOrchestratorProfile(
+            @PathVariable UUID id, @RequestParam(name = "name", required = false) String name) {
         chatConversationService.verifyOwnership(id, false);
         String selected = (name == null) ? "" : name.trim();
-        Conversation conversation = chatConversationService.getConversation(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + id));
-        String currentProfile = ConversationSettings.getString(conversation.settings(),
-            ConversationSetting.ORCHESTRATOR_PROFILE);
+        Conversation conversation =
+                chatConversationService
+                        .getConversation(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Conversation not found: " + id));
+        String currentProfile =
+                ConversationSettings.getString(
+                        conversation.settings(), ConversationSetting.ORCHESTRATOR_PROFILE);
         if (currentProfile == null) {
             currentProfile = "";
         }
         if (chatMessageService.hasMessages(id) && !selected.equals(currentProfile.trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Orchestrator profile cannot be changed once a conversation has started.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Orchestrator profile cannot be changed once a conversation has started.");
         }
         if (!selected.isEmpty()) {
             boolean exists = false;
             if (orchestratorProfileService != null) {
                 Optional<OrchestratorProfile> profileOpt =
-                    orchestratorProfileService.getProfile(selected);
+                        orchestratorProfileService.getProfile(selected);
                 if (profileOpt.isPresent()) {
                     OrchestratorProfile profile = profileOpt.get();
-                    if (profile.area() != null && !profile.area().isBlank()
-                        && !AreaAccessContext.canAccessUserArea(profile.area())) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Unknown orchestrator profile: " + selected);
+                    if (profile.area() != null
+                            && !profile.area().isBlank()
+                            && !AreaAccessContext.canAccessUserArea(profile.area())) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "Unknown orchestrator profile: " + selected);
                     }
                     exists = true;
                 }
@@ -252,15 +283,14 @@ public class ChatController {
                 exists = true;
             }
             if (!exists) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unknown orchestrator profile: " + selected);
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Unknown orchestrator profile: " + selected);
             }
         }
         log.info("Updating orchestrator-profile for conversation id: {} to '{}'", id, selected);
-        chatConversationService.updateSetting(id, ConversationSetting.ORCHESTRATOR_PROFILE,
-            selected);
+        chatConversationService.updateSetting(
+                id, ConversationSetting.ORCHESTRATOR_PROFILE, selected);
     }
-
 
     @PostMapping("/{id}/tags/add")
     public String addTag(@PathVariable UUID id, @RequestParam("tag") String tag) {

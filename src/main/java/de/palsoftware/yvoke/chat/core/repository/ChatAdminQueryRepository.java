@@ -34,15 +34,19 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public enum FeedbackFilter {
-        ALL, ANY, POSITIVE, NEGATIVE, NONE;
+        ALL,
+        ANY,
+        POSITIVE,
+        NEGATIVE,
+        NONE;
     }
 
     public record TimeFilter(
-        String preset,
-        OffsetDateTime fromCutoff,
-        OffsetDateTime toCutoff,
-        LocalDate fromDate,
-        LocalDate toDate) {
+            String preset,
+            OffsetDateTime fromCutoff,
+            OffsetDateTime toCutoff,
+            LocalDate fromDate,
+            LocalDate toDate) {
 
         public static TimeFilter preset(String preset, Clock clock) {
             String normalized = preset != null ? preset.trim().toLowerCase(Locale.ROOT) : "all";
@@ -50,9 +54,11 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             if ("day".equals(normalized)) {
                 return new TimeFilter("day", OffsetDateTime.now(c).minusDays(1), null, null, null);
             } else if ("week".equals(normalized)) {
-                return new TimeFilter("week", OffsetDateTime.now(c).minusWeeks(1), null, null, null);
+                return new TimeFilter(
+                        "week", OffsetDateTime.now(c).minusWeeks(1), null, null, null);
             } else if ("month".equals(normalized)) {
-                return new TimeFilter("month", OffsetDateTime.now(c).minusDays(30), null, null, null);
+                return new TimeFilter(
+                        "month", OffsetDateTime.now(c).minusDays(30), null, null, null);
             } else {
                 return new TimeFilter("all", null, null, null, null);
             }
@@ -65,9 +71,13 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 toDate = temp;
             }
             OffsetDateTime fromCutoff =
-                fromDate != null ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+                    fromDate != null
+                            ? fromDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime()
+                            : null;
             OffsetDateTime toCutoff =
-                toDate != null ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+                    toDate != null
+                            ? toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime()
+                            : null;
             return new TimeFilter("custom", fromCutoff, toCutoff, fromDate, toDate);
         }
 
@@ -77,48 +87,86 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     }
 
     public record ConversationFilter(
-        Set<UUID> userIds,
-        boolean includeAnonymous,
-        TimeFilter timeFilter,
-        FeedbackFilter feedbackFilter,
-        @Nullable Set<String> allowedAreasLower) {
-
-        public ConversationFilter(
             Set<UUID> userIds,
             boolean includeAnonymous,
             TimeFilter timeFilter,
-            FeedbackFilter feedbackFilter) {
+            FeedbackFilter feedbackFilter,
+            @Nullable Set<String> allowedAreasLower) {
+
+        public ConversationFilter(
+                Set<UUID> userIds,
+                boolean includeAnonymous,
+                TimeFilter timeFilter,
+                FeedbackFilter feedbackFilter) {
             this(userIds, includeAnonymous, timeFilter, feedbackFilter, null);
         }
 
         public static ConversationFilter empty() {
-            return new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL, null);
+            return new ConversationFilter(
+                    Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL, null);
         }
     }
 
     public record ConversationUserOption(UUID id, String displayName, String email) {}
 
-    public record UserConversationStats(UUID userId, String userDisplayName, String userEmail,
-        long conversationCount, long thumbsUpCount, long thumbsDownCount) {}
+    public record UserConversationStats(
+            UUID userId,
+            String userDisplayName,
+            String userEmail,
+            long conversationCount,
+            long thumbsUpCount,
+            long thumbsDownCount) {}
 
-    public record ConversationOverviewStats(long totalConversations, long totalThumbsUp,
-        long totalThumbsDown, long registeredUserCount, long totalUserCount,
-        List<UserConversationStats> userStats) {}
+    public record ConversationOverviewStats(
+            long totalConversations,
+            long totalThumbsUp,
+            long totalThumbsDown,
+            long registeredUserCount,
+            long totalUserCount,
+            List<UserConversationStats> userStats) {}
 
-    public record AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
-        String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-        int thumbsUpCount, int thumbsDownCount, @Nullable String clientVersion) {
+    public record AdminConversation(
+            UUID id,
+            UUID userId,
+            String userDisplayName,
+            String userEmail,
+            String title,
+            String source,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt,
+            int thumbsUpCount,
+            int thumbsDownCount,
+            @Nullable String clientVersion) {
 
         public AdminConversation {
             source = (source == null || source.isBlank()) ? "web" : source;
-            clientVersion = (clientVersion == null || clientVersion.isBlank()) ? null : clientVersion;
+            clientVersion =
+                    (clientVersion == null || clientVersion.isBlank()) ? null : clientVersion;
         }
 
-        public AdminConversation(UUID id, UUID userId, String userDisplayName, String userEmail,
-            String title, String source, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-            int thumbsUpCount, int thumbsDownCount) {
-            this(id, userId, userDisplayName, userEmail, title, source, createdAt, updatedAt,
-                thumbsUpCount, thumbsDownCount, null);
+        public AdminConversation(
+                UUID id,
+                UUID userId,
+                String userDisplayName,
+                String userEmail,
+                String title,
+                String source,
+                OffsetDateTime createdAt,
+                OffsetDateTime updatedAt,
+                int thumbsUpCount,
+                int thumbsDownCount) {
+            this(
+                    id,
+                    userId,
+                    userDisplayName,
+                    userEmail,
+                    title,
+                    source,
+                    createdAt,
+                    updatedAt,
+                    thumbsUpCount,
+                    thumbsDownCount,
+                    null);
         }
 
         public String sourceBadge() {
@@ -126,33 +174,42 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         }
     }
 
-    public record FeedbackComment(String feedbackId, String messageId, int rating, String comment,
-        OffsetDateTime createdAt, String queryText, String conversationId, boolean reviewed,
-        String notes) {}
+    public record FeedbackComment(
+            String feedbackId,
+            String messageId,
+            int rating,
+            String comment,
+            OffsetDateTime createdAt,
+            String queryText,
+            String conversationId,
+            boolean reviewed,
+            String notes) {}
 
-    public List<AdminConversation> listFilteredConversations(ConversationFilter filter, int limit,
-        long offset) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT c.id, c.user_id, u.display_name, u.email, c.title,
-                   COALESCE(c.source, 'web') AS source,
-                   CASE
-                       WHEN c.source = 'desktop' THEN c.settings->>'desktopVersion'
-                       WHEN c.source = 'claude-plugin' THEN c.settings->>'pluginVersion'
-                   END AS client_version,
-                   c.created_at, c.updated_at,
-                   COALESCE(fb.thumbs_up_count, 0) AS thumbs_up_count,
-                   COALESCE(fb.thumbs_down_count, 0) AS thumbs_down_count
-            FROM conversations c
-            LEFT JOIN users u ON c.user_id = u.id
-            LEFT JOIN LATERAL (
-                SELECT COUNT(*) FILTER (WHERE mf.rating = 1) AS thumbs_up_count,
-                       COUNT(*) FILTER (WHERE mf.rating = -1) AS thumbs_down_count
-                FROM messages m
-                JOIN message_feedback mf ON mf.message_id = m.id
-                WHERE m.conversation_id = c.id
-            ) fb ON true
-            WHERE 1=1
-            """);
+    public List<AdminConversation> listFilteredConversations(
+            ConversationFilter filter, int limit, long offset) {
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT c.id, c.user_id, u.display_name, u.email, c.title,
+                               COALESCE(c.source, 'web') AS source,
+                               CASE
+                                   WHEN c.source = 'desktop' THEN c.settings->>'desktopVersion'
+                                   WHEN c.source = 'claude-plugin' THEN c.settings->>'pluginVersion'
+                               END AS client_version,
+                               c.created_at, c.updated_at,
+                               COALESCE(fb.thumbs_up_count, 0) AS thumbs_up_count,
+                               COALESCE(fb.thumbs_down_count, 0) AS thumbs_down_count
+                        FROM conversations c
+                        LEFT JOIN users u ON c.user_id = u.id
+                        LEFT JOIN LATERAL (
+                            SELECT COUNT(*) FILTER (WHERE mf.rating = 1) AS thumbs_up_count,
+                                   COUNT(*) FILTER (WHERE mf.rating = -1) AS thumbs_down_count
+                            FROM messages m
+                            JOIN message_feedback mf ON mf.message_id = m.id
+                            WHERE m.conversation_id = c.id
+                        ) fb ON true
+                        WHERE 1=1
+                        """);
         Map<String, Object> params = new HashMap<>();
         params.put("limit", limit);
         params.put("offset", offset);
@@ -160,69 +217,83 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
 
         sql.append(" ORDER BY c.created_at DESC, c.id DESC LIMIT :limit OFFSET :offset");
 
-        return jdbcClient.sql(sql.toString()).params(params)
-            .query((rs, rowNum) -> new AdminConversation(rs.getObject("id", UUID.class),
-                rs.getObject("user_id", UUID.class), rs.getString("display_name"),
-                rs.getString("email"), rs.getString("title"), rs.getString("source"),
-                rs.getObject("created_at", OffsetDateTime.class),
-                rs.getObject("updated_at", OffsetDateTime.class), rs.getInt("thumbs_up_count"),
-                rs.getInt("thumbs_down_count"), rs.getString("client_version")))
-            .list();
+        return jdbcClient
+                .sql(sql.toString())
+                .params(params)
+                .query((rs, rowNum) ->
+                        new AdminConversation(
+                                rs.getObject("id", UUID.class),
+                                rs.getObject("user_id", UUID.class),
+                                rs.getString("display_name"),
+                                rs.getString("email"),
+                                rs.getString("title"),
+                                rs.getString("source"),
+                                rs.getObject("created_at", OffsetDateTime.class),
+                                rs.getObject("updated_at", OffsetDateTime.class),
+                                rs.getInt("thumbs_up_count"),
+                                rs.getInt("thumbs_down_count"),
+                                rs.getString("client_version")))
+                .list();
     }
 
     public ConversationOverviewStats getConversationStats(ConversationFilter filter) {
-        StringBuilder sql = new StringBuilder(
-            """
-                SELECT c.user_id, u.display_name, u.email,
-                       COUNT(DISTINCT c.id) AS conversation_count,
-                       COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0) AS thumbs_up_count,
-                       COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count,
-                       SUM(COUNT(DISTINCT c.id)) OVER () AS total_conversations,
-                       SUM(COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_up,
-                       SUM(COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_down,
-                       COUNT(*) FILTER (WHERE c.user_id IS NOT NULL) OVER () AS registered_user_count,
-                       COUNT(*) OVER () AS total_user_count
-                FROM conversations c
-                LEFT JOIN users u ON c.user_id = u.id
-                LEFT JOIN (
-                    SELECT m.conversation_id, mf.rating
-                    FROM messages m
-                    JOIN message_feedback mf ON mf.message_id = m.id
-                ) fbk ON fbk.conversation_id = c.id
-                WHERE 1=1
-                """);
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT c.user_id, u.display_name, u.email,
+                               COUNT(DISTINCT c.id) AS conversation_count,
+                               COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0) AS thumbs_up_count,
+                               COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down_count,
+                               SUM(COUNT(DISTINCT c.id)) OVER () AS total_conversations,
+                               SUM(COALESCE(SUM(CASE WHEN fbk.rating = 1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_up,
+                               SUM(COALESCE(SUM(CASE WHEN fbk.rating = -1 THEN 1 ELSE 0 END), 0)) OVER () AS total_thumbs_down,
+                               COUNT(*) FILTER (WHERE c.user_id IS NOT NULL) OVER () AS registered_user_count,
+                               COUNT(*) OVER () AS total_user_count
+                        FROM conversations c
+                        LEFT JOIN users u ON c.user_id = u.id
+                        LEFT JOIN (
+                            SELECT m.conversation_id, mf.rating
+                            FROM messages m
+                            JOIN message_feedback mf ON mf.message_id = m.id
+                        ) fbk ON fbk.conversation_id = c.id
+                        WHERE 1=1
+                        """);
         Map<String, Object> params = new HashMap<>();
         appendConversationFilters(sql, params, filter);
         sql.append(
-            """
+                """
                  GROUP BY c.user_id, u.display_name, u.email
                  ORDER BY conversation_count DESC, thumbs_up_count DESC, u.display_name ASC NULLS LAST, c.user_id ASC NULLS LAST
                  LIMIT 50
                 """);
 
         record StatRow(
-            UserConversationStats user,
-            long totalConversations,
-            long totalThumbsUp,
-            long totalThumbsDown,
-            long registeredUserCount,
-            long totalUserCount) {}
+                UserConversationStats user,
+                long totalConversations,
+                long totalThumbsUp,
+                long totalThumbsDown,
+                long registeredUserCount,
+                long totalUserCount) {}
 
-        List<StatRow> rows = jdbcClient.sql(sql.toString()).params(params)
-            .query((rs, rowNum) -> new StatRow(
-                new UserConversationStats(
-                    rs.getObject("user_id", UUID.class),
-                    rs.getString("display_name"),
-                    rs.getString("email"),
-                    rs.getLong("conversation_count"),
-                    rs.getLong("thumbs_up_count"),
-                    rs.getLong("thumbs_down_count")),
-                rs.getLong("total_conversations"),
-                rs.getLong("total_thumbs_up"),
-                rs.getLong("total_thumbs_down"),
-                rs.getLong("registered_user_count"),
-                rs.getLong("total_user_count")))
-            .list();
+        List<StatRow> rows =
+                jdbcClient
+                        .sql(sql.toString())
+                        .params(params)
+                        .query((rs, rowNum) ->
+                                new StatRow(
+                                        new UserConversationStats(
+                                                rs.getObject("user_id", UUID.class),
+                                                rs.getString("display_name"),
+                                                rs.getString("email"),
+                                                rs.getLong("conversation_count"),
+                                                rs.getLong("thumbs_up_count"),
+                                                rs.getLong("thumbs_down_count")),
+                                        rs.getLong("total_conversations"),
+                                        rs.getLong("total_thumbs_up"),
+                                        rs.getLong("total_thumbs_down"),
+                                        rs.getLong("registered_user_count"),
+                                        rs.getLong("total_user_count")))
+                        .list();
 
         if (rows.isEmpty()) {
             return new ConversationOverviewStats(0L, 0L, 0L, 0L, 0L, List.of());
@@ -231,71 +302,85 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         StatRow first = rows.get(0);
         List<UserConversationStats> userStats = rows.stream().map(StatRow::user).toList();
         return new ConversationOverviewStats(
-            first.totalConversations(),
-            first.totalThumbsUp(),
-            first.totalThumbsDown(),
-            first.registeredUserCount(),
-            first.totalUserCount(),
-            userStats);
+                first.totalConversations(),
+                first.totalThumbsUp(),
+                first.totalThumbsDown(),
+                first.registeredUserCount(),
+                first.totalUserCount(),
+                userStats);
     }
 
     public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds) {
         return listConversationUserOptions(additionalUserIds, null);
     }
 
-    public List<ConversationUserOption> listConversationUserOptions(Set<UUID> additionalUserIds,
-        @Nullable Set<String> allowedAreasLower) {
+    public List<ConversationUserOption> listConversationUserOptions(
+            Set<UUID> additionalUserIds, @Nullable Set<String> allowedAreasLower) {
         if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
             return List.of();
         }
-        String areaClause = allowedAreasLower != null
-            ? " AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)"
-            : "";
-        StringBuilder sql = new StringBuilder("""
-            SELECT opt.id, opt.display_name, opt.email FROM (
-                (
-                    SELECT u.id, u.display_name, u.email
-                    FROM users u
-                    WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id"""
-            + areaClause
-            + """
-                )
-                        ORDER BY COALESCE(NULLIF(TRIM(u.display_name), ''), u.email) ASC NULLS LAST, u.email ASC, u.id ASC
-                        LIMIT 200
-                    )
-                """);
+        String areaClause =
+                allowedAreasLower != null
+                        ? " AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)"
+                        : "";
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT opt.id, opt.display_name, opt.email FROM (
+                            (
+                                SELECT u.id, u.display_name, u.email
+                                FROM users u
+                                WHERE EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id\
+                        """
+                                + areaClause
+                                + """
+                                )
+                                        ORDER BY COALESCE(NULLIF(TRIM(u.display_name), ''), u.email) ASC NULLS LAST, u.email ASC, u.id ASC
+                                        LIMIT 200
+                                    )
+                                """);
         Map<String, Object> params = new HashMap<>();
         if (allowedAreasLower != null) {
             params.put("allowedAreas", allowedAreasLower);
         }
         if (additionalUserIds != null && !additionalUserIds.isEmpty()) {
-            sql.append("""
-                UNION
-                (
-                    SELECT u.id, u.display_name, u.email
-                    FROM users u
-                    WHERE u.id IN (:additionalUserIds)""");
+            sql.append(
+                    """
+                    UNION
+                    (
+                        SELECT u.id, u.display_name, u.email
+                        FROM users u
+                        WHERE u.id IN (:additionalUserIds)\
+                    """);
             if (allowedAreasLower != null) {
                 sql.append(" AND EXISTS (SELECT 1 FROM conversations c WHERE c.user_id = u.id")
-                    .append(areaClause).append(")");
+                        .append(areaClause)
+                        .append(")");
             }
             sql.append("\n)\n");
             params.put("additionalUserIds", additionalUserIds);
         }
         sql.append(
-            """
+                """
                 ) opt
                 ORDER BY COALESCE(NULLIF(TRIM(opt.display_name), ''), opt.email) ASC NULLS LAST, opt.email ASC, opt.id ASC
                 """);
 
         List<ConversationUserOption> options =
-            new ArrayList<>(jdbcClient.sql(sql.toString()).params(params)
-                .query((rs, rowNum) -> new ConversationUserOption(rs.getObject("id", UUID.class),
-                    rs.getString("display_name"), rs.getString("email")))
-                .list());
+                new ArrayList<>(
+                        jdbcClient
+                                .sql(sql.toString())
+                                .params(params)
+                                .query((rs, rowNum) ->
+                                        new ConversationUserOption(
+                                                rs.getObject("id", UUID.class),
+                                                rs.getString("display_name"),
+                                                rs.getString("email")))
+                                .list());
 
-        if (additionalUserIds != null && !additionalUserIds.isEmpty()
-            && allowedAreasLower == null) {
+        if (additionalUserIds != null
+                && !additionalUserIds.isEmpty()
+                && allowedAreasLower == null) {
             Set<UUID> returnedIds = new HashSet<>();
             for (ConversationUserOption opt : options) {
                 returnedIds.add(opt.id());
@@ -310,7 +395,8 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         return Collections.unmodifiableList(options);
     }
 
-    void appendConversationFilters(StringBuilder sql, Map<String, Object> params, ConversationFilter filter) {
+    void appendConversationFilters(
+            StringBuilder sql, Map<String, Object> params, ConversationFilter filter) {
         if (filter == null) {
             return;
         }
@@ -345,30 +431,42 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         FeedbackFilter feedbackFilter = filter.feedbackFilter();
         if (feedbackFilter != null) {
             switch (feedbackFilter) {
-                case POSITIVE -> sql.append("""
-                     AND EXISTS (
-                        SELECT 1 FROM messages m
-                        JOIN message_feedback mf ON mf.message_id = m.id
-                        WHERE m.conversation_id = c.id AND mf.rating = 1
-                    )""");
-                case NEGATIVE -> sql.append("""
-                     AND EXISTS (
-                        SELECT 1 FROM messages m
-                        JOIN message_feedback mf ON mf.message_id = m.id
-                        WHERE m.conversation_id = c.id AND mf.rating = -1
-                    )""");
-                case ANY -> sql.append("""
-                     AND EXISTS (
-                        SELECT 1 FROM messages m
-                        JOIN message_feedback mf ON mf.message_id = m.id
-                        WHERE m.conversation_id = c.id AND (mf.rating = 1 OR mf.rating = -1)
-                    )""");
-                case NONE -> sql.append("""
-                     AND NOT EXISTS (
-                        SELECT 1 FROM messages m
-                        JOIN message_feedback mf ON mf.message_id = m.id
-                        WHERE m.conversation_id = c.id AND (mf.rating = 1 OR mf.rating = -1)
-                    )""");
+                case POSITIVE ->
+                        sql.append(
+                                """
+                                 AND EXISTS (
+                                    SELECT 1 FROM messages m
+                                    JOIN message_feedback mf ON mf.message_id = m.id
+                                    WHERE m.conversation_id = c.id AND mf.rating = 1
+                                )\
+                                """);
+                case NEGATIVE ->
+                        sql.append(
+                                """
+                                 AND EXISTS (
+                                    SELECT 1 FROM messages m
+                                    JOIN message_feedback mf ON mf.message_id = m.id
+                                    WHERE m.conversation_id = c.id AND mf.rating = -1
+                                )\
+                                """);
+                case ANY ->
+                        sql.append(
+                                """
+                                 AND EXISTS (
+                                    SELECT 1 FROM messages m
+                                    JOIN message_feedback mf ON mf.message_id = m.id
+                                    WHERE m.conversation_id = c.id AND (mf.rating = 1 OR mf.rating = -1)
+                                )\
+                                """);
+                case NONE ->
+                        sql.append(
+                                """
+                                 AND NOT EXISTS (
+                                    SELECT 1 FROM messages m
+                                    JOIN message_feedback mf ON mf.message_id = m.id
+                                    WHERE m.conversation_id = c.id AND (mf.rating = 1 OR mf.rating = -1)
+                                )\
+                                """);
                 case ALL -> {
                     // No feedback filter
                 }
@@ -390,7 +488,7 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
     @Override
     public List<Map<String, Object>> findMessagesSurfacingChunk(UUID chunkId) {
         String sql =
-            """
+                """
                 SELECT m.id::text AS message_id, m.conversation_id::text AS conversation_id, m.role, m.content, m.created_at,
                        c.title AS conversation_title
                 FROM messages m
@@ -403,16 +501,20 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
                 ORDER BY m.created_at DESC
                 LIMIT 10
                 """;
-        return jdbcClient.sql(sql).param("chunkId", chunkId).query((rs, rowNum) -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("message_id", rs.getString("message_id"));
-            map.put("conversation_id", rs.getString("conversation_id"));
-            map.put("role", rs.getString("role"));
-            map.put("content", rs.getString("content"));
-            map.put("created_at", rs.getObject("created_at", OffsetDateTime.class));
-            map.put("conversation_title", rs.getString("conversation_title"));
-            return map;
-        }).list();
+        return jdbcClient
+                .sql(sql)
+                .param("chunkId", chunkId)
+                .query((rs, rowNum) -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("message_id", rs.getString("message_id"));
+                    map.put("conversation_id", rs.getString("conversation_id"));
+                    map.put("role", rs.getString("role"));
+                    map.put("content", rs.getString("content"));
+                    map.put("created_at", rs.getObject("created_at", OffsetDateTime.class));
+                    map.put("conversation_title", rs.getString("conversation_title"));
+                    return map;
+                })
+                .list();
     }
 
     public long countFeedbackByRating(int rating) {
@@ -424,35 +526,48 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
             return 0L;
         }
         if (allowedAreasLower == null) {
-            return jdbcClient.sql("SELECT COUNT(*) FROM message_feedback WHERE rating = :rating")
-                .param("rating", rating).query(Long.class).single();
+            return jdbcClient
+                    .sql("SELECT COUNT(*) FROM message_feedback WHERE rating = :rating")
+                    .param("rating", rating)
+                    .query(Long.class)
+                    .single();
         }
-        String sql = """
-            SELECT COUNT(*)
-            FROM message_feedback f
-            JOIN messages m ON f.message_id = m.id
-            JOIN conversations c ON m.conversation_id = c.id
-            WHERE f.rating = :rating
-              AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
-            """;
-        return jdbcClient.sql(sql).param("rating", rating).param("allowedAreas", allowedAreasLower)
-            .query(Long.class).single();
+        String sql =
+                """
+                SELECT COUNT(*)
+                FROM message_feedback f
+                JOIN messages m ON f.message_id = m.id
+                JOIN conversations c ON m.conversation_id = c.id
+                WHERE f.rating = :rating
+                  AND c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreas)
+                """;
+        return jdbcClient
+                .sql(sql)
+                .param("rating", rating)
+                .param("allowedAreas", allowedAreasLower)
+                .query(Long.class)
+                .single();
     }
 
     public long countFilteredFeedback(String rating, Boolean reviewed, String timeRange) {
         return countFilteredFeedback(rating, reviewed, timeRange, null);
     }
 
-    public long countFilteredFeedback(String rating, Boolean reviewed, String timeRange,
-        @Nullable Set<String> allowedAreasLower) {
+    public long countFilteredFeedback(
+            String rating,
+            Boolean reviewed,
+            String timeRange,
+            @Nullable Set<String> allowedAreasLower) {
         if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
             return 0L;
         }
-        StringBuilder sql = new StringBuilder("""
-            SELECT COUNT(*)
-            FROM message_feedback f
-            JOIN messages m ON f.message_id = m.id
-            """);
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT COUNT(*)
+                        FROM message_feedback f
+                        JOIN messages m ON f.message_id = m.id
+                        """);
         if (allowedAreasLower != null) {
             sql.append(" JOIN conversations c ON m.conversation_id = c.id ");
         }
@@ -468,23 +583,30 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         return jdbcClient.sql(sql.toString()).params(params).query(Long.class).single();
     }
 
-    public List<FeedbackComment> listFeedback(String rating, Boolean reviewed, String timeRange,
-        String sort, int size, int offset) {
+    public List<FeedbackComment> listFeedback(
+            String rating, Boolean reviewed, String timeRange, String sort, int size, int offset) {
         return listFeedback(rating, reviewed, timeRange, sort, size, offset, null);
     }
 
-    public List<FeedbackComment> listFeedback(String rating, Boolean reviewed, String timeRange,
-        String sort, int size, int offset, @Nullable Set<String> allowedAreasLower) {
+    public List<FeedbackComment> listFeedback(
+            String rating,
+            Boolean reviewed,
+            String timeRange,
+            String sort,
+            int size,
+            int offset,
+            @Nullable Set<String> allowedAreasLower) {
         if (allowedAreasLower != null && allowedAreasLower.isEmpty()) {
             return List.of();
         }
-        StringBuilder sql = new StringBuilder(
-            """
-                SELECT f.id::text AS feedback_id, f.message_id::text AS message_id, f.rating, f.comment, f.created_at,
-                       f.reviewed, f.notes, m.content AS query_text, m.conversation_id::text AS conversation_id
-                FROM message_feedback f
-                JOIN messages m ON f.message_id = m.id
-                """);
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT f.id::text AS feedback_id, f.message_id::text AS message_id, f.rating, f.comment, f.created_at,
+                               f.reviewed, f.notes, m.content AS query_text, m.conversation_id::text AS conversation_id
+                        FROM message_feedback f
+                        JOIN messages m ON f.message_id = m.id
+                        """);
         if (allowedAreasLower != null) {
             sql.append(" JOIN conversations c ON m.conversation_id = c.id ");
         }
@@ -507,43 +629,62 @@ public class ChatAdminQueryRepository implements ChunkSurfacingMessageLookup {
         }
         sql.append(" LIMIT :limit OFFSET :offset");
 
-        return jdbcClient.sql(sql.toString()).params(params)
-            .query((rs, rowNum) -> new FeedbackComment(rs.getString("feedback_id"),
-                rs.getString("message_id"), rs.getInt("rating"), rs.getString("comment"),
-                rs.getObject("created_at", OffsetDateTime.class), rs.getString("query_text"),
-                rs.getString("conversation_id"), rs.getBoolean("reviewed"), rs.getString("notes")))
-            .list();
+        return jdbcClient
+                .sql(sql.toString())
+                .params(params)
+                .query((rs, rowNum) ->
+                        new FeedbackComment(
+                                rs.getString("feedback_id"),
+                                rs.getString("message_id"),
+                                rs.getInt("rating"),
+                                rs.getString("comment"),
+                                rs.getObject("created_at", OffsetDateTime.class),
+                                rs.getString("query_text"),
+                                rs.getString("conversation_id"),
+                                rs.getBoolean("reviewed"),
+                                rs.getString("notes")))
+                .list();
     }
 
     public Optional<String> findFeedbackArea(UUID feedbackId) {
         if (feedbackId == null) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT c.area
-            FROM message_feedback f
-            JOIN messages m ON f.message_id = m.id
-            JOIN conversations c ON m.conversation_id = c.id
-            WHERE f.id = :id
-            """;
+        String sql =
+                """
+                SELECT c.area
+                FROM message_feedback f
+                JOIN messages m ON f.message_id = m.id
+                JOIN conversations c ON m.conversation_id = c.id
+                WHERE f.id = :id
+                """;
         return jdbcClient.sql(sql).param("id", feedbackId).query(String.class).optional();
     }
 
     public void setFeedbackReviewed(UUID id, boolean reviewed) {
-        jdbcClient.sql(
-            "UPDATE message_feedback SET reviewed = :reviewed, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
-            .param("reviewed", reviewed).param("id", id).update();
+        jdbcClient
+                .sql(
+                        "UPDATE message_feedback SET reviewed = :reviewed, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+                .param("reviewed", reviewed)
+                .param("id", id)
+                .update();
     }
 
     public void setFeedbackNotes(UUID id, String notes) {
-        jdbcClient.sql(
-            "UPDATE message_feedback SET notes = :notes, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
-            .param("notes", notes != null && !notes.isBlank() ? notes.trim() : null).param("id", id)
-            .update();
+        jdbcClient
+                .sql(
+                        "UPDATE message_feedback SET notes = :notes, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+                .param("notes", notes != null && !notes.isBlank() ? notes.trim() : null)
+                .param("id", id)
+                .update();
     }
 
-    private void appendFilters(StringBuilder sql, Map<String, Object> params, String rating,
-        Boolean reviewed, String timeRange) {
+    private void appendFilters(
+            StringBuilder sql,
+            Map<String, Object> params,
+            String rating,
+            Boolean reviewed,
+            String timeRange) {
         if ("good".equalsIgnoreCase(rating)) {
             sql.append(" AND f.rating = 1");
         } else if ("bad".equalsIgnoreCase(rating)) {

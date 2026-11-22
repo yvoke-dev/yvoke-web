@@ -24,43 +24,59 @@ import org.springframework.stereotype.Component;
  * the playbook it stands for. Both read the table on every call, so unlike the prompt list a new or
  * deleted playbook shows at once.
  *
- * <p>
- * The list is the same selection and shape as the desktop's {@code GET /api/chat/v1/playbooks}
- * (orchestrator and reviewer playbooks left out, since a user cannot pick one), while
- * {@code get_playbook} resolves any name, as MCP {@code prompts/get} does.
+ * <p>The list is the same selection and shape as the desktop's {@code GET /api/chat/v1/playbooks}
+ * (orchestrator and reviewer playbooks left out, since a user cannot pick one), while {@code
+ * get_playbook} resolves any name, as MCP {@code prompts/get} does.
  */
 @ClientOnlyTools
 @Component
 public class PlaybookTools {
 
     private static final String LIST_DESCRIPTION =
-        "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
-            + "tells you to. Lists the Yvoke playbooks a user can pick, as a JSON array of "
-            + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, version}. "
-            + "Pass area to list only that area's playbooks. "
-            + "It does not answer questions about the knowledge base.";
+            "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
+                    + "tells you to. Lists the Yvoke playbooks a user can pick, as a JSON array of "
+                    + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, version}. "
+                    + "Pass area to list only that area's playbooks. "
+                    + "It does not answer questions about the knowledge base.";
 
     private static final String GET_DESCRIPTION =
-        "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
-            + "tells you to, with the playbook name it gives. Returns that playbook as a JSON object "
-            + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, "
-            + "version, text}, " + "where text is the playbook's full instructions.";
+            "For Yvoke clients only: call this only when a Yvoke playbook skill or the Yvoke plugin "
+                    + "tells you to, with the playbook name it gives. Returns that playbook as a JSON object "
+                    + "{name, title, description, tools, codeExecution, targetAgent, prototype, area, "
+                    + "version, text}, "
+                    + "where text is the playbook's full instructions.";
 
     private static final String NAME_PARAM = "The playbook's name, e.g. \"docs-full\".";
 
     private static final String AREA_PARAM =
-        "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's playbooks.";
+            "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's playbooks.";
 
     /** One playbook with its text: {@link PlaybookDto}'s fields plus {@code text}. */
-    record PlaybookWithText(String name, String title, String description, List<String> tools,
-        boolean codeExecution, String targetAgent, boolean prototype, String area, int version,
-        String text) {
+    record PlaybookWithText(
+            String name,
+            String title,
+            String description,
+            List<String> tools,
+            boolean codeExecution,
+            String targetAgent,
+            boolean prototype,
+            String area,
+            int version,
+            String text) {
 
         static PlaybookWithText from(Playbook playbook) {
             PlaybookDto meta = PlaybookDto.from(playbook);
-            return new PlaybookWithText(meta.name(), meta.title(), meta.description(), meta.tools(),
-                meta.codeExecution(), meta.targetAgent(), meta.prototype(), meta.area(),
-                meta.version(), playbook.templateText());
+            return new PlaybookWithText(
+                    meta.name(),
+                    meta.title(),
+                    meta.description(),
+                    meta.tools(),
+                    meta.codeExecution(),
+                    meta.targetAgent(),
+                    meta.prototype(),
+                    meta.area(),
+                    meta.version(),
+                    playbook.templateText());
         }
     }
 
@@ -69,8 +85,11 @@ public class PlaybookTools {
     private final AreaService areaService;
     private final ObjectMapper objectMapper;
 
-    public PlaybookTools(PlaybookService playbookService, PlaybookRepository playbookRepository,
-        AreaService areaService, ObjectMapper objectMapper) {
+    public PlaybookTools(
+            PlaybookService playbookService,
+            PlaybookRepository playbookRepository,
+            AreaService areaService,
+            ObjectMapper objectMapper) {
         this.playbookService = playbookService;
         this.playbookRepository = playbookRepository;
         this.areaService = areaService;
@@ -79,14 +98,17 @@ public class PlaybookTools {
 
     @McpTool(name = "list_playbooks", description = LIST_DESCRIPTION)
     @Tool(name = "list_playbooks", description = LIST_DESCRIPTION)
-    public String listPlaybooks(@McpToolParam(description = AREA_PARAM, required = false)
-    @ToolParam(description = AREA_PARAM, required = false) String area) {
+    public String listPlaybooks(
+            @McpToolParam(description = AREA_PARAM, required = false)
+                    @ToolParam(description = AREA_PARAM, required = false)
+                    String area) {
         try {
             Predicate<Playbook> inArea = McpToolUtils.inArea(areaService, area, Playbook::area);
-            List<Playbook> list = AreaAccessContext
-                .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
-            return objectMapper
-                .writeValueAsString(list.stream().filter(inArea).map(PlaybookDto::from).toList());
+            List<Playbook> list =
+                    AreaAccessContext.filterByUserArea(
+                            playbookService.listSpecializedPlaybooks(), Playbook::area);
+            return objectMapper.writeValueAsString(
+                    list.stream().filter(inArea).map(PlaybookDto::from).toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_playbooks", e);
         }
@@ -94,8 +116,10 @@ public class PlaybookTools {
 
     @McpTool(name = "get_playbook", description = GET_DESCRIPTION)
     @Tool(name = "get_playbook", description = GET_DESCRIPTION)
-    public String getPlaybook(@McpToolParam(description = NAME_PARAM, required = true)
-    @ToolParam(description = NAME_PARAM, required = true) String name) {
+    public String getPlaybook(
+            @McpToolParam(description = NAME_PARAM, required = true)
+                    @ToolParam(description = NAME_PARAM, required = true)
+                    String name) {
         if (name == null || name.isBlank()) {
             return "ERROR: 'name' is required for get_playbook.";
         }
@@ -108,8 +132,9 @@ public class PlaybookTools {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
             Playbook pb = playbook.get();
-            if (pb.area() != null && !pb.area().isBlank()
-                && !AreaAccessContext.canAccessUserArea(pb.area())) {
+            if (pb.area() != null
+                    && !pb.area().isBlank()
+                    && !AreaAccessContext.canAccessUserArea(pb.area())) {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
             return objectMapper.writeValueAsString(PlaybookWithText.from(pb));

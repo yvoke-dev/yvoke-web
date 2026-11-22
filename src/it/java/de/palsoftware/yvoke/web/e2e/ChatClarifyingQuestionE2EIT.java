@@ -13,19 +13,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * The clarifying-question flow, whose failure mode is the worst in the chat UI: the card
  * deliberately <em>disables</em> the composer ({@code thread.js:1066-1081} sets {@code disabled} on
  * {@code #chat-input}, {@code #voice-input-btn} and {@code #send-stop-button}), and the only thing
- * that re-enables it is {@code updateMainInputState} ({@code :1167}) finding no
- * {@code .clarifying-question-card:not(.answered)}. If the card fails to render, or the
- * answered-state detection breaks, the user is locked out of their own conversation with no way to
- * reply.
+ * that re-enables it is {@code updateMainInputState} ({@code :1167}) finding no {@code
+ * .clarifying-question-card:not(.answered)}. If the card fails to render, or the answered-state
+ * detection breaks, the user is locked out of their own conversation with no way to reply.
  *
- * <p>
- * None of this was reachable by any previous test. {@code ChatThreadRenderingIT} asserts only that
- * the raw {@code <clarifying-question>} text survived into the HTML — the client-side parser that
- * turns it into a usable card never ran anywhere.
+ * <p>None of this was reachable by any previous test. {@code ChatThreadRenderingIT} asserts only
+ * that the raw {@code <clarifying-question>} text survived into the HTML — the client-side parser
+ * that turns it into a usable card never ran anywhere.
  *
- * <p>
- * The answered state is the subtle part and is worth understanding before editing these tests: the
- * card is only marked {@code .answered} when the renderer walks {@code nextElementSibling} and
+ * <p>The answered state is the subtle part and is worth understanding before editing these tests:
+ * the card is only marked {@code .answered} when the renderer walks {@code nextElementSibling} and
  * finds a following user message row ({@code thread.js:1013-1028}), which cannot be true in the
  * same turn that produced the card. It therefore only appears after a reload — which is exactly why
  * the reload test here is the one that matters.
@@ -35,13 +32,11 @@ class ChatClarifyingQuestionE2EIT extends AbstractE2E {
     private static final String PLAYBOOK = "e2e-clarify";
     private static final String CARD = ".clarifying-question-card";
     private static final String QUESTION =
-        "<clarifying-question><question>Which OIM version?</question>"
-            + "<option>9.3</option><option>10.0</option></clarifying-question>";
+            "<clarifying-question><question>Which OIM version?</question>"
+                    + "<option>9.3</option><option>10.0</option></clarifying-question>";
 
-    @Autowired
-    private PlaybookService playbookService;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private PlaybookService playbookService;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void removePlaybook() {
@@ -53,8 +48,17 @@ class ChatClarifyingQuestionE2EIT extends AbstractE2E {
 
     /** Sends one question and has the assistant reply with a clarifying question. */
     private String askAndReceiveClarifyingQuestion() {
-        playbookService.savePlaybook(PLAYBOOK, "E2E Clarify", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                PLAYBOOK,
+                "E2E Clarify",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply(QUESTION);
 
         loginAs("user");
@@ -79,8 +83,8 @@ class ChatClarifyingQuestionE2EIT extends AbstractE2E {
         // The lockout itself. Without a working card these would all be enabled, so this is the
         // assertion that would catch a rendering regression turning into a dead conversation.
         assertThat(page.locator("#chat-input")).isDisabled();
-        assertThat(page.locator("#chat-input")).hasAttribute("placeholder",
-            "Please respond to the clarifying question above...");
+        assertThat(page.locator("#chat-input"))
+                .hasAttribute("placeholder", "Please respond to the clarifying question above...");
         assertThat(page.locator("#send-stop-button")).isDisabled();
     }
 

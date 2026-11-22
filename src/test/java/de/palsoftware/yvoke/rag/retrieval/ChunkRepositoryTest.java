@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -59,19 +58,17 @@ public class ChunkRepositoryTest {
      * S4.4 + S4.14. The two lanes filter tags on DIFFERENT columns, and only one of them re-sorts
      * its page. Both facts are invisible in every existing assertion in this file.
      *
-     * <p>
-     * The BM25 lane filters {@code ch.tags} with the {@code ===} literal-term operator, OR-ed
-     * across the requested tags. That is not interchangeable with the semantic lane's
-     * {@code unnest(d.tags)} EXISTS predicate: {@code ===} is the only form the {@code pdb.literal}
-     * index can serve, so re-pointing the lane at the document's tags turns an index probe into a
-     * full scan of the partition, and it silently re-scopes any chunk whose own tags differ from
-     * its document's. {@code testFindFulltextCandidates} asserts only the ABSENCE of
-     * {@code ch.tags ===} when no tags are passed, and every IT fixture writes the same value into
-     * {@code chunks.tags} and {@code documents.tags} — so substituting one for the other breaks no
+     * <p>The BM25 lane filters {@code ch.tags} with the {@code ===} literal-term operator, OR-ed
+     * across the requested tags. That is not interchangeable with the semantic lane's {@code
+     * unnest(d.tags)} EXISTS predicate: {@code ===} is the only form the {@code pdb.literal} index
+     * can serve, so re-pointing the lane at the document's tags turns an index probe into a full
+     * scan of the partition, and it silently re-scopes any chunk whose own tags differ from its
+     * document's. {@code testFindFulltextCandidates} asserts only the ABSENCE of {@code ch.tags
+     * ===} when no tags are passed, and every IT fixture writes the same value into {@code
+     * chunks.tags} and {@code documents.tags} — so substituting one for the other breaks no
      * assertion anywhere and no IT can tell.
      *
-     * <p>
-     * The semantic lane runs under {@code hnsw.iterative_scan = relaxed_order}, which may emit
+     * <p>The semantic lane runs under {@code hnsw.iterative_scan = relaxed_order}, which may emit
      * index rows slightly out of distance order, so the ANN query is WRAPPED and the outer select
      * re-sorts by {@code cosine_similarity DESC}. Callers use row POSITION as the semantic rank and
      * RRF fuses on exactly that rank, so losing the wrapper produces no error and no missing row:
@@ -80,8 +77,7 @@ public class ChunkRepositoryTest {
      * which the inner column ALIAS already satisfies, so the wrapper could be deleted with this
      * whole file green.
      *
-     * <p>
-     * The wrapper's PLACEMENT is asserted too: {@code LIMIT}/{@code OFFSET} must stay inside the
+     * <p>The wrapper's PLACEMENT is asserted too: {@code LIMIT}/{@code OFFSET} must stay inside the
      * subquery, because the outer sort only corrects order within the page it was handed — hoisting
      * the limit outside would change which rows the page contains, not merely their order.
      */
@@ -89,17 +85,23 @@ public class ChunkRepositoryTest {
     public void theBm25LaneScopesTagsOnTheChunkWhileTheSemanticLaneReSortsItsPage() {
         when(querySpec.list()).thenReturn(Collections.emptyList());
 
-        chunkRepository.findFulltextCandidates("person table", 5, 0, List.of("9.3.1", "10.0"),
-            List.of("OIM"));
-        chunkRepository.findSemanticCandidates("[0.1,0.2]", 5, 0, List.of("9.3.1", "10.0"),
-            List.of("OIM"));
+        chunkRepository.findFulltextCandidates(
+                "person table", 5, 0, List.of("9.3.1", "10.0"), List.of("OIM"));
+        chunkRepository.findSemanticCandidates(
+                "[0.1,0.2]", 5, 0, List.of("9.3.1", "10.0"), List.of("OIM"));
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient, atLeastOnce()).sql(sqlCaptor.capture());
-        String ftSql = sqlCaptor.getAllValues().stream().filter(s -> s.contains("pdb.score"))
-            .findFirst().orElseThrow();
-        String semSql = sqlCaptor.getAllValues().stream()
-            .filter(s -> s.contains("cosine_similarity")).findFirst().orElseThrow();
+        String ftSql =
+                sqlCaptor.getAllValues().stream()
+                        .filter(s -> s.contains("pdb.score"))
+                        .findFirst()
+                        .orElseThrow();
+        String semSql =
+                sqlCaptor.getAllValues().stream()
+                        .filter(s -> s.contains("cosine_similarity"))
+                        .findFirst()
+                        .orElseThrow();
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
@@ -109,8 +111,9 @@ public class ChunkRepositoryTest {
 
         // BM25: the CHUNK's own tags, term-matched and OR-ed — the only form pdb.literal indexes.
         assertThat(ftSql).contains("(ch.tags === :tag0 OR ch.tags === :tag1)");
-        assertThat(ftSql).as("the BM25 lane must not borrow the document-level tag predicate")
-            .doesNotContain("unnest(d.tags)");
+        assertThat(ftSql)
+                .as("the BM25 lane must not borrow the document-level tag predicate")
+                .doesNotContain("unnest(d.tags)");
         assertThat(ftParams).containsEntry("tag0", "9.3.1").containsEntry("tag1", "10.0");
 
         // Semantic: the DOCUMENT's tags, and never the literal-term operator.
@@ -120,12 +123,13 @@ public class ChunkRepositoryTest {
 
         String flat = semSql.replaceAll("\\s+", " ");
         assertThat(flat)
-            .as("relaxed_order may emit rows out of distance order; the outer sort "
-                + "restores the strict ranking callers read as the semantic rank")
-            .contains(") candidates ORDER BY cosine_similarity DESC");
+                .as(
+                        "relaxed_order may emit rows out of distance order; the outer sort "
+                                + "restores the strict ranking callers read as the semantic rank")
+                .contains(") candidates ORDER BY cosine_similarity DESC");
         assertThat(flat.indexOf("LIMIT :limit"))
-            .as("the page must be taken INSIDE the subquery — the outer sort only reorders it")
-            .isLessThan(flat.indexOf(") candidates ORDER BY"));
+                .as("the page must be taken INSIDE the subquery — the outer sort only reorders it")
+                .isLessThan(flat.indexOf(") candidates ORDER BY"));
     }
 
     /**
@@ -143,10 +147,14 @@ public class ChunkRepositoryTest {
         when(statementSpec.query(UUID.class)).thenReturn(noIds);
         when(noIds.list()).thenReturn(List.of());
 
-        assertThat(chunkRepository.findSemanticCandidates("[0.1,0.2]", 10, 0, List.of(),
-            List.of("no-such-collection"))).isEmpty();
-        assertThat(chunkRepository.findFulltextCandidates("query", 10, 0, List.of(),
-            List.of("no-such-collection"))).isEmpty();
+        assertThat(
+                        chunkRepository.findSemanticCandidates(
+                                "[0.1,0.2]", 10, 0, List.of(), List.of("no-such-collection")))
+                .isEmpty();
+        assertThat(
+                        chunkRepository.findFulltextCandidates(
+                                "query", 10, 0, List.of(), List.of("no-such-collection")))
+                .isEmpty();
 
         // The decisive assertion: neither lane may have executed a chunk query at all. If a lane
         // ran one, it ran it WITHOUT a collection predicate — i.e. over the entire corpus.
@@ -156,12 +164,26 @@ public class ChunkRepositoryTest {
     @Test
     public void testFindSemanticCandidates() {
         UUID id = UUID.randomUUID();
-        ChunkRow mockRow = new ChunkRow(id, UUID.randomUUID(), "text", Collections.emptyList(),
-            "head", 1, 0, "1.0", "file.md", "manual", "OIM", Collections.emptyMap(), 0.95);
+        ChunkRow mockRow =
+                new ChunkRow(
+                        id,
+                        UUID.randomUUID(),
+                        "text",
+                        Collections.emptyList(),
+                        "head",
+                        1,
+                        0,
+                        "1.0",
+                        "file.md",
+                        "manual",
+                        "OIM",
+                        Collections.emptyMap(),
+                        0.95);
         when(querySpec.list()).thenReturn(List.of(mockRow));
 
-        List<ChunkRow> results = chunkRepository.findSemanticCandidates("[0.1,0.2]", 10, 0,
-            List.of("1.0"), List.of("OIM"));
+        List<ChunkRow> results =
+                chunkRepository.findSemanticCandidates(
+                        "[0.1,0.2]", 10, 0, List.of("1.0"), List.of("OIM"));
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(id);
@@ -194,12 +216,25 @@ public class ChunkRepositoryTest {
     @Test
     public void testFindFulltextCandidates() {
         UUID id = UUID.randomUUID();
-        ChunkRow mockRow = new ChunkRow(id, UUID.randomUUID(), "text", Collections.emptyList(),
-            "head", 1, 0, "1.0", "file.md", "manual", "OIM", Collections.emptyMap(), 8.5);
+        ChunkRow mockRow =
+                new ChunkRow(
+                        id,
+                        UUID.randomUUID(),
+                        "text",
+                        Collections.emptyList(),
+                        "head",
+                        1,
+                        0,
+                        "1.0",
+                        "file.md",
+                        "manual",
+                        "OIM",
+                        Collections.emptyMap(),
+                        8.5);
         when(querySpec.list()).thenReturn(List.of(mockRow));
 
         List<ChunkRow> results =
-            chunkRepository.findFulltextCandidates("query", 5, 0, null, List.of("OIM"));
+                chunkRepository.findFulltextCandidates("query", 5, 0, null, List.of("OIM"));
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(id);
@@ -306,8 +341,7 @@ public class ChunkRepositoryTest {
      * nothing — not the answer, not {@code verify_citations} (which only checks that an id exists)
      * — reports anything wrong.
      *
-     * <p>
-     * {@code testFindByIdPrefixValidation} only ever stubs an EMPTY result list, so the
+     * <p>{@code testFindByIdPrefixValidation} only ever stubs an EMPTY result list, so the
      * more-than-one branch has never executed in any test: widening its condition, or replacing the
      * throw with {@code matches.get(0)}, keeps this whole file green.
      */
@@ -315,29 +349,62 @@ public class ChunkRepositoryTest {
     public void anAmbiguousChunkIdPrefixThrowsAndEnumeratesTheCandidatesInsteadOfPickingOne() {
         try {
             SecurityContextHolder.getContext()
-                .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
-                    List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                        new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
+                    .setAuthentication(
+                            new UsernamePasswordAuthenticationToken(
+                                    "global-user",
+                                    "n/a",
+                                    List.of(
+                                            new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                            new SimpleGrantedAuthority(
+                                                    AreaAccessContext.AREA_USER_ALL))));
             // Two real chunks sharing the 8-hex-character prefix an agent typically cites.
             UUID first = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
             UUID second = UUID.fromString("a1b2c3d4-2222-4222-8222-000000000002");
-            ChunkRow one = new ChunkRow(first, UUID.randomUUID(), "german text",
-                Collections.emptyList(), "Vererbung", 1, 0, "9.3", "inheritance-de.md", "manual",
-                "OIM", Collections.emptyMap(), 0.0);
-            ChunkRow two = new ChunkRow(second, UUID.randomUUID(), "english text",
-                Collections.emptyList(), "Inheritance", 1, 0, "10.0", "inheritance-en.md", "manual",
-                "OIM", Collections.emptyMap(), 0.0);
+            ChunkRow one =
+                    new ChunkRow(
+                            first,
+                            UUID.randomUUID(),
+                            "german text",
+                            Collections.emptyList(),
+                            "Vererbung",
+                            1,
+                            0,
+                            "9.3",
+                            "inheritance-de.md",
+                            "manual",
+                            "OIM",
+                            Collections.emptyMap(),
+                            0.0);
+            ChunkRow two =
+                    new ChunkRow(
+                            second,
+                            UUID.randomUUID(),
+                            "english text",
+                            Collections.emptyList(),
+                            "Inheritance",
+                            1,
+                            0,
+                            "10.0",
+                            "inheritance-en.md",
+                            "manual",
+                            "OIM",
+                            Collections.emptyMap(),
+                            0.0);
             when(querySpec.list()).thenReturn(List.of(one, two));
 
             assertThatThrownBy(() -> chunkRepository.findByIdPrefix("a1b2c3d4", null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .as("an ambiguous prefix must fail loudly rather than resolve to one of the rows")
-                .hasMessageContaining("a1b2c3d4").hasMessageContaining("2 matches")
-                // Both candidates must be enumerated: the caller can only disambiguate by being
-                // told
-                // which documents/headings the prefix collided across.
-                .hasMessageContaining("inheritance-de.md").hasMessageContaining("Vererbung")
-                .hasMessageContaining("inheritance-en.md").hasMessageContaining("Inheritance");
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .as(
+                            "an ambiguous prefix must fail loudly rather than resolve to one of the rows")
+                    .hasMessageContaining("a1b2c3d4")
+                    .hasMessageContaining("2 matches")
+                    // Both candidates must be enumerated: the caller can only disambiguate by being
+                    // told
+                    // which documents/headings the prefix collided across.
+                    .hasMessageContaining("inheritance-de.md")
+                    .hasMessageContaining("Vererbung")
+                    .hasMessageContaining("inheritance-en.md")
+                    .hasMessageContaining("Inheritance");
         } finally {
             SecurityContextHolder.clearContext();
         }
@@ -346,23 +413,31 @@ public class ChunkRepositoryTest {
     @Test
     public void testFindByIdPrefixValidation() {
         // Test null prefix
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix(null, null);
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    chunkRepository.findByIdPrefix(null, null);
+                });
 
         // Test too short prefix (less than 8 characters but not empty)
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234567", null);
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    chunkRepository.findByIdPrefix("1234567", null);
+                });
 
         // Test invalid characters prefix
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234567g", null); // 'g' is not valid hex
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    chunkRepository.findByIdPrefix("1234567g", null); // 'g' is not valid hex
+                });
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            chunkRepository.findByIdPrefix("1234-56%", null); // '%' is sql wildcard
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    chunkRepository.findByIdPrefix("1234-56%", null); // '%' is sql wildcard
+                });
 
         // Test valid prefix (empty string is allowed, triggers no validation exception)
         try {
@@ -415,8 +490,21 @@ public class ChunkRepositoryTest {
         verify(jdbcClient, never()).sql(anyString());
 
         UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
-        ChunkRow one = new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
-            "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
+        ChunkRow one =
+                new ChunkRow(
+                        matchId,
+                        UUID.randomUUID(),
+                        "hr text",
+                        Collections.emptyList(),
+                        "Heading",
+                        1,
+                        0,
+                        "1.0",
+                        "hr.md",
+                        "manual",
+                        "HR",
+                        Collections.emptyMap(),
+                        0.0);
         when(querySpec.list()).thenReturn(List.of(one));
 
         Optional<ChunkRow> result = chunkRepository.findByIdPrefix("a1b2c3d4", Set.of("hr"));
@@ -428,30 +516,45 @@ public class ChunkRepositoryTest {
         verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
 
         assertThat(sqlCaptor.getValue())
-            .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+                .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
     }
 
     @Test
     public void findByIdAndFullUuidPrefixUseExactIdEqualityInsteadOfLikeScan() {
         UUID matchId = UUID.fromString("a1b2c3d4-1111-4111-8111-000000000001");
-        ChunkRow one = new ChunkRow(matchId, UUID.randomUUID(), "hr text", Collections.emptyList(),
-            "Heading", 1, 0, "1.0", "hr.md", "manual", "HR", Collections.emptyMap(), 0.0);
+        ChunkRow one =
+                new ChunkRow(
+                        matchId,
+                        UUID.randomUUID(),
+                        "hr text",
+                        Collections.emptyList(),
+                        "Heading",
+                        1,
+                        0,
+                        "1.0",
+                        "hr.md",
+                        "manual",
+                        "HR",
+                        Collections.emptyMap(),
+                        0.0);
         when(querySpec.list()).thenReturn(List.of(one));
 
         Optional<ChunkRow> result =
-            chunkRepository.findByIdPrefix(matchId.toString(), Set.of("hr"));
+                chunkRepository.findByIdPrefix(matchId.toString(), Set.of("hr"));
         assertThat(result).contains(one);
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient).sql(sqlCaptor.capture());
         verify(statementSpec).param("id", matchId);
         verify(statementSpec).param("allowedAreasLower", Set.of("hr"));
-        assertThat(sqlCaptor.getValue()).contains("WHERE ch.id = :id")
-            .doesNotContain("LIKE :prefix")
-            .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
+        assertThat(sqlCaptor.getValue())
+                .contains("WHERE ch.id = :id")
+                .doesNotContain("LIKE :prefix")
+                .contains("AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)");
 
         assertThat(
-            chunkRepository.findByIdPrefix("a1b2c3d4111141118111000000000001aa", Set.of("hr")))
-            .isEmpty();
+                        chunkRepository.findByIdPrefix(
+                                "a1b2c3d4111141118111000000000001aa", Set.of("hr")))
+                .isEmpty();
     }
 }

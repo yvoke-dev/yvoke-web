@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 public class CitationVerifierTest {
 
     private static final UUID REAL_CHUNK_ID =
-        UUID.fromString("8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b");
+            UUID.fromString("8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b");
     private static final UUID REAL_DOCUMENT_ID =
-        UUID.fromString("9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f");
+            UUID.fromString("9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f");
 
     private ChunkRepository chunkRepository;
     private DocumentRepository documentRepository;
@@ -30,9 +30,9 @@ public class CitationVerifierTest {
         documentRepository = mock(DocumentRepository.class);
         // The repositories report only the REAL_* ids as existing.
         when(chunkRepository.findExistingIds(anyCollection()))
-            .thenAnswer(inv -> retainExisting(inv.getArgument(0), REAL_CHUNK_ID));
+                .thenAnswer(inv -> retainExisting(inv.getArgument(0), REAL_CHUNK_ID));
         when(documentRepository.findExistingIds(anyCollection()))
-            .thenAnswer(inv -> retainExisting(inv.getArgument(0), REAL_DOCUMENT_ID));
+                .thenAnswer(inv -> retainExisting(inv.getArgument(0), REAL_DOCUMENT_ID));
         verifier = new CitationVerifier(chunkRepository, documentRepository);
     }
 
@@ -49,7 +49,7 @@ public class CitationVerifierTest {
         assertThat(parsedChunk.value).isEqualTo("8f7c1a2b");
 
         CitationVerifier.ParsedCitation parsedDoc =
-            verifier.parseCitation("[document_id=9a8b7c6d]");
+                verifier.parseCitation("[document_id=9a8b7c6d]");
         assertThat(parsedDoc.kind).isEqualTo("document");
         assertThat(parsedDoc.value).isEqualTo("9a8b7c6d");
 
@@ -63,33 +63,36 @@ public class CitationVerifierTest {
         assertThat(parsedHex.kind).isEqualTo("unknown");
 
         CitationVerifier.ParsedCitation parsedFullHex =
-            verifier.parseCitation(REAL_CHUNK_ID.toString().replace("-", ""));
+                verifier.parseCitation(REAL_CHUNK_ID.toString().replace("-", ""));
         assertThat(parsedFullHex.kind).isEqualTo("id");
     }
 
     @Test
     public void testCheckCitations() {
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]",
-                "[chunk_id=00000000-0000-0000-0000-000000000000]",
-                "[document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f]",
-                "[document_id=11111111-1111-1111-1111-111111111111]", "file=ADSAccount.md"));
+                verifier.checkCitations(
+                        List.of(
+                                "[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]",
+                                "[chunk_id=00000000-0000-0000-0000-000000000000]",
+                                "[document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f]",
+                                "[document_id=11111111-1111-1111-1111-111111111111]",
+                                "file=ADSAccount.md"));
 
         assertThat(results).hasSize(5);
         assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
         assertThat(results.get(1).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(results.get(2).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
         assertThat(results.get(3).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(results.get(4).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
     }
 
     @Test
     public void testCleanFabricatedCitations() {
         String text =
-            "This is a statement [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b] and a fake citation [chunk_id=00000000-0000-0000-0000-000000000000] and a valid doc [document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f] and a fake doc [document_id=11111111-1111-1111-1111-111111111111] and normal brackets [Optional].";
+                "This is a statement [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b] and a fake citation [chunk_id=00000000-0000-0000-0000-000000000000] and a valid doc [document_id=9a8b7c6d-1a2b-3c4d-5e6f-7a8b9c0d1e2f] and a fake doc [document_id=11111111-1111-1111-1111-111111111111] and normal brackets [Optional].";
         String cleaned = verifier.cleanFabricatedCitations(text);
 
         assertThat(cleaned).contains("[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]");
@@ -148,8 +151,17 @@ public class CitationVerifierTest {
         // stream: "Error code [500123] occurred." reached the user as "Error code occurred."
         // Only the two forms a real id actually takes — 36-char uuid, or 32 hex chars — may resolve
         // to kind "id"; this also matches what thread.js:930 linkifies on the client.
-        for (String prose : List.of("[facade]", "[Facade]", "[decade]", "[accede]", "[deadbeef]",
-            "[cafebabe]", "[500123]", "[202401]", "[8f7c1a2b]")) {
+        for (String prose :
+                List.of(
+                        "[facade]",
+                        "[Facade]",
+                        "[decade]",
+                        "[accede]",
+                        "[deadbeef]",
+                        "[cafebabe]",
+                        "[500123]",
+                        "[202401]",
+                        "[8f7c1a2b]")) {
             assertThat(verifier.parseCitation(prose).kind).as(prose).isEqualTo("unknown");
             assertThat(verifier.isFabricated(prose)).as(prose).isFalse();
         }
@@ -157,8 +169,10 @@ public class CitationVerifierTest {
         // The full forms still classify as ids, hyphenated or not.
         assertThat(verifier.parseCitation("[" + REAL_CHUNK_ID + "]").kind).isEqualTo("id");
         assertThat(
-            verifier.parseCitation("[" + REAL_CHUNK_ID.toString().replace("-", "") + "]").kind)
-            .isEqualTo("id");
+                        verifier.parseCitation(
+                                        "[" + REAL_CHUNK_ID.toString().replace("-", "") + "]")
+                                .kind)
+                .isEqualTo("id");
         assertThat(verifier.isFabricated("[" + REAL_CHUNK_ID + "]")).isFalse();
     }
 
@@ -168,20 +182,22 @@ public class CitationVerifierTest {
         // [1]/[2] are the format every playbook and the default-chat prompt mandate, so reporting
         // them as fabricated drives the reviewer to strip correct citations.
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[1]", "[42]"));
+                verifier.checkCitations(List.of("[1]", "[42]"));
 
         assertThat(results).hasSize(2);
-        assertThat(results).allSatisfy(r -> assertThat(r.getStatus())
-            .isNotEqualTo(CitationVerifier.CitationStatus.FABRICATED));
+        assertThat(results)
+                .allSatisfy(r ->
+                        assertThat(r.getStatus())
+                                .isNotEqualTo(CitationVerifier.CitationStatus.FABRICATED));
     }
 
     @Test
     public void testGenuineFabricationsAreStillDetected() {
         // The narrowing above must not weaken the actual anti-hallucination check.
         assertThat(verifier.isFabricated("[chunk_id=00000000-0000-0000-0000-000000000000]"))
-            .isTrue();
+                .isTrue();
         assertThat(verifier.isFabricated("[document_id=11111111-1111-1111-1111-111111111111]"))
-            .isTrue();
+                .isTrue();
         assertThat(verifier.isFabricated("[chunk_id=not-a-uuid]")).isTrue();
         assertThat(verifier.isFabricated("[document_id=nonsense]")).isTrue();
         // …and real ids still pass.
@@ -209,13 +225,14 @@ public class CitationVerifierTest {
         // strip a citation that is very probably real. It cannot confirm it either — the existence
         // query is by full id — so it must say "not checked", not "made up".
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[chunk_id=8f7c1a2b]", "[document_id=9a8b7c6d]"));
+                verifier.checkCitations(List.of("[chunk_id=8f7c1a2b]", "[document_id=9a8b7c6d]"));
 
         assertThat(results).hasSize(2);
-        assertThat(results).allSatisfy(r -> {
-            assertThat(r.getStatus()).isEqualTo(CitationVerifier.CitationStatus.UNVERIFIED);
-            assertThat(r.getDetail()).contains("full");
-        });
+        assertThat(results)
+                .allSatisfy(r -> {
+                    assertThat(r.getStatus()).isEqualTo(CitationVerifier.CitationStatus.UNVERIFIED);
+                    assertThat(r.getDetail()).contains("full");
+                });
     }
 
     @Test
@@ -223,23 +240,34 @@ public class CitationVerifierTest {
         // The class used to carry two classifiers with different defaults; the streaming one
         // (destructive) disagreed with the text one on every bracketed word. Both now derive from
         // one classifier — this pins that they cannot drift apart again.
-        List<String> samples = List.of("[Optional]", "[world]", "[100]", "[1]", "[facade]",
-            "[file=ADSAccount.md]", "[chunk_id=8f7c1a2b]", "[chunk_id=abc]",
-            "[chunk_id=" + REAL_CHUNK_ID + "]", "[chunk_id=00000000-0000-0000-0000-000000000000]",
-            "[document_id=" + REAL_DOCUMENT_ID + "]",
-            "[document_id=11111111-1111-1111-1111-111111111111]");
+        List<String> samples =
+                List.of(
+                        "[Optional]",
+                        "[world]",
+                        "[100]",
+                        "[1]",
+                        "[facade]",
+                        "[file=ADSAccount.md]",
+                        "[chunk_id=8f7c1a2b]",
+                        "[chunk_id=abc]",
+                        "[chunk_id=" + REAL_CHUNK_ID + "]",
+                        "[chunk_id=00000000-0000-0000-0000-000000000000]",
+                        "[document_id=" + REAL_DOCUMENT_ID + "]",
+                        "[document_id=11111111-1111-1111-1111-111111111111]");
 
         for (String sample : samples) {
             boolean strippedByCleaner =
-                !verifier.cleanFabricatedCitations("before " + sample + " after").contains(sample);
+                    !verifier.cleanFabricatedCitations("before " + sample + " after")
+                            .contains(sample);
             assertThat(verifier.isFabricated(sample)).as(sample).isEqualTo(strippedByCleaner);
         }
     }
 
     @Test
     public void testCleanFabricatedCitationsPreservesNumrefs() {
-        String text = "First claim [1] and second claim [2]. "
-            + "## References\n[1] [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]";
+        String text =
+                "First claim [1] and second claim [2]. "
+                        + "## References\n[1] [chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]";
         String cleaned = verifier.cleanFabricatedCitations(text);
 
         assertThat(cleaned).contains("[1]");
@@ -257,7 +285,7 @@ public class CitationVerifierTest {
         String cited = "[" + REAL_DOCUMENT_ID + "]";
 
         assertThat(verifier.checkCitations(List.of(cited)).get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.REAL);
+                .isEqualTo(CitationVerifier.CitationStatus.REAL);
         assertThat(verifier.isFabricated(cited)).isFalse();
     }
 
@@ -266,7 +294,7 @@ public class CitationVerifierTest {
         String cited = "[" + REAL_CHUNK_ID + "]";
 
         assertThat(verifier.checkCitations(List.of(cited)).get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.REAL);
+                .isEqualTo(CitationVerifier.CitationStatus.REAL);
         assertThat(verifier.isFabricated(cited)).isFalse();
     }
 
@@ -276,7 +304,7 @@ public class CitationVerifierTest {
         String cited = "[" + UUID.randomUUID() + "]";
 
         assertThat(verifier.checkCitations(List.of(cited)).get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(verifier.isFabricated(cited)).isTrue();
     }
 
@@ -296,18 +324,28 @@ public class CitationVerifierTest {
     @Test
     void citedIdsCoversATruncatedCitationOfAFullId() {
         CitationVerifier.CitedIds cited =
-            CitationVerifier.citedIds("As described in [chunk_id=8f7c1a2b].");
+                CitationVerifier.citedIds("As described in [chunk_id=8f7c1a2b].");
 
         assertThat(cited.covers(REAL_CHUNK_ID))
-            .as("8f7c1a2b is a prefix of " + REAL_CHUNK_ID + " and resolves to it everywhere else")
-            .isTrue();
+                .as(
+                        "8f7c1a2b is a prefix of "
+                                + REAL_CHUNK_ID
+                                + " and resolves to it everywhere else")
+                .isTrue();
         assertThat(cited.isEmpty()).isFalse();
     }
 
     @Test
     void citedIdsAcceptsTheFullPrefixedBareAndHyphenlessForms() {
-        String answer = "One [chunk_id=" + REAL_CHUNK_ID + "], two [" + REAL_DOCUMENT_ID + "], "
-            + "three [document_id=" + REAL_DOCUMENT_ID.toString().replace("-", "") + "].";
+        String answer =
+                "One [chunk_id="
+                        + REAL_CHUNK_ID
+                        + "], two ["
+                        + REAL_DOCUMENT_ID
+                        + "], "
+                        + "three [document_id="
+                        + REAL_DOCUMENT_ID.toString().replace("-", "")
+                        + "].";
 
         CitationVerifier.CitedIds cited = CitationVerifier.citedIds(answer);
 
@@ -322,20 +360,25 @@ public class CitationVerifierTest {
      */
     @Test
     void citedIdsIgnoresNumberedRefsAndOrdinaryBracketedProse() {
-        CitationVerifier.CitedIds cited = CitationVerifier
-            .citedIds("Per [1] and [2], see [the manual] and [facade] and [500123].");
+        CitationVerifier.CitedIds cited =
+                CitationVerifier.citedIds(
+                        "Per [1] and [2], see [the manual] and [facade] and [500123].");
 
         assertThat(cited.isEmpty())
-            .as("none of these names a corpus row — treating any of them as one would scope "
-                + "the reviewer's evidence to a source the answer never cited")
-            .isTrue();
+                .as(
+                        "none of these names a corpus row — treating any of them as one would scope "
+                                + "the reviewer's evidence to a source the answer never cited")
+                .isTrue();
         assertThat(cited.covers(REAL_CHUNK_ID)).isFalse();
     }
 
     @Test
     void citedIdsFindsIdsInAReferencesSectionBelowTheProse() {
-        String answer = "The Person table holds identities [1].\n\n## References\n"
-            + "[1] [chunk_id=" + REAL_CHUNK_ID + "]\n";
+        String answer =
+                "The Person table holds identities [1].\n\n## References\n"
+                        + "[1] [chunk_id="
+                        + REAL_CHUNK_ID
+                        + "]\n";
 
         assertThat(CitationVerifier.citedIds(answer).covers(REAL_CHUNK_ID)).isTrue();
     }
@@ -354,7 +397,7 @@ public class CitationVerifierTest {
         String group = "[" + REAL_CHUNK_ID + ", " + REAL_DOCUMENT_ID + "]";
 
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of(group));
+                verifier.checkCitations(List.of(group));
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
 
@@ -374,12 +417,12 @@ public class CitationVerifierTest {
         // Mixed: classify flags fabricated, but isFabricated is false to avoid deleting real
         // evidence
         assertThat(verifier.checkCitations(List.of(mixed)).get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(verifier.isFabricated(mixed)).isFalse();
 
         // All fake: both are provably bad IDs, so isFabricated is true and it gets stripped
         assertThat(verifier.checkCitations(List.of(allFake)).get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
         assertThat(verifier.isFabricated(allFake)).isTrue();
         assertThat(verifier.cleanFabricatedCitations("Text " + allFake + ".")).isEqualTo("Text .");
     }
@@ -397,7 +440,7 @@ public class CitationVerifierTest {
     @Test
     void testCheckCitationsNullAllowedAreasDelegatesToSingleArgRepositoryMethod() {
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), null);
+                verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), null);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
@@ -409,10 +452,10 @@ public class CitationVerifierTest {
     void testCheckCitationsWithAllowedAreasDelegatesToTwoArgRepositoryMethods() {
         Set<String> allowedAreas = Set.of("finance");
         when(chunkRepository.findExistingIds(eq(Set.of(REAL_CHUNK_ID)), eq(allowedAreas)))
-            .thenReturn(Set.of(REAL_CHUNK_ID));
+                .thenReturn(Set.of(REAL_CHUNK_ID));
 
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), allowedAreas);
+                verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), allowedAreas);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getStatus()).isEqualTo(CitationVerifier.CitationStatus.REAL);
@@ -423,13 +466,13 @@ public class CitationVerifierTest {
     void testCheckCitationsCrossAreaIsReportedAsFabricated() {
         Set<String> userAreas = Set.of("finance");
         when(chunkRepository.findExistingIds(eq(Set.of(REAL_CHUNK_ID)), eq(userAreas)))
-            .thenReturn(Set.of());
+                .thenReturn(Set.of());
 
         List<CitationVerifier.CitationCheckResult> results =
-            verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), userAreas);
+                verifier.checkCitations(List.of("[chunk_id=" + REAL_CHUNK_ID + "]"), userAreas);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getStatus())
-            .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
+                .isEqualTo(CitationVerifier.CitationStatus.FABRICATED);
     }
 }

@@ -31,38 +31,34 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * The playbook and system-prompt write endpoints, which had no coverage at any tier: only
- * {@code GET /admin/playbooks} and {@code GET /admin/prompts} were ever requested (by the render
- * and console smoke sweeps), and the service-level tests run against a mocked repository.
+ * The playbook and system-prompt write endpoints, which had no coverage at any tier: only {@code
+ * GET /admin/playbooks} and {@code GET /admin/prompts} were ever requested (by the render and
+ * console smoke sweeps), and the service-level tests run against a mocked repository.
  *
- * <p>
- * These matter out of proportion to their size. A playbook is a hard dependency of the only user
+ * <p>These matter out of proportion to their size. A playbook is a hard dependency of the only user
  * workflow — the chat client refuses to send without one — and the ingestion prompts govern graph
  * extraction and section summarisation across every knowledge area.
  *
- * <p>
- * What is asserted here is the <em>HTTP contract</em> the service tests cannot see: request-param
- * binding (including the {@code tools} multi-select to {@code List<String>}, the
+ * <p>What is asserted here is the <em>HTTP contract</em> the service tests cannot see:
+ * request-param binding (including the {@code tools} multi-select to {@code List<String>}, the
  * {@code codeExecution} checkbox default, and {@code SystemPromptType} coercion), the multipart
  * import path and its empty-file guard, the export response headers, the redirect targets, and
  * admin authorization on every one of them.
  *
- * <p>
- * Annotated identically to the other admin ITs so all of them share one cached Spring context — see
- * the context-cache pitfall in CLAUDE.md.
+ * <p>Annotated identically to the other admin ITs so all of them share one cached Spring context —
+ * see the context-cache pitfall in CLAUDE.md.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.security.mock=true")
 public class RagAdminWriteIT {
 
     private static final String PLAYBOOK = "it-write-playbook";
     private static final String PROMPT = "it-write-prompt";
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private MockMvc mockMvc;
 
@@ -83,80 +79,123 @@ public class RagAdminWriteIT {
     }
 
     private static OidcLoginRequestPostProcessor admin() {
-        return oidcLogin().idToken(token -> token.claim("oid", "it-rag-admin")).authorities(
-            new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
+        return oidcLogin()
+                .idToken(token -> token.claim("oid", "it-rag-admin"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     private static OidcLoginRequestPostProcessor plainUser() {
-        return oidcLogin().idToken(token -> token.claim("oid", "it-rag-user"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+        return oidcLogin()
+                .idToken(token -> token.claim("oid", "it-rag-user"))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     // ---------- playbooks ----------
 
     @Test
     public void savingAPlaybookBindsToolsAndCodeExecutionAndRedirects() throws Exception {
-        mockMvc
-            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM")
-                .param("name", PLAYBOOK).param("title", "IT Write Playbook")
-                .param("description", "d").param("templateText", "Answer carefully.")
-                .param("tools", "search_corpus").param("tools", "get_section")
-                .param("codeExecution", "true").param("targetAgent", "specialist"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"));
+        mockMvc.perform(
+                        post("/admin/playbooks")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PLAYBOOK)
+                                .param("title", "IT Write Playbook")
+                                .param("description", "d")
+                                .param("templateText", "Answer carefully.")
+                                .param("tools", "search_corpus")
+                                .param("tools", "get_section")
+                                .param("codeExecution", "true")
+                                .param("targetAgent", "specialist"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/playbooks"));
 
-        assertThat(jdbcTemplate.queryForList("SELECT unnest(tools) FROM playbooks WHERE name = ?",
-            String.class, PLAYBOOK)).containsExactlyInAnyOrder("search_corpus", "get_section");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT code_execution FROM playbooks WHERE name = ?", Boolean.class, PLAYBOOK))
-            .isTrue();
-        assertThat(jdbcTemplate.queryForObject("SELECT target_agent FROM playbooks WHERE name = ?",
-            String.class, PLAYBOOK)).isEqualTo("specialist");
+        assertThat(
+                        jdbcTemplate.queryForList(
+                                "SELECT unnest(tools) FROM playbooks WHERE name = ?",
+                                String.class,
+                                PLAYBOOK))
+                .containsExactlyInAnyOrder("search_corpus", "get_section");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT code_execution FROM playbooks WHERE name = ?",
+                                Boolean.class,
+                                PLAYBOOK))
+                .isTrue();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT target_agent FROM playbooks WHERE name = ?",
+                                String.class,
+                                PLAYBOOK))
+                .isEqualTo("specialist");
     }
 
     /**
      * A user-facing playbook with no tools cannot search, and the list MUST say so.
      *
-     * <p>
-     * Selecting nothing stores an empty array (see the test below), and an empty allow-list grants
-     * nothing — so the playbook answers from the model alone, with no sources, which is the one
-     * failure mode this product exists to avoid. It is invisible at answer time: the reply looks
-     * normal, just ungrounded. The list previously rendered "Allowed Tools: All" for exactly this
-     * row, which was wrong in every case and contradicted the form's own help text two panels away.
+     * <p>Selecting nothing stores an empty array (see the test below), and an empty allow-list
+     * grants nothing — so the playbook answers from the model alone, with no sources, which is the
+     * one failure mode this product exists to avoid. It is invisible at answer time: the reply
+     * looks normal, just ungrounded. The list previously rendered "Allowed Tools: All" for exactly
+     * this row, which was wrong in every case and contradicted the form's own help text two panels
+     * away.
      */
     @Test
     public void aSpecialistPlaybookWithNoToolsIsFlaggedInTheList() throws Exception {
-        mockMvc
-            .perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM")
-                .param("name", PLAYBOOK).param("title", "IT Write Playbook")
-                .param("templateText", "Answer carefully.").param("targetAgent", "specialist"))
-            .andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/playbooks")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PLAYBOOK)
+                                .param("title", "IT Write Playbook")
+                                .param("templateText", "Answer carefully.")
+                                .param("targetAgent", "specialist"))
+                .andExpect(status().is3xxRedirection());
 
-        String html = mockMvc.perform(get("/admin/playbooks").with(admin())).andReturn()
-            .getResponse().getContentAsString();
+        String html =
+                mockMvc.perform(get("/admin/playbooks").with(admin()))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         assertThat(html).contains("No tools — answers without searching");
-        assertThat(html).as("the old label claimed the opposite of what an empty list means")
-            .doesNotContain("Allowed Tools: <span style=\"font-weight: 400; "
-                + "color: var(--text-secondary);\">All</span>");
+        assertThat(html)
+                .as("the old label claimed the opposite of what an empty list means")
+                .doesNotContain(
+                        "Allowed Tools: <span style=\"font-weight: 400; "
+                                + "color: var(--text-secondary);\">All</span>");
     }
 
     /**
      * The mirror-image mistake: tools chosen on a reviewer or orchestrator playbook are DISCARDED.
      * Those roles are handed a fixed list at the call site ({@code OrchestrationService} passes
-     * {@code List.of("verify_citations", "get_section")} to the reviewer and
-     * {@code List.of("ask_clarifying_question")} to the orchestrator), so the column is never read
-     * for them. Without this the field looks functional and an admin can configure it carefully for
-     * no effect.
+     * {@code List.of("verify_citations", "get_section")} to the reviewer and {@code
+     * List.of("ask_clarifying_question")} to the orchestrator), so the column is never read for
+     * them. Without this the field looks functional and an admin can configure it carefully for no
+     * effect.
      */
     @Test
     public void toolsChosenOnAReviewerPlaybookAreFlaggedAsIgnored() throws Exception {
-        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PLAYBOOK).param("title", "IT Write Playbook")
-            .param("templateText", "Review carefully.").param("tools", "search_corpus")
-            .param("targetAgent", "reviewer")).andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/playbooks")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PLAYBOOK)
+                                .param("title", "IT Write Playbook")
+                                .param("templateText", "Review carefully.")
+                                .param("tools", "search_corpus")
+                                .param("targetAgent", "reviewer"))
+                .andExpect(status().is3xxRedirection());
 
-        String html = mockMvc.perform(get("/admin/playbooks").with(admin())).andReturn()
-            .getResponse().getContentAsString();
+        String html =
+                mockMvc.perform(get("/admin/playbooks").with(admin()))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         assertThat(html).contains("Not used for this role — these tools are ignored");
     }
@@ -168,18 +207,35 @@ public class RagAdminWriteIT {
      */
     @Test
     public void omittedCheckboxAndToolsDefaultToDisabledAndEmpty() throws Exception {
-        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PLAYBOOK).param("title", "IT Write Playbook")
-            .param("templateText", "Answer carefully.")).andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/playbooks")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PLAYBOOK)
+                                .param("title", "IT Write Playbook")
+                                .param("templateText", "Answer carefully."))
+                .andExpect(status().is3xxRedirection());
 
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT code_execution FROM playbooks WHERE name = ?", Boolean.class, PLAYBOOK))
-            .isFalse();
-        assertThat(jdbcTemplate.queryForList("SELECT unnest(tools) FROM playbooks WHERE name = ?",
-            String.class, PLAYBOOK)).isEmpty();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT code_execution FROM playbooks WHERE name = ?",
+                                Boolean.class,
+                                PLAYBOOK))
+                .isFalse();
+        assertThat(
+                        jdbcTemplate.queryForList(
+                                "SELECT unnest(tools) FROM playbooks WHERE name = ?",
+                                String.class,
+                                PLAYBOOK))
+                .isEmpty();
         // Defaulted rather than rejected, per the controller's @RequestParam defaultValue.
-        assertThat(jdbcTemplate.queryForObject("SELECT target_agent FROM playbooks WHERE name = ?",
-            String.class, PLAYBOOK)).isEqualTo("specialist");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT target_agent FROM playbooks WHERE name = ?",
+                                String.class,
+                                PLAYBOOK))
+                .isEqualTo("specialist");
     }
 
     @Test
@@ -187,132 +243,222 @@ public class RagAdminWriteIT {
         savePlaybookRow();
 
         mockMvc.perform(get("/admin/playbooks/export").param("name", PLAYBOOK).with(admin()))
-            .andExpect(status().isOk())
-            .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                ContentDisposition.attachment().filename(PLAYBOOK + ".md", StandardCharsets.UTF_8)
-                    .build().toString()))
-            .andExpect(content().contentTypeCompatibleWith("text/markdown"))
-            .andExpect(content().string(Matchers.containsString("Answer carefully.")));
+                .andExpect(status().isOk())
+                .andExpect(
+                        header().string(
+                                        HttpHeaders.CONTENT_DISPOSITION,
+                                        ContentDisposition.attachment()
+                                                .filename(PLAYBOOK + ".md", StandardCharsets.UTF_8)
+                                                .build()
+                                                .toString()))
+                .andExpect(content().contentTypeCompatibleWith("text/markdown"))
+                .andExpect(content().string(Matchers.containsString("Answer carefully.")));
     }
 
     @Test
     public void importingAPlaybookRoundTripsAnExportedFile() throws Exception {
         savePlaybookRow();
         String exported =
-            mockMvc.perform(get("/admin/playbooks/export").param("name", PLAYBOOK).with(admin()))
-                .andReturn().getResponse().getContentAsString();
+                mockMvc.perform(
+                                get("/admin/playbooks/export")
+                                        .param("name", PLAYBOOK)
+                                        .with(admin()))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         jdbcTemplate.update("DELETE FROM playbooks WHERE name = ?", PLAYBOOK);
 
-        mockMvc
-            .perform(multipart("/admin/playbooks/import").file(new MockMultipartFile("file",
-                PLAYBOOK + ".md", "text/markdown", exported.getBytes(StandardCharsets.UTF_8)))
-                .with(csrf()).with(admin()))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"));
+        mockMvc.perform(
+                        multipart("/admin/playbooks/import")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                PLAYBOOK + ".md",
+                                                "text/markdown",
+                                                exported.getBytes(StandardCharsets.UTF_8)))
+                                .with(csrf())
+                                .with(admin()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/playbooks"));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM playbooks WHERE name = ?",
-            Integer.class, PLAYBOOK)).isEqualTo(1);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM playbooks WHERE name = ?",
+                                Integer.class,
+                                PLAYBOOK))
+                .isEqualTo(1);
     }
 
     /**
-     * The empty-file guard throws {@code IllegalArgumentException}, which
-     * {@code MvcExceptionHandler} converts to a redirect-with-error-flash — but only for a classic
-     * browser form post, which is why the {@code Accept: text/html} header is load-bearing here.
-     * Without it the advice re-throws and the caller gets a server error, so this is the contract a
-     * real browser sees, not a convenient one.
+     * The empty-file guard throws {@code IllegalArgumentException}, which {@code
+     * MvcExceptionHandler} converts to a redirect-with-error-flash — but only for a classic browser
+     * form post, which is why the {@code Accept: text/html} header is load-bearing here. Without it
+     * the advice re-throws and the caller gets a server error, so this is the contract a real
+     * browser sees, not a convenient one.
      */
     @Test
     public void importingAnEmptyFileRedirectsBackWithAnError() throws Exception {
-        mockMvc
-            .perform(multipart("/admin/playbooks/import")
-                .file(new MockMultipartFile("file", "empty.md", "text/markdown", new byte[0]))
-                .header(HttpHeaders.ACCEPT, "text/html").with(csrf()).with(admin()))
-            .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("error"));
+        mockMvc.perform(
+                        multipart("/admin/playbooks/import")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file", "empty.md", "text/markdown", new byte[0]))
+                                .header(HttpHeaders.ACCEPT, "text/html")
+                                .with(csrf())
+                                .with(admin()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(flash().attributeExists("error"));
     }
 
     @Test
     public void deletingAPlaybookRemovesTheRow() throws Exception {
         savePlaybookRow();
 
-        mockMvc
-            .perform(
-                post("/admin/playbooks/delete").with(csrf()).with(admin()).param("name", PLAYBOOK))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"));
+        mockMvc.perform(
+                        post("/admin/playbooks/delete")
+                                .with(csrf())
+                                .with(admin())
+                                .param("name", PLAYBOOK))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/playbooks"));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM playbooks WHERE name = ?",
-            Integer.class, PLAYBOOK)).isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM playbooks WHERE name = ?",
+                                Integer.class,
+                                PLAYBOOK))
+                .isZero();
     }
 
     @Test
     public void everyPlaybookWriteRequiresAdmin() throws Exception {
-        mockMvc.perform(post("/admin/playbooks").with(csrf()).with(plainUser())
-            .param("name", PLAYBOOK).param("title", "t").param("templateText", "x"))
-            .andExpect(status().isForbidden());
         mockMvc.perform(
-            post("/admin/playbooks/delete").with(csrf()).with(plainUser()).param("name", PLAYBOOK))
-            .andExpect(status().isForbidden());
+                        post("/admin/playbooks")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("name", PLAYBOOK)
+                                .param("title", "t")
+                                .param("templateText", "x"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/admin/playbooks/delete")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("name", PLAYBOOK))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/admin/playbooks/export").param("name", PLAYBOOK).with(plainUser()))
-            .andExpect(status().isForbidden());
-        mockMvc.perform(multipart("/admin/playbooks/import")
-            .file(new MockMultipartFile("file", "p.md", "text/markdown", "x".getBytes()))
-            .with(csrf()).with(plainUser())).andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        multipart("/admin/playbooks/import")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file", "p.md", "text/markdown", "x".getBytes()))
+                                .with(csrf())
+                                .with(plainUser()))
+                .andExpect(status().isForbidden());
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM playbooks WHERE name = ?",
-            Integer.class, PLAYBOOK)).isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM playbooks WHERE name = ?",
+                                Integer.class,
+                                PLAYBOOK))
+                .isZero();
     }
 
     private void savePlaybookRow() {
         jdbcTemplate.update(
-            "INSERT INTO playbooks (name, title, description, template_text, tools, "
-                + "code_execution, target_agent) VALUES (?, ?, 'd', 'Answer carefully.', '{}', "
-                + "false, 'specialist') ON CONFLICT (name) DO NOTHING",
-            PLAYBOOK, "IT Write Playbook");
+                "INSERT INTO playbooks (name, title, description, template_text, tools, "
+                        + "code_execution, target_agent) VALUES (?, ?, 'd', 'Answer carefully.', '{}', "
+                        + "false, 'specialist') ON CONFLICT (name) DO NOTHING",
+                PLAYBOOK,
+                "IT Write Playbook");
     }
 
     // ---------- system prompts ----------
 
     @Test
     public void savingASystemPromptCoercesTheTypeAndPersists() throws Exception {
-        mockMvc
-            .perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-                .param("name", PROMPT).param("type", "KG").param("description", "d")
-                .param("systemPrompt", "Extract entities."))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT)
+                                .param("type", "KG")
+                                .param("description", "d")
+                                .param("systemPrompt", "Extract entities."))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/prompts"));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT type FROM system_prompts WHERE name = ?",
-            String.class, PROMPT)).isEqualTo("KG");
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT system_prompt FROM system_prompts WHERE name = ?", String.class, PROMPT))
-            .isEqualTo("Extract entities.");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT type FROM system_prompts WHERE name = ?",
+                                String.class,
+                                PROMPT))
+                .isEqualTo("KG");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT system_prompt FROM system_prompts WHERE name = ?",
+                                String.class,
+                                PROMPT))
+                .isEqualTo("Extract entities.");
     }
 
     @Test
     public void anUnknownPromptTypeIsRejectedRatherThanStored() throws Exception {
-        mockMvc
-            .perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-                .param("name", PROMPT).param("type", "NOT_A_TYPE").param("systemPrompt", "x"))
-            .andExpect(status().is4xxClientError());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT)
+                                .param("type", "NOT_A_TYPE")
+                                .param("systemPrompt", "x"))
+                .andExpect(status().is4xxClientError());
 
-        mockMvc
-            .perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-                .param("name", PROMPT).param("type", "CHAT").param("systemPrompt", "x"))
-            .andExpect(status().is4xxClientError());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT)
+                                .param("type", "CHAT")
+                                .param("systemPrompt", "x"))
+                .andExpect(status().is4xxClientError());
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM system_prompts WHERE name = ?",
-            Integer.class, PROMPT)).isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM system_prompts WHERE name = ?",
+                                Integer.class,
+                                PROMPT))
+                .isZero();
     }
 
     @Test
     public void deletingASystemPromptRemovesTheRow() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PROMPT).param("type", "KG").param("systemPrompt", "Extract entities."))
-            .andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT)
+                                .param("type", "KG")
+                                .param("systemPrompt", "Extract entities."))
+                .andExpect(status().is3xxRedirection());
 
-        mockMvc
-            .perform(post("/admin/prompts/delete").with(csrf()).with(admin()).param("name", PROMPT))
-            .andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/prompts/delete")
+                                .with(csrf())
+                                .with(admin())
+                                .param("name", PROMPT))
+                .andExpect(status().is3xxRedirection());
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM system_prompts WHERE name = ?",
-            Integer.class, PROMPT)).isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM system_prompts WHERE name = ?",
+                                Integer.class,
+                                PROMPT))
+                .isZero();
     }
 
     /**
@@ -320,28 +466,52 @@ public class RagAdminWriteIT {
      */
     @Test
     public void kgPromptOptionsListsOnlyKgPrompts() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PROMPT).param("type", "KG").param("systemPrompt", "Extract entities."))
-            .andExpect(status().is3xxRedirection());
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(admin()).param("area", "OIM")
-            .param("name", PROMPT + "-sum").param("type", "SUMMARIZE")
-            .param("systemPrompt", "Summarize.")).andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT)
+                                .param("type", "KG")
+                                .param("systemPrompt", "Extract entities."))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(admin())
+                                .param("area", "OIM")
+                                .param("name", PROMPT + "-sum")
+                                .param("type", "SUMMARIZE")
+                                .param("systemPrompt", "Summarize."))
+                .andExpect(status().is3xxRedirection());
 
-        String body = mockMvc.perform(get("/admin/prompts/kg-options").with(admin()))
-            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String body =
+                mockMvc.perform(get("/admin/prompts/kg-options").with(admin()))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         assertThat(body).contains(PROMPT).doesNotContain(PROMPT + "-sum");
     }
 
     @Test
     public void everyPromptWriteRequiresAdmin() throws Exception {
-        mockMvc.perform(post("/admin/prompts").with(csrf()).with(plainUser()).param("name", PROMPT)
-            .param("type", "KG").param("systemPrompt", "x")).andExpect(status().isForbidden());
-        mockMvc
-            .perform(
-                post("/admin/prompts/delete").with(csrf()).with(plainUser()).param("name", PROMPT))
-            .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/admin/prompts")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("name", PROMPT)
+                                .param("type", "KG")
+                                .param("systemPrompt", "x"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/admin/prompts/delete")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("name", PROMPT))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/admin/prompts/kg-options").with(plainUser()))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 }

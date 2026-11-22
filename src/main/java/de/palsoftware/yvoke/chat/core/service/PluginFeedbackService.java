@@ -38,11 +38,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Persists a self-contained plugin turn rating (from {@code submit_feedback}) into
- * {@code conversations}, {@code messages}, and {@code message_feedback}.
+ * Persists a self-contained plugin turn rating (from {@code submit_feedback}) into {@code
+ * conversations}, {@code messages}, and {@code message_feedback}.
  *
- * <p>
- * Deterministic v3 UUIDs scoped to {@code (userId, turnId)} make re-rating the same turn
+ * <p>Deterministic v3 UUIDs scoped to {@code (userId, turnId)} make re-rating the same turn
  * idempotent: the first submission creates the conversation and the user/assistant messages and
  * inserts the feedback row; a subsequent submission for the same {@code turnId} updates the
  * feedback row in place via {@code ON CONFLICT (message_id) DO UPDATE}.
@@ -68,32 +67,69 @@ public class PluginFeedbackService {
     private final Clock clock;
 
     @Autowired
-    public PluginFeedbackService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        UserService userService, AreaService areaService, @Nullable PlaybookService playbookService,
-        @Nullable OrchestratorProfileService orchestratorProfileService) {
-        this(conversationRepository, messageRepository, feedbackRepository, userService,
-            areaService, playbookService, orchestratorProfileService, Clock.systemUTC());
+    public PluginFeedbackService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            FeedbackRepository feedbackRepository,
+            UserService userService,
+            AreaService areaService,
+            @Nullable PlaybookService playbookService,
+            @Nullable OrchestratorProfileService orchestratorProfileService) {
+        this(
+                conversationRepository,
+                messageRepository,
+                feedbackRepository,
+                userService,
+                areaService,
+                playbookService,
+                orchestratorProfileService,
+                Clock.systemUTC());
     }
 
-    public PluginFeedbackService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        UserService userService, AreaService areaService) {
-        this(conversationRepository, messageRepository, feedbackRepository, userService,
-            areaService, null, null, Clock.systemUTC());
+    public PluginFeedbackService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            FeedbackRepository feedbackRepository,
+            UserService userService,
+            AreaService areaService) {
+        this(
+                conversationRepository,
+                messageRepository,
+                feedbackRepository,
+                userService,
+                areaService,
+                null,
+                null,
+                Clock.systemUTC());
     }
 
-    PluginFeedbackService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        UserService userService, AreaService areaService, Clock clock) {
-        this(conversationRepository, messageRepository, feedbackRepository, userService,
-            areaService, null, null, clock);
+    PluginFeedbackService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            FeedbackRepository feedbackRepository,
+            UserService userService,
+            AreaService areaService,
+            Clock clock) {
+        this(
+                conversationRepository,
+                messageRepository,
+                feedbackRepository,
+                userService,
+                areaService,
+                null,
+                null,
+                clock);
     }
 
-    PluginFeedbackService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        UserService userService, AreaService areaService, @Nullable PlaybookService playbookService,
-        @Nullable OrchestratorProfileService orchestratorProfileService, Clock clock) {
+    PluginFeedbackService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            FeedbackRepository feedbackRepository,
+            UserService userService,
+            AreaService areaService,
+            @Nullable PlaybookService playbookService,
+            @Nullable OrchestratorProfileService orchestratorProfileService,
+            Clock clock) {
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.feedbackRepository = Objects.requireNonNull(feedbackRepository);
@@ -104,13 +140,24 @@ public class PluginFeedbackService {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    public record PluginFeedbackRequest(String turnId, Integer rating, String comment,
-        String question, String answer, String area, String mode, String playbook,
-        Integer playbookVersion, String profile, List<String> citedIds, String model, String client,
-        String pluginVersion) {}
+    public record PluginFeedbackRequest(
+            String turnId,
+            Integer rating,
+            String comment,
+            String question,
+            String answer,
+            String area,
+            String mode,
+            String playbook,
+            Integer playbookVersion,
+            String profile,
+            List<String> citedIds,
+            String model,
+            String client,
+            String pluginVersion) {}
 
-    public record PluginFeedbackResult(UUID feedbackId, UUID messageId, UUID conversationId,
-        String turnId, int rating) {}
+    public record PluginFeedbackResult(
+            UUID feedbackId, UUID messageId, UUID conversationId, String turnId, int rating) {}
 
     @Transactional
     public PluginFeedbackResult submitFeedback(PluginFeedbackRequest request) {
@@ -118,8 +165,12 @@ public class PluginFeedbackService {
             throw new IllegalArgumentException("request is required.");
         }
 
-        User user = userService.getCurrentUser().orElseThrow(
-            () -> new SecurityException("Authenticated user is required to submit feedback."));
+        User user =
+                userService
+                        .getCurrentUser()
+                        .orElseThrow(() ->
+                                new SecurityException(
+                                        "Authenticated user is required to submit feedback."));
         if (user.id() == null) {
             throw new SecurityException("Authenticated user is required to submit feedback.");
         }
@@ -146,7 +197,7 @@ public class PluginFeedbackService {
         String normalizedComment = trimToNull(request.comment());
         if (rating == -1 && normalizedComment == null) {
             throw new IllegalArgumentException(
-                "comment is required for negative feedback (rating = -1).");
+                    "comment is required for negative feedback (rating = -1).");
         }
         requireMaxLength(normalizedComment, "comment", MAX_COMMENT_CHARS);
 
@@ -178,52 +229,85 @@ public class PluginFeedbackService {
         List<String> sanitizedCitedIds = sanitizeCitedIds(request.citedIds());
 
         String resolvedArea =
-            resolveAndAuthorizeArea(request.area(), normalizedPlaybook, normalizedProfile);
+                resolveAndAuthorizeArea(request.area(), normalizedPlaybook, normalizedProfile);
 
         UUID userId = user.id();
         UUID conversationId =
-            deterministicUuid("claude-plugin:conv:" + userId + ":" + trimmedTurnId);
+                deterministicUuid("claude-plugin:conv:" + userId + ":" + trimmedTurnId);
         UUID userMessageId =
-            deterministicUuid("claude-plugin:msg:user:" + userId + ":" + trimmedTurnId);
+                deterministicUuid("claude-plugin:msg:user:" + userId + ":" + trimmedTurnId);
         UUID assistantMessageId =
-            deterministicUuid("claude-plugin:msg:assistant:" + userId + ":" + trimmedTurnId);
+                deterministicUuid("claude-plugin:msg:assistant:" + userId + ":" + trimmedTurnId);
 
         Optional<Conversation> existingConv = conversationRepository.findById(conversationId);
         Instant now = Instant.now(clock);
 
         if (existingConv.isEmpty()) {
-            Map<String, Object> settings = buildSettings(trimmedTurnId, normalizedClient,
-                normalizedPluginVersion, normalizedMode, normalizedProfile, normalizedPlaybook,
-                normalizedPlaybookVersion, normalizedModel, sanitizedCitedIds);
-            conversationRepository.createIfAbsent(conversationId, userId,
-                deriveTitle(trimmedQuestion), settings, ConversationSource.CLAUDE_PLUGIN.getValue(),
-                resolvedArea);
-            saveTurnMessages(conversationId, userMessageId, assistantMessageId, trimmedQuestion,
-                trimmedAnswer, normalizedPlaybook, normalizedPlaybookVersion, normalizedModel,
-                sanitizedCitedIds, now);
+            Map<String, Object> settings =
+                    buildSettings(
+                            trimmedTurnId,
+                            normalizedClient,
+                            normalizedPluginVersion,
+                            normalizedMode,
+                            normalizedProfile,
+                            normalizedPlaybook,
+                            normalizedPlaybookVersion,
+                            normalizedModel,
+                            sanitizedCitedIds);
+            conversationRepository.createIfAbsent(
+                    conversationId,
+                    userId,
+                    deriveTitle(trimmedQuestion),
+                    settings,
+                    ConversationSource.CLAUDE_PLUGIN.getValue(),
+                    resolvedArea);
+            saveTurnMessages(
+                    conversationId,
+                    userMessageId,
+                    assistantMessageId,
+                    trimmedQuestion,
+                    trimmedAnswer,
+                    normalizedPlaybook,
+                    normalizedPlaybookVersion,
+                    normalizedModel,
+                    sanitizedCitedIds,
+                    now);
         } else {
             Conversation conv = existingConv.get();
             if (!Objects.equals(conv.userId(), userId)) {
                 throw new SecurityException("Access denied to conversation: " + conversationId);
             }
             if (messageRepository.findById(assistantMessageId).isEmpty()) {
-                saveTurnMessages(conversationId, userMessageId, assistantMessageId, trimmedQuestion,
-                    trimmedAnswer, normalizedPlaybook, normalizedPlaybookVersion, normalizedModel,
-                    sanitizedCitedIds, now);
+                saveTurnMessages(
+                        conversationId,
+                        userMessageId,
+                        assistantMessageId,
+                        trimmedQuestion,
+                        trimmedAnswer,
+                        normalizedPlaybook,
+                        normalizedPlaybookVersion,
+                        normalizedModel,
+                        sanitizedCitedIds,
+                        now);
             }
             conversationRepository.touch(conversationId);
         }
 
         feedbackRepository.upsert(assistantMessageId, rating, normalizedComment);
-        UUID feedbackId = feedbackRepository.findByMessageId(assistantMessageId).map(Feedback::id)
-            .orElseGet(() -> deterministicUuid("claude-plugin:fb:" + userId + ":" + trimmedTurnId));
+        UUID feedbackId =
+                feedbackRepository
+                        .findByMessageId(assistantMessageId)
+                        .map(Feedback::id)
+                        .orElseGet(() ->
+                                deterministicUuid(
+                                        "claude-plugin:fb:" + userId + ":" + trimmedTurnId));
 
-        return new PluginFeedbackResult(feedbackId, assistantMessageId, conversationId,
-            trimmedTurnId, rating);
+        return new PluginFeedbackResult(
+                feedbackId, assistantMessageId, conversationId, trimmedTurnId, rating);
     }
 
-    private String resolveAndAuthorizeArea(String rawArea, String normalizedPlaybook,
-        String normalizedProfile) {
+    private String resolveAndAuthorizeArea(
+            String rawArea, String normalizedPlaybook, String normalizedProfile) {
         Optional<Set<String>> allowed = AreaAccessContext.allowedUserAreasLower();
         if (allowed.isPresent() && allowed.get().isEmpty()) {
             throw new SecurityException("Access denied: user has no accessible areas.");
@@ -234,16 +318,23 @@ public class PluginFeedbackService {
             requireMaxLength(trimmedArea, "area", MAX_METADATA_CHARS);
             resolvedArea = authorizeCanonicalArea(trimmedArea);
         } else if (normalizedPlaybook != null && playbookService != null) {
-            Optional<String> playbookArea = playbookService.getPlaybook(normalizedPlaybook)
-                .map(Playbook::area).map(PluginFeedbackService::trimToNull);
+            Optional<String> playbookArea =
+                    playbookService
+                            .getPlaybook(normalizedPlaybook)
+                            .map(Playbook::area)
+                            .map(PluginFeedbackService::trimToNull);
             if (playbookArea.isPresent()) {
                 resolvedArea = authorizeCanonicalArea(playbookArea.get());
             }
         }
-        if (resolvedArea == null && normalizedProfile != null
-            && orchestratorProfileService != null) {
-            Optional<String> profileArea = orchestratorProfileService.getProfile(normalizedProfile)
-                .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
+        if (resolvedArea == null
+                && normalizedProfile != null
+                && orchestratorProfileService != null) {
+            Optional<String> profileArea =
+                    orchestratorProfileService
+                            .getProfile(normalizedProfile)
+                            .map(OrchestratorProfile::area)
+                            .map(PluginFeedbackService::trimToNull);
             if (profileArea.isPresent()) {
                 resolvedArea = authorizeCanonicalArea(profileArea.get());
             }
@@ -253,28 +344,42 @@ public class PluginFeedbackService {
             resolvedArea = areaService.findArea(singleAllowed).map(Area::name).orElse(null);
         }
         if (resolvedArea != null) {
-            validatePlaybookAndProfileMatchArea(resolvedArea, normalizedPlaybook,
-                normalizedProfile);
+            validatePlaybookAndProfileMatchArea(
+                    resolvedArea, normalizedPlaybook, normalizedProfile);
         }
         return resolvedArea;
     }
 
-    private void validatePlaybookAndProfileMatchArea(String resolvedArea, String normalizedPlaybook,
-        String normalizedProfile) {
+    private void validatePlaybookAndProfileMatchArea(
+            String resolvedArea, String normalizedPlaybook, String normalizedProfile) {
         if (playbookService != null && normalizedPlaybook != null) {
-            Optional<String> pbArea = playbookService.getPlaybook(normalizedPlaybook)
-                .map(Playbook::area).map(PluginFeedbackService::trimToNull);
+            Optional<String> pbArea =
+                    playbookService
+                            .getPlaybook(normalizedPlaybook)
+                            .map(Playbook::area)
+                            .map(PluginFeedbackService::trimToNull);
             if (pbArea.isPresent() && !pbArea.get().trim().equalsIgnoreCase(resolvedArea)) {
-                throw new IllegalArgumentException("playbook '" + normalizedPlaybook
-                    + "' does not belong to area '" + resolvedArea + "'.");
+                throw new IllegalArgumentException(
+                        "playbook '"
+                                + normalizedPlaybook
+                                + "' does not belong to area '"
+                                + resolvedArea
+                                + "'.");
             }
         }
         if (orchestratorProfileService != null && normalizedProfile != null) {
-            Optional<String> profArea = orchestratorProfileService.getProfile(normalizedProfile)
-                .map(OrchestratorProfile::area).map(PluginFeedbackService::trimToNull);
+            Optional<String> profArea =
+                    orchestratorProfileService
+                            .getProfile(normalizedProfile)
+                            .map(OrchestratorProfile::area)
+                            .map(PluginFeedbackService::trimToNull);
             if (profArea.isPresent() && !profArea.get().trim().equalsIgnoreCase(resolvedArea)) {
-                throw new IllegalArgumentException("profile '" + normalizedProfile
-                    + "' does not belong to area '" + resolvedArea + "'.");
+                throw new IllegalArgumentException(
+                        "profile '"
+                                + normalizedProfile
+                                + "' does not belong to area '"
+                                + resolvedArea
+                                + "'.");
             }
         }
     }
@@ -287,18 +392,56 @@ public class PluginFeedbackService {
         return found.get().name();
     }
 
-    private void saveTurnMessages(UUID conversationId, UUID userMessageId, UUID assistantMessageId,
-        String question, String answer, String playbook, Integer playbookVersion, String model,
-        List<String> citedIds, Instant now) {
+    private void saveTurnMessages(
+            UUID conversationId,
+            UUID userMessageId,
+            UUID assistantMessageId,
+            String question,
+            String answer,
+            String playbook,
+            Integer playbookVersion,
+            String model,
+            List<String> citedIds,
+            Instant now) {
         if (messageRepository.findById(userMessageId).isEmpty()) {
-            Message userMsg = new Message(userMessageId, conversationId, "user", question, playbook,
-                playbookVersion, List.of(), List.of(), now, null, null, null, null, null, "done",
-                null);
+            Message userMsg =
+                    new Message(
+                            userMessageId,
+                            conversationId,
+                            "user",
+                            question,
+                            playbook,
+                            playbookVersion,
+                            List.of(),
+                            List.of(),
+                            now,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "done",
+                            null);
             messageRepository.saveIfAbsent(userMsg);
         }
-        Message assistantMsg = new Message(assistantMessageId, conversationId, "assistant", answer,
-            playbook, playbookVersion, List.of(), buildCitationsList(citedIds),
-            now.plusNanos(1_000_000), null, null, null, null, null, "done", model);
+        Message assistantMsg =
+                new Message(
+                        assistantMessageId,
+                        conversationId,
+                        "assistant",
+                        answer,
+                        playbook,
+                        playbookVersion,
+                        List.of(),
+                        buildCitationsList(citedIds),
+                        now.plusNanos(1_000_000),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "done",
+                        model);
         messageRepository.saveIfAbsent(assistantMsg);
     }
 
@@ -310,13 +453,20 @@ public class PluginFeedbackService {
         return singleLine.substring(0, MAX_TITLE_CHARS);
     }
 
-    private static Map<String, Object> buildSettings(String turnId, String client,
-        String pluginVersion, String mode, String profile, String playbook, Integer playbookVersion,
-        String model, List<String> citedIds) {
+    private static Map<String, Object> buildSettings(
+            String turnId,
+            String client,
+            String pluginVersion,
+            String mode,
+            String profile,
+            String playbook,
+            Integer playbookVersion,
+            String model,
+            List<String> citedIds) {
         Map<String, Object> settings = new LinkedHashMap<>();
         settings.put("turnId", turnId);
-        settings.put("client",
-            client != null ? client : ConversationSource.CLAUDE_PLUGIN.getValue());
+        settings.put(
+                "client", client != null ? client : ConversationSource.CLAUDE_PLUGIN.getValue());
         if (pluginVersion != null) {
             settings.put(ConversationSetting.PLUGIN_VERSION.getValue(), pluginVersion);
         }
@@ -348,7 +498,7 @@ public class PluginFeedbackService {
         }
         if (rawIds.size() > MAX_CITED_IDS) {
             throw new IllegalArgumentException(
-                "citedIds must not exceed " + MAX_CITED_IDS + " items.");
+                    "citedIds must not exceed " + MAX_CITED_IDS + " items.");
         }
         Set<String> deduped = new LinkedHashSet<>();
         for (String raw : rawIds) {
@@ -356,7 +506,7 @@ public class PluginFeedbackService {
             if (trimmed != null) {
                 if (trimmed.length() > MAX_METADATA_CHARS) {
                     throw new IllegalArgumentException(
-                        "Each citedId must not exceed " + MAX_METADATA_CHARS + " characters.");
+                            "Each citedId must not exceed " + MAX_METADATA_CHARS + " characters.");
                 }
                 deduped.add(trimmed);
             }
@@ -389,8 +539,9 @@ public class PluginFeedbackService {
                 raw = "[chunk_id=" + inner + "]";
                 type = "chunk";
             }
-            results.add(new CitationCheckResult(raw, type, CitationStatus.UNVERIFIED,
-                "reported by claude-plugin"));
+            results.add(
+                    new CitationCheckResult(
+                            raw, type, CitationStatus.UNVERIFIED, "reported by claude-plugin"));
         }
         return List.copyOf(results);
     }
@@ -410,7 +561,7 @@ public class PluginFeedbackService {
     private static void requireMaxLength(String value, String fieldName, int maxLength) {
         if (value != null && value.length() > maxLength) {
             throw new IllegalArgumentException(
-                fieldName + " must not exceed " + maxLength + " characters.");
+                    fieldName + " must not exceed " + maxLength + " characters.");
         }
     }
 

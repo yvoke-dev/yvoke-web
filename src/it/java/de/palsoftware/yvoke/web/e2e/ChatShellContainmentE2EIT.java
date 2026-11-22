@@ -14,51 +14,49 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * The chat shell must contain a wide answer instead of being widened by it.
  *
- * <p>
- * This is the layout failure with real consequences: {@code .chat-main, .chat-main-thread}
+ * <p>This is the layout failure with real consequences: {@code .chat-main, .chat-main-thread}
  * ({@code index.css:772-780}) is a flex item with {@code flex-grow: 1}, and a flex item's default
  * {@code min-width: auto} refuses to shrink below its content's intrinsic minimum. An unbreakable
  * string in an answer can therefore push the whole column wider than its share of the layout and
  * take the composer — including the send button — off screen, at which point the user cannot send
  * anything and cannot see why.
  *
- * <p>
- * Assertions are relations and containment checks, never absolute pixel counts, so they hold
+ * <p>Assertions are relations and containment checks, never absolute pixel counts, so they hold
  * whichever typeface the platform resolved.
  */
 class ChatShellContainmentE2EIT extends AbstractE2E {
 
     private static final String PLAYBOOK = "e2e-shell";
+
     /** No spaces anywhere: the one case no wrapping strategy can rescue. */
     private static final String UNBREAKABLE = "XObjectKeyRefId".repeat(30);
 
-    private static final String ESCAPING_ELEMENTS_JS = """
-        () => {
-          const limit = document.documentElement.clientWidth + 1;
-          const inScroller = (el) => {
-            for (let p = el.parentElement; p; p = p.parentElement) {
-              const ox = getComputedStyle(p).overflowX;
-              if (ox === 'auto' || ox === 'scroll') return true;
+    private static final String ESCAPING_ELEMENTS_JS =
+            """
+            () => {
+              const limit = document.documentElement.clientWidth + 1;
+              const inScroller = (el) => {
+                for (let p = el.parentElement; p; p = p.parentElement) {
+                  const ox = getComputedStyle(p).overflowX;
+                  if (ox === 'auto' || ox === 'scroll') return true;
+                }
+                return false;
+              };
+              return Array.from(document.body.querySelectorAll('*'))
+                .filter(el => {
+                  const r = el.getBoundingClientRect();
+                  return r.width > 0 && r.right > limit && !inScroller(el);
+                })
+                .slice(0, 5)
+                .map(el => el.tagName.toLowerCase()
+                  + (el.id ? '#' + el.id : '')
+                  + ' right=' + Math.round(el.getBoundingClientRect().right)
+                  + ' limit=' + limit);
             }
-            return false;
-          };
-          return Array.from(document.body.querySelectorAll('*'))
-            .filter(el => {
-              const r = el.getBoundingClientRect();
-              return r.width > 0 && r.right > limit && !inScroller(el);
-            })
-            .slice(0, 5)
-            .map(el => el.tagName.toLowerCase()
-              + (el.id ? '#' + el.id : '')
-              + ' right=' + Math.round(el.getBoundingClientRect().right)
-              + ' limit=' + limit);
-        }
-        """;
+            """;
 
-    @Autowired
-    private PlaybookService playbookService;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private PlaybookService playbookService;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void removePlaybook() {
@@ -69,8 +67,17 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
      * Sends one question and renders an answer containing an unbreakable single-line code block.
      */
     private void receiveWideAnswer() {
-        playbookService.savePlaybook(PLAYBOOK, "E2E Shell", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                PLAYBOOK,
+                "E2E Shell",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply("Here is the key:\n\n```\n" + UNBREAKABLE + "\n```\n");
 
         loginAs("user");
@@ -81,15 +88,19 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
         page.click("#send-stop-button");
         assertThat(page.locator("#chat-messages")).containsText("Here is the key:");
 
-        page.addStyleTag(new Page.AddStyleTagOptions().setContent(
-            "*,*::before,*::after{animation:none!important;transition:none!important}"));
+        page.addStyleTag(
+                new Page.AddStyleTagOptions()
+                        .setContent(
+                                "*,*::before,*::after{animation:none!important;transition:none!important}"));
     }
 
     private double right(String selector) {
         // Number, not double: a whole-pixel rect comes back from the driver as an Integer.
-        return ((Number) page.evaluate(
-            "(sel) => document.querySelector(sel).getBoundingClientRect().right", selector))
-            .doubleValue();
+        return ((Number)
+                        page.evaluate(
+                                "(sel) => document.querySelector(sel).getBoundingClientRect().right",
+                                selector))
+                .doubleValue();
     }
 
     private double clientWidth() {
@@ -105,8 +116,8 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
         receiveWideAnswer();
 
         Assertions.assertThat(right("#send-stop-button"))
-            .as("send button pushed out of the viewport by wide answer content")
-            .isLessThanOrEqualTo(clientWidth() + 1);
+                .as("send button pushed out of the viewport by wide answer content")
+                .isLessThanOrEqualTo(clientWidth() + 1);
     }
 
     @Test
@@ -116,11 +127,15 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
         @SuppressWarnings("unchecked")
         List<String> escaping = (List<String>) page.evaluate(ESCAPING_ELEMENTS_JS);
         Assertions.assertThat(escaping)
-            .as("element(s) escaped the viewport outside any scroll container").isEmpty();
-        Assertions
-            .assertThat((boolean) page.evaluate("() => document.documentElement.scrollWidth"
-                + " > document.documentElement.clientWidth + 1"))
-            .as("the page itself scrolls horizontally").isFalse();
+                .as("element(s) escaped the viewport outside any scroll container")
+                .isEmpty();
+        Assertions.assertThat(
+                        (boolean)
+                                page.evaluate(
+                                        "() => document.documentElement.scrollWidth"
+                                                + " > document.documentElement.clientWidth + 1"))
+                .as("the page itself scrolls horizontally")
+                .isFalse();
     }
 
     /** The thread column must not outgrow the space left by the sidebar. */
@@ -129,8 +144,9 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
         receiveWideAnswer();
 
         double threadRight = right(".chat-main-thread");
-        Assertions.assertThat(threadRight).as("thread column extends past the viewport")
-            .isLessThanOrEqualTo(clientWidth() + 1);
+        Assertions.assertThat(threadRight)
+                .as("thread column extends past the viewport")
+                .isLessThanOrEqualTo(clientWidth() + 1);
     }
 
     /**
@@ -141,11 +157,13 @@ class ChatShellContainmentE2EIT extends AbstractE2E {
     void wideContentRemainsReachableInsideTheMessageArea() {
         receiveWideAnswer();
 
-        Assertions
-            .assertThat((boolean) page
-                .evaluate("() => { const el = document.querySelector('.message-bubble pre');"
-                    + " return !!el && getComputedStyle(el).overflowX !== 'hidden'; }"))
-            .as("the code block must be scrollable or wrappable, not clipped").isTrue();
+        Assertions.assertThat(
+                        (boolean)
+                                page.evaluate(
+                                        "() => { const el = document.querySelector('.message-bubble pre');"
+                                                + " return !!el && getComputedStyle(el).overflowX !== 'hidden'; }"))
+                .as("the code block must be scrollable or wrappable, not clipped")
+                .isTrue();
     }
 
     /**

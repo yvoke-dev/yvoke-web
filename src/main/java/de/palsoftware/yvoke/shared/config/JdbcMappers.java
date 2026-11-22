@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.shared.config;
 
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,8 +24,8 @@ public final class JdbcMappers {
 
     private JdbcMappers() {}
 
-    public static Map<String, Object> jsonbToMap(ResultSet rs, String column,
-        ObjectMapper objectMapper) throws SQLException {
+    public static Map<String, Object> jsonbToMap(
+            ResultSet rs, String column, ObjectMapper objectMapper) throws SQLException {
         String raw = rs.getString(column);
         if (raw == null || raw.isBlank()) {
             return Collections.emptyMap();

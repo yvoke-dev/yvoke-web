@@ -28,36 +28,45 @@ public class PlaybookService {
     private static final Logger log = LoggerFactory.getLogger(PlaybookService.class);
 
     private final PlaybookRepository playbookRepository;
+
     /**
      * Resolved when a playbook changes, not at construction: the server is built from the tool
      * list, and a tool that reads playbooks would otherwise close a startup cycle. A failed tool
      * bean is only logged by {@code McpToolsConfig}, so the cycle would silently drop the tool.
      */
     private final ObjectProvider<McpSyncServer> mcpSyncServer;
+
     private final AreaService areaService;
 
     @Autowired
-    public PlaybookService(PlaybookRepository playbookRepository,
-        ObjectProvider<McpSyncServer> mcpSyncServer, AreaService areaService) {
+    public PlaybookService(
+            PlaybookRepository playbookRepository,
+            ObjectProvider<McpSyncServer> mcpSyncServer,
+            AreaService areaService) {
         this.playbookRepository = playbookRepository;
         this.mcpSyncServer = mcpSyncServer;
         this.areaService = areaService;
     }
 
     /** For callers outside the container; {@code null} means no MCP server to notify. */
-    public PlaybookService(PlaybookRepository playbookRepository, McpSyncServer mcpSyncServer,
-        AreaService areaService) {
-        this(playbookRepository, new ObjectProvider<>() {
-            @Override
-            public McpSyncServer getObject() {
-                return mcpSyncServer;
-            }
+    public PlaybookService(
+            PlaybookRepository playbookRepository,
+            McpSyncServer mcpSyncServer,
+            AreaService areaService) {
+        this(
+                playbookRepository,
+                new ObjectProvider<>() {
+                    @Override
+                    public McpSyncServer getObject() {
+                        return mcpSyncServer;
+                    }
 
-            @Override
-            public McpSyncServer getIfAvailable() {
-                return mcpSyncServer;
-            }
-        }, areaService);
+                    @Override
+                    public McpSyncServer getIfAvailable() {
+                        return mcpSyncServer;
+                    }
+                },
+                areaService);
     }
 
     public List<Playbook> listAllPlaybooks() {
@@ -69,12 +78,18 @@ public class PlaybookService {
     }
 
     public Set<String> listDefaultPlaybookNames() {
-        return areaService.listAreas().stream().map(Area::defaultPlaybook).filter(Objects::nonNull)
-            .filter(name -> !name.isBlank()).map(String::trim).collect(Collectors.toSet());
+        return areaService.listAreas().stream()
+                .map(Area::defaultPlaybook)
+                .filter(Objects::nonNull)
+                .filter(name -> !name.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toSet());
     }
 
-    @Cacheable(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
+    @Cacheable(
+            cacheNames = CacheConfig.PLAYBOOKS,
+            key = "#name?.trim()",
+            condition = "#name != null && !#name.isBlank()")
     public Optional<Playbook> getPlaybook(String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
@@ -84,11 +99,21 @@ public class PlaybookService {
         return playbookRepository.findByName(name.trim());
     }
 
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
-    public void savePlaybook(String name, String title, String description, String templateText,
-        List<String> tools, boolean codeExecution, String targetAgent, boolean prototype,
-        String area, int version) {
+    @CacheEvict(
+            cacheNames = CacheConfig.PLAYBOOKS,
+            key = "#name?.trim()",
+            condition = "#name != null && !#name.isBlank()")
+    public void savePlaybook(
+            String name,
+            String title,
+            String description,
+            String templateText,
+            List<String> tools,
+            boolean codeExecution,
+            String targetAgent,
+            boolean prototype,
+            String area,
+            int version) {
         String validName = SlugNames.requireValidName(name, "Playbook");
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Playbook title cannot be empty.");
@@ -101,13 +126,21 @@ public class PlaybookService {
         }
 
         String agent =
-            targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
+                targetAgent != null && !targetAgent.isBlank() ? targetAgent.trim() : "specialist";
 
         String storedArea = areaService.requireArea(area);
 
-        playbookRepository.upsert(validName, title.trim(),
-            description != null ? description.trim() : "", templateText.trim(), tools,
-            codeExecution, agent, prototype, storedArea, version);
+        playbookRepository.upsert(
+                validName,
+                title.trim(),
+                description != null ? description.trim() : "",
+                templateText.trim(),
+                tools,
+                codeExecution,
+                agent,
+                prototype,
+                storedArea,
+                version);
 
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
@@ -119,28 +152,45 @@ public class PlaybookService {
      * Imports a playbook file. The area named in its frontmatter wins; a file that names none goes
      * into {@code fallbackArea}, the area picked on the import form.
      */
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#result?.name()?.trim()",
-        condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
-    public Playbook importPlaybookFromMarkdown(String mdContent, String fallbackName,
-        String fallbackArea) {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown(mdContent, fallbackName,
-            resolvedName -> getPlaybook(resolvedName).map(Playbook::version).orElse(1));
+    @CacheEvict(
+            cacheNames = CacheConfig.PLAYBOOKS,
+            key = "#result?.name()?.trim()",
+            condition = "#result != null && #result.name() != null && !#result.name().isBlank()")
+    public Playbook importPlaybookFromMarkdown(
+            String mdContent, String fallbackName, String fallbackArea) {
+        Playbook parsed =
+                PlaybookMarkdownParser.parseMarkdown(
+                        mdContent,
+                        fallbackName,
+                        resolvedName -> getPlaybook(resolvedName).map(Playbook::version).orElse(1));
         String area =
-            parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
-        savePlaybook(parsed.name(), parsed.title(), parsed.description(), parsed.templateText(),
-            parsed.tools(), parsed.codeExecution(), parsed.targetAgent(), parsed.prototype(), area,
-            parsed.version());
+                parsed.area() != null && !parsed.area().isBlank() ? parsed.area() : fallbackArea;
+        savePlaybook(
+                parsed.name(),
+                parsed.title(),
+                parsed.description(),
+                parsed.templateText(),
+                parsed.tools(),
+                parsed.codeExecution(),
+                parsed.targetAgent(),
+                parsed.prototype(),
+                area,
+                parsed.version());
         return getPlaybook(parsed.name()).orElse(parsed);
     }
 
     public String exportPlaybookToMarkdown(String name) {
-        Playbook pb = getPlaybook(name)
-            .orElseThrow(() -> new IllegalArgumentException("Playbook '" + name + "' not found."));
+        Playbook pb =
+                getPlaybook(name)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException("Playbook '" + name + "' not found."));
         return PlaybookMarkdownParser.toMarkdown(pb);
     }
 
-    @CacheEvict(cacheNames = CacheConfig.PLAYBOOKS, key = "#name?.trim()",
-        condition = "#name != null && !#name.isBlank()")
+    @CacheEvict(
+            cacheNames = CacheConfig.PLAYBOOKS,
+            key = "#name?.trim()",
+            condition = "#name != null && !#name.isBlank()")
     public void deletePlaybook(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
@@ -153,8 +203,10 @@ public class PlaybookService {
                 server.notifyPromptsListChanged();
                 log.info("Deleted playbook and notified MCP: {}", name);
             } catch (Exception e) {
-                log.warn("Failed to notify prompt changes after delete for {}: {}", name,
-                    e.getMessage());
+                log.warn(
+                        "Failed to notify prompt changes after delete for {}: {}",
+                        name,
+                        e.getMessage());
             }
         }
     }
@@ -176,22 +228,25 @@ public class PlaybookService {
     }
 
     private void registerPlaybookWithMcp(String name, McpSyncServer server) {
-        getPlaybook(name).ifPresent(playbook -> {
-            doRegister(playbook, server);
-            try {
-                server.notifyPromptsListChanged();
-            } catch (Exception e) {
-                log.debug("No MCP client connected yet to receive list change notification.");
-            }
-        });
+        getPlaybook(name)
+                .ifPresent(playbook -> {
+                    doRegister(playbook, server);
+                    try {
+                        server.notifyPromptsListChanged();
+                    } catch (Exception e) {
+                        log.debug(
+                                "No MCP client connected yet to receive list change notification.");
+                    }
+                });
     }
 
     private Map<String, Object> buildMcpMetadata(Playbook playbook) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("tools", playbook.tools() != null ? playbook.tools() : List.of());
         meta.put("codeExecution", playbook.codeExecution());
-        meta.put("targetAgent",
-            playbook.targetAgent() != null ? playbook.targetAgent() : "specialist");
+        meta.put(
+                "targetAgent",
+                playbook.targetAgent() != null ? playbook.targetAgent() : "specialist");
         meta.put("prototype", playbook.prototype());
         meta.put("version", playbook.version());
         return meta;
@@ -200,26 +255,39 @@ public class PlaybookService {
     private void doRegister(Playbook playbook, McpSyncServer server) {
         Map<String, Object> meta = buildMcpMetadata(playbook);
 
-        var promptSpec = McpSchema.Prompt.builder(playbook.name())
-            .description(playbook.description()).meta(meta).build();
+        var promptSpec =
+                McpSchema.Prompt.builder(playbook.name())
+                        .description(playbook.description())
+                        .meta(meta)
+                        .build();
 
         var registration =
-            new McpServerFeatures.SyncPromptSpecification(promptSpec, (exchange, request) -> {
-                // Dynamic lookup on execution to support live database template updates
-                Playbook current = getPlaybook(playbook.name()).orElse(playbook);
-                Map<String, Object> execMeta = buildMcpMetadata(current);
-                return McpSchema.GetPromptResult
-                    .builder(List.of(new McpSchema.PromptMessage(McpSchema.Role.USER,
-                        McpSchema.TextContent.builder(current.templateText()).build())))
-                    .description(current.description()).meta(execMeta).build();
-            });
+                new McpServerFeatures.SyncPromptSpecification(
+                        promptSpec,
+                        (exchange, request) -> {
+                            // Dynamic lookup on execution to support live database template updates
+                            Playbook current = getPlaybook(playbook.name()).orElse(playbook);
+                            Map<String, Object> execMeta = buildMcpMetadata(current);
+                            return McpSchema.GetPromptResult.builder(
+                                            List.of(
+                                                    new McpSchema.PromptMessage(
+                                                            McpSchema.Role.USER,
+                                                            McpSchema.TextContent.builder(
+                                                                            current.templateText())
+                                                                    .build())))
+                                    .description(current.description())
+                                    .meta(execMeta)
+                                    .build();
+                        });
 
         try {
             server.addPrompt(registration);
             log.info("Successfully registered/updated prompt spec: {}", playbook.name());
         } catch (Exception e) {
-            log.error("Failed to register prompt {} with McpSyncServer: {}", playbook.name(),
-                e.getMessage());
+            log.error(
+                    "Failed to register prompt {} with McpSyncServer: {}",
+                    playbook.name(),
+                    e.getMessage());
         }
     }
 }

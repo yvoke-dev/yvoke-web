@@ -61,13 +61,14 @@ public class CustomIngestService {
 
     private static final Logger log = LoggerFactory.getLogger(CustomIngestService.class);
     private static final Pattern PREFIX_RE =
-        Pattern.compile("^>\\s+Section path:\\s*(.+?)\\s*$", Pattern.MULTILINE);
+            Pattern.compile("^>\\s+Section path:\\s*(.+?)\\s*$", Pattern.MULTILINE);
     private static final Pattern HEAD_RE = Pattern.compile("^(#+)\\s+(.+?)$", Pattern.MULTILINE);
     private static final Pattern FRONTMATTER_PATTERN =
-        Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n", Pattern.DOTALL);
+            Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n", Pattern.DOTALL);
     private static final Pattern CODE_BLOCK_RE =
-        Pattern.compile("```(?:sql|vbnet|vb|tsql)\\r?\\n(.*?)\\r?\\n```",
-            Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+            Pattern.compile(
+                    "```(?:sql|vbnet|vb|tsql)\\r?\\n(.*?)\\r?\\n```",
+                    Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
     /**
      * Cap on how many offending items a failure message lists before it collapses into a count. A
@@ -79,8 +80,8 @@ public class CustomIngestService {
     private record ParsedFile(Map<String, Object> frontmatter, String body) {}
 
     /**
-     * A document whose YAML frontmatter cannot be parsed. Real defect this guards: a
-     * {@code display_name} starting with {@code %} (a reserved YAML indicator) made the whole block
+     * A document whose YAML frontmatter cannot be parsed. Real defect this guards: a {@code
+     * display_name} starting with {@code %} (a reserved YAML indicator) made the whole block
      * unparseable, the document silently fell back to {@code kind='other'}, and its graph entity
      * then matched no document at all — undetected across two full re-ingests.
      */
@@ -92,9 +93,9 @@ public class CustomIngestService {
 
     /**
      * Whether to embed graph entity descriptions. Off: {@code entities.embedding} is written but
-     * never read — no query in this codebase does a vector search over entities (the only
-     * {@code <=>} is in {@code ChunkRepository}), so the round-trip bought nothing. Flip to
-     * {@code true} in the same commit that adds entity vector search, not before.
+     * never read — no query in this codebase does a vector search over entities (the only {@code
+     * <=>} is in {@code ChunkRepository}), so the round-trip bought nothing. Flip to {@code true}
+     * in the same commit that adds entity vector search, not before.
      */
     private static final boolean EMBED_ENTITY_DESCRIPTIONS = false;
 
@@ -112,13 +113,18 @@ public class CustomIngestService {
     private final SafeZipExtractor safeZipExtractor;
 
     @Autowired
-    public CustomIngestService(EmbeddingService embeddingService,
-        DocumentRepository documentRepository, GeneralSummarizer generalSummarizer,
-        KgWriteRepository kgRepository, JdbcClient jdbcClient,
-        PlatformTransactionManager transactionManager, UploadPathGuard uploadPathGuard,
-        @Value("${app.ai.summarize.concurrency}") int concurrency,
-        SystemPromptService systemPromptService, IngestPrompts ingestPrompts,
-        SafeZipExtractor safeZipExtractor) {
+    public CustomIngestService(
+            EmbeddingService embeddingService,
+            DocumentRepository documentRepository,
+            GeneralSummarizer generalSummarizer,
+            KgWriteRepository kgRepository,
+            JdbcClient jdbcClient,
+            PlatformTransactionManager transactionManager,
+            UploadPathGuard uploadPathGuard,
+            @Value("${app.ai.summarize.concurrency}") int concurrency,
+            SystemPromptService systemPromptService,
+            IngestPrompts ingestPrompts,
+            SafeZipExtractor safeZipExtractor) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.generalSummarizer = generalSummarizer;
@@ -130,22 +136,39 @@ public class CustomIngestService {
         this.objectMapper = new ObjectMapper();
         this.systemPromptService = systemPromptService;
         this.ingestPrompts = ingestPrompts;
-        this.safeZipExtractor = safeZipExtractor != null ? safeZipExtractor
-            : new SafeZipExtractor(ZipExtractionProperties.defaults());
+        this.safeZipExtractor =
+                safeZipExtractor != null
+                        ? safeZipExtractor
+                        : new SafeZipExtractor(ZipExtractionProperties.defaults());
     }
 
-    public CustomIngestService(EmbeddingService embeddingService,
-        DocumentRepository documentRepository, GeneralSummarizer generalSummarizer,
-        KgWriteRepository kgRepository, JdbcClient jdbcClient,
-        PlatformTransactionManager transactionManager, UploadPathGuard uploadPathGuard,
-        int concurrency, SystemPromptService systemPromptService, IngestPrompts ingestPrompts) {
-        this(embeddingService, documentRepository, generalSummarizer, kgRepository, jdbcClient,
-            transactionManager, uploadPathGuard, concurrency, systemPromptService, ingestPrompts,
-            new SafeZipExtractor(ZipExtractionProperties.defaults()));
+    public CustomIngestService(
+            EmbeddingService embeddingService,
+            DocumentRepository documentRepository,
+            GeneralSummarizer generalSummarizer,
+            KgWriteRepository kgRepository,
+            JdbcClient jdbcClient,
+            PlatformTransactionManager transactionManager,
+            UploadPathGuard uploadPathGuard,
+            int concurrency,
+            SystemPromptService systemPromptService,
+            IngestPrompts ingestPrompts) {
+        this(
+                embeddingService,
+                documentRepository,
+                generalSummarizer,
+                kgRepository,
+                jdbcClient,
+                transactionManager,
+                uploadPathGuard,
+                concurrency,
+                systemPromptService,
+                ingestPrompts,
+                new SafeZipExtractor(ZipExtractionProperties.defaults()));
     }
 
-    private record DocPayload(String sourceFile, String kind, String name, String title,
-        List<String> chunkTexts) {}
+    private record DocPayload(
+            String sourceFile, String kind, String name, String title, List<String> chunkTexts) {}
 
     /** Result of the concurrent parse/chunk phase: parsed documents and their flattened chunks. */
     private record ParseResult(List<DocPayload> docs, List<String> chunkTexts) {}
@@ -158,8 +181,11 @@ public class CustomIngestService {
         List<String> tags = job.tags();
         Path zipFile = uploadPathGuard.resolve(job.sourceRef());
 
-        log.info("Starting custom ingest job {} for collection={}, tags={}", job.id(), collection,
-            tags);
+        log.info(
+                "Starting custom ingest job {} for collection={}, tags={}",
+                job.id(),
+                collection,
+                tags);
 
         Path tempDir = null;
         try {
@@ -174,8 +200,9 @@ public class CustomIngestService {
             // Resolved BEFORE parseAndChunk, which is where the LLM calls happen: a custom
             // extract summarizes every matched section, so a missing prompt has to stop the job
             // here rather than after N sections have been summarized with nothing.
-            String resolvedPrompt = ingestPrompts.requireSummarizePromptText(job.settings(),
-                "content summaries for this custom extract");
+            String resolvedPrompt =
+                    ingestPrompts.requireSummarizePromptText(
+                            job.settings(), "content summaries for this custom extract");
             ParseResult parsed = parseAndChunk(markdownFiles, tempDir, job, ctx, resolvedPrompt);
 
             // Populated by the persist phase, read by the KG-injection phase.
@@ -190,35 +217,40 @@ public class CustomIngestService {
 
             ctx.report(JobStep.INJECT, 100, "Ingestion completed successfully");
             log.info(
-                "Custom ingestion job completed. Docs: {}, Chunks: {}, Entities: {}, Edges: {}",
-                parsed.docs().size(), parsed.chunkTexts().size(), kg.entities(),
-                kg.relationships());
+                    "Custom ingestion job completed. Docs: {}, Chunks: {}, Entities: {}, Edges: {}",
+                    parsed.docs().size(),
+                    parsed.chunkTexts().size(),
+                    kg.entities(),
+                    kg.relationships());
 
-            return new JobCounts(parsed.docs().size(), parsed.chunkTexts().size(), kg.entities(),
-                kg.relationships(), 0);
+            return new JobCounts(
+                    parsed.docs().size(),
+                    parsed.chunkTexts().size(),
+                    kg.entities(),
+                    kg.relationships(),
+                    0);
 
         } catch (IOException e) {
             log.error("Failed to execute custom ingestion", e);
             throw new RuntimeException("Custom ingestion failed", e);
         } finally {
-            if (tempDir != null)
-                cleanDirectory(tempDir);
+            if (tempDir != null) cleanDirectory(tempDir);
         }
     }
 
     /** Walks the extracted zip and returns the files matching the {@code documentGlob} setting. */
     private static List<Path> discoverMatchingFiles(Path tempDir, Map<String, Object> settings)
-        throws IOException {
+            throws IOException {
         String documentGlob = (String) settings.getOrDefault("documentGlob", "**/*.md");
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + documentGlob);
         List<Path> markdownFiles = new ArrayList<>();
         try (var stream = Files.walk(tempDir)) {
-            stream.filter(Files::isRegularFile).filter(p -> matcher.matches(tempDir.relativize(p)))
-                .forEach(markdownFiles::add);
+            stream.filter(Files::isRegularFile)
+                    .filter(p -> matcher.matches(tempDir.relativize(p)))
+                    .forEach(markdownFiles::add);
         }
         return markdownFiles;
     }
-
 
     /**
      * Parses/summarizes/chunks the matched files concurrently on a security-context-propagating
@@ -226,8 +258,12 @@ public class CustomIngestService {
      * flattened {@code chunkTexts} stay aligned with the embedding order used downstream. Throws if
      * the job was cancelled once every task has completed.
      */
-    private ParseResult parseAndChunk(List<Path> files, Path tempDir, IngestionJob job,
-        JobContext ctx, String resolvedPrompt) {
+    private ParseResult parseAndChunk(
+            List<Path> files,
+            Path tempDir,
+            IngestionJob job,
+            JobContext ctx,
+            String resolvedPrompt) {
         int totalFiles = files.size();
         AtomicBoolean cancelled = new AtomicBoolean(false);
         AtomicInteger completed = new AtomicInteger(0);
@@ -238,15 +274,25 @@ public class CustomIngestService {
         List<DocPayload> docsToInsert = new ArrayList<>();
         List<String> allChunkTexts = new ArrayList<>();
 
-        try (
-            ExecutorService delegate = Executors
-                .newThreadPerTaskExecutor(Thread.ofVirtual().name("custom-ingest-", 0).factory());
-            ExecutorService executor = new DelegatingSecurityContextExecutorService(delegate)) {
+        try (ExecutorService delegate =
+                        Executors.newThreadPerTaskExecutor(
+                                Thread.ofVirtual().name("custom-ingest-", 0).factory());
+                ExecutorService executor = new DelegatingSecurityContextExecutorService(delegate)) {
             List<Future<DocPayload>> futures = new ArrayList<>(totalFiles);
             for (Path path : files) {
-                futures.add(executor.submit(() -> processFile(path,
-                    tempDir.relativize(path).toString(), job.id(), ctx, gate, cancelled, completed,
-                    totalFiles, resolvedPrompt, frontmatterFailures)));
+                futures.add(
+                        executor.submit(() ->
+                                processFile(
+                                        path,
+                                        tempDir.relativize(path).toString(),
+                                        job.id(),
+                                        ctx,
+                                        gate,
+                                        cancelled,
+                                        completed,
+                                        totalFiles,
+                                        resolvedPrompt,
+                                        frontmatterFailures)));
             }
 
             for (Future<DocPayload> future : futures) {
@@ -269,10 +315,12 @@ public class CustomIngestService {
             throw new IllegalStateException("Job was cancelled by administrator");
         }
         if (!frontmatterFailures.isEmpty()) {
-            throw new IllegalStateException("Custom ingest aborted: " + frontmatterFailures.size()
-                + " document(s) have unparseable YAML frontmatter and would silently degrade to"
-                + " kind='other' (losing the entity→document link): "
-                + summarize(frontmatterFailures));
+            throw new IllegalStateException(
+                    "Custom ingest aborted: "
+                            + frontmatterFailures.size()
+                            + " document(s) have unparseable YAML frontmatter and would silently degrade to"
+                            + " kind='other' (losing the entity→document link): "
+                            + summarize(frontmatterFailures));
         }
 
         return new ParseResult(docsToInsert, allChunkTexts);
@@ -283,21 +331,27 @@ public class CustomIngestService {
      * document in its own transaction. A single running embedding index walks {@code allChunkTexts}
      * in document order, so it must stay aligned with how {@link #parseAndChunk} flattened them.
      */
-    private void embedAndPersistDocuments(IngestionJob job, ParseResult parsed,
-        Map<String, UUID> docIdMap, JobContext ctx) {
+    private void embedAndPersistDocuments(
+            IngestionJob job, ParseResult parsed, Map<String, UUID> docIdMap, JobContext ctx) {
         String collection = job.collection();
         List<String> tags = job.tags();
         List<DocPayload> docs = parsed.docs();
         List<String> allChunkTexts = parsed.chunkTexts();
 
-        log.info("Discovered {} documents to ingest yielding {} chunks", docs.size(),
-            allChunkTexts.size());
-        ctx.report(JobStep.CHUNK, 30,
-            String.format("Finished parsing: %d chunks ready", allChunkTexts.size()));
+        log.info(
+                "Discovered {} documents to ingest yielding {} chunks",
+                docs.size(),
+                allChunkTexts.size());
+        ctx.report(
+                JobStep.CHUNK,
+                30,
+                String.format("Finished parsing: %d chunks ready", allChunkTexts.size()));
 
         checkCancellation(job.id());
-        ctx.report(JobStep.EMBED, 35,
-            String.format("Generating embeddings for %d chunks", allChunkTexts.size()));
+        ctx.report(
+                JobStep.EMBED,
+                35,
+                String.format("Generating embeddings for %d chunks", allChunkTexts.size()));
         List<float[]> embeddings = embeddingService.embedBatch(allChunkTexts);
         if (embeddings.size() != allChunkTexts.size()) {
             throw new IllegalStateException("Generated embedding size does not match chunk size");
@@ -328,8 +382,7 @@ public class CustomIngestService {
         Matcher pm = PREFIX_RE.matcher(text);
         if (pm.find()) {
             for (String p : pm.group(1).split(" > ")) {
-                if (!p.trim().isEmpty())
-                    headingPath.add(p.trim());
+                if (!p.trim().isEmpty()) headingPath.add(p.trim());
             }
         }
 
@@ -349,24 +402,31 @@ public class CustomIngestService {
      * upsert the document, insert its chunks, mark it completed, and record its id in {@code
      * docIdMap} for the KG phase. Kept as its own transaction (not widened across documents).
      */
-    private void persistDocument(String collection, List<String> tags, DocPayload doc,
-        List<ChunkInsert> chunkInserts, Map<String, UUID> docIdMap) {
+    private void persistDocument(
+            String collection,
+            List<String> tags,
+            DocPayload doc,
+            List<ChunkInsert> chunkInserts,
+            Map<String, UUID> docIdMap) {
         transactionTemplate.executeWithoutResult(status -> {
             jdbcClient
-                .sql(
-                    """
-                        DELETE FROM documents d
-                        WHERE d.collection_id = (SELECT id FROM collections WHERE LOWER(name) = LOWER(:collection))
-                          AND (d.tags && :tags::text[] OR d.tags = '{}'::text[])
-                          AND d.metadata->>'source_file' = :sourceFile
-                        """)
-                .param("collection", collection).param("tags", tags.toArray(new String[0]))
-                .param("sourceFile", doc.sourceFile()).update();
+                    .sql(
+                            """
+                            DELETE FROM documents d
+                            WHERE d.collection_id = (SELECT id FROM collections WHERE LOWER(name) = LOWER(:collection))
+                              AND (d.tags && :tags::text[] OR d.tags = '{}'::text[])
+                              AND d.metadata->>'source_file' = :sourceFile
+                            """)
+                    .param("collection", collection)
+                    .param("tags", tags.toArray(new String[0]))
+                    .param("sourceFile", doc.sourceFile())
+                    .update();
 
-            UUID documentId = documentRepository.upsertManualDocument(collection, tags,
-                doc.sourceFile(), doc.kind(), doc.title());
-            documentRepository.insertChunks(documentId, collection, tags, doc.sourceFile(),
-                doc.kind(), chunkInserts);
+            UUID documentId =
+                    documentRepository.upsertManualDocument(
+                            collection, tags, doc.sourceFile(), doc.kind(), doc.title());
+            documentRepository.insertChunks(
+                    documentId, collection, tags, doc.sourceFile(), doc.kind(), chunkInserts);
             documentRepository.updateIngestionStatus(documentId, "completed");
 
             // Kind-aware, case-insensitive document key so entity->document linking matches on
@@ -381,28 +441,39 @@ public class CustomIngestService {
      * is disabled or the entity/relationship files are absent; otherwise batch-upserts entities and
      * relationships (all embedding happens inside {@link #buildEntitySpecs}, outside any DB tx).
      */
-    private KgCounts injectKnowledgeGraph(Path tempDir, IngestionJob job,
-        Map<String, UUID> docIdMap, JobContext ctx) throws IOException {
+    private KgCounts injectKnowledgeGraph(
+            Path tempDir, IngestionJob job, Map<String, UUID> docIdMap, JobContext ctx)
+            throws IOException {
         if (!isGraphEnabled(job.settings())) {
             return new KgCounts(0, 0);
         }
         String entitiesFile =
-            (String) job.settings().getOrDefault("entitiesFile", "graph/entities.jsonl");
+                (String) job.settings().getOrDefault("entitiesFile", "graph/entities.jsonl");
         String relationshipsFile =
-            (String) job.settings().getOrDefault("relationshipsFile", "graph/relationships.jsonl");
+                (String)
+                        job.settings()
+                                .getOrDefault("relationshipsFile", "graph/relationships.jsonl");
 
         Path entitiesPath;
         Path relsPath;
         try (var stream = Files.walk(tempDir)) {
             List<Path> allPaths = stream.toList();
             entitiesPath =
-                allPaths.stream().filter(p -> p.endsWith(entitiesFile)).findFirst().orElse(null);
-            relsPath = allPaths.stream().filter(p -> p.endsWith(relationshipsFile)).findFirst()
-                .orElse(null);
+                    allPaths.stream()
+                            .filter(p -> p.endsWith(entitiesFile))
+                            .findFirst()
+                            .orElse(null);
+            relsPath =
+                    allPaths.stream()
+                            .filter(p -> p.endsWith(relationshipsFile))
+                            .findFirst()
+                            .orElse(null);
         }
 
-        if (entitiesPath == null || relsPath == null || !Files.exists(entitiesPath)
-            || !Files.exists(relsPath)) {
+        if (entitiesPath == null
+                || relsPath == null
+                || !Files.exists(entitiesPath)
+                || !Files.exists(relsPath)) {
             return new KgCounts(0, 0);
         }
 
@@ -416,7 +487,7 @@ public class CustomIngestService {
 
         List<KgWriteRepository.EntityUpsert> entitySpecs = buildEntitySpecs(entities, docIdMap);
         Map<String, UUID> nameToIdMap =
-            kgRepository.upsertEntitiesBatch(collection, tags, entitySpecs);
+                kgRepository.upsertEntitiesBatch(collection, tags, entitySpecs);
         // Distinct identities actually resolved, not the spec count. `entitySpecs.size()` is
         // one entry per jsonl line with no dedup, so the job reported 9,664 where 9,663 rows
         // existed — and, before identity was tag-scoped, 9,904 where 473 rows were new. A
@@ -424,7 +495,7 @@ public class CustomIngestService {
         int entitiesInserted = nameToIdMap.size();
 
         List<KgWriteRepository.RelationshipUpsert> relSpecs =
-            buildRelationshipSpecs(relationships, nameToIdMap);
+                buildRelationshipSpecs(relationships, nameToIdMap);
         int relsInserted = kgRepository.insertRelationshipsBatch(collection, tags, relSpecs);
         ctx.report(JobStep.INJECT, 95, "Knowledge graph injected");
 
@@ -445,23 +516,22 @@ public class CustomIngestService {
     }
 
     /**
-     * Maps raw relationship records to upsert specs: tolerates {@code source/subject_name},
-     * {@code type/predicate}, {@code target/object_name} key variants and resolves each endpoint
-     * against the kind-aware {@code idByKey} map (keyed {@code lower(kind):lower(name)}). A
-     * {@code "kind:name"} endpoint prefix is used as the endpoint's kind so a same-named entity of
-     * the right kind is picked (fixing degenerate self-loops like module ADS → connector ADS). An
+     * Maps raw relationship records to upsert specs: tolerates {@code source/subject_name}, {@code
+     * type/predicate}, {@code target/object_name} key variants and resolves each endpoint against
+     * the kind-aware {@code idByKey} map (keyed {@code lower(kind):lower(name)}). A {@code
+     * "kind:name"} endpoint prefix is used as the endpoint's kind so a same-named entity of the
+     * right kind is picked (fixing degenerate self-loops like module ADS → connector ADS). An
      * endpoint with no prefix resolves by name only when exactly one kind carries that name. Bare
      * names are stored as the display subject/object.
      *
-     * <p>
-     * An endpoint that cannot be resolved (unknown, or a bare name carried by several kinds) and a
-     * record missing a source/predicate/target fail the job. Dropping such an edge silently is the
-     * same class of defect as an entity without a document: the graph loses a link and nothing says
-     * so.
+     * <p>An endpoint that cannot be resolved (unknown, or a bare name carried by several kinds) and
+     * a record missing a source/predicate/target fail the job. Dropping such an edge silently is
+     * the same class of defect as an entity without a document: the graph loses a link and nothing
+     * says so.
      */
     @SuppressWarnings("unchecked")
     static List<KgWriteRepository.RelationshipUpsert> buildRelationshipSpecs(
-        List<Map<String, Object>> relationships, Map<String, UUID> idByKey) {
+            List<Map<String, Object>> relationships, Map<String, UUID> idByKey) {
         // lower(name) -> the id-map keys ("lkind:lname") that carry that name, for unprefixed
         // lookup.
         Map<String, List<String>> keysByName = new HashMap<>();
@@ -481,7 +551,7 @@ public class CustomIngestService {
             String target = (String) rel.getOrDefault("target", rel.get("object_name"));
             String desc = (String) rel.get("description");
             Map<String, Object> metadata =
-                (Map<String, Object>) rel.getOrDefault("metadata", new HashMap<>());
+                    (Map<String, Object>) rel.getOrDefault("metadata", new HashMap<>());
 
             if (source == null || target == null || pred == null) {
                 malformed.add(source + " -[" + pred + "]-> " + target);
@@ -489,11 +559,18 @@ public class CustomIngestService {
             }
 
             ResolvedEndpoint subj =
-                resolveEndpoint(source, idByKey, keysByName, unknown, ambiguous);
+                    resolveEndpoint(source, idByKey, keysByName, unknown, ambiguous);
             ResolvedEndpoint obj = resolveEndpoint(target, idByKey, keysByName, unknown, ambiguous);
             if (subj != null && obj != null) {
-                relSpecs.add(new KgWriteRepository.RelationshipUpsert(subj.name(), pred, obj.name(),
-                    subj.id(), obj.id(), desc, metadata));
+                relSpecs.add(
+                        new KgWriteRepository.RelationshipUpsert(
+                                subj.name(),
+                                pred,
+                                obj.name(),
+                                subj.id(),
+                                obj.id(),
+                                desc,
+                                metadata));
             }
         }
 
@@ -505,25 +582,32 @@ public class CustomIngestService {
      * Fails the job when any edge could not be turned into a spec, keeping the three causes apart
      * so the export side knows what to fix.
      */
-    private static void failOnUnresolvedEndpoints(Set<String> malformed, Set<String> unknown,
-        Set<String> ambiguous) {
+    private static void failOnUnresolvedEndpoints(
+            Set<String> malformed, Set<String> unknown, Set<String> ambiguous) {
         if (malformed.isEmpty() && unknown.isEmpty() && ambiguous.isEmpty()) {
             return;
         }
-        StringBuilder msg = new StringBuilder(
-            "Custom ingest aborted: " + (malformed.size() + unknown.size() + ambiguous.size())
-                + " knowledge-graph edge(s) could not be resolved and would be dropped silently.");
+        StringBuilder msg =
+                new StringBuilder(
+                        "Custom ingest aborted: "
+                                + (malformed.size() + unknown.size() + ambiguous.size())
+                                + " knowledge-graph edge(s) could not be resolved and would be dropped silently.");
         if (!unknown.isEmpty()) {
             msg.append(" Unknown endpoint (no entity with that kind and name): ")
-                .append(summarize(unknown)).append('.');
+                    .append(summarize(unknown))
+                    .append('.');
         }
         if (!ambiguous.isEmpty()) {
-            msg.append(" Ambiguous endpoint (bare name carried by several kinds; prefix it with"
-                + " 'kind:'): ").append(summarize(ambiguous)).append('.');
+            msg.append(
+                            " Ambiguous endpoint (bare name carried by several kinds; prefix it with"
+                                    + " 'kind:'): ")
+                    .append(summarize(ambiguous))
+                    .append('.');
         }
         if (!malformed.isEmpty()) {
             msg.append(" Malformed edge (missing source, predicate or target): ")
-                .append(summarize(malformed)).append('.');
+                    .append(summarize(malformed))
+                    .append('.');
         }
         throw new IllegalStateException(msg.toString());
     }
@@ -538,8 +622,12 @@ public class CustomIngestService {
      * caller can report every offender at once. The returned name is always the bare display name.
      */
     @Nullable
-    private static ResolvedEndpoint resolveEndpoint(String raw, Map<String, UUID> idByKey,
-        Map<String, List<String>> keysByName, Set<String> unknown, Set<String> ambiguous) {
+    private static ResolvedEndpoint resolveEndpoint(
+            String raw,
+            Map<String, UUID> idByKey,
+            Map<String, List<String>> keysByName,
+            Set<String> unknown,
+            Set<String> ambiguous) {
         int idx = raw.indexOf(':');
         boolean prefixed = idx > 0 && idx < raw.length() - 1;
         String bareName = prefixed ? raw.substring(idx + 1) : raw;
@@ -559,8 +647,13 @@ public class CustomIngestService {
         }
         if (candidates.size() > 1) {
             ambiguous.add(
-                raw + " (kinds: " + candidates.stream().map(k -> k.substring(0, k.indexOf(':')))
-                    .sorted().collect(Collectors.joining(", ")) + ")");
+                    raw
+                            + " (kinds: "
+                            + candidates.stream()
+                                    .map(k -> k.substring(0, k.indexOf(':')))
+                                    .sorted()
+                                    .collect(Collectors.joining(", "))
+                            + ")");
             return null;
         }
         return new ResolvedEndpoint(bareName, idByKey.get(candidates.get(0)));
@@ -571,14 +664,13 @@ public class CustomIngestService {
      * in a SINGLE batched call (PRF-03) rather than one HTTP round-trip per entity. Entities
      * without a description keep a null embedding.
      *
-     * <p>
-     * Every entity must resolve to a document of the same {@code (kind, name)} — an entity with no
-     * {@code document_id} is unreachable from every document-based tool, so the job fails here
+     * <p>Every entity must resolve to a document of the same {@code (kind, name)} — an entity with
+     * no {@code document_id} is unreachable from every document-based tool, so the job fails here
      * rather than persisting a silently crippled graph (and before the embedding round-trip).
      */
     @SuppressWarnings("unchecked")
-    List<KgWriteRepository.EntityUpsert> buildEntitySpecs(List<Map<String, Object>> entities,
-        Map<String, UUID> docIdMap) {
+    List<KgWriteRepository.EntityUpsert> buildEntitySpecs(
+            List<Map<String, Object>> entities, Map<String, UUID> docIdMap) {
         List<KgWriteRepository.EntityUpsert> specs = new ArrayList<>();
         List<Integer> specIndexNeedingEmbedding = new ArrayList<>();
         List<String> descriptionsToEmbed = new ArrayList<>();
@@ -589,7 +681,7 @@ public class CustomIngestService {
             String name = (String) node.get("name");
             String desc = (String) node.get("description");
             Map<String, Object> metadata =
-                (Map<String, Object>) node.getOrDefault("metadata", new HashMap<>());
+                    (Map<String, Object>) node.getOrDefault("metadata", new HashMap<>());
 
             UUID docId = docIdMap.get((type + ":" + name).toLowerCase(Locale.ROOT));
             if (docId == null) {
@@ -606,9 +698,12 @@ public class CustomIngestService {
         }
 
         if (!withoutDocument.isEmpty()) {
-            throw new IllegalStateException("Custom ingest aborted: " + withoutDocument.size()
-                + " graph entit(ies) resolved to no document — every entity must be backed by a"
-                + " document with the same (kind, name): " + summarize(withoutDocument));
+            throw new IllegalStateException(
+                    "Custom ingest aborted: "
+                            + withoutDocument.size()
+                            + " graph entit(ies) resolved to no document — every entity must be backed by a"
+                            + " document with the same (kind, name): "
+                            + summarize(withoutDocument));
         }
 
         // entities.embedding is WRITE-ONLY: 31 queries read the entities table and not one
@@ -623,8 +718,14 @@ public class CustomIngestService {
             for (int i = 0; i < specIndexNeedingEmbedding.size(); i++) {
                 int idx = specIndexNeedingEmbedding.get(i);
                 KgWriteRepository.EntityUpsert e = specs.get(idx);
-                specs.set(idx, new KgWriteRepository.EntityUpsert(e.name(), e.kind(),
-                    e.description(), embeddings.get(i), e.metadata()));
+                specs.set(
+                        idx,
+                        new KgWriteRepository.EntityUpsert(
+                                e.name(),
+                                e.kind(),
+                                e.description(),
+                                embeddings.get(i),
+                                e.metadata()));
             }
         }
         return specs;
@@ -635,18 +736,26 @@ public class CustomIngestService {
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty())
-                    continue;
-                result
-                    .add(objectMapper.readValue(line, new TypeReference<Map<String, Object>>() {}));
+                if (line.trim().isEmpty()) continue;
+                result.add(
+                        objectMapper.readValue(line, new TypeReference<Map<String, Object>>() {}));
             }
         }
         return result;
     }
 
-    private DocPayload processFile(Path path, String relativePath, UUID jobId, JobContext ctx,
-        Semaphore gate, AtomicBoolean cancelled, AtomicInteger completed, int totalFiles,
-        String resolvedPrompt, List<String> frontmatterFailures) throws InterruptedException {
+    private DocPayload processFile(
+            Path path,
+            String relativePath,
+            UUID jobId,
+            JobContext ctx,
+            Semaphore gate,
+            AtomicBoolean cancelled,
+            AtomicInteger completed,
+            int totalFiles,
+            String resolvedPrompt,
+            List<String> frontmatterFailures)
+            throws InterruptedException {
         gate.acquire();
         try {
             if (cancelled.get() || isJobCancelled(jobId)) {
@@ -663,13 +772,14 @@ public class CustomIngestService {
                 frontmatterFailures.add(relativePath + " (" + e.getMessage() + ")");
                 return null;
             }
-            if (parsed == null)
-                return null;
+            if (parsed == null) return null;
 
             Map<String, Object> fm = parsed.frontmatter();
             String kind = (String) fm.getOrDefault("kind", "other");
             String name =
-                (String) fm.getOrDefault("name", path.getFileName().toString().replace(".md", ""));
+                    (String)
+                            fm.getOrDefault(
+                                    "name", path.getFileName().toString().replace(".md", ""));
             String title = (String) fm.getOrDefault("title", name);
 
             Object sumHeadingsObj = fm.get("summarize_headings");
@@ -685,7 +795,7 @@ public class CustomIngestService {
             }
 
             boolean needsSummary =
-                Boolean.TRUE.equals(fm.get("needs_summary")) || !summarizeHeadings.isEmpty();
+                    Boolean.TRUE.equals(fm.get("needs_summary")) || !summarizeHeadings.isEmpty();
 
             String body = parsed.body();
             if (needsSummary) {
@@ -707,41 +817,46 @@ public class CustomIngestService {
                         String sectionBody = section.body().trim();
                         if (isMatched && !sectionBody.isEmpty()) {
                             String codeToSummarize = stripCodeBlockMarkers(sectionBody);
-                            String userMsg = String.format(
-                                "Object name: `%s` (kind: %s, heading: %s)\n\n"
-                                    + "Content to summarize:\n%s\n\n"
-                                    + "Write the 2-3 sentence summary now.",
-                                name, kind, section.title(), codeToSummarize);
-                            String summary = generalSummarizer.summarize(codeToSummarize, kind,
-                                resolvedPrompt, userMsg);
+                            String userMsg =
+                                    String.format(
+                                            "Object name: `%s` (kind: %s, heading: %s)\n\n"
+                                                    + "Content to summarize:\n%s\n\n"
+                                                    + "Write the 2-3 sentence summary now.",
+                                            name, kind, section.title(), codeToSummarize);
+                            String summary =
+                                    generalSummarizer.summarize(
+                                            codeToSummarize, kind, resolvedPrompt, userMsg);
                             sectionBody = summary.trim();
                         }
-                        sb.append("#".repeat(section.depth())).append(" ").append(section.title())
-                            .append("\n\n");
+                        sb.append("#".repeat(section.depth()))
+                                .append(" ")
+                                .append(section.title())
+                                .append("\n\n");
                         sb.append(sectionBody).append("\n\n");
                     }
                     body = sb.toString().trim();
                 } else {
                     String contentToSummarize = extractCodeBlocks(body);
                     String lang = "script".equalsIgnoreCase(kind) ? "vbnet" : "sql";
-                    String userMsg = String.format(
-                        "Object name: `%s` (kind: %s, language: %s)\n\n" + "```%s\n%s\n```\n\n"
-                            + "Write the 2-3 sentence summary now.",
-                        name, kind, lang, lang, contentToSummarize);
-                    String summary = generalSummarizer.summarize(contentToSummarize, kind,
-                        resolvedPrompt, userMsg);
+                    String userMsg =
+                            String.format(
+                                    "Object name: `%s` (kind: %s, language: %s)\n\n"
+                                            + "```%s\n%s\n```\n\n"
+                                            + "Write the 2-3 sentence summary now.",
+                                    name, kind, lang, lang, contentToSummarize);
+                    String summary =
+                            generalSummarizer.summarize(
+                                    contentToSummarize, kind, resolvedPrompt, userMsg);
                     body = replaceSourceWithSummary(body, summary);
                 }
             }
 
             Matcher titleMatcher = Pattern.compile("^#\\s+(.+)$", Pattern.MULTILINE).matcher(body);
-            if (titleMatcher.find())
-                title = titleMatcher.group(1).trim();
+            if (titleMatcher.find()) title = titleMatcher.group(1).trim();
 
             body = body.trim();
             List<String> chunks = body.isEmpty() ? List.of() : List.of(body);
-            if (chunks.isEmpty())
-                return null;
+            if (chunks.isEmpty()) return null;
 
             return new DocPayload(relativePath, kind, name, title, chunks);
         } finally {
@@ -749,25 +864,32 @@ public class CustomIngestService {
             int done = completed.incrementAndGet();
             if (ctx != null) {
                 int progress = 10 + (int) ((done * 20.0) / totalFiles);
-                ctx.report(JobStep.CHUNK, progress, String.format("Parsing file %d of %d: %s", done,
-                    totalFiles, path.getFileName().toString()));
+                ctx.report(
+                        JobStep.CHUNK,
+                        progress,
+                        String.format(
+                                "Parsing file %d of %d: %s",
+                                done, totalFiles, path.getFileName().toString()));
             }
         }
     }
 
     private void checkCancellation(UUID jobId) {
-        if (jobId == null)
-            return;
+        if (jobId == null) return;
         if (isJobCancelled(jobId)) {
             throw new IllegalStateException("Job was cancelled by administrator");
         }
     }
 
     private boolean isJobCancelled(UUID jobId) {
-        if (jobId == null)
-            return false;
-        String status = jdbcClient.sql("SELECT status FROM ingestion_jobs WHERE id = :id")
-            .param("id", jobId).query(String.class).optional().orElse("running");
+        if (jobId == null) return false;
+        String status =
+                jdbcClient
+                        .sql("SELECT status FROM ingestion_jobs WHERE id = :id")
+                        .param("id", jobId)
+                        .query(String.class)
+                        .optional()
+                        .orElse("running");
         return !"running".equals(status);
     }
 
@@ -777,12 +899,13 @@ public class CustomIngestService {
 
     private void cleanDirectory(Path path) {
         try (var stream = Files.walk(path)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.delete(p);
-                } catch (IOException ignored) {
-                }
-            });
+            stream.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException ignored) {
+                        }
+                    });
         } catch (IOException ignored) {
         }
     }
@@ -807,13 +930,12 @@ public class CustomIngestService {
     /**
      * Joins a markdown table row that was wrapped across several lines.
      *
-     * <p>
-     * Fenced code blocks are skipped: a T-SQL bitwise-OR continuation line starts with {@code |}
+     * <p>Fenced code blocks are skipped: a T-SQL bitwise-OR continuation line starts with {@code |}
      * and is not a table row, so joining it destroyed the source. Exactly five documents per kit
-     * version were mangled — {@code AAD_TIAADRoleEligibility} (32 lines collapsed to 1),
-     * {@code ADS_TIADSAccount}, {@code AAD_TIAADRoleAssignment}, {@code ADS_VElementManagerValid},
-     * {@code ADS_VGroupMemberValid_Group} — and since all five are summarized, the mangled text was
-     * what the summarizer LLM read.
+     * version were mangled — {@code AAD_TIAADRoleEligibility} (32 lines collapsed to 1), {@code
+     * ADS_TIADSAccount}, {@code AAD_TIAADRoleAssignment}, {@code ADS_VElementManagerValid}, {@code
+     * ADS_VGroupMemberValid_Group} — and since all five are summarized, the mangled text was what
+     * the summarizer LLM read.
      */
     private static String joinWrappedTableRows(String text) {
         String[] lines = text.split("\n", -1);
@@ -854,8 +976,10 @@ public class CustomIngestService {
         if (loaded instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
         }
-        throw new FrontmatterParseException("frontmatter is not a YAML mapping (got "
-            + (loaded == null ? "nothing" : "a scalar") + ")");
+        throw new FrontmatterParseException(
+                "frontmatter is not a YAML mapping (got "
+                        + (loaded == null ? "nothing" : "a scalar")
+                        + ")");
     }
 
     /**
@@ -876,7 +1000,7 @@ public class CustomIngestService {
         List<String> sorted = new ArrayList<>(new LinkedHashSet<>(items));
         Collections.sort(sorted);
         String shown =
-            String.join("; ", sorted.subList(0, Math.min(MAX_REPORTED_ITEMS, sorted.size())));
+                String.join("; ", sorted.subList(0, Math.min(MAX_REPORTED_ITEMS, sorted.size())));
         if (sorted.size() > MAX_REPORTED_ITEMS) {
             return shown + "; … (" + MAX_REPORTED_ITEMS + " of " + sorted.size() + " shown)";
         }

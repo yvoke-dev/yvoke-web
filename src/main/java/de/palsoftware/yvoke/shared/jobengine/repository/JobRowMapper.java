@@ -36,16 +36,24 @@ public class JobRowMapper implements RowMapper<IngestionJob> {
         int skippedEntityCount = rs.getInt("skipped_entity_count");
         int skippedEdgeCount = rs.getInt("skipped_edge_count");
         if (!docNull) {
-            counts = new JobCounts(docCount, chunkCount, entityCount, edgeCount, jsonObjectCount,
-                skippedEntityCount, skippedEdgeCount);
+            counts =
+                    new JobCounts(
+                            docCount,
+                            chunkCount,
+                            entityCount,
+                            edgeCount,
+                            jsonObjectCount,
+                            skippedEntityCount,
+                            skippedEdgeCount);
         }
 
         String settingsStr = rs.getString("settings_text");
         Map<String, Object> settings = Collections.emptyMap();
         if (settingsStr != null && !settingsStr.isBlank()) {
             try {
-                settings = objectMapper.readValue(settingsStr,
-                    new TypeReference<Map<String, Object>>() {});
+                settings =
+                        objectMapper.readValue(
+                                settingsStr, new TypeReference<Map<String, Object>>() {});
             } catch (JsonProcessingException e) {
                 log.warn("Failed to deserialize settings JSONB: {}", settingsStr, e);
             }
@@ -53,12 +61,23 @@ public class JobRowMapper implements RowMapper<IngestionJob> {
 
         List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
 
-        return new IngestionJob(rs.getObject("id", UUID.class), rs.getString("kind"),
-            rs.getString("source_ref"), tags, rs.getObject("collection_id", UUID.class),
-            rs.getString("collection"), JobStatus.fromDbValue(rs.getString("status")),
-            JobStep.fromDbValue(rs.getString("step")), rs.getInt("progress"), rs.getInt("attempts"),
-            rs.getString("error"), counts, rs.getObject("created_at", OffsetDateTime.class),
-            rs.getObject("started_at", OffsetDateTime.class),
-            rs.getObject("finished_at", OffsetDateTime.class), settings, rs.getString("summary"));
+        return new IngestionJob(
+                rs.getObject("id", UUID.class),
+                rs.getString("kind"),
+                rs.getString("source_ref"),
+                tags,
+                rs.getObject("collection_id", UUID.class),
+                rs.getString("collection"),
+                JobStatus.fromDbValue(rs.getString("status")),
+                JobStep.fromDbValue(rs.getString("step")),
+                rs.getInt("progress"),
+                rs.getInt("attempts"),
+                rs.getString("error"),
+                counts,
+                rs.getObject("created_at", OffsetDateTime.class),
+                rs.getObject("started_at", OffsetDateTime.class),
+                rs.getObject("finished_at", OffsetDateTime.class),
+                settings,
+                rs.getString("summary"));
     }
 }

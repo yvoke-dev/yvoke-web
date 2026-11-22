@@ -35,7 +35,15 @@ class DocumentRowMapper implements RowMapper<DocumentRow> {
         Map<String, Object> metadata = JdbcMappers.jsonbToMap(rs, "metadata", objectMapper);
         List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
 
-        return new DocumentRow(id, collectionId, collection, kind, title, metadata, ingestionStatus,
-            tags, createdAt);
+        return new DocumentRow(
+                id,
+                collectionId,
+                collection,
+                kind,
+                title,
+                metadata,
+                ingestionStatus,
+                tags,
+                createdAt);
     }
 }

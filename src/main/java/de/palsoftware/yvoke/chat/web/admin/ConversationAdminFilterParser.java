@@ -21,18 +21,28 @@ import java.util.UUID;
 public final class ConversationAdminFilterParser {
 
     private static final Set<String> ALLOWED_PRESETS =
-        Set.of("all", "day", "week", "month", "custom");
+            Set.of("all", "day", "week", "month", "custom");
 
     private ConversationAdminFilterParser() {}
 
-    public static ConversationFilter parse(List<String> rawUserIds, String rawTimeRange,
-        String rawFromDate, String rawToDate, String rawFeedback, Clock clock) {
+    public static ConversationFilter parse(
+            List<String> rawUserIds,
+            String rawTimeRange,
+            String rawFromDate,
+            String rawToDate,
+            String rawFeedback,
+            Clock clock) {
         return parse(rawUserIds, rawTimeRange, rawFromDate, rawToDate, rawFeedback, null, clock);
     }
 
-    public static ConversationFilter parse(List<String> rawUserIds, String rawTimeRange,
-        String rawFromDate, String rawToDate, String rawFeedback, Set<String> allowedAreasLower,
-        Clock clock) {
+    public static ConversationFilter parse(
+            List<String> rawUserIds,
+            String rawTimeRange,
+            String rawFromDate,
+            String rawToDate,
+            String rawFeedback,
+            Set<String> allowedAreasLower,
+            Clock clock) {
 
         Set<UUID> userIds = new LinkedHashSet<>();
         boolean includeAnonymous = false;
@@ -58,7 +68,7 @@ public final class ConversationAdminFilterParser {
         LocalDate toDate = parseDate(rawToDate);
 
         String normalizedPreset =
-            rawTimeRange != null ? rawTimeRange.trim().toLowerCase(Locale.ROOT) : "all";
+                rawTimeRange != null ? rawTimeRange.trim().toLowerCase(Locale.ROOT) : "all";
         if (!normalizedPreset.isBlank() && !ALLOWED_PRESETS.contains(normalizedPreset)) {
             throw new IllegalArgumentException("Unknown time range preset: " + rawTimeRange);
         }
@@ -66,7 +76,7 @@ public final class ConversationAdminFilterParser {
         Clock c = clock != null ? clock : Clock.systemUTC();
         TimeFilter timeFilter;
         if ("custom".equals(normalizedPreset)
-            || (rawTimeRange == null && (fromDate != null || toDate != null))) {
+                || (rawTimeRange == null && (fromDate != null || toDate != null))) {
             timeFilter = TimeFilter.custom(fromDate, toDate);
         } else {
             timeFilter = TimeFilter.preset(normalizedPreset, c);
@@ -74,8 +84,12 @@ public final class ConversationAdminFilterParser {
 
         FeedbackFilter feedbackFilter = parseFeedback(rawFeedback);
 
-        return new ConversationFilter(Collections.unmodifiableSet(userIds), includeAnonymous,
-            timeFilter, feedbackFilter, allowedAreasLower);
+        return new ConversationFilter(
+                Collections.unmodifiableSet(userIds),
+                includeAnonymous,
+                timeFilter,
+                feedbackFilter,
+                allowedAreasLower);
     }
 
     public static LocalDate parseDate(String raw) {
@@ -86,7 +100,7 @@ public final class ConversationAdminFilterParser {
             return LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
-                "Invalid date format: " + raw + ". Expected yyyy-MM-dd");
+                    "Invalid date format: " + raw + ". Expected yyyy-MM-dd");
         }
     }
 

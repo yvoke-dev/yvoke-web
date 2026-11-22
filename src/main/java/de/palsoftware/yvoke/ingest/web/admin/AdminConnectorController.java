@@ -25,8 +25,10 @@ public class AdminConnectorController {
     private final ConfluenceInstanceService instanceService;
     private final SystemPromptService systemPromptService;
 
-    public AdminConnectorController(CollectionService collectionService,
-        ConfluenceInstanceService instanceService, SystemPromptService systemPromptService) {
+    public AdminConnectorController(
+            CollectionService collectionService,
+            ConfluenceInstanceService instanceService,
+            SystemPromptService systemPromptService) {
         this.collectionService = collectionService;
         this.instanceService = instanceService;
         this.systemPromptService = systemPromptService;
@@ -35,32 +37,38 @@ public class AdminConnectorController {
     /**
      * Renders the connected Confluence instances plus the create/edit form.
      *
-     * <p>
-     * Only {@link de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceView} reaches the
-     * model: the domain record carries the token ciphertext and its key fingerprint, and a template
-     * expression is all it takes to render either into the page.
+     * <p>Only {@link de.palsoftware.yvoke.ingest.core.confluence.ConfluenceInstanceView} reaches
+     * the model: the domain record carries the token ciphertext and its key fingerprint, and a
+     * template expression is all it takes to render either into the page.
      *
-     * <p>
-     * The tag dropdown starts EMPTY on purpose. The form opens in "create" mode with no collection
-     * chosen, and the options are fetched by htmx from {@code /admin/collections/tag-options}
-     * whenever the collection select changes — including when the Edit button selects one. Seeding
-     * it server-side from an arbitrary collection is exactly how the saved tag used to end up
-     * missing from its own dropdown.
+     * <p>The tag dropdown starts EMPTY on purpose. The form opens in "create" mode with no
+     * collection chosen, and the options are fetched by htmx from {@code
+     * /admin/collections/tag-options} whenever the collection select changes — including when the
+     * Edit button selects one. Seeding it server-side from an arbitrary collection is exactly how
+     * the saved tag used to end up missing from its own dropdown.
      */
     @GetMapping("/connectors")
     public String getConnectors(Model model) {
-        List<Collection> allowedCollections = AreaAccessContext
-            .filterByAdminArea(collectionService.listCollections(), Collection::area);
+        List<Collection> allowedCollections =
+                AreaAccessContext.filterByAdminArea(
+                        collectionService.listCollections(), Collection::area);
         List<ConfluenceInstanceView> allowedInstances;
         if (AreaAccessContext.isSuperAdmin()) {
             allowedInstances = instanceService.listInstances();
         } else {
-            Set<String> allowedCollectionsLower = allowedCollections.stream()
-                .map(c -> c.name().trim().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
-            allowedInstances = instanceService.listInstances().stream()
-                .filter(i -> i.targetCollection() != null && allowedCollectionsLower
-                    .contains(i.targetCollection().trim().toLowerCase(Locale.ROOT)))
-                .toList();
+            Set<String> allowedCollectionsLower =
+                    allowedCollections.stream()
+                            .map(c -> c.name().trim().toLowerCase(Locale.ROOT))
+                            .collect(Collectors.toSet());
+            allowedInstances =
+                    instanceService.listInstances().stream()
+                            .filter(i ->
+                                    i.targetCollection() != null
+                                            && allowedCollectionsLower.contains(
+                                                    i.targetCollection()
+                                                            .trim()
+                                                            .toLowerCase(Locale.ROOT)))
+                            .toList();
         }
 
         model.addAttribute("instances", allowedInstances);
@@ -70,8 +78,11 @@ public class AdminConnectorController {
         // A Confluence crawl has no per-run form, so the summarize prompt is per-instance config.
         // Offered as a list rather than free text: the enqueue validator rejects a name that does
         // not resolve, and typing one by hand is the only way to hit that.
-        model.addAttribute("summarizePrompts", AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE), SystemPrompt::area));
+        model.addAttribute(
+                "summarizePrompts",
+                AreaAccessContext.filterByAdminArea(
+                        systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE),
+                        SystemPrompt::area));
         return "admin/connectors";
     }
 }

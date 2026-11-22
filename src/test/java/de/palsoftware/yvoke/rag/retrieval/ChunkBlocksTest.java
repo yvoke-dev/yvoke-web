@@ -15,11 +15,10 @@ import org.junit.jupiter.api.Test;
  * test can notice when they stop agreeing — the format has no schema, no version and, until this
  * class existed, no consumer at all outside the model reading it as prose.
  *
- * <p>
- * The round-trip assertion is the load-bearing one: {@code preamble + every block's raw + suffix}
- * must reconstruct the input byte for byte. Anything the parser silently drops — a separator line,
- * a trailing notice, the last newline — is evidence that disappears from the reviewer's prompt, and
- * a looser assertion (fields recovered, sizes plausible) would not see it.
+ * <p>The round-trip assertion is the load-bearing one: {@code preamble + every block's raw +
+ * suffix} must reconstruct the input byte for byte. Anything the parser silently drops — a
+ * separator line, a trailing notice, the last newline — is evidence that disappears from the
+ * reviewer's prompt, and a looser assertion (fields recovered, sizes plausible) would not see it.
  */
 public class ChunkBlocksTest {
 
@@ -28,11 +27,29 @@ public class ChunkBlocksTest {
     private static final UUID CHUNK_B = UUID.fromString("2c3d4e5f-1122-4333-8444-666666666666");
     private static final UUID DOC_B = UUID.fromString("99999999-8888-4777-8666-555555555555");
 
-    private static HybridSearchResult chunk(UUID id, UUID docId, String body, List<String> heading,
-        String title, String kind, double score) {
-        return new HybridSearchResult(id, docId, body, heading,
-            heading.isEmpty() ? null : heading.get(heading.size() - 1), 2, 0, "10.0", title, kind,
-            "OIM", Map.of(), score, new TelemetryInfo(true, false, 1, 0, 1));
+    private static HybridSearchResult chunk(
+            UUID id,
+            UUID docId,
+            String body,
+            List<String> heading,
+            String title,
+            String kind,
+            double score) {
+        return new HybridSearchResult(
+                id,
+                docId,
+                body,
+                heading,
+                heading.isEmpty() ? null : heading.get(heading.size() - 1),
+                2,
+                0,
+                "10.0",
+                title,
+                kind,
+                "OIM",
+                Map.of(),
+                score,
+                new TelemetryInfo(true, false, 1, 0, 1));
     }
 
     /** Parse-side tests render with no conversation, so nothing is ever elided under them. */
@@ -41,8 +58,14 @@ public class ChunkBlocksTest {
     }
 
     private static HybridSearchResult chunkA(String body) {
-        return chunk(CHUNK_A, DOC_A, body, List.of("Install", "Prerequisites"), "install-kit.md",
-            "manual", 0.87);
+        return chunk(
+                CHUNK_A,
+                DOC_A,
+                body,
+                List.of("Install", "Prerequisites"),
+                "install-kit.md",
+                "manual",
+                0.87);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -62,10 +85,16 @@ public class ChunkBlocksTest {
 
         assertThat(first).contains(body);
         assertThat(second)
-            .as("the slot, the score and both ids must survive — they are how the model cites it")
-            .contains("### manual/install-kit.md  (score=0.870  id=" + CHUNK_A + "  doc_id=" + DOC_A
-                + ")")
-            .contains("> Install > Prerequisites").contains("already shown above");
+                .as(
+                        "the slot, the score and both ids must survive — they are how the model cites it")
+                .contains(
+                        "### manual/install-kit.md  (score=0.870  id="
+                                + CHUNK_A
+                                + "  doc_id="
+                                + DOC_A
+                                + ")")
+                .contains("> Install > Prerequisites")
+                .contains("already shown above");
         assertThat(second).as("the body is the whole saving").doesNotContain(body);
     }
 
@@ -91,8 +120,11 @@ public class ChunkBlocksTest {
         AgenticChatContext conversation = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
 
         String out =
-            ChunkBlocks.format(List.of(chunk(null, null, "First body.", List.of(), "?", "?", 0.1),
-                chunk(null, null, "Second body.", List.of(), "?", "?", 0.1)), conversation);
+                ChunkBlocks.format(
+                        List.of(
+                                chunk(null, null, "First body.", List.of(), "?", "?", 0.1),
+                                chunk(null, null, "Second body.", List.of(), "?", "?", 0.1)),
+                        conversation);
 
         assertThat(out).contains("First body.").contains("Second body.");
         assertThat(out).doesNotContain("already shown above");
@@ -105,10 +137,14 @@ public class ChunkBlocksTest {
         // lie — and the reviewer, which cannot search, would be left holding the pointer.
         String body = "Install the kit first.";
 
-        String inOne = ChunkBlocks.format(List.of(chunkA(body)),
-            new AgenticChatContext(AgenticChatContext.ALL_AREAS));
-        String inAnother = ChunkBlocks.format(List.of(chunkA(body)),
-            new AgenticChatContext(AgenticChatContext.ALL_AREAS));
+        String inOne =
+                ChunkBlocks.format(
+                        List.of(chunkA(body)),
+                        new AgenticChatContext(AgenticChatContext.ALL_AREAS));
+        String inAnother =
+                ChunkBlocks.format(
+                        List.of(chunkA(body)),
+                        new AgenticChatContext(AgenticChatContext.ALL_AREAS));
 
         assertThat(inOne).contains(body);
         assertThat(inAnother).as("a fresh conversation has seen nothing").contains(body);
@@ -154,11 +190,25 @@ public class ChunkBlocksTest {
 
     @Test
     public void parseRecoversEveryFieldThatFormatWrites() {
-        String rendered = render(List.of(
-            chunk(CHUNK_A, DOC_A, "Install the kit first.", List.of("Install", "Prerequisites"),
-                "install-kit.md", "manual", 0.87),
-            chunk(CHUNK_B, DOC_B, "The Person table holds identities.", List.of("Columns"),
-                "Person", "table", 0.812)));
+        String rendered =
+                render(
+                        List.of(
+                                chunk(
+                                        CHUNK_A,
+                                        DOC_A,
+                                        "Install the kit first.",
+                                        List.of("Install", "Prerequisites"),
+                                        "install-kit.md",
+                                        "manual",
+                                        0.87),
+                                chunk(
+                                        CHUNK_B,
+                                        DOC_B,
+                                        "The Person table holds identities.",
+                                        List.of("Columns"),
+                                        "Person",
+                                        "table",
+                                        0.812)));
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
 
@@ -178,12 +228,15 @@ public class ChunkBlocksTest {
         assertThat(second.title()).isEqualTo("Person");
         assertThat(second.body()).isEqualTo("The Person table holds identities.");
 
-        String rebuilt = parsed.preamble()
-            + String.join("", parsed.blocks().stream().map(ChunkBlocks.Block::raw).toList())
-            + parsed.suffix();
-        assertThat(rebuilt).as(
-            "parse must lose nothing — anything dropped here vanishes from the reviewer's prompt")
-            .isEqualTo(rendered);
+        String rebuilt =
+                parsed.preamble()
+                        + String.join(
+                                "", parsed.blocks().stream().map(ChunkBlocks.Block::raw).toList())
+                        + parsed.suffix();
+        assertThat(rebuilt)
+                .as(
+                        "parse must lose nothing — anything dropped here vanishes from the reviewer's prompt")
+                .isEqualTo(rendered);
     }
 
     @Test
@@ -192,8 +245,17 @@ public class ChunkBlocksTest {
         // inside a chunk, so a parser that keys on the "### " line prefix shreds one chunk into
         // several — each fragment then carrying the wrong id, or no id at all.
         String body = "Before.\n\n### Configuration\n\nSet the flag.\n\n### Person\n\nA table.";
-        String rendered = render(
-            List.of(chunk(CHUNK_A, DOC_A, body, List.of("Reference"), "ref.md", "manual", 0.5)));
+        String rendered =
+                render(
+                        List.of(
+                                chunk(
+                                        CHUNK_A,
+                                        DOC_A,
+                                        body,
+                                        List.of("Reference"),
+                                        "ref.md",
+                                        "manual",
+                                        0.5)));
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
 
@@ -220,7 +282,7 @@ public class ChunkBlocksTest {
         // format() writes a bare "id=" for a null id, so the parser must tolerate an empty group
         // rather than handing "" to UUID.fromString.
         String rendered =
-            render(List.of(chunk(null, null, "Body with no ids.", List.of(), "?", "?", 0.1)));
+                render(List.of(chunk(null, null, "Body with no ids.", List.of(), "?", "?", 0.1)));
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
 
@@ -238,8 +300,25 @@ public class ChunkBlocksTest {
         // only signal that the specialist may not have seen everything.
         String notice = "\n\n_(showing 2 chunks — the result is capped and more may match.)_";
         String rendered =
-            render(List.of(chunk(CHUNK_A, DOC_A, "First.", List.of("A"), "a.md", "manual", 0.9),
-                chunk(CHUNK_B, DOC_B, "Second.", List.of("B"), "b.md", "manual", 0.8))) + notice;
+                render(
+                                List.of(
+                                        chunk(
+                                                CHUNK_A,
+                                                DOC_A,
+                                                "First.",
+                                                List.of("A"),
+                                                "a.md",
+                                                "manual",
+                                                0.9),
+                                        chunk(
+                                                CHUNK_B,
+                                                DOC_B,
+                                                "Second.",
+                                                List.of("B"),
+                                                "b.md",
+                                                "manual",
+                                                0.8)))
+                        + notice;
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
 
@@ -252,8 +331,17 @@ public class ChunkBlocksTest {
     public void withBodyReproducesTheBlockWhenHandedItsOwnBody() {
         // The re-emission path must be the exact inverse of the parse path, or a block that is
         // kept in full still comes out subtly different from what the search produced.
-        String rendered = render(List.of(chunk(CHUNK_A, DOC_A, "Kept whole.",
-            List.of("Install", "Prerequisites"), "install-kit.md", "manual", 0.87)));
+        String rendered =
+                render(
+                        List.of(
+                                chunk(
+                                        CHUNK_A,
+                                        DOC_A,
+                                        "Kept whole.",
+                                        List.of("Install", "Prerequisites"),
+                                        "install-kit.md",
+                                        "manual",
+                                        0.87)));
 
         ChunkBlocks.Block block = ChunkBlocks.parse(rendered).blocks().get(0);
 
@@ -263,8 +351,16 @@ public class ChunkBlocksTest {
     @Test
     public void aManifestLineNamesTheChunkWithoutQuotingIt() {
         String rendered =
-            render(List.of(chunk(CHUNK_A, DOC_A, "Some long body that must not appear.",
-                List.of("Install", "Prerequisites"), "install-kit.md", "manual", 0.87)));
+                render(
+                        List.of(
+                                chunk(
+                                        CHUNK_A,
+                                        DOC_A,
+                                        "Some long body that must not appear.",
+                                        List.of("Install", "Prerequisites"),
+                                        "install-kit.md",
+                                        "manual",
+                                        0.87)));
 
         String line = ChunkBlocks.parse(rendered).blocks().get(0).manifestLine();
 
@@ -275,60 +371,64 @@ public class ChunkBlocksTest {
     }
 
     /**
-     * {@code get_section} marks each passage with {@code _(id=…  doc_id=…)_} rather than the search
-     * header, because a section read has no relevance score and {@code HEADER} requires one.
-     * {@code parse} has to recognise BOTH, or a section reaches the reviewer unreduced: every
-     * passage of it, cited or not, at full length.
+     * {@code get_section} marks each passage with {@code _(id=… doc_id=…)_} rather than the search
+     * header, because a section read has no relevance score and {@code HEADER} requires one. {@code
+     * parse} has to recognise BOTH, or a section reaches the reviewer unreduced: every passage of
+     * it, cited or not, at full length.
      *
-     * <p>
-     * The marker carries {@code doc_id} as well as {@code id} so an answer that still cites a
+     * <p>The marker carries {@code doc_id} as well as {@code id} so an answer that still cites a
      * section by its document — which 25 playbooks currently instruct — keeps its passages while
      * those playbooks are being updated.
      */
     @Test
     void aSectionMarkerIsParsedAsABlockJustLikeASearchHeader() {
-        String rendered = """
-            # Section: Installing > Prerequisites
-            _(document: OIM Admin Guide  ·  tag: 10.0  ·  2 passage(s))_
+        String rendered =
+                """
+                # Section: Installing > Prerequisites
+                _(document: OIM Admin Guide  ·  tag: 10.0  ·  2 passage(s))_
 
-            _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
-            ###### Prerequisites
-            First body.
+                _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+                ###### Prerequisites
+                First body.
 
-            _(id=1a2b3c4d-5e6f-4071-8899-aabbccddeeff  doc_id=3d9a0000-1111-4222-8333-444455556666)_
-            ###### Next steps
-            Second body.
-            """;
+                _(id=1a2b3c4d-5e6f-4071-8899-aabbccddeeff  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+                ###### Next steps
+                Second body.
+                """;
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
 
         assertThat(parsed.blocks()).as("a section must reduce to one block per passage").hasSize(2);
         assertThat(parsed.blocks().get(0).chunkId())
-            .isEqualTo(UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071"));
+                .isEqualTo(UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071"));
         assertThat(parsed.blocks().get(0).documentId())
-            .as("without doc_id a document-level citation would drop every passage")
-            .isEqualTo(UUID.fromString("3d9a0000-1111-4222-8333-444455556666"));
+                .as("without doc_id a document-level citation would drop every passage")
+                .isEqualTo(UUID.fromString("3d9a0000-1111-4222-8333-444455556666"));
         assertThat(parsed.blocks().get(0).body()).contains("First body.");
         assertThat(parsed.preamble())
-            .as("the section heading is preamble, not a block - it names what was read")
-            .contains("# Section:");
+                .as("the section heading is preamble, not a block - it names what was read")
+                .contains("# Section:");
     }
 
     /** The section marker must round-trip like any other block. */
     @Test
     void aSectionRenderSurvivesParseAndReEmission() {
-        String rendered = """
-            # Section: A
-            _(document: D  ·  tag: 9.3)_
+        String rendered =
+                """
+                # Section: A
+                _(document: D  ·  tag: 9.3)_
 
-            _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
-            Body one.
-            """;
+                _(id=8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071  doc_id=3d9a0000-1111-4222-8333-444455556666)_
+                Body one.
+                """;
 
         ChunkBlocks.Parsed parsed = ChunkBlocks.parse(rendered);
-        String rebuilt = parsed.preamble()
-            + String.join("\n\n", parsed.blocks().stream().map(ChunkBlocks.Block::raw).toList())
-            + parsed.suffix();
+        String rebuilt =
+                parsed.preamble()
+                        + String.join(
+                                "\n\n",
+                                parsed.blocks().stream().map(ChunkBlocks.Block::raw).toList())
+                        + parsed.suffix();
 
         assertThat(rebuilt).isEqualTo(rendered);
     }

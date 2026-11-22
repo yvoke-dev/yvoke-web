@@ -21,7 +21,7 @@ public class CustomIngestJobHandlerTest {
     @Test
     public void registersForCustomKindAndSkipsEntities() {
         CustomIngestJobHandler handler =
-            new CustomIngestJobHandler(mock(CustomIngestService.class));
+                new CustomIngestJobHandler(mock(CustomIngestService.class));
 
         assertThat(handler.kind()).isEqualTo("custom");
         assertThat(handler.expectsEntities()).isFalse();
@@ -31,9 +31,25 @@ public class CustomIngestJobHandlerTest {
     public void delegatesRunToServiceWithJobAndContext() {
         CustomIngestService service = mock(CustomIngestService.class);
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), "custom", "sourceRef", List.of(),
-            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
-            null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        "custom",
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         JobCounts counts = new JobCounts(3, 42, 5, 8, 0);
         when(ctx.job()).thenReturn(job);
         when(service.ingest(job, ctx)).thenReturn(counts);

@@ -10,8 +10,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Pins save-and-restore nesting, which is what orchestration depends on.
  *
- * <p>
- * A specialist runs nested inside the orchestrator's own agentic loop on the same thread —
+ * <p>A specialist runs nested inside the orchestrator's own agentic loop on the same thread —
  * {@code call_specialist} is an inline tool handler, so {@code OrchestrationService.runAgent}
  * re-enters itself. When the inner frame cleared this ThreadLocal on the way out, every
  * orchestrator call after the first delegation, including the final synthesis, was logged with no
@@ -32,12 +31,17 @@ class LlmCallContextHolderTest {
 
         LlmCallContextHolder.Context previous = LlmCallContextHolder.get();
         try {
-            LlmCallContextHolder.set(UUID.randomUUID(), null, UUID.randomUUID(), null,
-                "orchestrator", "specialist");
+            LlmCallContextHolder.set(
+                    UUID.randomUUID(), null, UUID.randomUUID(), null, "orchestrator", "specialist");
             assertEquals("specialist", LlmCallContextHolder.get().role());
         } finally {
-            LlmCallContextHolder.set(previous.conversationId(), previous.messageId(),
-                previous.agentRunId(), previous.userId(), previous.source(), previous.role());
+            LlmCallContextHolder.set(
+                    previous.conversationId(),
+                    previous.messageId(),
+                    previous.agentRunId(),
+                    previous.userId(),
+                    previous.source(),
+                    previous.role());
         }
 
         LlmCallContextHolder.Context after = LlmCallContextHolder.get();
@@ -52,8 +56,15 @@ class LlmCallContextHolderTest {
         UUID outerConv = UUID.randomUUID();
         LlmCallContextHolder.set(outerConv, null, null, null, "orchestrator", "orchestrator");
 
-        String inner = LlmCallContextHolder.callWithContext(UUID.randomUUID(), null, null, null,
-            "orchestrator", "specialist", () -> LlmCallContextHolder.get().role());
+        String inner =
+                LlmCallContextHolder.callWithContext(
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        "orchestrator",
+                        "specialist",
+                        () -> LlmCallContextHolder.get().role());
 
         assertEquals("specialist", inner);
         assertEquals(outerConv, LlmCallContextHolder.get().conversationId());
@@ -63,8 +74,8 @@ class LlmCallContextHolderTest {
     /** An outermost frame with nothing to restore must leave the thread clean. */
     @Test
     void testOutermostFrameClearsCompletely() throws Exception {
-        LlmCallContextHolder.callWithContext(UUID.randomUUID(), null, null, null, "chat",
-            "assistant", () -> null);
+        LlmCallContextHolder.callWithContext(
+                UUID.randomUUID(), null, null, null, "chat", "assistant", () -> null);
 
         assertNull(LlmCallContextHolder.get());
     }

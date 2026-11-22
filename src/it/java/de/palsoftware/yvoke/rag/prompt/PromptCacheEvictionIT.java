@@ -26,25 +26,24 @@ public class PromptCacheEvictionIT {
     private static final String PROMPT_DELETE = "it-cache-prompt-del";
     private static final String AREA = "OIM";
 
-    @Autowired
-    private PlaybookService playbookService;
+    @Autowired private PlaybookService playbookService;
 
-    @Autowired
-    private SystemPromptService systemPromptService;
+    @Autowired private SystemPromptService systemPromptService;
 
-    @Autowired
-    private CacheManager cacheManager;
+    @Autowired private CacheManager cacheManager;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     @AfterEach
     public void cleanup() {
-        jdbcTemplate.update("DELETE FROM playbooks WHERE name IN (?, ?, ?)", PB_SAVE, PB_IMPORT,
-            PB_DELETE);
-        jdbcTemplate.update("DELETE FROM system_prompts WHERE name IN (?, ?, ?)", PROMPT_IMPORT,
-            PROMPT_SAVE, PROMPT_DELETE);
+        jdbcTemplate.update(
+                "DELETE FROM playbooks WHERE name IN (?, ?, ?)", PB_SAVE, PB_IMPORT, PB_DELETE);
+        jdbcTemplate.update(
+                "DELETE FROM system_prompts WHERE name IN (?, ?, ?)",
+                PROMPT_IMPORT,
+                PROMPT_SAVE,
+                PROMPT_DELETE);
         Cache pbCache = cacheManager.getCache(CacheConfig.PLAYBOOKS);
         if (pbCache != null) {
             pbCache.clear();
@@ -57,27 +56,54 @@ public class PromptCacheEvictionIT {
 
     @Test
     void savePlaybookEvictsCache() {
-        playbookService.savePlaybook(PB_SAVE, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, 1);
+        playbookService.savePlaybook(
+                PB_SAVE,
+                "Initial Title",
+                "Desc",
+                "Template V1",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                AREA,
+                1);
         // Populate cache
         Optional<Playbook> cached = playbookService.getPlaybook(PB_SAVE);
         assertThat(cached).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_SAVE)).isNotNull();
 
         // Mutate via savePlaybook
-        playbookService.savePlaybook(PB_SAVE, "Updated Title", "Desc", "Template V2", List.of(),
-            true, "specialist", false, AREA, 1);
+        playbookService.savePlaybook(
+                PB_SAVE,
+                "Updated Title",
+                "Desc",
+                "Template V2",
+                List.of(),
+                true,
+                "specialist",
+                false,
+                AREA,
+                1);
 
         // Verification: cache entry is evicted
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_SAVE)).isNull();
         assertThat(playbookService.getPlaybook(PB_SAVE).orElseThrow().templateText())
-            .isEqualTo("Template V2");
+                .isEqualTo("Template V2");
     }
 
     @Test
     void deletePlaybookEvictsCache() {
-        playbookService.savePlaybook(PB_DELETE, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, 1);
+        playbookService.savePlaybook(
+                PB_DELETE,
+                "Initial Title",
+                "Desc",
+                "Template V1",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                AREA,
+                1);
         // Populate cache
         assertThat(playbookService.getPlaybook(PB_DELETE)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_DELETE)).isNotNull();
@@ -92,54 +118,64 @@ public class PromptCacheEvictionIT {
 
     @Test
     void importPlaybookFromMarkdownEvictsCache() {
-        playbookService.savePlaybook(PB_IMPORT, "Initial Title", "Desc", "Template V1", List.of(),
-            false, "specialist", false, AREA, 1);
+        playbookService.savePlaybook(
+                PB_IMPORT,
+                "Initial Title",
+                "Desc",
+                "Template V1",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                AREA,
+                1);
         // Populate cache
         assertThat(playbookService.getPlaybook(PB_IMPORT)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_IMPORT)).isNotNull();
 
         // Mutate via importPlaybookFromMarkdown (bypasses proxy in unfixed code)
-        String md = """
-            ---
-            name: it-cache-pb-import
-            title: Imported Title
-            ---
-            Template V2 Imported
-            """;
+        String md =
+                """
+                ---
+                name: it-cache-pb-import
+                title: Imported Title
+                ---
+                Template V2 Imported
+                """;
         playbookService.importPlaybookFromMarkdown(md, PB_IMPORT, AREA);
 
         // Verification: in unfixed code, cache is not evicted
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get(PB_IMPORT)).isNull();
         assertThat(playbookService.getPlaybook(PB_IMPORT).orElseThrow().templateText())
-            .isEqualTo("Template V2 Imported");
+                .isEqualTo("Template V2 Imported");
     }
 
     @Test
     void savePromptEvictsCache() {
-        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V1", "Desc",
-            AREA);
+        systemPromptService.savePrompt(
+                PROMPT_SAVE, SystemPromptType.KG, "System Prompt V1", "Desc", AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_SAVE)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_SAVE)).isNotNull();
 
         // Mutate via savePrompt
-        systemPromptService.savePrompt(PROMPT_SAVE, SystemPromptType.KG, "System Prompt V2", "Desc",
-            AREA);
+        systemPromptService.savePrompt(
+                PROMPT_SAVE, SystemPromptType.KG, "System Prompt V2", "Desc", AREA);
 
         // Verification: cache is evicted
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_SAVE)).isNull();
         assertThat(systemPromptService.getPrompt(PROMPT_SAVE).orElseThrow().systemPrompt())
-            .isEqualTo("System Prompt V2");
+                .isEqualTo("System Prompt V2");
     }
 
     @Test
     void deletePromptEvictsCache() {
-        systemPromptService.savePrompt(PROMPT_DELETE, SystemPromptType.KG, "System Prompt V1",
-            "Desc", AREA);
+        systemPromptService.savePrompt(
+                PROMPT_DELETE, SystemPromptType.KG, "System Prompt V1", "Desc", AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_DELETE)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_DELETE))
-            .isNotNull();
+                .isNotNull();
 
         // Delete
         systemPromptService.deletePrompt(PROMPT_DELETE);
@@ -151,34 +187,44 @@ public class PromptCacheEvictionIT {
 
     @Test
     void importPromptFromMarkdownEvictsCache() {
-        systemPromptService.savePrompt(PROMPT_IMPORT, SystemPromptType.KG, "System Prompt V1",
-            "Desc", AREA);
+        systemPromptService.savePrompt(
+                PROMPT_IMPORT, SystemPromptType.KG, "System Prompt V1", "Desc", AREA);
         // Populate cache
         assertThat(systemPromptService.getPrompt(PROMPT_IMPORT)).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_IMPORT))
-            .isNotNull();
+                .isNotNull();
 
         // Mutate via importPromptFromMarkdown (bypasses proxy in unfixed code)
-        String md = """
-            ---
-            name: it-cache-prompt-import
-            type: KG
-            description: Imported Description
-            ---
-            System Prompt V2 Imported
-            """;
+        String md =
+                """
+                ---
+                name: it-cache-prompt-import
+                type: KG
+                description: Imported Description
+                ---
+                System Prompt V2 Imported
+                """;
         systemPromptService.importPromptFromMarkdown(md, PROMPT_IMPORT, AREA);
 
         // Verification: in unfixed code, cache is not evicted
         assertThat(cacheManager.getCache(CacheConfig.SYSTEM_PROMPTS).get(PROMPT_IMPORT)).isNull();
         assertThat(systemPromptService.getPrompt(PROMPT_IMPORT).orElseThrow().systemPrompt())
-            .isEqualTo("System Prompt V2 Imported");
+                .isEqualTo("System Prompt V2 Imported");
     }
 
     @Test
     void deletePromptDoesNotEvictPlaybooksCache() {
-        playbookService.savePlaybook("pb-cascade", "PB Cascade", "Desc", "Template", List.of(),
-            false, "specialist", false, AREA, 1);
+        playbookService.savePlaybook(
+                "pb-cascade",
+                "PB Cascade",
+                "Desc",
+                "Template",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                AREA,
+                1);
         assertThat(playbookService.getPlaybook("pb-cascade")).isPresent();
         assertThat(cacheManager.getCache(CacheConfig.PLAYBOOKS).get("pb-cascade")).isNotNull();
 

@@ -29,7 +29,7 @@ public class CitationController {
 
     static final String MISSING_PARAMS_ERROR = "Either chunkId or documentId must be provided.";
     static final String UNRESOLVABLE_ERROR =
-        "This citation could not be resolved to a single source.";
+            "This citation could not be resolved to a single source.";
     static final String NOT_FOUND_ERROR = "This source is no longer available.";
     static final String UNAVAILABLE_ERROR = "Citation details are currently unavailable.";
 
@@ -39,21 +39,26 @@ public class CitationController {
     private final CollectionService collectionService;
 
     @Autowired
-    public CitationController(SectionService sectionService, ChunkRepository chunkRepository,
-        DocumentRepository documentRepository, CollectionService collectionService) {
+    public CitationController(
+            SectionService sectionService,
+            ChunkRepository chunkRepository,
+            DocumentRepository documentRepository,
+            CollectionService collectionService) {
         this.sectionService =
-            Objects.requireNonNull(sectionService, "sectionService must not be null");
+                Objects.requireNonNull(sectionService, "sectionService must not be null");
         this.chunkRepository =
-            Objects.requireNonNull(chunkRepository, "chunkRepository must not be null");
+                Objects.requireNonNull(chunkRepository, "chunkRepository must not be null");
         this.documentRepository =
-            Objects.requireNonNull(documentRepository, "documentRepository must not be null");
+                Objects.requireNonNull(documentRepository, "documentRepository must not be null");
         this.collectionService =
-            Objects.requireNonNull(collectionService, "collectionService must not be null");
+                Objects.requireNonNull(collectionService, "collectionService must not be null");
     }
 
     @GetMapping("/citation")
-    public String getCitation(@RequestParam(value = "chunkId", required = false) String chunkId,
-        @RequestParam(value = "documentId", required = false) String documentId, Model model) {
+    public String getCitation(
+            @RequestParam(value = "chunkId", required = false) String chunkId,
+            @RequestParam(value = "documentId", required = false) String documentId,
+            Model model) {
         log.info("Requesting citation partial: chunkId='{}', documentId='{}'", chunkId, documentId);
         boolean hasChunkId = chunkId != null && !chunkId.isBlank();
         boolean hasDocumentId = documentId != null && !documentId.isBlank();
@@ -70,8 +75,10 @@ public class CitationController {
             // A chunk id names one passage and returns exactly that; a document id has no passage
             // to name, so it still returns the document.
             verifyCitationAreaAccess(chunkId, documentId);
-            SectionResponse section = hasChunkId ? sectionService.getChunkContent(chunkId)
-                : sectionService.getSectionByDocumentId(documentId, null);
+            SectionResponse section =
+                    hasChunkId
+                            ? sectionService.getChunkContent(chunkId)
+                            : sectionService.getSectionByDocumentId(documentId, null);
 
             model.addAttribute("section", section);
             model.addAttribute("error", null);
@@ -104,8 +111,9 @@ public class CitationController {
     private void verifyCitationAreaAccess(String chunkId, String documentId) {
         String area = null;
         if (chunkId != null && !chunkId.isBlank()) {
-            Optional<ChunkRow> chunkOpt = chunkRepository.findByIdPrefix(chunkId.trim(),
-                AreaAccessContext.allowedUserAreasLower().orElse(null));
+            Optional<ChunkRow> chunkOpt =
+                    chunkRepository.findByIdPrefix(
+                            chunkId.trim(), AreaAccessContext.allowedUserAreasLower().orElse(null));
             if (chunkOpt.isEmpty()) {
                 throw new NoSuchElementException("Chunk not found: " + chunkId);
             }

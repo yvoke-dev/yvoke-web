@@ -22,16 +22,14 @@ public class ApiExceptionHandlerTest {
      * {@code ROLE_INGEST} bearer token, not just an admin. The handler must therefore report a
      * fixed string and the real diagnosis must go to the log only.
      *
-     * <p>
-     * The assertion is equality on the whole body, not containment. A body of
-     * {@code {"error":"Internal server error: jdbc url=... password=hunter2"}} satisfies "contains
+     * <p>The assertion is equality on the whole body, not containment. A body of {@code
+     * {"error":"Internal server error: jdbc url=... password=hunter2"}} satisfies "contains
      * 'Internal server error'", so a containment check passes while the leak it exists to prevent
      * goes straight through — that is exactly how this was once missed in the sibling MVC test.
      * Equality also pins that no second key (a {@code detail}, a {@code trace}, an exception class
      * name) has been added alongside it.
      *
-     * <p>
-     * {@code MvcExceptionHandlerTest.restControllerErrorsStayOnTheJsonApiHandlerAndLeakNothing}
+     * <p>{@code MvcExceptionHandlerTest.restControllerErrorsStayOnTheJsonApiHandlerAndLeakNothing}
      * asserts the same rule end-to-end through MockMvc, but it does so via a hand-wired probe
      * controller and a standalone MockMvc setup, so it is really pinning advice <em>ordering</em>
      * (that a {@code @RestController} reaches this advice rather than the redirecting MVC one).
@@ -40,14 +38,16 @@ public class ApiExceptionHandlerTest {
      */
     @Test
     public void aGenericFailureIsReportedWithoutTheExceptionMessage() {
-        RuntimeException leaky = new RuntimeException(
-            "jdbc url=jdbc:postgresql://prod-db:5432/yvoke?user=postgres&password=hunter2");
+        RuntimeException leaky =
+                new RuntimeException(
+                        "jdbc url=jdbc:postgresql://prod-db:5432/yvoke?user=postgres&password=hunter2");
 
         ResponseEntity<Map<String, Object>> response =
-            new ApiExceptionHandler().handleGeneric(leaky);
+                new ApiExceptionHandler().handleGeneric(leaky);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(response.getBody()).as("the 500 body must be the fixed notice and nothing else")
-            .isEqualTo(Map.of("error", "Internal server error"));
+        assertThat(response.getBody())
+                .as("the 500 body must be the fixed notice and nothing else")
+                .isEqualTo(Map.of("error", "Internal server error"));
     }
 }

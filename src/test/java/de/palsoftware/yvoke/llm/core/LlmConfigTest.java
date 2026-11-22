@@ -21,12 +21,11 @@ public class LlmConfigTest {
 
     /**
      * Two behaviours that only look cosmetic. The match is case-insensitive because the value is
-     * typed by hand into a compose file or a Kubernetes manifest, where
-     * {@code Azure-OpenAI-Responses} is a natural spelling; and an unrecognised value falls through
-     * to Gemini instead of failing startup, because a typo must not take a running deployment down.
+     * typed by hand into a compose file or a Kubernetes manifest, where {@code
+     * Azure-OpenAI-Responses} is a natural spelling; and an unrecognised value falls through to
+     * Gemini instead of failing startup, because a typo must not take a running deployment down.
      *
-     * <p>
-     * Tightening the match to {@code equals} — the obvious tidy-up, since every value the repo
+     * <p>Tightening the match to {@code equals} — the obvious tidy-up, since every value the repo
      * writes is already lowercase — does not throw and does not warn: the {@code log.info}
      * ("Configuring LLM client with provider: {}") line still prints the operator's spelling, so
      * the logs say {@code Azure-OpenAI-Responses} while the process talks to Gemini with a Gemini
@@ -42,11 +41,12 @@ public class LlmConfigTest {
         try {
             assertThat(defaultClientOf(gemini)).isExactlyInstanceOf(GeminiLlmClient.class);
             assertThat(defaultClientOf(responses))
-                .as("mixed-case 'Azure-OpenAI-Responses' must still select the Responses client")
-                .isExactlyInstanceOf(AzureOpenAiResponsesLlmClient.class);
+                    .as(
+                            "mixed-case 'Azure-OpenAI-Responses' must still select the Responses client")
+                    .isExactlyInstanceOf(AzureOpenAiResponsesLlmClient.class);
             assertThat(defaultClientOf(unknown))
-                .as("an unrecognised provider must fall back to Gemini, not fail startup")
-                .isExactlyInstanceOf(GeminiLlmClient.class);
+                    .as("an unrecognised provider must fall back to Gemini, not fail startup")
+                    .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(gemini);
             close(responses);
@@ -61,21 +61,21 @@ public class LlmConfigTest {
      * a different provider, on a different key, having logged the operator's own spelling back at
      * them. That is tolerable for a typo, which never worked, and not for a value that did.
      *
-     * <p>
-     * The rejection is case-insensitive for the same reason the selection is: an exact match would
-     * let {@code Azure-OpenAI} — the natural spelling in a hand-written manifest — miss the guard
-     * and reach the Gemini fallback instead, which is precisely the outcome being prevented. All
-     * three cases are therefore deliberately mixed-case.
+     * <p>The rejection is case-insensitive for the same reason the selection is: an exact match
+     * would let {@code Azure-OpenAI} — the natural spelling in a hand-written manifest — miss the
+     * guard and reach the Gemini fallback instead, which is precisely the outcome being prevented.
+     * All three cases are therefore deliberately mixed-case.
      */
     @Test
     public void aRetiredProviderIsRejectedRatherThanSilentlyAnsweredByGemini() {
         assertThatThrownBy(() -> providerFor("Azure-OpenAI"))
-            .isInstanceOf(IllegalStateException.class)
-            .as("the message must name the replacement, or the operator has nowhere to go")
-            .hasMessageContaining("azure-openai-responses");
+                .isInstanceOf(IllegalStateException.class)
+                .as("the message must name the replacement, or the operator has nowhere to go")
+                .hasMessageContaining("azure-openai-responses");
 
         assertThatThrownBy(() -> providerFor("Cloudflare-Gemini"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("cloudflare-gemini");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cloudflare-gemini");
     }
 
     @Test
@@ -83,8 +83,8 @@ public class LlmConfigTest {
         LlmClient openRouter = providerFor("OpenRouter");
         try {
             assertThat(defaultClientOf(openRouter))
-                .as("mixed-case 'OpenRouter' must select the OpenRouter client")
-                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+                    .as("mixed-case 'OpenRouter' must select the OpenRouter client")
+                    .isExactlyInstanceOf(OpenRouterLlmClient.class);
         } finally {
             close(openRouter);
         }
@@ -96,32 +96,47 @@ public class LlmConfigTest {
      * credential as a bearer token. A forgotten {@code AZURE_OPENAI_ENDPOINT} would therefore hand
      * the Azure key to a third party rather than merely fail.
      *
-     * <p>
-     * The endpoint here is the literal {@code placeholder-…} that {@code application.yml} ships,
+     * <p>The endpoint here is the literal {@code placeholder-…} that {@code application.yml} ships,
      * which is what the {@code !value.contains("placeholder")} clause in {@code isUsable} exists to
      * treat as absent — that clause is also what lets {@code resolveKey} fall through to the
      * environment variable where real deployments keep the value, so this is its only coverage.
      */
     @Test
     public void aMissingAzureEndpointFailsStartupInsteadOfTargetingPublicOpenAi() {
-        assertThatThrownBy(
-            () -> build("azure-openai-responses", "", "placeholder-azure-openai-endpoint"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("endpoint")
-            .as("a failure about configuration must never quote the credential back")
-            .hasMessageNotContaining("test-azure-key");
+        assertThatThrownBy(() ->
+                        build("azure-openai-responses", "", "placeholder-azure-openai-endpoint"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("endpoint")
+                .as("a failure about configuration must never quote the credential back")
+                .hasMessageNotContaining("test-azure-key");
     }
 
     /** The configuration this repository ships must build a context without special-casing. */
     @Test
     public void theShippedDefaultProviderStartsWithNothingConfigured() {
-        LlmClient client = config().llmProviderClient("gemini", "", new ObjectMapper(),
-            "placeholder-gemini-api-key", false, "low", "https://gemini.example",
-            "placeholder-azure-openai-endpoint", "placeholder-azure-openai-api-key", false, "low",
-            "", "https://openrouter.ai/api/v1", "placeholder-openrouter-api-key", true, "high", "");
+        LlmClient client =
+                config().llmProviderClient(
+                                "gemini",
+                                "",
+                                new ObjectMapper(),
+                                "placeholder-gemini-api-key",
+                                false,
+                                "low",
+                                "https://gemini.example",
+                                "placeholder-azure-openai-endpoint",
+                                "placeholder-azure-openai-api-key",
+                                false,
+                                "low",
+                                "",
+                                "https://openrouter.ai/api/v1",
+                                "placeholder-openrouter-api-key",
+                                true,
+                                "high",
+                                "");
         try {
             assertThat(defaultClientOf(client))
-                .as("an unconfigured dev box must still build a context")
-                .isExactlyInstanceOf(GeminiLlmClient.class);
+                    .as("an unconfigured dev box must still build a context")
+                    .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(client);
         }
@@ -134,8 +149,7 @@ public class LlmConfigTest {
     /**
      * The provider bean is ALWAYS the router, whether or not any model is mapped.
      *
-     * <p>
-     * Returning the single client unwrapped when the table is empty was the obvious optimisation
+     * <p>Returning the single client unwrapped when the table is empty was the obvious optimisation
      * and it made {@code app.ai.provider} mean two different things: the only client in one
      * configuration, and merely the fallback in another. One code path is worth more than one
      * object — the empty-table router is a map lookup per call — and it means the bean's type no
@@ -150,8 +164,8 @@ public class LlmConfigTest {
             assertThat(empty).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             assertThat(mapped).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             assertThat(((ModelRoutingLlmClient) empty).clientFor("anything"))
-                .as("with nothing mapped every model takes the default route")
-                .isExactlyInstanceOf(GeminiLlmClient.class);
+                    .as("with nothing mapped every model takes the default route")
+                    .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(empty);
             close(mapped);
@@ -166,10 +180,10 @@ public class LlmConfigTest {
             ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
 
             assertThat(router.clientFor("gpt-5.6-luna"))
-                .isExactlyInstanceOf(AzureOpenAiResponsesLlmClient.class);
+                    .isExactlyInstanceOf(AzureOpenAiResponsesLlmClient.class);
             assertThat(router.clientFor("gemini-3.6-flash"))
-                .as("an unmapped model falls to the default route")
-                .isExactlyInstanceOf(GeminiLlmClient.class);
+                    .as("an unmapped model falls to the default route")
+                    .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(client);
         }
@@ -178,13 +192,13 @@ public class LlmConfigTest {
     @Test
     public void aModelRouteMappedToOpenRouterRoutesToOpenRouterClient() {
         LlmClient client =
-            build("gemini", "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}");
+                build("gemini", "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}");
         try {
             assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
 
             assertThat(router.clientFor("deepseek/deepseek-v4.1-flash-1017"))
-                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+                    .isExactlyInstanceOf(OpenRouterLlmClient.class);
         } finally {
             close(client);
         }
@@ -199,15 +213,19 @@ public class LlmConfigTest {
         LlmClient unrouted = build("gemini", "", "placeholder-azure-openai-endpoint");
         try {
             assertThat(defaultClientOf(unrouted))
-                .as("no model names the Azure route, so its unusable endpoint is not reached")
-                .isExactlyInstanceOf(GeminiLlmClient.class);
+                    .as("no model names the Azure route, so its unusable endpoint is not reached")
+                    .isExactlyInstanceOf(GeminiLlmClient.class);
         } finally {
             close(unrouted);
         }
 
-        assertThatThrownBy(() -> build("gemini", "{\"gpt-5.6-luna\": \"azure-openai-responses\"}",
-            "placeholder-azure-openai-endpoint")).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("endpoint");
+        assertThatThrownBy(() ->
+                        build(
+                                "gemini",
+                                "{\"gpt-5.6-luna\": \"azure-openai-responses\"}",
+                                "placeholder-azure-openai-endpoint"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("endpoint");
     }
 
     /**
@@ -241,25 +259,54 @@ public class LlmConfigTest {
      */
     @Test
     public void missingOpenRouterKeyLogsWarningAndDoesNotThrowAtStartup() {
-        LlmClient client = config().llmProviderClient("gemini",
-            "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}", new ObjectMapper(),
-            "test-gemini-key", false, "low", "https://gemini.example", "https://azure.example",
-            "test-azure-key", false, "low", "", "https://openrouter.ai/api/v1",
-            "placeholder-openrouter-api-key", true, "high", "");
+        LlmClient client =
+                config().llmProviderClient(
+                                "gemini",
+                                "{\"deepseek/deepseek-v4.1-flash-1017\": \"openrouter\"}",
+                                new ObjectMapper(),
+                                "test-gemini-key",
+                                false,
+                                "low",
+                                "https://gemini.example",
+                                "https://azure.example",
+                                "test-azure-key",
+                                false,
+                                "low",
+                                "",
+                                "https://openrouter.ai/api/v1",
+                                "placeholder-openrouter-api-key",
+                                true,
+                                "high",
+                                "");
         try {
             assertThat(client).isExactlyInstanceOf(ModelRoutingLlmClient.class);
             ModelRoutingLlmClient router = (ModelRoutingLlmClient) client;
             assertThat(router.clientFor("deepseek/deepseek-v4.1-flash-1017"))
-                .isExactlyInstanceOf(OpenRouterLlmClient.class);
+                    .isExactlyInstanceOf(OpenRouterLlmClient.class);
         } finally {
             close(client);
         }
     }
 
     private static LlmClient build(String provider, String routes, String azureEndpoint) {
-        return config().llmProviderClient(provider, routes, new ObjectMapper(), "test-gemini-key",
-            false, "low", "https://gemini.example", azureEndpoint, "test-azure-key", false, "low",
-            "", "https://openrouter.example", "test-openrouter-key", true, "high", "");
+        return config().llmProviderClient(
+                        provider,
+                        routes,
+                        new ObjectMapper(),
+                        "test-gemini-key",
+                        false,
+                        "low",
+                        "https://gemini.example",
+                        azureEndpoint,
+                        "test-azure-key",
+                        false,
+                        "low",
+                        "",
+                        "https://openrouter.example",
+                        "test-openrouter-key",
+                        true,
+                        "high",
+                        "");
     }
 
     private static void close(LlmClient client) {

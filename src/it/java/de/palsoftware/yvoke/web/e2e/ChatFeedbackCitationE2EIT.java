@@ -19,12 +19,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 class ChatFeedbackCitationE2EIT extends AbstractE2E {
 
-    @Autowired
-    private PlaybookService playbookService;
-    @Autowired
-    private DocumentRepository documentRepository;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private PlaybookService playbookService;
+    @Autowired private DocumentRepository documentRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private void roundTrip(String playbook, String question) {
         loginAs("user");
@@ -36,8 +33,17 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
 
     @Test
     void thumbsDownSwapsInCommentFormAndPersistsComment() {
-        playbookService.savePlaybook("e2e-fb", "E2E FB", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "e2e-fb",
+                "E2E FB",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply("A plain assistant answer.");
 
         roundTrip("e2e-fb", "hi");
@@ -57,12 +63,13 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
         // The indicator alone proves nothing about persistence — it renders off whatever the
         // controller
         // put in the model, which for a long time was rebuilt from the request. Read the row back.
-        Assertions
-            .assertThat(jdbcTemplate.queryForList(
-                "SELECT f.comment FROM message_feedback f JOIN messages m ON m.id = f.message_id "
-                    + "WHERE m.content = ?",
-                String.class, "A plain assistant answer."))
-            .containsExactly("Answer was wrong.");
+        Assertions.assertThat(
+                        jdbcTemplate.queryForList(
+                                "SELECT f.comment FROM message_feedback f JOIN messages m ON m.id = f.message_id "
+                                        + "WHERE m.content = ?",
+                                String.class,
+                                "A plain assistant answer."))
+                .containsExactly("Answer was wrong.");
     }
 
     @Test
@@ -73,19 +80,43 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
         String version = "9.3";
         String source = "e2e_cite_manual.md";
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-            UUID.randomUUID(), collection);
-        UUID docId = documentRepository.upsertManualDocument(collection, version, source, "manual",
-            "OIM Admin Guide");
+                "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+                UUID.randomUUID(),
+                collection);
+        UUID docId =
+                documentRepository.upsertManualDocument(
+                        collection, version, source, "manual", "OIM Admin Guide");
         documentRepository.deleteContentForDocument(docId);
-        documentRepository.insertChunks(docId, collection, version, source, "manual",
-            List.of(new ChunkInsert("OIM stands for One Identity Manager.", new float[1024],
-                List.of("Root"), "Root", 1, 0)));
+        documentRepository.insertChunks(
+                docId,
+                collection,
+                version,
+                source,
+                "manual",
+                List.of(
+                        new ChunkInsert(
+                                "OIM stands for One Identity Manager.",
+                                new float[1024],
+                                List.of("Root"),
+                                "Root",
+                                1,
+                                0)));
 
-        playbookService.savePlaybook("e2e-cite", "E2E Cite", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "e2e-cite",
+                "E2E Cite",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply(
-            "According to the manual [document_id=" + docId + "], OIM means One Identity Manager.");
+                "According to the manual [document_id="
+                        + docId
+                        + "], OIM means One Identity Manager.");
 
         roundTrip("e2e-cite", "What is OIM?");
 
@@ -106,10 +137,19 @@ class ChatFeedbackCitationE2EIT extends AbstractE2E {
         // Models put several sources on one claim as [1, 2]. thread.js only ever matched a single
         // number, so a grouped marker survived as unstyled literal text next to properly badged
         // single ones — visibly inconsistent in the same answer.
-        playbookService.savePlaybook("e2e-numref", "E2E Numref", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "e2e-numref",
+                "E2E Numref",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply(
-            "Stored in DialogObject [1]. Evaluated in memory [1, 2]. Compiled by DBCompiler [1, 2, 3].");
+                "Stored in DialogObject [1]. Evaluated in memory [1, 2]. Compiled by DBCompiler [1, 2, 3].");
 
         roundTrip("e2e-numref", "How are selection scripts evaluated?");
 

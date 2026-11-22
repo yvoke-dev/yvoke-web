@@ -70,74 +70,136 @@ class ChatControllerTest {
         feedbackService = mock(ChatFeedbackService.class);
         cancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
-        orchestratorProperties = new OrchestratorProperties(3, 8, 10, 50, null,
-            List.of(new OrchestratorProperties.Profile("yaml-profile", "orch", "rev", List.of(),
-                null, null, null)));
+        orchestratorProperties =
+                new OrchestratorProperties(
+                        3,
+                        8,
+                        10,
+                        50,
+                        null,
+                        List.of(
+                                new OrchestratorProperties.Profile(
+                                        "yaml-profile",
+                                        "orch",
+                                        "rev",
+                                        List.of(),
+                                        null,
+                                        null,
+                                        null)));
         orchestratorProfileService = mock(OrchestratorProfileService.class);
 
-        controller = new ChatController(conversationService, messageService, feedbackService,
-            cancellationService, playbookService, orchestratorProperties,
-            orchestratorProfileService);
+        controller =
+                new ChatController(
+                        conversationService,
+                        messageService,
+                        feedbackService,
+                        cancellationService,
+                        playbookService,
+                        orchestratorProperties,
+                        orchestratorProfileService);
         when(messageService.resolveLockState(any(), any()))
-            .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
+                .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
     }
 
     @Test
     void updateOrchestratorProfile_validDbProfile_updatesSettingsSuccessfully() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
-        OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
-            List.of(), null, null, null, null, null, null, false, Instant.now(), Instant.now());
+        OrchestratorProfile dbProfile =
+                new OrchestratorProfile(
+                        "OIM",
+                        3,
+                        8,
+                        "orch",
+                        "rev",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        Instant.now(),
+                        Instant.now());
         when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
-        verify(conversationService).updateSetting(conversationId,
-            ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
+        verify(conversationService)
+                .updateSetting(conversationId, ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
     }
 
     @Test
     void updateOrchestratorProfile_validPropertyProfile_updatesSettingsSuccessfully() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(orchestratorProfileService.getProfile("yaml-profile")).thenReturn(Optional.empty());
 
         assertDoesNotThrow(
-            () -> controller.updateOrchestratorProfile(conversationId, "yaml-profile"));
+                () -> controller.updateOrchestratorProfile(conversationId, "yaml-profile"));
 
-        verify(conversationService).updateSetting(conversationId,
-            ConversationSetting.ORCHESTRATOR_PROFILE, "yaml-profile");
+        verify(conversationService)
+                .updateSetting(
+                        conversationId, ConversationSetting.ORCHESTRATOR_PROFILE, "yaml-profile");
     }
 
     @Test
     void updateOrchestratorProfile_unknownProfile_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(orchestratorProfileService.getProfile("Unknown")).thenReturn(Optional.empty());
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
     }
 
     @Test
-    void updateOrchestratorProfile_unownedConversationWithUnknownProfile_throwsForbiddenNotBadRequest() {
+    void
+            updateOrchestratorProfile_unownedConversationWithUnknownProfile_throwsForbiddenNotBadRequest() {
         UUID conversationId = UUID.randomUUID();
-        doThrow(new AccessDeniedException("not your conversation")).when(conversationService)
-            .verifyOwnership(conversationId, false);
+        doThrow(new AccessDeniedException("not your conversation"))
+                .when(conversationService)
+                .verifyOwnership(conversationId, false);
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.updateOrchestratorProfile(conversationId, "Unknown"));
 
         verify(orchestratorProfileService, never()).getProfile(any());
     }
@@ -157,8 +219,9 @@ class ChatControllerTest {
     @Test
     void stopGeneration_deniedForNonOwner_doesNotStop() {
         UUID conversationId = UUID.randomUUID();
-        doThrow(new AccessDeniedException("not your conversation")).when(conversationService)
-            .verifyOwnership(conversationId, false);
+        doThrow(new AccessDeniedException("not your conversation"))
+                .when(conversationService)
+                .verifyOwnership(conversationId, false);
 
         assertThrows(AccessDeniedException.class, () -> controller.stopGeneration(conversationId));
 
@@ -168,48 +231,87 @@ class ChatControllerTest {
     @Test
     void updateOrchestratorProfile_emptyName_clearsProfile() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of("orchestrator-profile", "OIM"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "  "));
 
-        verify(conversationService).updateSetting(conversationId,
-            ConversationSetting.ORCHESTRATOR_PROFILE, "");
+        verify(conversationService)
+                .updateSetting(conversationId, ConversationSetting.ORCHESTRATOR_PROFILE, "");
     }
 
     @Test
     void updateOrchestratorProfile_whenConversationHasMessagesAndProfileChanged_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of("orchestrator-profile", "OIM"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(messageService.hasMessages(conversationId)).thenReturn(true);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.updateOrchestratorProfile(conversationId, ""));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.updateOrchestratorProfile(conversationId, ""));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
-        assertEquals("Orchestrator profile cannot be changed once a conversation has started.",
-            ex.getReason());
+        assertEquals(
+                "Orchestrator profile cannot be changed once a conversation has started.",
+                ex.getReason());
         verify(conversationService, never()).updateSetting(any(), any(), any());
     }
 
     @Test
     void updateOrchestratorProfile_whenConversationHasMessagesAndSameProfile_succeeds() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("orchestrator-profile", "OIM"), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of("orchestrator-profile", "OIM"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
         when(messageService.hasMessages(conversationId)).thenReturn(true);
-        OrchestratorProfile dbProfile = new OrchestratorProfile("OIM", 3, 8, "orch", "rev",
-            List.of(), null, null, null, null, null, null, false, Instant.now(), Instant.now());
+        OrchestratorProfile dbProfile =
+                new OrchestratorProfile(
+                        "OIM",
+                        3,
+                        8,
+                        "orch",
+                        "rev",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        Instant.now(),
+                        Instant.now());
         when(orchestratorProfileService.getProfile("OIM")).thenReturn(Optional.of(dbProfile));
 
         assertDoesNotThrow(() -> controller.updateOrchestratorProfile(conversationId, "OIM"));
 
-        verify(conversationService).updateSetting(conversationId,
-            ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
+        verify(conversationService)
+                .updateSetting(conversationId, ConversationSetting.ORCHESTRATOR_PROFILE, "OIM");
     }
 
     /**
@@ -223,18 +325,37 @@ class ChatControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID firstAnswerId = UUID.randomUUID();
         UUID secondAnswerId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId))
-            .thenReturn(List.of(assistantMessage(firstAnswerId, conversationId),
-                userMessage(conversationId), assistantMessage(secondAnswerId, conversationId)));
+                .thenReturn(
+                        List.of(
+                                assistantMessage(firstAnswerId, conversationId),
+                                userMessage(conversationId),
+                                assistantMessage(secondAnswerId, conversationId)));
         Feedback onFirstAnswer =
-            new Feedback(UUID.randomUUID(), firstAnswerId, -1, "wrong", null, null);
+                new Feedback(UUID.randomUUID(), firstAnswerId, -1, "wrong", null, null);
         when(feedbackService.getFeedbackByConversation(conversationId))
-            .thenReturn(Map.of(firstAnswerId, onFirstAnswer));
+                .thenReturn(Map.of(firstAnswerId, onFirstAnswer));
 
         Model model = new ConcurrentModel();
         String view = controller.threadView(conversationId, model);
@@ -247,54 +368,68 @@ class ChatControllerTest {
 
     /**
      * The two halves of the orchestrator-profile feature disagree by construction, and this pins
-     * which side the dropdown is on. {@code threadView} populates it from
-     * {@code orchestratorProfileService.listProfileNames()} — a plain {@code SELECT} over
-     * {@code orchestrator_profiles} — while {@code updateOrchestratorProfile} accepts EITHER source
-     * (DB row OR {@code OrchestratorProperties.profile(name)}), and {@code resolve} falls back to
-     * the properties when no row exists. A yaml-defined profile is therefore fully runnable and
+     * which side the dropdown is on. {@code threadView} populates it from {@code
+     * orchestratorProfileService.listProfileNames()} — a plain {@code SELECT} over {@code
+     * orchestrator_profiles} — while {@code updateOrchestratorProfile} accepts EITHER source (DB
+     * row OR {@code OrchestratorProperties.profile(name)}), and {@code resolve} falls back to the
+     * properties when no row exists. A yaml-defined profile is therefore fully runnable and
      * completely invisible: selectable only by hand-POSTing its name.
      *
-     * <p>
-     * That asymmetry is safe while no yaml profile ships, and stops being safe the moment one does.
-     * The regression this guards is the reverse of the obvious bug report ("my configured profile
-     * isn't in the list"): merging {@code orchestratorProperties.profileNames()} in here to "fix"
-     * it would put a name in front of every user of every conversation, whether or not the
+     * <p>That asymmetry is safe while no yaml profile ships, and stops being safe the moment one
+     * does. The regression this guards is the reverse of the obvious bug report ("my configured
+     * profile isn't in the list"): merging {@code orchestratorProperties.profileNames()} in here to
+     * "fix" it would put a name in front of every user of every conversation, whether or not the
      * deployment intends it, and multi-agent runs are the expensive path — one orchestration is an
      * orchestrator turn plus N specialist runs plus review rounds. A profile becomes offerable
      * because someone edited a yaml default, with no admin action and nothing on screen to say
      * where it came from.
      *
-     * <p>
-     * {@code updateOrchestratorProfile_validPropertyProfile_updatesSettingsSuccessfully} pins the
-     * POST accepting a properties-only profile, which is exactly why the dropdown's source needs
-     * its own assertion: that test stays green whichever source the view uses.
-     * {@code ChatThreadRenderingIT} renders the thread but never asserts on the profile list.
+     * <p>{@code updateOrchestratorProfile_validPropertyProfile_updatesSettingsSuccessfully} pins
+     * the POST accepting a properties-only profile, which is exactly why the dropdown's source
+     * needs its own assertion: that test stays green whichever source the view uses. {@code
+     * ChatThreadRenderingIT} renders the thread but never asserts on the profile list.
      */
     @Test
     void theThreadDropdownListsDatabaseProfilesOnlyEvenWhenPropertyProfilesExist() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         when(orchestratorProfileService.listProfileOptions())
-            .thenReturn(List.of(new OrchestratorProfileOption("OIM", false)));
+                .thenReturn(List.of(new OrchestratorProfileOption("OIM", false)));
 
         Model model = new ConcurrentModel();
         assertEquals("chat/thread", controller.threadView(conversationId, model));
 
-        assertEquals(List.of(new OrchestratorProfileOption("OIM", false)),
-            model.getAttribute("orchestratorProfiles"));
+        assertEquals(
+                List.of(new OrchestratorProfileOption("OIM", false)),
+                model.getAttribute("orchestratorProfiles"));
     }
 
     /**
      * A prototype profile reaches the page FLAGGED, not filtered out.
      *
-     * <p>
-     * The obvious implementation — drop prototype rows in the controller when the conversation's
+     * <p>The obvious implementation — drop prototype rows in the controller when the conversation's
      * {@code show-prototypes} setting is off — is wrong in both directions, and silently. It would
      * make the toggle a page reload rather than a live control, since {@code thread.js} flips the
      * chips and the dropdown in the browser with no round trip; and it would drop the
@@ -306,43 +441,100 @@ class ChatControllerTest {
     @Test
     void aPrototypeProfileIsSentToThePageFlaggedRatherThanWithheld() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("show-prototypes", false), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of("show-prototypes", false),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         when(orchestratorProfileService.listProfileOptions())
-            .thenReturn(List.of(new OrchestratorProfileOption("OIM", false),
-                new OrchestratorProfileOption("OIM - Browsing", true)));
+                .thenReturn(
+                        List.of(
+                                new OrchestratorProfileOption("OIM", false),
+                                new OrchestratorProfileOption("OIM - Browsing", true)));
 
         Model model = new ConcurrentModel();
         assertEquals("chat/thread", controller.threadView(conversationId, model));
 
         assertEquals(
-            List.of(new OrchestratorProfileOption("OIM", false),
-                new OrchestratorProfileOption("OIM - Browsing", true)),
-            model.getAttribute("orchestratorProfiles"));
+                List.of(
+                        new OrchestratorProfileOption("OIM", false),
+                        new OrchestratorProfileOption("OIM - Browsing", true)),
+                model.getAttribute("orchestratorProfiles"));
     }
 
     @Test
     void threadView_withExistingUserMessage_locksPlaybook() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
-        Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question",
-            "my-playbook", List.of(), List.of(), Instant.now());
+        Message userMsg =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Question",
+                        "my-playbook",
+                        List.of(),
+                        List.of(),
+                        Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
         when(messageService.resolveLockState(eq(conversationId), any()))
-            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
-        when(playbookService.getPlaybook("my-playbook")).thenReturn(
-            Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl", List.of(),
-                false, "specialist", false, Instant.now(), Instant.now(), false, null, 2)));
+                .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
+        when(playbookService.getPlaybook("my-playbook"))
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "my-playbook",
+                                        "My Playbook Title",
+                                        "Desc",
+                                        "Tmpl",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        null,
+                                        2)));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -356,21 +548,68 @@ class ChatControllerTest {
     @Test
     void threadView_whenLockedPlaybookMissingFromCatalogue_fallsBackToMessagePlaybookVersion() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
-        Message nonUserMsg = new Message(UUID.randomUUID(), conversationId, "assistant", "Prior",
-            "deleted-playbook", 99, List.of(), List.of(), Instant.now().minusSeconds(10), null,
-            null, null, null, null, "done", null);
+        Message nonUserMsg =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "assistant",
+                        "Prior",
+                        "deleted-playbook",
+                        99,
+                        List.of(),
+                        List.of(),
+                        Instant.now().minusSeconds(10),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "done",
+                        null);
         Message userMsg =
-            new Message(UUID.randomUUID(), conversationId, "user", "Question", "deleted-playbook",
-                3, List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null);
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Question",
+                        "deleted-playbook",
+                        3,
+                        List.of(),
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "done",
+                        null);
         when(messageService.getMessages(conversationId)).thenReturn(List.of(nonUserMsg, userMsg));
         when(messageService.resolveLockState(eq(conversationId), any()))
-            .thenReturn(ConversationLockState.from(Optional.of("deleted-playbook"), false, false));
+                .thenReturn(
+                        ConversationLockState.from(Optional.of("deleted-playbook"), false, false));
         when(playbookService.getPlaybook("deleted-playbook")).thenReturn(Optional.empty());
 
         Model model = new ConcurrentModel();
@@ -381,22 +620,58 @@ class ChatControllerTest {
     }
 
     @Test
-    void threadView_withMixedConversationWithActiveProfile_suppressesPlaybookLockAndRetainsProfile() {
+    void
+            threadView_withMixedConversationWithActiveProfile_suppressesPlaybookLockAndRetainsProfile() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("model", "model1", ConversationSetting.ORCHESTRATOR_PROFILE.getValue(), "oim"),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(
+                                "model",
+                                "model1",
+                                ConversationSetting.ORCHESTRATOR_PROFILE.getValue(),
+                                "oim"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
-        Message userMsg1 = new Message(UUID.randomUUID(), conversationId, "user", "Question 1",
-            "my-playbook", List.of(), List.of(), Instant.now().minusSeconds(10));
-        Message userMsg2 = new Message(UUID.randomUUID(), conversationId, "user", "In-depth turn",
-            null, List.of(), List.of(), Instant.now());
+        Message userMsg1 =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Question 1",
+                        "my-playbook",
+                        List.of(),
+                        List.of(),
+                        Instant.now().minusSeconds(10));
+        Message userMsg2 =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "In-depth turn",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg1, userMsg2));
         when(messageService.resolveLockState(eq(conversationId), eq("oim")))
-            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), true, true));
+                .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), true, true));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -412,11 +687,27 @@ class ChatControllerTest {
     @Test
     void threadView_withoutUserMessage_doesNotLockPlaybook() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         Model model = new ConcurrentModel();
@@ -431,14 +722,38 @@ class ChatControllerTest {
     @Test
     void threadView_withUserMessageWithoutPlaybook_doesNotLockPlaybook() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
-        Message userMsg = new Message(UUID.randomUUID(), conversationId, "user", "Question", null,
-            List.of(), List.of(), Instant.now());
+        Message userMsg =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Question",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now());
         when(messageService.getMessages(conversationId)).thenReturn(List.of(userMsg));
 
         Model model = new ConcurrentModel();
@@ -452,23 +767,65 @@ class ChatControllerTest {
     @Test
     void threadView_withDesktopUserMessageWithoutPlaybookThenPlaybookUserMessage_locksPlaybook() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
-        Message desktopUserMsg = new Message(UUID.randomUUID(), conversationId, "user",
-            "Desktop question", null, List.of(), List.of(), Instant.now().minusSeconds(60));
-        Message webUserMsg = new Message(UUID.randomUUID(), conversationId, "user", "Web question",
-            "my-playbook", List.of(), List.of(), Instant.now());
+        Message desktopUserMsg =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Desktop question",
+                        null,
+                        List.of(),
+                        List.of(),
+                        Instant.now().minusSeconds(60));
+        Message webUserMsg =
+                new Message(
+                        UUID.randomUUID(),
+                        conversationId,
+                        "user",
+                        "Web question",
+                        "my-playbook",
+                        List.of(),
+                        List.of(),
+                        Instant.now());
         when(messageService.getMessages(conversationId))
-            .thenReturn(List.of(desktopUserMsg, webUserMsg));
+                .thenReturn(List.of(desktopUserMsg, webUserMsg));
         when(messageService.resolveLockState(eq(conversationId), any()))
-            .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
+                .thenReturn(ConversationLockState.from(Optional.of("my-playbook"), false, false));
         when(playbookService.getPlaybook("my-playbook"))
-            .thenReturn(Optional.of(new Playbook("my-playbook", "My Playbook Title", "Desc", "Tmpl",
-                List.of(), false, Instant.now(), Instant.now(), false)));
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "my-playbook",
+                                        "My Playbook Title",
+                                        "Desc",
+                                        "Tmpl",
+                                        List.of(),
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false)));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -480,15 +837,33 @@ class ChatControllerTest {
     @Test
     void threadView_whenPlaybookPastFirst100Messages_locksPlaybook() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
 
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
-        when(messageService.resolveLockState(eq(conversationId), any())).thenReturn(
-            ConversationLockState.from(Optional.of("past100-pb"), Optional.of(4), false, false));
+        when(messageService.resolveLockState(eq(conversationId), any()))
+                .thenReturn(
+                        ConversationLockState.from(
+                                Optional.of("past100-pb"), Optional.of(4), false, false));
         when(playbookService.getPlaybook("past100-pb")).thenReturn(Optional.empty());
 
         Model model = new ConcurrentModel();
@@ -500,63 +875,91 @@ class ChatControllerTest {
     }
 
     private static Message assistantMessage(UUID id, UUID conversationId) {
-        return new Message(id, conversationId, "assistant", "An answer.", List.of(), List.of(),
-            Instant.now());
+        return new Message(
+                id, conversationId, "assistant", "An answer.", List.of(), List.of(), Instant.now());
     }
 
     private static Message userMessage(UUID conversationId) {
-        return new Message(UUID.randomUUID(), conversationId, "user", "A question.", List.of(),
-            List.of(), Instant.now());
+        return new Message(
+                UUID.randomUUID(),
+                conversationId,
+                "user",
+                "A question.",
+                List.of(),
+                List.of(),
+                Instant.now());
     }
 
     /**
      * Both halves of one contract, because either alone passes while the bug is live.
      *
-     * <p>
-     * A conversation pinned to a model that has since left {@code app.chat.allowed-models} has no
-     * matching {@code <option>}, so the browser selects the FIRST — the picker then displays a
+     * <p>A conversation pinned to a model that has since left {@code app.chat.allowed-models} has
+     * no matching {@code <option>}, so the browser selects the FIRST — the picker then displays a
      * model the conversation is not on, and choosing that same model fires no change event, so the
      * conversation cannot even be moved off the retired one. The send path resolves the same way
      * now ({@code ChatMessageService#resolveModelToUse}), so the displayed model IS the one that
      * will answer.
      *
-     * <p>
-     * The template half is asserted on the source: {@code th:selected} must read
-     * {@code effectiveModel}, never {@code settings['model']}. A controller test alone cannot see a
+     * <p>The template half is asserted on the source: {@code th:selected} must read {@code
+     * effectiveModel}, never {@code settings['model']}. A controller test alone cannot see a
      * template that ignores the attribute, and Thymeleaf reports nothing when it does — every
      * option simply renders unselected, which is the same visible bug.
      */
     @Test
     void theModelPickerShowsTheModelThatWillActuallyAnswerNotTheRetiredStoredOne()
-        throws Exception {
+            throws Exception {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Map.of("model", "gemini-3.6-flash"), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of("model", "gemini-3.6-flash"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
         when(conversationService.effectiveModel("gemini-3.6-flash")).thenReturn("gemini-3.8-flash");
 
         Model model = new ConcurrentModel();
         assertEquals("chat/thread", controller.threadView(conversationId, model));
 
-        assertEquals("gemini-3.8-flash", model.getAttribute("effectiveModel"),
-            "the picker must be driven by the resolved model, not the raw setting");
+        assertEquals(
+                "gemini-3.8-flash",
+                model.getAttribute("effectiveModel"),
+                "the picker must be driven by the resolved model, not the raw setting");
 
-        String template = Files.readString(
-            Paths.get("src/main/resources/templates/chat/thread.html"), StandardCharsets.UTF_8);
+        String template =
+                Files.readString(
+                        Paths.get("src/main/resources/templates/chat/thread.html"),
+                        StandardCharsets.UTF_8);
         int selector = template.indexOf("id=\"model-selector\"");
         assertTrue(selector > 0, "model-selector not found in chat/thread.html");
         String block = template.substring(selector, template.indexOf("</select>", selector));
-        assertTrue(block.contains("th:value=\"${modelOpt}\""),
-            "the model picker must submit the wire model ID as value: " + block);
-        assertTrue(block.contains("th:text=\"${@modelLabels.labelFor(modelOpt)}\""),
-            "the model picker must display the friendly model label: " + block);
-        assertTrue(block.contains("${effectiveModel == modelOpt}"),
-            "the model picker must select on effectiveModel: " + block);
-        assertFalse(block.contains("settings['model']"),
-            "reading the raw setting reintroduces the retired-model divergence: " + block);
+        assertTrue(
+                block.contains("th:value=\"${modelOpt}\""),
+                "the model picker must submit the wire model ID as value: " + block);
+        assertTrue(
+                block.contains("th:text=\"${@modelLabels.labelFor(modelOpt)}\""),
+                "the model picker must display the friendly model label: " + block);
+        assertTrue(
+                block.contains("${effectiveModel == modelOpt}"),
+                "the model picker must select on effectiveModel: " + block);
+        assertFalse(
+                block.contains("settings['model']"),
+                "reading the raw setting reintroduces the retired-model divergence: " + block);
     }
 
     @AfterEach
@@ -567,22 +970,64 @@ class ChatControllerTest {
     @Test
     void threadView_filtersPlaybooksToAuthorizedAreas() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
-        Playbook oimPlaybook = new Playbook("p1", "P1", "d", "c", List.of(), false, "specialist",
-            false, Instant.now(), Instant.now(), false, "OIM");
-        Playbook finPlaybook = new Playbook("p2", "P2", "d", "c", List.of(), false, "specialist",
-            false, Instant.now(), Instant.now(), false, "Finance");
+        Playbook oimPlaybook =
+                new Playbook(
+                        "p1",
+                        "P1",
+                        "d",
+                        "c",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
+        Playbook finPlaybook =
+                new Playbook(
+                        "p2",
+                        "P2",
+                        "d",
+                        "c",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "Finance");
         when(playbookService.listSpecializedPlaybooks())
-            .thenReturn(List.of(oimPlaybook, finPlaybook));
+                .thenReturn(List.of(oimPlaybook, finPlaybook));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
@@ -595,50 +1040,96 @@ class ChatControllerTest {
     @Test
     void threadView_filtersOrchestratorProfilesToAuthorizedAreas() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T", Map.of(),
-            Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), UUID.randomUUID()));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                Map.of(),
+                                List.of(),
+                                0,
+                                List.of(),
+                                UUID.randomUUID()));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         OrchestratorProfileOption oimOption =
-            new OrchestratorProfileOption("oim-prof", false, "OIM");
+                new OrchestratorProfileOption("oim-prof", false, "OIM");
         OrchestratorProfileOption finOption =
-            new OrchestratorProfileOption("fin-prof", false, "Finance");
+                new OrchestratorProfileOption("fin-prof", false, "Finance");
         when(orchestratorProfileService.listProfileOptions())
-            .thenReturn(List.of(oimOption, finOption));
+                .thenReturn(List.of(oimOption, finOption));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         Model model = new ConcurrentModel();
         controller.threadView(conversationId, model);
 
         @SuppressWarnings("unchecked")
         List<OrchestratorProfileOption> profiles =
-            (List<OrchestratorProfileOption>) model.getAttribute("orchestratorProfiles");
+                (List<OrchestratorProfileOption>) model.getAttribute("orchestratorProfiles");
         assertEquals(List.of(oimOption), profiles);
     }
 
     @Test
     void updateOrchestratorProfile_withUnauthorizedProfile_throwsBadRequest() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, UUID.randomUUID(), "T",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "T",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(conversationService.getConversation(conversationId)).thenReturn(Optional.of(conv));
 
         OrchestratorProfile dbProfile =
-            new OrchestratorProfile("FinanceProfile", 3, 8, "orch", "rev", List.of(), null, null,
-                null, null, null, null, false, Instant.now(), Instant.now(), "Finance");
+                new OrchestratorProfile(
+                        "FinanceProfile",
+                        3,
+                        8,
+                        "orch",
+                        "rev",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        "Finance");
         when(orchestratorProfileService.getProfile("FinanceProfile"))
-            .thenReturn(Optional.of(dbProfile));
+                .thenReturn(Optional.of(dbProfile));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.updateOrchestratorProfile(conversationId, "FinanceProfile"));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                controller.updateOrchestratorProfile(
+                                        conversationId, "FinanceProfile"));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
     }
 
@@ -646,12 +1137,24 @@ class ChatControllerTest {
     void threadView_whenConversationSourceIsClaudePlugin_marksThreadReadOnlyEvenForOwner() {
         UUID conversationId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
-        Conversation pluginConv = new Conversation(conversationId, ownerId, "Plugin Turn", Map.of(),
-            Instant.now(), Instant.now(), List.of(), "claude-plugin", "OIM");
+        Conversation pluginConv =
+                new Conversation(
+                        conversationId,
+                        ownerId,
+                        "Plugin Turn",
+                        Map.of(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of(),
+                        "claude-plugin",
+                        "OIM");
         when(conversationService.getConversation(conversationId))
-            .thenReturn(Optional.of(pluginConv));
-        when(conversationService.buildSidebar()).thenReturn(new ConversationSidebar(List.of(),
-            Map.of(), List.of(), Map.of(), List.of(), 0, List.of(), ownerId));
+                .thenReturn(Optional.of(pluginConv));
+        when(conversationService.buildSidebar())
+                .thenReturn(
+                        new ConversationSidebar(
+                                List.of(), Map.of(), List.of(), Map.of(), List.of(), 0, List.of(),
+                                ownerId));
         when(messageService.getMessages(conversationId)).thenReturn(List.of());
 
         Model model = new ConcurrentModel();

@@ -29,7 +29,7 @@ class MockAuthenticationProviderTest {
     }
 
     private static List<String> authorityStrings(
-        Collection<? extends GrantedAuthority> authorities) {
+            Collection<? extends GrantedAuthority> authorities) {
         return authorities.stream().map(GrantedAuthority::getAuthority).toList();
     }
 
@@ -40,9 +40,13 @@ class MockAuthenticationProviderTest {
 
         assertThat(result.isAuthenticated()).isTrue();
         List<String> auths = authorityStrings(result.getAuthorities());
-        assertThat(auths).contains(AreaAccessContext.ROLE_ADMIN, AreaAccessContext.ROLE_AREA_ADMIN,
-            AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_ADMIN_ALL,
-            AreaAccessContext.AREA_USER_ALL);
+        assertThat(auths)
+                .contains(
+                        AreaAccessContext.ROLE_ADMIN,
+                        AreaAccessContext.ROLE_AREA_ADMIN,
+                        AreaAccessContext.ROLE_USER,
+                        AreaAccessContext.AREA_ADMIN_ALL,
+                        AreaAccessContext.AREA_USER_ALL);
 
         assertThat(result.getPrincipal()).isInstanceOf(MockOidcUser.class);
         MockOidcUser oidcUser = (MockOidcUser) result.getPrincipal();
@@ -60,8 +64,11 @@ class MockAuthenticationProviderTest {
 
         List<String> auths = authorityStrings(result.getAuthorities());
         assertThat(auths).contains(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
-        assertThat(auths).doesNotContain(AreaAccessContext.ROLE_ADMIN,
-            AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_ALL);
+        assertThat(auths)
+                .doesNotContain(
+                        AreaAccessContext.ROLE_ADMIN,
+                        AreaAccessContext.ROLE_AREA_ADMIN,
+                        AreaAccessContext.AREA_ADMIN_ALL);
 
         MockOidcUser oidcUser = (MockOidcUser) result.getPrincipal();
         assertThat(oidcUser.getClaims().get("roles")).isEqualTo(List.of("User"));
@@ -73,10 +80,17 @@ class MockAuthenticationProviderTest {
         Authentication result = provider.authenticate(auth);
 
         List<String> auths = authorityStrings(result.getAuthorities());
-        assertThat(auths).containsExactlyInAnyOrder(AreaAccessContext.ROLE_AREA_ADMIN,
-            AreaAccessContext.ROLE_USER, "AREA_ADMIN_OIM", "AREA_USER_OIM");
-        assertThat(auths).doesNotContain(AreaAccessContext.ROLE_ADMIN,
-            AreaAccessContext.AREA_ADMIN_ALL, AreaAccessContext.AREA_USER_ALL);
+        assertThat(auths)
+                .containsExactlyInAnyOrder(
+                        AreaAccessContext.ROLE_AREA_ADMIN,
+                        AreaAccessContext.ROLE_USER,
+                        "AREA_ADMIN_OIM",
+                        "AREA_USER_OIM");
+        assertThat(auths)
+                .doesNotContain(
+                        AreaAccessContext.ROLE_ADMIN,
+                        AreaAccessContext.AREA_ADMIN_ALL,
+                        AreaAccessContext.AREA_USER_ALL);
     }
 
     @Test
@@ -86,24 +100,29 @@ class MockAuthenticationProviderTest {
 
         List<String> auths = authorityStrings(result.getAuthorities());
         assertThat(auths).containsExactlyInAnyOrder(AreaAccessContext.ROLE_USER, "AREA_USER_OIM");
-        assertThat(auths).doesNotContain(AreaAccessContext.ROLE_ADMIN,
-            AreaAccessContext.ROLE_AREA_ADMIN);
+        assertThat(auths)
+                .doesNotContain(AreaAccessContext.ROLE_ADMIN, AreaAccessContext.ROLE_AREA_ADMIN);
     }
 
     @Test
     void authenticateWithMultiRoleClaims() {
         Authentication auth =
-            new UsernamePasswordAuthenticationToken("alice", "OIM.Admin, PingID.User");
+                new UsernamePasswordAuthenticationToken("alice", "OIM.Admin, PingID.User");
         Authentication result = provider.authenticate(auth);
 
         List<String> auths = authorityStrings(result.getAuthorities());
-        assertThat(auths).contains(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.ROLE_USER,
-            "AREA_ADMIN_OIM", "AREA_USER_OIM", "AREA_USER_PINGID");
+        assertThat(auths)
+                .contains(
+                        AreaAccessContext.ROLE_AREA_ADMIN,
+                        AreaAccessContext.ROLE_USER,
+                        "AREA_ADMIN_OIM",
+                        "AREA_USER_OIM",
+                        "AREA_USER_PINGID");
         assertThat(auths).doesNotContain("AREA_ADMIN_PINGID", AreaAccessContext.ROLE_ADMIN);
 
         MockOidcUser oidcUser = (MockOidcUser) result.getPrincipal();
         assertThat(oidcUser.getClaims().get("roles"))
-            .isEqualTo(List.of("OIM.Admin", "PingID.User"));
+                .isEqualTo(List.of("OIM.Admin", "PingID.User"));
     }
 
     @Test
@@ -111,19 +130,19 @@ class MockAuthenticationProviderTest {
         Authentication adminAuth = new UsernamePasswordAuthenticationToken("admin", "password");
         Authentication adminResult = provider.authenticate(adminAuth);
         assertThat(authorityStrings(adminResult.getAuthorities()))
-            .contains(AreaAccessContext.ROLE_ADMIN);
+                .contains(AreaAccessContext.ROLE_ADMIN);
 
         Authentication userAuth = new UsernamePasswordAuthenticationToken("user", "password");
         Authentication userResult = provider.authenticate(userAuth);
         assertThat(authorityStrings(userResult.getAuthorities()))
-            .contains(AreaAccessContext.ROLE_USER);
+                .contains(AreaAccessContext.ROLE_USER);
         assertThat(authorityStrings(userResult.getAuthorities()))
-            .doesNotContain(AreaAccessContext.ROLE_ADMIN);
+                .doesNotContain(AreaAccessContext.ROLE_ADMIN);
 
         Authentication adminEmptyPass = new UsernamePasswordAuthenticationToken("admin", "");
         Authentication adminEmptyResult = provider.authenticate(adminEmptyPass);
         assertThat(authorityStrings(adminEmptyResult.getAuthorities()))
-            .contains(AreaAccessContext.ROLE_ADMIN);
+                .contains(AreaAccessContext.ROLE_ADMIN);
     }
 
     @Test
@@ -138,34 +157,34 @@ class MockAuthenticationProviderTest {
     @Test
     void authenticateWithInvalidClaimsThrowsBadCredentials() {
         Authentication invalidPass =
-            new UsernamePasswordAuthenticationToken("bob", "Guest,Anonymous");
+                new UsernamePasswordAuthenticationToken("bob", "Guest,Anonymous");
         assertThatThrownBy(() -> provider.authenticate(invalidPass))
-            .isInstanceOf(BadCredentialsException.class)
-            .hasMessageContaining("No valid role authorities");
+                .isInstanceOf(BadCredentialsException.class)
+                .hasMessageContaining("No valid role authorities");
 
         Authentication unknownUser = new UsernamePasswordAuthenticationToken("unknown", "password");
         assertThatThrownBy(() -> provider.authenticate(unknownUser))
-            .isInstanceOf(BadCredentialsException.class);
+                .isInstanceOf(BadCredentialsException.class);
 
         Authentication emptyBoth = new UsernamePasswordAuthenticationToken("", "");
         assertThatThrownBy(() -> provider.authenticate(emptyBoth))
-            .isInstanceOf(BadCredentialsException.class);
+                .isInstanceOf(BadCredentialsException.class);
     }
 
     @Test
     void customAdminAndUserClaims() {
         MockAuthenticationProvider customProvider =
-            new MockAuthenticationProvider(userService, "Superuser", "StandardUser");
+                new MockAuthenticationProvider(userService, "Superuser", "StandardUser");
 
         Authentication adminAuth = new UsernamePasswordAuthenticationToken("admin", "Superuser");
         Authentication adminResult = customProvider.authenticate(adminAuth);
         assertThat(authorityStrings(adminResult.getAuthorities()))
-            .contains(AreaAccessContext.ROLE_ADMIN);
+                .contains(AreaAccessContext.ROLE_ADMIN);
 
         Authentication userAuth = new UsernamePasswordAuthenticationToken("user", "StandardUser");
         Authentication userResult = customProvider.authenticate(userAuth);
         assertThat(authorityStrings(userResult.getAuthorities()))
-            .contains(AreaAccessContext.ROLE_USER);
+                .contains(AreaAccessContext.ROLE_USER);
     }
 
     @Test

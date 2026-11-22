@@ -22,8 +22,12 @@ public class AuditLogRowMapper implements RowMapper<AuditLog> {
     public AuditLog mapRow(ResultSet rs, int rowNum) throws SQLException {
         Map<String, Object> detail = JdbcMappers.jsonbToMap(rs, "detail_text", objectMapper);
 
-        return new AuditLog(rs.getObject("id", UUID.class), rs.getString("entra_oid"),
-            rs.getString("action"), rs.getString("target"), detail,
-            rs.getObject("created_at", OffsetDateTime.class));
+        return new AuditLog(
+                rs.getObject("id", UUID.class),
+                rs.getString("entra_oid"),
+                rs.getString("action"),
+                rs.getString("target"),
+                detail,
+                rs.getObject("created_at", OffsetDateTime.class));
     }
 }

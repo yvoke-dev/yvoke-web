@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.shared.jobengine.api;
 
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,20 +65,18 @@ class JobApiControllerTest {
     /**
      * The snapshot frame must go out under the SSE event NAME the admin page subscribes to.
      *
-     * <p>
-     * {@code admin/job-detail.html} calls {@code eventSource.addEventListener('progress', …)}, and
-     * an {@code EventSource} dispatches strictly by name: a frame sent as anything else arrives, is
-     * parsed, and is then delivered to a listener nobody registered. The job itself runs and
-     * completes perfectly — only the page freezes at 0%, with no console error, no network error
-     * and a connection that stays open, so the operator concludes the worker has hung and
+     * <p>{@code admin/job-detail.html} calls {@code eventSource.addEventListener('progress', …)},
+     * and an {@code EventSource} dispatches strictly by name: a frame sent as anything else
+     * arrives, is parsed, and is then delivered to a listener nobody registered. The job itself
+     * runs and completes perfectly — only the page freezes at 0%, with no console error, no network
+     * error and a connection that stays open, so the operator concludes the worker has hung and
      * cancels/re-enqueues real work.
      *
-     * <p>
-     * Nothing asserts the name today:
-     * {@code subscribingToAFinishedJobSendsOneFrameAndClosesTheStream} verifies
-     * {@code send(any(SseEventBuilder.class))}, which stays true for every possible name, and no
-     * browser e2e covers job progress against a live worker. Asserting the BUILT frame rather than
-     * the builder call is the point — the name only exists once the builder is serialised.
+     * <p>Nothing asserts the name today: {@code
+     * subscribingToAFinishedJobSendsOneFrameAndClosesTheStream} verifies {@code
+     * send(any(SseEventBuilder.class))}, which stays true for every possible name, and no browser
+     * e2e covers job progress against a live worker. Asserting the BUILT frame rather than the
+     * builder call is the point — the name only exists once the builder is serialised.
      */
     @Test
     void theSnapshotFrameCarriesTheProgressEventNameTheAdminPageListensFor() throws Exception {
@@ -95,23 +92,41 @@ class JobApiControllerTest {
         var parts = frame.getValue().build();
 
         String wire =
-            parts.stream().map(p -> String.valueOf(p.getData())).collect(Collectors.joining());
+                parts.stream().map(p -> String.valueOf(p.getData())).collect(Collectors.joining());
         assertThat(wire)
-            .as("EventSource dispatches by name; admin/job-detail.html listens for 'progress'")
-            .containsPattern("event:\\s*progress\\R");
+                .as("EventSource dispatches by name; admin/job-detail.html listens for 'progress'")
+                .containsPattern("event:\\s*progress\\R");
 
-        assertThat(parts.stream().map(p -> p.getData()).filter(ProgressEvent.class::isInstance)
-            .map(ProgressEvent.class::cast).toList())
-            .as("the frame must carry the job's current state, not an empty ping").singleElement()
-            .satisfies(event -> {
-                assertThat(event.jobId()).isEqualTo(id);
-                assertThat(event.status()).isEqualTo(JobStatus.RUNNING.dbValue());
-            });
+        assertThat(
+                        parts.stream()
+                                .map(p -> p.getData())
+                                .filter(ProgressEvent.class::isInstance)
+                                .map(ProgressEvent.class::cast)
+                                .toList())
+                .as("the frame must carry the job's current state, not an empty ping")
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.jobId()).isEqualTo(id);
+                    assertThat(event.status()).isEqualTo(JobStatus.RUNNING.dbValue());
+                });
     }
 
     private static IngestionJob job(UUID id, JobStatus status) {
-        return new IngestionJob(id, ItTestJobHandler.KIND, "ref", "1.0", "col", status, null, 0, 1,
-            null, null, OffsetDateTime.now(), null, null);
+        return new IngestionJob(
+                id,
+                ItTestJobHandler.KIND,
+                "ref",
+                "1.0",
+                "col",
+                status,
+                null,
+                0,
+                1,
+                null,
+                null,
+                OffsetDateTime.now(),
+                null,
+                null);
     }
 
     @Test
@@ -148,9 +163,10 @@ class JobApiControllerTest {
         when(jobService.enqueue(req)).thenThrow(new IllegalArgumentException("blank"));
 
         assertThatThrownBy(() -> controller.enqueue(req))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
@@ -177,9 +193,11 @@ class JobApiControllerTest {
         UUID id = UUID.randomUUID();
         when(jobRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> controller.get(id)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> controller.get(id))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -188,9 +206,10 @@ class JobApiControllerTest {
         when(jobRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.progress(id))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(progressBroker, never()).subscribeWithInitial(any(), any());
     }
 
@@ -224,7 +243,7 @@ class JobApiControllerTest {
         UUID finishedId = UUID.randomUUID();
         SseEmitter finishedEmitter = mock(SseEmitter.class);
         when(jobRepository.findById(finishedId))
-            .thenReturn(Optional.of(job(finishedId, JobStatus.COMPLETED)));
+                .thenReturn(Optional.of(job(finishedId, JobStatus.COMPLETED)));
         progressBroker.setNextEmitter(finishedEmitter);
 
         assertThat(controller.progress(finishedId)).isSameAs(finishedEmitter);
@@ -235,7 +254,7 @@ class JobApiControllerTest {
         UUID runningId = UUID.randomUUID();
         SseEmitter runningEmitter = mock(SseEmitter.class);
         when(jobRepository.findById(runningId))
-            .thenReturn(Optional.of(job(runningId, JobStatus.RUNNING)));
+                .thenReturn(Optional.of(job(runningId, JobStatus.RUNNING)));
         progressBroker.setNextEmitter(runningEmitter);
 
         assertThat(controller.progress(runningId)).isSameAs(runningEmitter);
@@ -256,14 +275,19 @@ class JobApiControllerTest {
 
     private static void authenticateWith(String... roles) {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
-                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "principal",
+                                "n/a",
+                                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     private static void assertForbidden(Runnable call) {
-        assertThatThrownBy(call::run).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(call::run)
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     @Test
@@ -289,7 +313,7 @@ class JobApiControllerTest {
         // Wave 3 will emit `confluence-page-import:<slug>`; the check matches the base kind.
         authenticateWith("ROLE_USER");
         EnqueueRequest req =
-            new EnqueueRequest("confluence-page-import:oim-space", "ref", "1.0", "col");
+                new EnqueueRequest("confluence-page-import:oim-space", "ref", "1.0", "col");
 
         assertForbidden(() -> controller.enqueue(req));
         verify(jobService, never()).enqueue(any());
@@ -337,9 +361,10 @@ class JobApiControllerTest {
         when(jobRepository.findCollectionArea("sec-col")).thenReturn(Optional.of("sec"));
 
         assertThatThrownBy(() -> controller.enqueue(req))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 
@@ -350,9 +375,10 @@ class JobApiControllerTest {
         when(jobRepository.findCollectionArea("sec-col")).thenReturn(Optional.of("sec"));
 
         assertThatThrownBy(() -> controller.enqueue(req))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 
@@ -377,9 +403,11 @@ class JobApiControllerTest {
         when(jobRepository.findById(id)).thenReturn(Optional.of(job(id, JobStatus.RUNNING)));
         when(jobRepository.findJobArea(id)).thenReturn(Optional.of("sec"));
 
-        assertThatThrownBy(() -> controller.get(id)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> controller.get(id))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -390,9 +418,10 @@ class JobApiControllerTest {
         when(jobRepository.findJobArea(id)).thenReturn(Optional.of("sec"));
 
         assertThatThrownBy(() -> controller.progress(id))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(progressBroker, never()).subscribe(any());
     }
 
@@ -405,9 +434,10 @@ class JobApiControllerTest {
         when(jobRepository.findDocumentArea(docId)).thenReturn(Optional.of("sec"));
 
         assertThatThrownBy(() -> controller.enqueue(req))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 

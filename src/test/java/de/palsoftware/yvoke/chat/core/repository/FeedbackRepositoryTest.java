@@ -53,13 +53,17 @@ public class FeedbackRepositoryTest {
     public void testUpsert_invalidRatingThrowsException() {
         UUID messageId = UUID.randomUUID();
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            feedbackRepository.upsert(messageId, -2, "Bad rating");
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    feedbackRepository.upsert(messageId, -2, "Bad rating");
+                });
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            feedbackRepository.upsert(messageId, 6, "Bad rating");
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    feedbackRepository.upsert(messageId, 6, "Bad rating");
+                });
     }
 
     @Test

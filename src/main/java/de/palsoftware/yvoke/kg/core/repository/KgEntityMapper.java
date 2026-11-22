@@ -36,7 +36,7 @@ public class KgEntityMapper implements RowMapper<KgEntity> {
                 similarity = null;
             }
         }
-        return new KgEntity(id, collectionId, collection, name, kind, tags, description, metadata,
-            similarity);
+        return new KgEntity(
+                id, collectionId, collection, name, kind, tags, description, metadata, similarity);
     }
 }

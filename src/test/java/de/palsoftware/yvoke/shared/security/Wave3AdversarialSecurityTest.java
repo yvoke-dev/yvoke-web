@@ -74,14 +74,18 @@ class Wave3AdversarialSecurityTest {
 
     private static void setAuthentication(String... authorities) {
         List<SimpleGrantedAuthority> auths =
-            List.of(authorities).stream().map(SimpleGrantedAuthority::new).toList();
-        SecurityContextHolder.getContext().setAuthentication(
-            new UsernamePasswordAuthenticationToken("test-client", "n/a", auths));
+                List.of(authorities).stream().map(SimpleGrantedAuthority::new).toList();
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken("test-client", "n/a", auths));
     }
 
     private static void setRoleClaims(List<String> claims) {
-        Authentication auth = new UsernamePasswordAuthenticationToken("test-client", "n/a",
-            AreaAccessContext.mapRoleClaimsToAuthorities(claims, "Admin", "User"));
+        Authentication auth =
+                new UsernamePasswordAuthenticationToken(
+                        "test-client",
+                        "n/a",
+                        AreaAccessContext.mapRoleClaimsToAuthorities(claims, "Admin", "User"));
         SecurityContextHolder.getContext().setAuthentication(auth);
     }
 
@@ -102,11 +106,11 @@ class Wave3AdversarialSecurityTest {
         private DesktopSyncController controller;
 
         private final Area areaOim =
-            new Area("OIM", "OIM KB", "desc", false, "pb1", "prof1", null, null);
+                new Area("OIM", "OIM KB", "desc", false, "pb1", "prof1", null, null);
         private final Area areaPing =
-            new Area("PingID", "PingID KB", "desc", false, "pb2", "prof2", null, null);
+                new Area("PingID", "PingID KB", "desc", false, "pb2", "prof2", null, null);
         private final Area areaFin =
-            new Area("Finance", "Finance KB", "desc", false, "pb3", "prof3", null, null);
+                new Area("Finance", "Finance KB", "desc", false, "pb3", "prof3", null, null);
 
         @BeforeEach
         void setUp() {
@@ -119,16 +123,23 @@ class Wave3AdversarialSecurityTest {
             areaService = mock(AreaService.class);
 
             controller =
-                new DesktopSyncController(syncService, playbookService, orchestratorProperties,
-                    orchestratorProfileService, orchestratorRunService, areaService);
+                    new DesktopSyncController(
+                            syncService,
+                            playbookService,
+                            orchestratorProperties,
+                            orchestratorProfileService,
+                            orchestratorRunService,
+                            areaService);
         }
 
         @Test
         @DisplayName("GET /api/chat/v1/areas: single-area user sees only authorized area")
         void listAreasSingleAreaUser() {
             setRoleClaims(List.of("OIM.User"));
-            when(areaService.listAccessibleForCurrentUser()).thenAnswer(inv -> AreaAccessContext
-                .filterByUserArea(List.of(areaOim, areaPing, areaFin), Area::name));
+            when(areaService.listAccessibleForCurrentUser())
+                    .thenAnswer(inv ->
+                            AreaAccessContext.filterByUserArea(
+                                    List.of(areaOim, areaPing, areaFin), Area::name));
 
             List<AreaDto> result = controller.listAreas();
             assertThat(result).extracting(AreaDto::name).containsExactly("OIM");
@@ -138,44 +149,55 @@ class Wave3AdversarialSecurityTest {
         @DisplayName("GET /api/chat/v1/areas: multi-role union sees all authorized areas")
         void listAreasMultiRoleUnion() {
             setRoleClaims(List.of("OIM.User", "Finance.User"));
-            when(areaService.listAccessibleForCurrentUser()).thenAnswer(inv -> AreaAccessContext
-                .filterByUserArea(List.of(areaOim, areaPing, areaFin), Area::name));
+            when(areaService.listAccessibleForCurrentUser())
+                    .thenAnswer(inv ->
+                            AreaAccessContext.filterByUserArea(
+                                    List.of(areaOim, areaPing, areaFin), Area::name));
 
             List<AreaDto> result = controller.listAreas();
-            assertThat(result).extracting(AreaDto::name).containsExactlyInAnyOrder("OIM",
-                "Finance");
+            assertThat(result)
+                    .extracting(AreaDto::name)
+                    .containsExactlyInAnyOrder("OIM", "Finance");
         }
 
         @Test
         @DisplayName("GET /api/chat/v1/areas: global User sees all areas")
         void listAreasGlobalUser() {
             setRoleClaims(List.of("User"));
-            when(areaService.listAccessibleForCurrentUser()).thenAnswer(inv -> AreaAccessContext
-                .filterByUserArea(List.of(areaOim, areaPing, areaFin), Area::name));
+            when(areaService.listAccessibleForCurrentUser())
+                    .thenAnswer(inv ->
+                            AreaAccessContext.filterByUserArea(
+                                    List.of(areaOim, areaPing, areaFin), Area::name));
 
             List<AreaDto> result = controller.listAreas();
-            assertThat(result).extracting(AreaDto::name).containsExactlyInAnyOrder("OIM", "PingID",
-                "Finance");
+            assertThat(result)
+                    .extracting(AreaDto::name)
+                    .containsExactlyInAnyOrder("OIM", "PingID", "Finance");
         }
 
         @Test
         @DisplayName("GET /api/chat/v1/areas: global Admin sees all areas")
         void listAreasGlobalAdmin() {
             setRoleClaims(List.of("Admin"));
-            when(areaService.listAccessibleForCurrentUser()).thenAnswer(inv -> AreaAccessContext
-                .filterByUserArea(List.of(areaOim, areaPing, areaFin), Area::name));
+            when(areaService.listAccessibleForCurrentUser())
+                    .thenAnswer(inv ->
+                            AreaAccessContext.filterByUserArea(
+                                    List.of(areaOim, areaPing, areaFin), Area::name));
 
             List<AreaDto> result = controller.listAreas();
-            assertThat(result).extracting(AreaDto::name).containsExactlyInAnyOrder("OIM", "PingID",
-                "Finance");
+            assertThat(result)
+                    .extracting(AreaDto::name)
+                    .containsExactlyInAnyOrder("OIM", "PingID", "Finance");
         }
 
         @Test
         @DisplayName("GET /api/chat/v1/areas: user without area claims sees empty list")
         void listAreasNoAreaClaims() {
             setAuthentication("ROLE_USER");
-            when(areaService.listAccessibleForCurrentUser()).thenAnswer(inv -> AreaAccessContext
-                .filterByUserArea(List.of(areaOim, areaPing, areaFin), Area::name));
+            when(areaService.listAccessibleForCurrentUser())
+                    .thenAnswer(inv ->
+                            AreaAccessContext.filterByUserArea(
+                                    List.of(areaOim, areaPing, areaFin), Area::name));
 
             List<AreaDto> result = controller.listAreas();
             assertThat(result).isEmpty();
@@ -184,20 +206,27 @@ class Wave3AdversarialSecurityTest {
         @Test
         @DisplayName("DesktopSyncController constructor rejects null areaService")
         void listAreasNullAreaService() {
-            assertThatThrownBy(() -> new DesktopSyncController(syncService, playbookService,
-                orchestratorProperties, orchestratorProfileService, orchestratorRunService, null))
-                .isInstanceOf(NullPointerException.class);
+            assertThatThrownBy(() ->
+                            new DesktopSyncController(
+                                    syncService,
+                                    playbookService,
+                                    orchestratorProperties,
+                                    orchestratorProfileService,
+                                    orchestratorRunService,
+                                    null))
+                    .isInstanceOf(NullPointerException.class);
         }
 
         @Test
         @DisplayName("GET /api/chat/v1/areas/{area}/package: authorized area user receives package")
         void getAreaPackageAuthorized() {
             setRoleClaims(List.of("OIM.User"));
-            AreaMembers members = new AreaMembers(List.of("p1"), List.of("col-oim"), List.of("pb1"),
-                List.of("prof1"));
+            AreaMembers members =
+                    new AreaMembers(
+                            List.of("p1"), List.of("col-oim"), List.of("pb1"), List.of("prof1"));
             when(areaService.findByNameForUser("OIM")).thenReturn(Optional.of(areaOim));
             when(areaService.findAreaWithMembers("OIM"))
-                .thenReturn(Optional.of(new AreaWithMembers(areaOim, members)));
+                    .thenReturn(Optional.of(new AreaWithMembers(areaOim, members)));
 
             AreaPackageDto pkg = controller.getAreaPackage("OIM");
             assertThat(pkg.name()).isEqualTo("OIM");
@@ -212,11 +241,12 @@ class Wave3AdversarialSecurityTest {
             when(areaService.findByNameForUser("PingID")).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> controller.getAreaPackage("PingID"))
-                .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).contains("Area not found: PingID");
-                });
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason()).contains("Area not found: PingID");
+                    });
         }
 
         @Test
@@ -226,17 +256,24 @@ class Wave3AdversarialSecurityTest {
             when(areaService.findByNameForUser("NoSuchArea")).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> controller.getAreaPackage("NoSuchArea"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.NOT_FOUND));
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e ->
+                            assertThat(((ResponseStatusException) e).getStatusCode())
+                                    .isEqualTo(HttpStatus.NOT_FOUND));
         }
 
         @Test
         @DisplayName("DesktopSyncController constructor rejects null orchestratorProfileService")
         void getAreaPackageNullAreaServiceThrows404() {
-            assertThatThrownBy(() -> new DesktopSyncController(syncService, playbookService,
-                orchestratorProperties, null, orchestratorRunService, areaService))
-                .isInstanceOf(NullPointerException.class);
+            assertThatThrownBy(() ->
+                            new DesktopSyncController(
+                                    syncService,
+                                    playbookService,
+                                    orchestratorProperties,
+                                    null,
+                                    orchestratorRunService,
+                                    areaService))
+                    .isInstanceOf(NullPointerException.class);
         }
     }
 
@@ -251,12 +288,30 @@ class Wave3AdversarialSecurityTest {
         private CollectionService collectionService;
         private DocumentApiController controller;
 
-        private final Collection colOim = new Collection(UUID.randomUUID(), "oim-col", "desc",
-            List.of("1.0"), OffsetDateTime.now(), "OIM");
-        private final Collection colPing = new Collection(UUID.randomUUID(), "ping-col", "desc",
-            List.of("1.0"), OffsetDateTime.now(), "PingID");
-        private final Collection colUnscoped = new Collection(UUID.randomUUID(), "unscoped-col",
-            "desc", List.of("1.0"), OffsetDateTime.now(), null);
+        private final Collection colOim =
+                new Collection(
+                        UUID.randomUUID(),
+                        "oim-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "OIM");
+        private final Collection colPing =
+                new Collection(
+                        UUID.randomUUID(),
+                        "ping-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "PingID");
+        private final Collection colUnscoped =
+                new Collection(
+                        UUID.randomUUID(),
+                        "unscoped-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        null);
 
         @BeforeEach
         void setUp() {
@@ -264,7 +319,7 @@ class Wave3AdversarialSecurityTest {
             collectionService = mock(CollectionService.class);
             controller = new DocumentApiController(documentRepository, collectionService);
             when(collectionService.listCollections())
-                .thenReturn(List.of(colOim, colPing, colUnscoped));
+                    .thenReturn(List.of(colOim, colPing, colUnscoped));
         }
 
         @Test
@@ -272,9 +327,20 @@ class Wave3AdversarialSecurityTest {
         void oimApiKeyCanAccessOimCollection() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
             UUID docId = UUID.randomUUID();
-            when(documentRepository.listByCollectionAndTag("oim-col", "1.0")).thenReturn(
-                List.of(new DocumentDetails(docId, colOim.id(), "OIM", "manual", "Doc 1",
-                    Map.of("source_file", "f.md"), "completed", 1L, false, Instant.now())));
+            when(documentRepository.listByCollectionAndTag("oim-col", "1.0"))
+                    .thenReturn(
+                            List.of(
+                                    new DocumentDetails(
+                                            docId,
+                                            colOim.id(),
+                                            "OIM",
+                                            "manual",
+                                            "Doc 1",
+                                            Map.of("source_file", "f.md"),
+                                            "completed",
+                                            1L,
+                                            false,
+                                            Instant.now())));
 
             List<DocumentDto> docs = controller.listDocuments("oim-col", "1.0");
             assertThat(docs).hasSize(1);
@@ -287,11 +353,13 @@ class Wave3AdversarialSecurityTest {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
 
             assertThatThrownBy(() -> controller.listDocuments("ping-col", "1.0"))
-                .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).isEqualTo("Collection 'ping-col' does not exist.");
-                });
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason())
+                                .isEqualTo("Collection 'ping-col' does not exist.");
+                    });
             verify(documentRepository, never()).listByCollectionAndTag(any(), any());
         }
 
@@ -300,7 +368,7 @@ class Wave3AdversarialSecurityTest {
         void globalApiKeyCanAccessAnyCollection() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_*");
             when(documentRepository.listByCollectionAndTag("ping-col", "1.0"))
-                .thenReturn(List.of());
+                    .thenReturn(List.of());
 
             List<DocumentDto> docs = controller.listDocuments("ping-col", "1.0");
             assertThat(docs).isEmpty();
@@ -322,7 +390,7 @@ class Wave3AdversarialSecurityTest {
         void unscopedCollectionIsAccessible() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
             when(documentRepository.listByCollectionAndTag("unscoped-col", "1.0"))
-                .thenReturn(List.of());
+                    .thenReturn(List.of());
 
             List<DocumentDto> docs = controller.listDocuments("unscoped-col", "1.0");
             assertThat(docs).isEmpty();
@@ -334,9 +402,10 @@ class Wave3AdversarialSecurityTest {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_*");
 
             assertThatThrownBy(() -> controller.listDocuments("non-existent", "1.0"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.NOT_FOUND));
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e ->
+                            assertThat(((ResponseStatusException) e).getStatusCode())
+                                    .isEqualTo(HttpStatus.NOT_FOUND));
         }
     }
 
@@ -368,11 +437,38 @@ class Wave3AdversarialSecurityTest {
             when(jobRepository.findJobArea(jobIdOim)).thenReturn(Optional.of("OIM"));
             when(jobRepository.findJobArea(jobIdPing)).thenReturn(Optional.of("PingID"));
 
-            IngestionJob jobOim = new IngestionJob(jobIdOim, "standard", "ref1", "1.0", "oim-col",
-                JobStatus.RUNNING, null, 50, 1, null, null, OffsetDateTime.now(), null, null);
+            IngestionJob jobOim =
+                    new IngestionJob(
+                            jobIdOim,
+                            "standard",
+                            "ref1",
+                            "1.0",
+                            "oim-col",
+                            JobStatus.RUNNING,
+                            null,
+                            50,
+                            1,
+                            null,
+                            null,
+                            OffsetDateTime.now(),
+                            null,
+                            null);
             IngestionJob jobPing =
-                new IngestionJob(jobIdPing, "standard", "ref2", "1.0", "ping-col",
-                    JobStatus.RUNNING, null, 50, 1, null, null, OffsetDateTime.now(), null, null);
+                    new IngestionJob(
+                            jobIdPing,
+                            "standard",
+                            "ref2",
+                            "1.0",
+                            "ping-col",
+                            JobStatus.RUNNING,
+                            null,
+                            50,
+                            1,
+                            null,
+                            null,
+                            OffsetDateTime.now(),
+                            null,
+                            null);
 
             when(jobRepository.findById(jobIdOim)).thenReturn(Optional.of(jobOim));
             when(jobRepository.findById(jobIdPing)).thenReturn(Optional.of(jobPing));
@@ -398,11 +494,12 @@ class Wave3AdversarialSecurityTest {
             EnqueueRequest req = new EnqueueRequest("standard", "ref", "1.0", "ping-col");
 
             assertThatThrownBy(() -> controller.enqueue(req))
-                .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).isEqualTo("Collection not found: ping-col");
-                });
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason()).isEqualTo("Collection not found: ping-col");
+                    });
             verify(jobService, never()).enqueue(any());
         }
 
@@ -433,11 +530,12 @@ class Wave3AdversarialSecurityTest {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
 
             assertThatThrownBy(() -> controller.get(jobIdPing))
-                .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).isEqualTo("Unknown job id: " + jobIdPing);
-                });
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason()).isEqualTo("Unknown job id: " + jobIdPing);
+                    });
         }
 
         @Test
@@ -454,11 +552,12 @@ class Wave3AdversarialSecurityTest {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
 
             assertThatThrownBy(() -> controller.progress(jobIdPing))
-                .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).isEqualTo("Unknown job id: " + jobIdPing);
-                });
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason()).isEqualTo("Unknown job id: " + jobIdPing);
+                    });
             verify(progressBroker, never()).subscribeWithInitial(any(), any());
         }
 
@@ -498,53 +597,64 @@ class Wave3AdversarialSecurityTest {
             UUID docId = UUID.randomUUID();
             UUID jobId = UUID.randomUUID();
             when(ingestService.processKg(docId, null, null, null, "oim-col", "1.0", null, "OIM"))
-                .thenReturn(EnqueueResult.created(jobId));
+                    .thenReturn(EnqueueResult.created(jobId));
 
-            ResponseEntity<Map<String, UUID>> response = controller.processDocumentKg(docId, null,
-                null, null, "oim-col", "1.0", null, "OIM");
+            ResponseEntity<Map<String, UUID>> response =
+                    controller.processDocumentKg(
+                            docId, null, null, null, "oim-col", "1.0", null, "OIM");
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
             assertThat(response.getBody()).containsEntry("id", jobId);
         }
 
         @Test
-        @DisplayName("IngestApi: uploadAndEnqueue throws 404 when IngestService rejects unauthorized collection")
+        @DisplayName(
+                "IngestApi: uploadAndEnqueue throws 404 when IngestService rejects unauthorized collection")
         void uploadUnauthorizedAreaCollectionThrows404() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
             MockMultipartFile file =
-                new MockMultipartFile("file", "test.md", "text/markdown", "content".getBytes());
-            when(ingestService.uploadAndEnqueue(file, "ping-col", null, "standard", null, null,
-                null, null))
-                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection 'ping-col' does not exist."));
+                    new MockMultipartFile("file", "test.md", "text/markdown", "content".getBytes());
+            when(ingestService.uploadAndEnqueue(
+                            file, "ping-col", null, "standard", null, null, null, null))
+                    .thenThrow(
+                            new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND, "Collection 'ping-col' does not exist."));
 
-            assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "ping-col", null, "standard",
-                null, null, null, null)).isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                    assertThat(rse.getReason()).isEqualTo("Collection 'ping-col' does not exist.");
-                });
+            assertThatThrownBy(() ->
+                            controller.uploadAndEnqueue(
+                                    file, "ping-col", null, "standard", null, null, null, null))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason())
+                                .isEqualTo("Collection 'ping-col' does not exist.");
+                    });
         }
 
         @Test
-        @DisplayName("IngestApi: uploadAndEnqueue throws 403 when creating collection in unauthorized area")
+        @DisplayName(
+                "IngestApi: uploadAndEnqueue throws 403 when creating collection in unauthorized area")
         void uploadCreateUnauthorizedAreaThrows403() {
             setAuthentication("ROLE_INGEST", "AREA_INGEST_OIM");
             MockMultipartFile file =
-                new MockMultipartFile("file", "test.md", "text/markdown", "content".getBytes());
-            when(ingestService.uploadAndEnqueue(file, "new-col", null, "standard", null, null, null,
-                "PingID"))
-                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Forbidden: cannot ingest into area 'PingID'"));
+                    new MockMultipartFile("file", "test.md", "text/markdown", "content".getBytes());
+            when(ingestService.uploadAndEnqueue(
+                            file, "new-col", null, "standard", null, null, null, "PingID"))
+                    .thenThrow(
+                            new ResponseStatusException(
+                                    HttpStatus.FORBIDDEN,
+                                    "Forbidden: cannot ingest into area 'PingID'"));
 
-            assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "new-col", null, "standard",
-                null, null, null, "PingID")).isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> {
-                    ResponseStatusException rse = (ResponseStatusException) e;
-                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(rse.getReason())
-                        .isEqualTo("Forbidden: cannot ingest into area 'PingID'");
-                });
+            assertThatThrownBy(() ->
+                            controller.uploadAndEnqueue(
+                                    file, "new-col", null, "standard", null, null, null, "PingID"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> {
+                        ResponseStatusException rse = (ResponseStatusException) e;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+                        assertThat(rse.getReason())
+                                .isEqualTo("Forbidden: cannot ingest into area 'PingID'");
+                    });
         }
     }
 }

@@ -33,19 +33,23 @@ public class ListDocumentsToolTest {
     @BeforeEach
     public void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
 
         documentRepository = mock(DocumentRepository.class);
         collectionService = mock(CollectionService.class);
         listDocumentsTool = new ListDocumentsTool(documentRepository, collectionService);
 
-        Collection dbCol = new Collection(UUID.randomUUID(), "OIM - DB", "DB Schema",
-            List.of("9.3", "10.0"), null);
+        Collection dbCol =
+                new Collection(
+                        UUID.randomUUID(), "OIM - DB", "DB Schema", List.of("9.3", "10.0"), null);
         Collection manualsCol =
-            new Collection(UUID.randomUUID(), "OIM - Manuals", "Manuals", List.of("9.3"), null);
+                new Collection(UUID.randomUUID(), "OIM - Manuals", "Manuals", List.of("9.3"), null);
         Collection codeCol =
-            new Collection(UUID.randomUUID(), "OIM - Code", "Code", List.of("9.3"), null);
+                new Collection(UUID.randomUUID(), "OIM - Code", "Code", List.of("9.3"), null);
         when(collectionService.listCollections()).thenReturn(List.of(dbCol, manualsCol, codeCol));
     }
 
@@ -62,31 +66,45 @@ public class ListDocumentsToolTest {
         // this collection and returns "no documents" for it. (The collection name is safe here:
         // listDocuments matches it with LOWER(c.name) = LOWER(:collection).)
         when(documentRepository.findDistinctKindsInCollection("OIM - DB"))
-            .thenReturn(List.of("table"));
-        when(documentRepository.listDocuments(any(), anyInt(), anyInt(), any(), any(), any(), any(),
-            any())).thenReturn(Collections.emptyList());
+                .thenReturn(List.of("table"));
+        when(documentRepository.listDocuments(
+                        any(), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
         when(documentRepository.countDocuments(any(), any(), any(), any(), any(), any()))
-            .thenReturn(0L);
+                .thenReturn(0L);
 
         listDocumentsTool.listDocuments("OIM - DB", "TABLE", "9.3", null, null, null, null);
 
-        verify(documentRepository).listDocuments(any(), anyInt(), anyInt(), eq("table"), any(),
-            any(), any(), any());
+        verify(documentRepository)
+                .listDocuments(any(), anyInt(), anyInt(), eq("table"), any(), any(), any(), any());
         verify(documentRepository).countDocuments(any(), eq("table"), any(), any(), any(), any());
     }
 
     @Test
     public void testListDocumentsSuccess() {
         UUID docId = UUID.randomUUID();
-        DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM - Manuals",
-            "manual", "QBM Configuration", null, "completed", 42L, true, Instant.now());
-        when(documentRepository.listDocuments(eq("OIM - Manuals"), eq(100), eq(0), any(), any(),
-            any(), any(), any())).thenReturn(List.of(doc));
-        when(documentRepository.countDocuments(eq("OIM - Manuals"), any(), any(), any(), any(),
-            any())).thenReturn(1L);
+        DocumentDetails doc =
+                new DocumentDetails(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "QBM Configuration",
+                        null,
+                        "completed",
+                        42L,
+                        true,
+                        Instant.now());
+        when(documentRepository.listDocuments(
+                        eq("OIM - Manuals"), eq(100), eq(0), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(doc));
+        when(documentRepository.countDocuments(
+                        eq("OIM - Manuals"), any(), any(), any(), any(), any()))
+                .thenReturn(1L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - Manuals", null, "9.3", null, null, null, null);
+                listDocumentsTool.listDocuments(
+                        "OIM - Manuals", null, "9.3", null, null, null, null);
 
         assertTrue(output.contains("**OIM - Manuals**"));
         assertTrue(output.contains("showing 1–1 of 1"));
@@ -100,16 +118,41 @@ public class ListDocumentsToolTest {
     @Test
     public void testListDocumentsFuzzyQueryIsForwarded() {
         UUID docId = UUID.randomUUID();
-        DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM - Manuals",
-            "manual", "VI_Delete Processes", null, "completed", 3L, true, Instant.now());
+        DocumentDetails doc =
+                new DocumentDetails(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "VI_Delete Processes",
+                        null,
+                        "completed",
+                        3L,
+                        true,
+                        Instant.now());
         // The trimmed query must reach the repository fuzzy-title parameter (last arg).
-        when(documentRepository.listDocuments(eq("OIM - Manuals"), eq(100), eq(0), isNull(),
-            eq("9.3"), isNull(), isNull(), eq("VI_Delete"))).thenReturn(List.of(doc));
-        when(documentRepository.countDocuments(eq("OIM - Manuals"), isNull(), eq("9.3"), isNull(),
-            isNull(), eq("VI_Delete"))).thenReturn(1L);
+        when(documentRepository.listDocuments(
+                        eq("OIM - Manuals"),
+                        eq(100),
+                        eq(0),
+                        isNull(),
+                        eq("9.3"),
+                        isNull(),
+                        isNull(),
+                        eq("VI_Delete")))
+                .thenReturn(List.of(doc));
+        when(documentRepository.countDocuments(
+                        eq("OIM - Manuals"),
+                        isNull(),
+                        eq("9.3"),
+                        isNull(),
+                        isNull(),
+                        eq("VI_Delete")))
+                .thenReturn(1L);
 
-        String output = listDocumentsTool.listDocuments("OIM - Manuals", null, "9.3", null, null,
-            "  VI_Delete  ", null);
+        String output =
+                listDocumentsTool.listDocuments(
+                        "OIM - Manuals", null, "9.3", null, null, "  VI_Delete  ", null);
 
         assertTrue(output.contains("VI_Delete Processes"));
         assertTrue(output.contains("showing 1–1 of 1"));
@@ -117,36 +160,39 @@ public class ListDocumentsToolTest {
 
     @Test
     public void testListDocumentsEmpty() {
-        when(documentRepository.listDocuments(any(), anyInt(), anyInt(), any(), any(), any(), any(),
-            any())).thenReturn(Collections.emptyList());
+        when(documentRepository.listDocuments(
+                        any(), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
         when(documentRepository.countDocuments(any(), any(), any(), any(), any(), any()))
-            .thenReturn(0L);
+                .thenReturn(0L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - DB", "table", "9.3", null, null, null, null);
+                listDocumentsTool.listDocuments("OIM - DB", "table", "9.3", null, null, null, null);
         assertTrue(output.contains("(no documents in **OIM - DB**"));
     }
 
     @Test
     public void testListDocumentsMissingCollections() {
         String outputNull =
-            listDocumentsTool.listDocuments(null, null, null, null, null, null, null);
+                listDocumentsTool.listDocuments(null, null, null, null, null, null, null);
         assertTrue(outputNull.contains("Error: 'collection' parameter is required."));
 
         String outputEmpty =
-            listDocumentsTool.listDocuments("   ", null, null, null, null, null, null);
+                listDocumentsTool.listDocuments("   ", null, null, null, null, null, null);
         assertTrue(outputEmpty.contains("Error: 'collection' parameter is required."));
     }
 
     @Test
     public void testListDocumentsInvalidKind() {
         when(documentRepository.findDistinctKindsInCollection("OIM - Code"))
-            .thenReturn(List.of("table", "view", "procedure"));
+                .thenReturn(List.of("table", "view", "procedure"));
 
-        String output = listDocumentsTool.listDocuments("OIM - Code", "invalid-kind", "9.3", null,
-            null, null, null);
-        assertTrue(output.contains(
-            "Error: kind 'invalid-kind' is not valid or does not exist in collection 'OIM - Code'"));
+        String output =
+                listDocumentsTool.listDocuments(
+                        "OIM - Code", "invalid-kind", "9.3", null, null, null, null);
+        assertTrue(
+                output.contains(
+                        "Error: kind 'invalid-kind' is not valid or does not exist in collection 'OIM - Code'"));
         assertTrue(output.contains("Valid kinds in this collection are: [table, view, procedure]"));
     }
 
@@ -156,26 +202,41 @@ public class ListDocumentsToolTest {
         // the repository filter is `AND d.kind = :kind` (case-sensitive), so the stubs below
         // deliberately expect "table", not the caller's "TABLE".
         when(documentRepository.findDistinctKindsInCollection("OIM - Code"))
-            .thenReturn(List.of("table", "view", "procedure"));
+                .thenReturn(List.of("table", "view", "procedure"));
         UUID docId = UUID.randomUUID();
-        DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM - Code", "table",
-            "ADSAccount Table", null, "completed", 5L, true, Instant.now());
-        when(documentRepository.listDocuments(eq("OIM - Code"), eq(100), eq(0), eq("table"), any(),
-            any(), any(), any())).thenReturn(List.of(doc));
-        when(documentRepository.countDocuments(eq("OIM - Code"), eq("table"), any(), any(), any(),
-            any())).thenReturn(1L);
+        DocumentDetails doc =
+                new DocumentDetails(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM - Code",
+                        "table",
+                        "ADSAccount Table",
+                        null,
+                        "completed",
+                        5L,
+                        true,
+                        Instant.now());
+        when(documentRepository.listDocuments(
+                        eq("OIM - Code"), eq(100), eq(0), eq("table"), any(), any(), any(), any()))
+                .thenReturn(List.of(doc));
+        when(documentRepository.countDocuments(
+                        eq("OIM - Code"), eq("table"), any(), any(), any(), any()))
+                .thenReturn(1L);
 
         String output =
-            listDocumentsTool.listDocuments("OIM - Code", "TABLE", "9.3", null, null, null, null);
+                listDocumentsTool.listDocuments(
+                        "OIM - Code", "TABLE", "9.3", null, null, null, null);
         assertTrue(output.contains("**OIM - Code**"));
-        assertTrue(output.contains("ADSAccount Table"),
-            "the document must be listed, i.e. the case-insensitive kind actually matched rows");
+        assertTrue(
+                output.contains("ADSAccount Table"),
+                "the document must be listed, i.e. the case-insensitive kind actually matched rows");
     }
 
     @Test
     public void testListDocumentsCollectionDoesNotExist() {
         String output =
-            listDocumentsTool.listDocuments("Nonexistent-Col", null, null, null, null, null, null);
+                listDocumentsTool.listDocuments(
+                        "Nonexistent-Col", null, null, null, null, null, null);
         assertTrue(output.contains("Error: Collection 'Nonexistent-Col' does not exist."));
     }
 
@@ -183,22 +244,24 @@ public class ListDocumentsToolTest {
     public void testListDocumentsTagDoesNotExist() {
         // Tag "11.0" doesn't exist in OIM - DB which only has tags "9.3" and "10.0"
         String output =
-            listDocumentsTool.listDocuments("OIM - DB", null, "11.0", null, null, null, null);
+                listDocumentsTool.listDocuments("OIM - DB", null, "11.0", null, null, null, null);
         assertTrue(output.contains("Error: Tag '11.0' does not exist in collection 'OIM - DB'."));
     }
 
     @Test
     public void testListDocumentsSuccessWithMultipleTags() {
         String output =
-            listDocumentsTool.listDocuments("OIM - DB", null, "9.3,10.0", null, null, null, null);
+                listDocumentsTool.listDocuments(
+                        "OIM - DB", null, "9.3,10.0", null, null, null, null);
         assertTrue(
-            output.contains("Error: Tag '9.3,10.0' does not exist in collection 'OIM - DB'."));
+                output.contains("Error: Tag '9.3,10.0' does not exist in collection 'OIM - DB'."));
     }
 
     @Test
     public void testUntaggedCallOnATagScopedCollectionIsRejected() {
         String output =
-            listDocumentsTool.listDocuments("OIM - Manuals", null, null, null, null, null, null);
+                listDocumentsTool.listDocuments(
+                        "OIM - Manuals", null, null, null, null, null, null);
 
         assertTrue(output.startsWith("Error:"), "expected a hard error, got:\n" + output);
         assertTrue(output.contains("tag-scoped"));
@@ -208,12 +271,16 @@ public class ListDocumentsToolTest {
     @Test
     public void testListDocumentsUnauthorizedAreaReturnsError() {
         Collection colSec =
-            new Collection(UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
+                new Collection(
+                        UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
         when(collectionService.listCollections()).thenReturn(List.of(colSec));
 
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
 
         String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null, null);
         assertEquals("Error: Collection 'SEC' does not exist.", result);
@@ -222,48 +289,103 @@ public class ListDocumentsToolTest {
     @Test
     public void testListDocumentsAuthorizedAreaSucceeds() {
         Collection colSec =
-            new Collection(UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
+                new Collection(
+                        UUID.randomUUID(), "SEC", "SEC Collection", List.of("1.0"), null, "sec");
         when(collectionService.listCollections()).thenReturn(List.of(colSec));
 
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_SEC"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_SEC"))));
 
-        when(documentRepository.listDocuments(eq("SEC"), anyInt(), anyInt(), any(), any(), any(),
-            any(), any())).thenReturn(Collections.emptyList());
+        when(documentRepository.listDocuments(
+                        eq("SEC"), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
         when(documentRepository.countDocuments(eq("SEC"), any(), any(), any(), any(), any()))
-            .thenReturn(0L);
+                .thenReturn(0L);
 
         String result = listDocumentsTool.listDocuments("SEC", null, "1.0", null, null, null, null);
         assertTrue(result.contains("(no documents in **SEC**)"));
     }
 
     @Test
-    public void testOmitCollectionQueriesSinglePaginatedAreaScopedQueryInsteadOfPerCollectionLoop() {
+    public void
+            testOmitCollectionQueriesSinglePaginatedAreaScopedQueryInsteadOfPerCollectionLoop() {
         Collection col1 =
-            new Collection(UUID.randomUUID(), "OIM-1", "OIM 1", List.of(), null, "oim");
+                new Collection(UUID.randomUUID(), "OIM-1", "OIM 1", List.of(), null, "oim");
         Collection col2 =
-            new Collection(UUID.randomUUID(), "OIM-2", "OIM 2", List.of(), null, "oim");
+                new Collection(UUID.randomUUID(), "OIM-2", "OIM 2", List.of(), null, "oim");
         when(collectionService.listCollections()).thenReturn(List.of(col1, col2));
         when(documentRepository.findDistinctKinds(Set.of("oim"))).thenReturn(List.of("manual"));
 
         UUID docId = UUID.randomUUID();
-        DocumentDetails doc = new DocumentDetails(docId, UUID.randomUUID(), "OIM-1", "manual",
-            "OIM Guide", null, "completed", 10L, true, Instant.now());
-        when(documentRepository.listDocuments(isNull(), eq(25), eq(50), eq("manual"), isNull(),
-            isNull(), isNull(), eq("Guide"), eq(Set.of("oim")))).thenReturn(List.of(doc));
-        when(documentRepository.countDocuments(isNull(), eq("manual"), isNull(), isNull(), isNull(),
-            eq("Guide"), eq(Set.of("oim")))).thenReturn(51L);
+        DocumentDetails doc =
+                new DocumentDetails(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM-1",
+                        "manual",
+                        "OIM Guide",
+                        null,
+                        "completed",
+                        10L,
+                        true,
+                        Instant.now());
+        when(documentRepository.listDocuments(
+                        isNull(),
+                        eq(25),
+                        eq(50),
+                        eq("manual"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("Guide"),
+                        eq(Set.of("oim"))))
+                .thenReturn(List.of(doc));
+        when(documentRepository.countDocuments(
+                        isNull(),
+                        eq("manual"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("Guide"),
+                        eq(Set.of("oim"))))
+                .thenReturn(51L);
 
-        String result = listDocumentsTool.listDocuments(null, "MANUAL", null, 25, 50, "Guide",
-            new AgenticChatContext(Set.of("oim")));
+        String result =
+                listDocumentsTool.listDocuments(
+                        null,
+                        "MANUAL",
+                        null,
+                        25,
+                        50,
+                        "Guide",
+                        new AgenticChatContext(Set.of("oim")));
 
         assertTrue(result.contains("showing 51–51 of 51"));
         assertTrue(result.contains("OIM Guide"));
-        verify(documentRepository).listDocuments(isNull(), eq(25), eq(50), eq("manual"), isNull(),
-            isNull(), isNull(), eq("Guide"), eq(Set.of("oim")));
-        verify(documentRepository).countDocuments(isNull(), eq("manual"), isNull(), isNull(),
-            isNull(), eq("Guide"), eq(Set.of("oim")));
+        verify(documentRepository)
+                .listDocuments(
+                        isNull(),
+                        eq(25),
+                        eq(50),
+                        eq("manual"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("Guide"),
+                        eq(Set.of("oim")));
+        verify(documentRepository)
+                .countDocuments(
+                        isNull(),
+                        eq("manual"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("Guide"),
+                        eq(Set.of("oim")));
         verify(documentRepository, never()).findDistinctKindsInCollection(anyString());
     }
 
@@ -271,7 +393,7 @@ public class ListDocumentsToolTest {
     public void testPublishedCallbackSchemaExposesOffsetPaginationParameter() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         ToolDefinition definition =
-            new ListDocumentsToolCallback(listDocumentsTool, mapper).getToolDefinition();
+                new ListDocumentsToolCallback(listDocumentsTool, mapper).getToolDefinition();
         JsonNode schema = mapper.readTree(definition.inputSchema());
 
         assertEquals("list_documents", definition.name());

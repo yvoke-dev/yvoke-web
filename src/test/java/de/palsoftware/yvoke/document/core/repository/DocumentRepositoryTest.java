@@ -35,15 +35,20 @@ public class DocumentRepositoryTest {
     public void setUp() {
         jdbcClient = mock(JdbcClient.class);
         objectMapper = new ObjectMapper();
-        documentRepository = new DocumentRepository(jdbcClient, objectMapper,
-            mock(JdbcTemplate.class), mock(CollectionIdResolver.class));
+        documentRepository =
+                new DocumentRepository(
+                        jdbcClient,
+                        objectMapper,
+                        mock(JdbcTemplate.class),
+                        mock(CollectionIdResolver.class));
 
         statementSpec = mock(JdbcClient.StatementSpec.class);
         querySpec =
-            (JdbcClient.MappedQuerySpec<DocumentDetails>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<DocumentDetails>)
+                        mock(JdbcClient.MappedQuerySpec.class);
         countQuerySpec = (JdbcClient.MappedQuerySpec<Long>) mock(JdbcClient.MappedQuerySpec.class);
         stringQuerySpec =
-            (JdbcClient.MappedQuerySpec<String>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<String>) mock(JdbcClient.MappedQuerySpec.class);
 
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
         when(statementSpec.params(anyMap())).thenReturn(statementSpec);
@@ -55,9 +60,20 @@ public class DocumentRepositoryTest {
 
     @Test
     public void testListDocuments() {
-        DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
-            "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), Instant.now());
+        DocumentDetails mockDoc =
+                new DocumentDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Title",
+                        Collections.emptyMap(),
+                        "completed",
+                        10L,
+                        false,
+                        0L,
+                        Collections.emptyList(),
+                        Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result = documentRepository.listDocuments(null, 10, 0, "manual");
@@ -78,13 +94,24 @@ public class DocumentRepositoryTest {
 
     @Test
     public void testListDocumentsWithSearchId() {
-        DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
-            "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), Instant.now());
+        DocumentDetails mockDoc =
+                new DocumentDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Title",
+                        Collections.emptyMap(),
+                        "completed",
+                        10L,
+                        false,
+                        0L,
+                        Collections.emptyList(),
+                        Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result =
-            documentRepository.listDocuments(null, 10, 0, null, null, "273cb8a2");
+                documentRepository.listDocuments(null, 10, 0, null, null, "273cb8a2");
 
         assertThat(result).hasSize(1);
         verify(jdbcClient).sql(contains("AND CAST(d.id AS text) ILIKE :searchId"));
@@ -112,13 +139,24 @@ public class DocumentRepositoryTest {
 
     @Test
     public void testListDocumentsWithSearchTitle() {
-        DocumentDetails mockDoc = new DocumentDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM",
-            "manual", "Title", Collections.emptyMap(), "completed", 10L, false, 0L,
-            Collections.emptyList(), Instant.now());
+        DocumentDetails mockDoc =
+                new DocumentDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Title",
+                        Collections.emptyMap(),
+                        "completed",
+                        10L,
+                        false,
+                        0L,
+                        Collections.emptyList(),
+                        Instant.now());
         when(querySpec.list()).thenReturn(List.of(mockDoc));
 
         List<DocumentDetails> result =
-            documentRepository.listDocuments(null, 10, 0, null, null, null, "My Manual Title");
+                documentRepository.listDocuments(null, 10, 0, null, null, null, "My Manual Title");
 
         assertThat(result).hasSize(1);
         verify(jdbcClient).sql(contains("AND d.title ILIKE :searchTitle"));
@@ -143,7 +181,9 @@ public class DocumentRepositoryTest {
         List<String> kinds = documentRepository.findDistinctKinds(Set.of("oim"));
         assertThat(kinds).containsExactly("manual", "table");
         verify(jdbcClient)
-            .sql(contains("WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)"));
+                .sql(
+                        contains(
+                                "WHERE c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower)"));
         verify(statementSpec).param("allowedAreasLower", Set.of("oim"));
     }
 }

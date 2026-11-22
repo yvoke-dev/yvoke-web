@@ -20,32 +20,44 @@ public class JsonObjectService {
     private final JsonSchemaRepository jsonSchemaRepository;
     private final JsonSchemaExtractor schemaExtractor;
 
-    public JsonObjectService(JsonObjectRepository jsonObjectRepository,
-        JsonSchemaRepository jsonSchemaRepository, JsonSchemaExtractor schemaExtractor) {
+    public JsonObjectService(
+            JsonObjectRepository jsonObjectRepository,
+            JsonSchemaRepository jsonSchemaRepository,
+            JsonSchemaExtractor schemaExtractor) {
         this.jsonObjectRepository = jsonObjectRepository;
         this.jsonSchemaRepository = jsonSchemaRepository;
         this.schemaExtractor = schemaExtractor;
     }
 
     @Transactional
-    public void importObjects(UUID collectionId, String collectionName,
-        List<Map<String, Object>> objects, String sourceFile) {
+    public void importObjects(
+            UUID collectionId,
+            String collectionName,
+            List<Map<String, Object>> objects,
+            String sourceFile) {
         importObjects(collectionId, collectionName, objects, sourceFile, List.of(), null);
     }
 
     @Transactional
-    public void importObjects(UUID collectionId, String collectionName,
-        List<Map<String, Object>> objects, String sourceFile, List<String> tags) {
+    public void importObjects(
+            UUID collectionId,
+            String collectionName,
+            List<Map<String, Object>> objects,
+            String sourceFile,
+            List<String> tags) {
         importObjects(collectionId, collectionName, objects, sourceFile, tags, null);
     }
 
     @Transactional
-    public void importObjects(UUID collectionId, String collectionName,
-        List<Map<String, Object>> objects, String sourceFile, List<String> tags,
-        String uniqueFieldPath) {
+    public void importObjects(
+            UUID collectionId,
+            String collectionName,
+            List<Map<String, Object>> objects,
+            String sourceFile,
+            List<String> tags,
+            String uniqueFieldPath) {
 
-        if (objects.isEmpty())
-            return;
+        if (objects.isEmpty()) return;
 
         List<JsonObject> toInsert = new ArrayList<>();
         List<JsonObject> toUpdate = new ArrayList<>();
@@ -69,8 +81,9 @@ public class JsonObjectService {
             // Scoped to this import's tag set: a natural key repeats across product versions by
             // design, and updateBatch rewrites tags wholesale, so a collection-wide match would
             // overwrite the other version's row and re-tag it.
-            existingIdByValue = jsonObjectRepository.findIdsByJsonField(collectionId,
-                uniqueFieldPath, uniqueValues, tags);
+            existingIdByValue =
+                    jsonObjectRepository.findIdsByJsonField(
+                            collectionId, uniqueFieldPath, uniqueValues, tags);
         }
 
         for (Map<String, Object> data : objects) {
@@ -80,15 +93,29 @@ public class JsonObjectService {
                 if (uniqueValue != null) {
                     UUID existingId = existingIdByValue.get(uniqueValue);
                     if (existingId != null) {
-                        toUpdate.add(new JsonObject(existingId, collectionId, collectionName, data,
-                            sourceFile, tags, now));
+                        toUpdate.add(
+                                new JsonObject(
+                                        existingId,
+                                        collectionId,
+                                        collectionName,
+                                        data,
+                                        sourceFile,
+                                        tags,
+                                        now));
                         updated = true;
                     }
                 }
             }
             if (!updated) {
-                toInsert.add(new JsonObject(UUID.randomUUID(), collectionId, collectionName, data,
-                    sourceFile, tags, now));
+                toInsert.add(
+                        new JsonObject(
+                                UUID.randomUUID(),
+                                collectionId,
+                                collectionName,
+                                data,
+                                sourceFile,
+                                tags,
+                                now));
             }
         }
 
@@ -126,22 +153,34 @@ public class JsonObjectService {
         return current != null ? current.toString() : null;
     }
 
-    private void upsertSchemaForTag(UUID collectionId, String tag,
-        Map<String, Object> extractedSchema) {
+    private void upsertSchemaForTag(
+            UUID collectionId, String tag, Map<String, Object> extractedSchema) {
         Optional<JsonSchema> existingSchemaOpt =
-            jsonSchemaRepository.findByCollectionId(collectionId, tag);
+                jsonSchemaRepository.findByCollectionId(collectionId, tag);
 
         if (existingSchemaOpt.isPresent()) {
             JsonSchema existing = existingSchemaOpt.get();
             if ("inferred".equals(existing.source())) {
                 schemaExtractor.mergeSchema(existing.schemaData(), extractedSchema);
-                jsonSchemaRepository.upsert(new JsonSchema(existing.id(), collectionId, tag,
-                    existing.schemaData(), "inferred", OffsetDateTime.now()));
+                jsonSchemaRepository.upsert(
+                        new JsonSchema(
+                                existing.id(),
+                                collectionId,
+                                tag,
+                                existing.schemaData(),
+                                "inferred",
+                                OffsetDateTime.now()));
             }
             // If source is 'manual', we don't automatically merge/overwrite it.
         } else {
-            jsonSchemaRepository.upsert(new JsonSchema(UUID.randomUUID(), collectionId, tag,
-                extractedSchema, "inferred", OffsetDateTime.now()));
+            jsonSchemaRepository.upsert(
+                    new JsonSchema(
+                            UUID.randomUUID(),
+                            collectionId,
+                            tag,
+                            extractedSchema,
+                            "inferred",
+                            OffsetDateTime.now()));
         }
     }
 
@@ -158,18 +197,17 @@ public class JsonObjectService {
     }
 
     /**
-     * Lists objects at an exact row {@code offset}, as opposed to the page-based
-     * {@link #listObjects(UUID, List, int, int)} above.
+     * Lists objects at an exact row {@code offset}, as opposed to the page-based {@link
+     * #listObjects(UUID, List, int, int)} above.
      *
-     * <p>
-     * Both exist deliberately. The admin UI pages (it renders page numbers and a total-page count),
-     * while a tool caller paginates by offset. Deriving one from the other with
-     * {@code offset/limit} silently rounds any non-multiple offset DOWN to the start of its page —
-     * {@code offset=250,
-     * limit=500} re-returned rows 0-499 — so the two semantics must not be bridged by division.
+     * <p>Both exist deliberately. The admin UI pages (it renders page numbers and a total-page
+     * count), while a tool caller paginates by offset. Deriving one from the other with {@code
+     * offset/limit} silently rounds any non-multiple offset DOWN to the start of its page — {@code
+     * offset=250, limit=500} re-returned rows 0-499 — so the two semantics must not be bridged by
+     * division.
      */
-    public List<JsonObject> listObjectsByOffset(UUID collectionId, List<String> tags, int limit,
-        int offset) {
+    public List<JsonObject> listObjectsByOffset(
+            UUID collectionId, List<String> tags, int limit, int offset) {
         return jsonObjectRepository.findByCollectionId(collectionId, tags, limit, offset);
     }
 
@@ -185,14 +223,14 @@ public class JsonObjectService {
         return searchObjects(collectionId, query, null, page, size);
     }
 
-    public List<JsonObject> searchObjects(UUID collectionId, String query, List<String> tags,
-        int page, int size) {
+    public List<JsonObject> searchObjects(
+            UUID collectionId, String query, List<String> tags, int page, int size) {
         if (query == null || query.isBlank()) {
             return listObjects(collectionId, tags, page, size);
         }
         if (query.trim().startsWith("$")) {
-            return jsonObjectRepository.queryByJsonPath(collectionId, query.trim(), tags, size,
-                page * size);
+            return jsonObjectRepository.queryByJsonPath(
+                    collectionId, query.trim(), tags, size, page * size);
         }
         return jsonObjectRepository.search(collectionId, query, tags, size, page * size);
     }
@@ -211,8 +249,8 @@ public class JsonObjectService {
         return jsonObjectRepository.countSearch(collectionId, query, tags);
     }
 
-    public Map<String, Long> countGroupedObjects(UUID collectionId, String query,
-        String groupByField, List<String> tags) {
+    public Map<String, Long> countGroupedObjects(
+            UUID collectionId, String query, String groupByField, List<String> tags) {
         String path = null;
         if (query != null && !query.isBlank() && query.trim().startsWith("$")) {
             path = query.trim();
@@ -220,13 +258,13 @@ public class JsonObjectService {
         return jsonObjectRepository.countGroupedByJsonPath(collectionId, path, groupByField, tags);
     }
 
-    public List<JsonObject> queryObjects(UUID collectionId, String jsonPath, int limit,
-        int offset) {
+    public List<JsonObject> queryObjects(
+            UUID collectionId, String jsonPath, int limit, int offset) {
         return queryObjects(collectionId, jsonPath, null, limit, offset);
     }
 
-    public List<JsonObject> queryObjects(UUID collectionId, String jsonPath, List<String> tags,
-        int limit, int offset) {
+    public List<JsonObject> queryObjects(
+            UUID collectionId, String jsonPath, List<String> tags, int limit, int offset) {
         return jsonObjectRepository.queryByJsonPath(collectionId, jsonPath, tags, limit, offset);
     }
 
@@ -247,20 +285,21 @@ public class JsonObjectService {
      * which likewise merges only into 'inferred'.
      *
      * @return {@code true} if the schema was rebuilt; {@code false} if it was left untouched
-     *         because an existing schema is authored rather than inferred.
+     *     because an existing schema is authored rather than inferred.
      */
     @Transactional
     public boolean rebuildSchema(UUID collectionId, String tag) {
         String normalizedTag = (tag != null && tag.isBlank()) ? null : tag;
         Optional<JsonSchema> existing =
-            jsonSchemaRepository.findByCollectionId(collectionId, normalizedTag);
+                jsonSchemaRepository.findByCollectionId(collectionId, normalizedTag);
         if (existing.isPresent() && !"inferred".equals(existing.get().source())) {
             return false;
         }
 
         List<String> tagList = (normalizedTag != null) ? List.of(normalizedTag) : null;
         List<JsonObject> objects =
-            jsonObjectRepository.findByCollectionId(collectionId, tagList, Integer.MAX_VALUE, 0);
+                jsonObjectRepository.findByCollectionId(
+                        collectionId, tagList, Integer.MAX_VALUE, 0);
         List<Map<String, Object>> data = new ArrayList<>(objects.size());
         for (JsonObject obj : objects) {
             data.add(obj.data());
@@ -268,8 +307,9 @@ public class JsonObjectService {
 
         Map<String, Object> schema = schemaExtractor.extractSchema(data);
         UUID id = existing.map(JsonSchema::id).orElseGet(UUID::randomUUID);
-        jsonSchemaRepository.upsert(new JsonSchema(id, collectionId, normalizedTag, schema,
-            "inferred", OffsetDateTime.now()));
+        jsonSchemaRepository.upsert(
+                new JsonSchema(
+                        id, collectionId, normalizedTag, schema, "inferred", OffsetDateTime.now()));
         return true;
     }
 
@@ -278,7 +318,7 @@ public class JsonObjectService {
         Optional<JsonSchema> existing = jsonSchemaRepository.findByCollectionId(collectionId, tag);
         UUID id = existing.map(JsonSchema::id).orElseGet(UUID::randomUUID);
         jsonSchemaRepository.upsert(
-            new JsonSchema(id, collectionId, tag, schemaData, "manual", OffsetDateTime.now()));
+                new JsonSchema(id, collectionId, tag, schemaData, "manual", OffsetDateTime.now()));
     }
 
     @Transactional

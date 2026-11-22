@@ -18,9 +18,25 @@ import org.mockito.Mockito;
 
 class ConfluenceConverterTest {
 
-    private static final ConfluenceInstance INSTANCE = new ConfluenceInstance(UUID.randomUUID(),
-        "Docs", "docs", "https://wiki.example.com/wiki", "svc@example.com", "tok", null, "SPACE",
-        "123", null, null, "collection", "v1", true, true, null, null);
+    private static final ConfluenceInstance INSTANCE =
+            new ConfluenceInstance(
+                    UUID.randomUUID(),
+                    "Docs",
+                    "docs",
+                    "https://wiki.example.com/wiki",
+                    "svc@example.com",
+                    "tok",
+                    null,
+                    "SPACE",
+                    "123",
+                    null,
+                    null,
+                    "collection",
+                    "v1",
+                    true,
+                    true,
+                    null,
+                    null);
 
     private ConfluenceClientService confluenceClient;
     private ConfluenceConverter converter;
@@ -55,8 +71,9 @@ class ConfluenceConverterTest {
      */
     @Test
     void headingsAreEmittedAsAtxSoTheChunkerCanSeeThem() {
-        String xhtml = "<h1>Overview</h1><p>intro</p>"
-            + "<h2>Installation</h2><p>body</p><h3>Deep</h3><p>x</p>";
+        String xhtml =
+                "<h1>Overview</h1><p>intro</p>"
+                        + "<h2>Installation</h2><p>body</p><h3>Deep</h3><p>x</p>";
 
         String markdown = convert("123", xhtml);
 
@@ -68,13 +85,19 @@ class ConfluenceConverterTest {
 
     @Test
     void allSixHeadingLevelsRoundTripAsAtx() {
-        String xhtml = "<h1>One</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5>"
-            + "<h6>Six</h6><p>tail</p>";
+        String xhtml =
+                "<h1>One</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5>"
+                        + "<h6>Six</h6><p>tail</p>";
 
         String markdown = convert("123", xhtml);
 
-        assertThat(markdown).contains("# One").contains("## Two").contains("### Three")
-            .contains("#### Four").contains("##### Five").contains("###### Six");
+        assertThat(markdown)
+                .contains("# One")
+                .contains("## Two")
+                .contains("### Three")
+                .contains("#### Four")
+                .contains("##### Five")
+                .contains("###### Six");
     }
 
     /**
@@ -84,50 +107,55 @@ class ConfluenceConverterTest {
     @Test
     void realisticPageConvertsAndChunksIntoNestedSections() {
         String xhtml =
-            "<p>This page describes the agent.</p>" + "<h1>Overview</h1><p>What it is.</p>"
-                + "<h2>Installation</h2><p>Run the installer.</p>"
-                + "<h3>Prerequisites</h3><p>JDK 25.</p>"
-                + "<h2>Configuration</h2><p>Edit application.yml.</p>";
+                "<p>This page describes the agent.</p>"
+                        + "<h1>Overview</h1><p>What it is.</p>"
+                        + "<h2>Installation</h2><p>Run the installer.</p>"
+                        + "<h3>Prerequisites</h3><p>JDK 25.</p>"
+                        + "<h2>Configuration</h2><p>Edit application.yml.</p>";
 
         List<Section> sections =
-            ConfluenceSectionBuilder.build("Agent Guide", convert("123", xhtml));
+                ConfluenceSectionBuilder.build("Agent Guide", convert("123", xhtml));
 
         assertThat(sections).hasSize(1);
         Section chunk = sections.get(0);
         assertThat(chunk.depth()).isEqualTo(1);
         assertThat(chunk.title()).isEqualTo("Agent Guide");
         assertThat(chunk.headingPath()).isEmpty();
-        assertThat(chunk.body()).contains("This page describes the agent.")
-            .contains("# Overview\n\nWhat it is.").contains("## Installation\n\nRun the installer.")
-            .contains("### Prerequisites\n\nJDK 25.")
-            .contains("## Configuration\n\nEdit application.yml.");
-        assertThat(chunk.toChunkText()).isEqualTo("""
-            # Agent Guide
+        assertThat(chunk.body())
+                .contains("This page describes the agent.")
+                .contains("# Overview\n\nWhat it is.")
+                .contains("## Installation\n\nRun the installer.")
+                .contains("### Prerequisites\n\nJDK 25.")
+                .contains("## Configuration\n\nEdit application.yml.");
+        assertThat(chunk.toChunkText())
+                .isEqualTo(
+                        """
+                        # Agent Guide
 
-            This page describes the agent.
+                        This page describes the agent.
 
-            # Overview
+                        # Overview
 
-            What it is.
+                        What it is.
 
-            ## Installation
+                        ## Installation
 
-            Run the installer.
+                        Run the installer.
 
-            ### Prerequisites
+                        ### Prerequisites
 
-            JDK 25.
+                        JDK 25.
 
-            ## Configuration
+                        ## Configuration
 
-            Edit application.yml.
-            """);
+                        Edit application.yml.
+                        """);
     }
 
     @Test
     void testConfluenceMacros() {
         String xhtml =
-            """
+                """
                     <ac:structured-macro ac:name="info">
                         <ac:rich-text-body>
                             <p>This is an info panel.</p>
@@ -168,35 +196,65 @@ class ConfluenceConverterTest {
      */
     @Test
     void userMentionsAreResolvedAgainstTheInstanceThePageCameFrom() {
-        ConfluenceInstance other = new ConfluenceInstance(UUID.randomUUID(), "Other", "other",
-            "https://other.example.com/wiki", "svc@other.example.com", "tok", null, "OTHER", "9",
-            null, null, "collection", null, false, true, null, null);
+        ConfluenceInstance other =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Other",
+                        "other",
+                        "https://other.example.com/wiki",
+                        "svc@other.example.com",
+                        "tok",
+                        null,
+                        "OTHER",
+                        "9",
+                        null,
+                        null,
+                        "collection",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
         when(confluenceClient.getUserDisplayName(INSTANCE, "user123")).thenReturn("John Doe");
         when(confluenceClient.getUserDisplayName(other, "user123")).thenReturn("Jane Roe");
 
         String xhtml = "<p>Hello <ri:user ri:account-id=\"user123\"/></p>";
 
         assertThat(converter.convertToMarkdown(other, false, "123", xhtml))
-            .contains("Hello **@Jane Roe**");
+                .contains("Hello **@Jane Roe**");
         assertThat(converter.convertToMarkdown(INSTANCE, false, "123", xhtml))
-            .contains("Hello **@John Doe**");
+                .contains("Hello **@John Doe**");
     }
 
     @Test
     void attachmentsAreFetchedFromTheInstanceTheJobNames() {
-        when(confluenceClient.getPageAttachments(INSTANCE, "123")).thenReturn(List.of(
-            Map.of("title", "test.txt", "metadata", Map.of("mediaType", "text/plain"), "_links",
-                Map.of("download", "/download/test.txt")),
-            Map.of("title", "video.mp4", "metadata", Map.of("mediaType", "video/mp4"))));
+        when(confluenceClient.getPageAttachments(INSTANCE, "123"))
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "title",
+                                        "test.txt",
+                                        "metadata",
+                                        Map.of("mediaType", "text/plain"),
+                                        "_links",
+                                        Map.of("download", "/download/test.txt")),
+                                Map.of(
+                                        "title",
+                                        "video.mp4",
+                                        "metadata",
+                                        Map.of("mediaType", "video/mp4"))));
         when(confluenceClient.downloadAttachment(INSTANCE, "/download/test.txt"))
-            .thenReturn("Attachment content from Tika!".getBytes(StandardCharsets.UTF_8));
+                .thenReturn("Attachment content from Tika!".getBytes(StandardCharsets.UTF_8));
 
         String markdown =
-            converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
+                converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
 
-        assertThat(markdown).contains("Some page content.").contains("## Attachments")
-            .contains("### Attachment: test.txt").contains("Attachment content from Tika!")
-            .contains("*Skipped multimedia attachment: video.mp4*");
+        assertThat(markdown)
+                .contains("Some page content.")
+                .contains("## Attachments")
+                .contains("### Attachment: test.txt")
+                .contains("Attachment content from Tika!")
+                .contains("*Skipped multimedia attachment: video.mp4*");
     }
 
     /**
@@ -209,8 +267,7 @@ class ConfluenceConverterTest {
      * TEXT was perfectly ingestable; it is also minutes of transfer per page against an instance
      * that is already rate-limiting the crawl.
      *
-     * <p>
-     * The second attachment is the half that stops the guard being "fixed" into a bail-out: the
+     * <p>The second attachment is the half that stops the guard being "fixed" into a bail-out: the
      * skip is a {@code continue}, so an oversized file must cost only itself and the rest of the
      * page's attachments must still convert. A {@code break} or an early return would silently
      * truncate the attachment section of every page whose big file happens to be listed first, and
@@ -219,24 +276,39 @@ class ConfluenceConverterTest {
      */
     @Test
     void anAttachmentOverTheSizeLimitIsSkippedWithoutBeingDownloaded() {
-        when(confluenceClient.getPageAttachments(INSTANCE, "123")).thenReturn(List.of(
-            Map.of("title", "huge.pdf", "metadata", Map.of("mediaType", "application/pdf"),
-                "extensions", Map.of("fileSize", 60L * 1024 * 1024), "_links",
-                Map.of("download", "/download/huge.pdf")),
-            Map.of("title", "notes.txt", "metadata", Map.of("mediaType", "text/plain"),
-                "extensions", Map.of("fileSize", 27L), "_links",
-                Map.of("download", "/download/notes.txt"))));
+        when(confluenceClient.getPageAttachments(INSTANCE, "123"))
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "title",
+                                        "huge.pdf",
+                                        "metadata",
+                                        Map.of("mediaType", "application/pdf"),
+                                        "extensions",
+                                        Map.of("fileSize", 60L * 1024 * 1024),
+                                        "_links",
+                                        Map.of("download", "/download/huge.pdf")),
+                                Map.of(
+                                        "title",
+                                        "notes.txt",
+                                        "metadata",
+                                        Map.of("mediaType", "text/plain"),
+                                        "extensions",
+                                        Map.of("fileSize", 27L),
+                                        "_links",
+                                        Map.of("download", "/download/notes.txt"))));
         when(confluenceClient.downloadAttachment(INSTANCE, "/download/notes.txt"))
-            .thenReturn("Release notes for build 42.".getBytes(StandardCharsets.UTF_8));
+                .thenReturn("Release notes for build 42.".getBytes(StandardCharsets.UTF_8));
 
         String markdown =
-            converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
+                converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
 
         verify(confluenceClient, never()).downloadAttachment(INSTANCE, "/download/huge.pdf");
         assertThat(markdown).doesNotContain("huge.pdf");
         // A `continue`, not a bail-out: the rest of the listing still converts.
-        assertThat(markdown).contains("### Attachment: notes.txt")
-            .contains("Release notes for build 42.");
+        assertThat(markdown)
+                .contains("### Attachment: notes.txt")
+                .contains("Release notes for build 42.");
     }
 
     /**
@@ -249,29 +321,37 @@ class ConfluenceConverterTest {
      * corpora are full of these — truncated uploads, encrypted PDFs, files whose extension lies
      * about their type.
      *
-     * <p>
-     * The note matters as much as the survival. Writing the failure INTO the markdown is what makes
-     * the gap visible in the corpus itself: an agent (and a human reading the document) sees that
-     * this page had an attachment whose text could not be read, instead of silently concluding the
-     * attachment did not exist. A log line would not survive into the ingested document, and
+     * <p>The note matters as much as the survival. Writing the failure INTO the markdown is what
+     * makes the gap visible in the corpus itself: an agent (and a human reading the document) sees
+     * that this page had an attachment whose text could not be read, instead of silently concluding
+     * the attachment did not exist. A log line would not survive into the ingested document, and
      * nothing downstream reconciles attachment counts against extracted sections.
      */
     @Test
     void aFailingTextExtractionLeavesANoteInsteadOfFailingThePage() {
-        when(confluenceClient.getPageAttachments(INSTANCE, "123")).thenReturn(List
-            .of(Map.of("title", "broken.pdf", "metadata", Map.of("mediaType", "application/pdf"),
-                "_links", Map.of("download", "/download/broken.pdf"))));
+        when(confluenceClient.getPageAttachments(INSTANCE, "123"))
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "title",
+                                        "broken.pdf",
+                                        "metadata",
+                                        Map.of("mediaType", "application/pdf"),
+                                        "_links",
+                                        Map.of("download", "/download/broken.pdf"))));
         // A PDF magic header with nothing behind it: Tika detects application/pdf and the parser
         // throws, which is exactly the shape of a truncated upload in a live space.
         when(confluenceClient.downloadAttachment(INSTANCE, "/download/broken.pdf"))
-            .thenReturn("%PDF-1.4\nthis file is truncated".getBytes(StandardCharsets.UTF_8));
+                .thenReturn("%PDF-1.4\nthis file is truncated".getBytes(StandardCharsets.UTF_8));
 
         String markdown =
-            converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
+                converter.convertToMarkdown(INSTANCE, true, "123", "<p>Some page content.</p>");
 
-        assertThat(markdown).contains("Some page content.").contains("## Attachments")
-            .contains("*Failed to extract text from attachment: broken.pdf*")
-            .doesNotContain("### Attachment: broken.pdf");
+        assertThat(markdown)
+                .contains("Some page content.")
+                .contains("## Attachments")
+                .contains("*Failed to extract text from attachment: broken.pdf*")
+                .doesNotContain("### Attachment: broken.pdf");
     }
 
     /**

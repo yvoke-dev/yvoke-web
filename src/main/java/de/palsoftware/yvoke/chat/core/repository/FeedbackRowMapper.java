@@ -13,9 +13,12 @@ public class FeedbackRowMapper implements RowMapper<Feedback> {
         Timestamp createdTs = rs.getTimestamp("created_at");
         Timestamp updatedTs = rs.getTimestamp("updated_at");
 
-        return new Feedback(rs.getObject("id", UUID.class), rs.getObject("message_id", UUID.class),
-            rs.getInt("rating"), rs.getString("comment"),
-            createdTs != null ? createdTs.toInstant() : null,
-            updatedTs != null ? updatedTs.toInstant() : null);
+        return new Feedback(
+                rs.getObject("id", UUID.class),
+                rs.getObject("message_id", UUID.class),
+                rs.getInt("rating"),
+                rs.getString("comment"),
+                createdTs != null ? createdTs.toInstant() : null,
+                updatedTs != null ? updatedTs.toInstant() : null);
     }
 }

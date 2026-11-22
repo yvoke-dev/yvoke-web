@@ -27,15 +27,30 @@ import org.junit.jupiter.api.Test;
 public class ConfluencePageImportJobHandlerTest {
 
     private static IngestionJob jobWithSettings(Map<String, Object> settings) {
-        return new IngestionJob(UUID.randomUUID(), "confluence-page-import", "sourceRef", List.of(),
-            UUID.randomUUID(), "col", JobStatus.RUNNING, null, 0, 0, null, null,
-            OffsetDateTime.now(), null, null, settings, null);
+        return new IngestionJob(
+                UUID.randomUUID(),
+                "confluence-page-import",
+                "sourceRef",
+                List.of(),
+                UUID.randomUUID(),
+                "col",
+                JobStatus.RUNNING,
+                null,
+                0,
+                0,
+                null,
+                null,
+                OffsetDateTime.now(),
+                null,
+                null,
+                settings,
+                null);
     }
 
     @Test
     public void registersForPageImportKindWithChunkEmbedInjectSteps() {
         ConfluencePageImportJobHandler handler =
-            new ConfluencePageImportJobHandler(mock(ConfluenceIngestService.class));
+                new ConfluencePageImportJobHandler(mock(ConfluenceIngestService.class));
 
         assertThat(handler.kind()).isEqualTo("confluence-page-import");
         assertThat(handler.expectsEntities()).isFalse();
@@ -83,8 +98,9 @@ public class ConfluencePageImportJobHandlerTest {
 
         ConfluencePageImportJobHandler handler = new ConfluencePageImportJobHandler(service);
 
-        assertThatThrownBy(() -> handler.run(ctx)).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Missing pageId");
+        assertThatThrownBy(() -> handler.run(ctx))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Missing pageId");
         verifyNoInteractions(service);
     }
 
@@ -96,7 +112,8 @@ public class ConfluencePageImportJobHandlerTest {
         when(ctx.job()).thenReturn(job);
 
         assertThatThrownBy(() -> new ConfluencePageImportJobHandler(service).run(ctx))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Missing pageId");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Missing pageId");
         verifyNoInteractions(service);
     }
 }

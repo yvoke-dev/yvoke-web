@@ -36,7 +36,7 @@ class AgentRunAdminControllerTest {
         controller = new AgentRunAdminController(viewService);
         model = new ConcurrentModel();
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
     }
 
     @AfterEach
@@ -58,9 +58,13 @@ class AgentRunAdminControllerTest {
     @Test
     void areaAdminListAgentRunsScopesToAdministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         when(viewService.recentRuns(100, Set.of("finance"))).thenReturn(List.of());
 
         String view = controller.listAgentRuns(100, model);
@@ -72,8 +76,22 @@ class AgentRunAdminControllerTest {
     @Test
     void superAdminCanViewAgentRun() {
         UUID runId = UUID.randomUUID();
-        RunDetail detail = new RunDetail(runId, UUID.randomUUID(), UUID.randomUUID(), "prof",
-            "done", 0, 10, 20, 30, "ok", null, null, Instant.now(), Instant.now());
+        RunDetail detail =
+                new RunDetail(
+                        runId,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "prof",
+                        "done",
+                        0,
+                        10,
+                        20,
+                        30,
+                        "ok",
+                        null,
+                        null,
+                        Instant.now(),
+                        Instant.now());
         RunDetailPage page = new RunDetailPage(detail, List.of());
         when(viewService.findRunArea(runId)).thenReturn(Optional.of("finance"));
         when(viewService.runDetail(runId)).thenReturn(Optional.of(page));
@@ -87,12 +105,30 @@ class AgentRunAdminControllerTest {
     @Test
     void areaAdminCanViewRunInAdministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID runId = UUID.randomUUID();
-        RunDetail detail = new RunDetail(runId, UUID.randomUUID(), UUID.randomUUID(), "prof",
-            "done", 0, 10, 20, 30, "ok", null, null, Instant.now(), Instant.now());
+        RunDetail detail =
+                new RunDetail(
+                        runId,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "prof",
+                        "done",
+                        0,
+                        10,
+                        20,
+                        30,
+                        "ok",
+                        null,
+                        null,
+                        Instant.now(),
+                        Instant.now());
         RunDetailPage page = new RunDetailPage(detail, List.of());
         when(viewService.findRunArea(runId)).thenReturn(Optional.of("finance"));
         when(viewService.runDetail(runId)).thenReturn(Optional.of(page));
@@ -106,26 +142,36 @@ class AgentRunAdminControllerTest {
     @Test
     void areaAdminCannotViewRunInUnadministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID runId = UUID.randomUUID();
         when(viewService.findRunArea(runId)).thenReturn(Optional.of("hr"));
 
         assertThatThrownBy(() -> controller.viewAgentRun(runId, model))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test
     void areaAdminCannotViewRunWithNullArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID runId = UUID.randomUUID();
         when(viewService.findRunArea(runId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.viewAgentRun(runId, model))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 }

@@ -42,7 +42,19 @@ public class ChunkRowMapper implements RowMapper<ChunkRow> {
             score = rs.getDouble(scoreColumn);
         }
 
-        return new ChunkRow(id, documentId, text, headingPath, heading, depth, sortOrder, tag,
-            documentTitle, kind, collection, metadata, score);
+        return new ChunkRow(
+                id,
+                documentId,
+                text,
+                headingPath,
+                heading,
+                depth,
+                sortOrder,
+                tag,
+                documentTitle,
+                kind,
+                collection,
+                metadata,
+                score);
     }
 }

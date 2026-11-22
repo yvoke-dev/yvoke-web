@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class ListDocumentsTool {
 
@@ -22,8 +21,8 @@ public class ListDocumentsTool {
     private final DocumentRepository documentRepository;
     private final CollectionService collectionService;
 
-    public ListDocumentsTool(DocumentRepository documentRepository,
-        CollectionService collectionService) {
+    public ListDocumentsTool(
+            DocumentRepository documentRepository, CollectionService collectionService) {
         this.documentRepository = documentRepository;
         this.collectionService = collectionService;
     }
@@ -32,9 +31,14 @@ public class ListDocumentsTool {
      * Lists documents in a collection or across the context's allowed areas. Published to MCP and
      * the in-app assistant via {@link ListDocumentsToolCallback} in {@code McpToolsConfig}.
      */
-    public String listDocuments(@Nullable String collection, @Nullable String kind,
-        @Nullable String tag, @Nullable Integer limit, @Nullable Integer offset,
-        @Nullable String query, @Nullable AgenticChatContext context) {
+    public String listDocuments(
+            @Nullable String collection,
+            @Nullable String kind,
+            @Nullable String tag,
+            @Nullable Integer limit,
+            @Nullable Integer offset,
+            @Nullable String query,
+            @Nullable AgenticChatContext context) {
         log.info("ListDocumentsTool: listing documents for collection '{}'", collection);
 
         String knd = (kind != null && !kind.isBlank()) ? kind.trim() : null;
@@ -47,11 +51,14 @@ public class ListDocumentsTool {
             if (context == null) {
                 return "Error: 'collection' parameter is required.";
             }
-            List<Collection> allowed = collectionService.listCollections().stream()
-                .filter(c -> context.isAreaAllowed(c.area())).toList();
+            List<Collection> allowed =
+                    collectionService.listCollections().stream()
+                            .filter(c -> context.isAreaAllowed(c.area()))
+                            .toList();
             if (allowed.isEmpty()) {
                 return "(no documents in **all allowed collections**"
-                    + (knd != null ? " of kind '" + knd + "'" : "") + ")";
+                        + (knd != null ? " of kind '" + knd + "'" : "")
+                        + ")";
             }
             String tagError = McpToolUtils.requireAreaTag(allowed, parsedTag);
             if (tagError != null) {
@@ -59,28 +66,50 @@ public class ListDocumentsTool {
             }
             try {
                 Set<String> allowedAreasLower =
-                    context.isAllAreas() ? null : context.getAllowedAreasLower();
+                        context.isAllAreas() ? null : context.getAllowedAreasLower();
                 String colLabel =
-                    String.join(", ", allowed.stream().map(Collection::name).toList());
+                        String.join(", ", allowed.stream().map(Collection::name).toList());
                 String effectiveKind = knd;
                 if (knd != null) {
                     List<String> validKinds =
-                        documentRepository.findDistinctKinds(allowedAreasLower);
+                            documentRepository.findDistinctKinds(allowedAreasLower);
                     if (validKinds != null && !validKinds.isEmpty()) {
-                        effectiveKind = validKinds.stream().filter(knd::equalsIgnoreCase)
-                            .findFirst().orElse(null);
+                        effectiveKind =
+                                validKinds.stream()
+                                        .filter(knd::equalsIgnoreCase)
+                                        .findFirst()
+                                        .orElse(null);
                         if (effectiveKind == null) {
                             return "(no documents in **" + colLabel + "** of kind '" + knd + "')";
                         }
                     }
                 }
-                List<DocumentDetails> page = documentRepository.listDocuments(null, lim, off,
-                    effectiveKind, parsedTag, null, null, fuzzyQuery, allowedAreasLower);
-                long total = documentRepository.countDocuments(null, effectiveKind, parsedTag, null,
-                    null, fuzzyQuery, allowedAreasLower);
+                List<DocumentDetails> page =
+                        documentRepository.listDocuments(
+                                null,
+                                lim,
+                                off,
+                                effectiveKind,
+                                parsedTag,
+                                null,
+                                null,
+                                fuzzyQuery,
+                                allowedAreasLower);
+                long total =
+                        documentRepository.countDocuments(
+                                null,
+                                effectiveKind,
+                                parsedTag,
+                                null,
+                                null,
+                                fuzzyQuery,
+                                allowedAreasLower);
                 if (page == null || page.isEmpty()) {
-                    return "(no documents in **" + colLabel + "**"
-                        + (knd != null ? " of kind '" + knd + "'" : "") + ")";
+                    return "(no documents in **"
+                            + colLabel
+                            + "**"
+                            + (knd != null ? " of kind '" + knd + "'" : "")
+                            + ")";
                 }
                 return formatDocumentPage(colLabel, knd, parsedTag, off, page, total);
             } catch (Exception e) {
@@ -92,7 +121,10 @@ public class ListDocumentsTool {
 
         List<Collection> allCols = collectionService.listCollections();
         Collection matchedCol =
-            allCols.stream().filter(c -> c.name().equalsIgnoreCase(col)).findFirst().orElse(null);
+                allCols.stream()
+                        .filter(c -> c.name().equalsIgnoreCase(col))
+                        .findFirst()
+                        .orElse(null);
         if (matchedCol == null) {
             return "Error: Collection '" + col + "' does not exist.";
         }
@@ -122,24 +154,35 @@ public class ListDocumentsTool {
                     // `AND d.kind = :kind` (case-sensitive), so forwarding the caller's spelling
                     // would pass validation and then match nothing.
                     String storedKind =
-                        validKinds.stream().filter(knd::equalsIgnoreCase).findFirst().orElse(null);
+                            validKinds.stream()
+                                    .filter(knd::equalsIgnoreCase)
+                                    .findFirst()
+                                    .orElse(null);
                     if (storedKind == null) {
-                        return "Error: kind '" + knd
-                            + "' is not valid or does not exist in collection '" + col
-                            + "'. Valid kinds in this collection are: " + validKinds + ".";
+                        return "Error: kind '"
+                                + knd
+                                + "' is not valid or does not exist in collection '"
+                                + col
+                                + "'. Valid kinds in this collection are: "
+                                + validKinds
+                                + ".";
                     }
                     knd = storedKind;
                 }
             }
 
-            List<DocumentDetails> docs = documentRepository.listDocuments(col, lim, off, knd,
-                parsedTag, null, null, fuzzyQuery);
+            List<DocumentDetails> docs =
+                    documentRepository.listDocuments(
+                            col, lim, off, knd, parsedTag, null, null, fuzzyQuery);
             long total =
-                documentRepository.countDocuments(col, knd, parsedTag, null, null, fuzzyQuery);
+                    documentRepository.countDocuments(col, knd, parsedTag, null, null, fuzzyQuery);
 
             if (docs.isEmpty()) {
-                return "(no documents in **" + col + "**"
-                    + (knd != null ? " of kind '" + knd + "'" : "") + ")";
+                return "(no documents in **"
+                        + col
+                        + "**"
+                        + (knd != null ? " of kind '" + knd + "'" : "")
+                        + ")";
             }
 
             return formatDocumentPage(col, knd, parsedTag, off, docs, total);
@@ -148,8 +191,13 @@ public class ListDocumentsTool {
         }
     }
 
-    private static String formatDocumentPage(String colLabel, @Nullable String knd,
-        @Nullable String parsedTag, int off, List<DocumentDetails> docs, long total) {
+    private static String formatDocumentPage(
+            String colLabel,
+            @Nullable String knd,
+            @Nullable String parsedTag,
+            int off,
+            List<DocumentDetails> docs,
+            long total) {
         List<Map<String, String>> rows = new ArrayList<>();
         for (DocumentDetails d : docs) {
             Map<String, String> row = new HashMap<>();
@@ -161,18 +209,23 @@ public class ListDocumentsTool {
         }
 
         String suffix = "";
-        if (knd != null)
-            suffix += " (kind=" + knd + ")";
-        if (parsedTag != null)
-            suffix += " (tag=" + parsedTag + ")";
+        if (knd != null) suffix += " (kind=" + knd + ")";
+        if (parsedTag != null) suffix += " (tag=" + parsedTag + ")";
         int shownTo = off + docs.size();
         String pageInfo = "showing " + (off + 1) + "–" + shownTo + " of " + total;
-        return "**" + colLabel + "**" + suffix + " — " + pageInfo + "\n\n" + McpToolUtils
-            .formatTableRows(rows, List.of("document_id", "kind", "title", "chunk count"));
+        return "**"
+                + colLabel
+                + "**"
+                + suffix
+                + " — "
+                + pageInfo
+                + "\n\n"
+                + McpToolUtils.formatTableRows(
+                        rows, List.of("document_id", "kind", "title", "chunk count"));
     }
 
-    private static boolean isAreaAllowed(@Nullable String area,
-        @Nullable AgenticChatContext context) {
+    private static boolean isAreaAllowed(
+            @Nullable String area, @Nullable AgenticChatContext context) {
         if (context != null) {
             return context.isAreaAllowed(area);
         }

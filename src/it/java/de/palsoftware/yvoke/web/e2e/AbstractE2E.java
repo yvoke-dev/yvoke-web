@@ -27,36 +27,36 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * Base class for browser end-to-end tests. Boots the full application on a random port
- * (Testcontainers Postgres is wired in automatically for every {@code src/it} test via
- * {@code META-INF/spring.factories}), runs under mock auth on the {@code test} profile, and
- * replaces the {@link LlmClient} bean with a Mockito mock so assistant answers are deterministic
- * and no network is touched. Playwright drives real headless Chromium against
- * {@code http://localhost:{port}}.
+ * (Testcontainers Postgres is wired in automatically for every {@code src/it} test via {@code
+ * META-INF/spring.factories}), runs under mock auth on the {@code test} profile, and replaces the
+ * {@link LlmClient} bean with a Mockito mock so assistant answers are deterministic and no network
+ * is touched. Playwright drives real headless Chromium against {@code http://localhost:{port}}.
  *
- * <p>
- * Playbook preflight validation is disabled here so first-message sends don't require a second
+ * <p>Playbook preflight validation is disabled here so first-message sends don't require a second
  * (mocked) LLM round-trip; tests that specifically exercise it can re-enable it per class. The
  * background job worker is also disabled in <em>every</em> e2e context so that no worker claims
  * jobs enqueued by {@code AdminJobProgressE2EIT} against the shared Testcontainers DB (that test
  * drives the job row itself); this also keeps all e2e classes on a single shared Spring context.
  *
- * <p>
- * <b>Every</b> e2e test fails on an uncaught JavaScript error, not just the page-loading sweep in
- * {@code AdminPagesConsoleE2EIT}. Playwright does not fail on page errors by default, so without
+ * <p><b>Every</b> e2e test fails on an uncaught JavaScript error, not just the page-loading sweep
+ * in {@code AdminPagesConsoleE2EIT}. Playwright does not fail on page errors by default, so without
  * this the 2000-line {@code static/js/chat/thread.js} would run unwatched through the chat tests
  * and the documented Temporal-Dead-Zone init-order pitfall could only ever be caught on a page some
  * test happens to load. Assertion happens in {@link #closePage()} so it covers the whole test,
  * including anything raised after the last explicit assertion.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"app.security.mock=true", "app.chat.playbook-validation-enabled=false",
-        "app.worker.enabled=false"})
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+            "app.security.mock=true",
+            "app.chat.playbook-validation-enabled=false",
+            "app.worker.enabled=false"
+        })
 public abstract class AbstractE2E {
 
     private static final double DEFAULT_TIMEOUT_MS = 15_000;
 
-    @LocalServerPort
-    protected int port;
+    @LocalServerPort protected int port;
 
     @MockitoBean(name = "llmProviderClient")
     protected LlmClient llmClient;
@@ -100,13 +100,15 @@ public abstract class AbstractE2E {
         // depends on them unconditionally; mermaid, KaTeX and FontAwesome are still remote but are
         // feature-detected or cosmetic, so they degrade. If a new hard dependency on a CDN is ever
         // added, it fails here rather than intermittently in CI.
-        browserContext.route("**/*", route -> {
-            if (route.request().url().startsWith("http://localhost:")) {
-                route.resume();
-            } else {
-                route.abort();
-            }
-        });
+        browserContext.route(
+                "**/*",
+                route -> {
+                    if (route.request().url().startsWith("http://localhost:")) {
+                        route.resume();
+                    } else {
+                        route.abort();
+                    }
+                });
         page = browserContext.newPage();
         pageErrors.clear();
         // Registered before the first navigation so init-time errors on the very first page are
@@ -130,8 +132,7 @@ public abstract class AbstractE2E {
      * test; call it explicitly mid-test (as the admin sweep does per page) when the failure message
      * should name what was being exercised.
      *
-     * <p>
-     * Only uncaught errors are asserted on — benign {@code console.error} network noise from the
+     * <p>Only uncaught errors are asserted on — benign {@code console.error} network noise from the
      * CDN assets is deliberately ignored, since those hosts may be unreachable in CI.
      */
     protected void assertNoPageErrors(String context) {
@@ -142,10 +143,9 @@ public abstract class AbstractE2E {
      * Waits for at least one uncaught JS error, then removes and returns everything collected so
      * far.
      *
-     * <p>
-     * Test seam for the harness self-test only: draining is what lets a test deliberately provoke
-     * an error without {@link #closePage()} then failing it. Draining in a normal test would hide a
-     * real error, so don't.
+     * <p>Test seam for the harness self-test only: draining is what lets a test deliberately
+     * provoke an error without {@link #closePage()} then failing it. Draining in a normal test
+     * would hide a real error, so don't.
      */
     protected List<String> awaitAndDrainPageErrors() {
         page.waitForCondition(() -> !pageErrors.isEmpty());
@@ -191,11 +191,15 @@ public abstract class AbstractE2E {
      * Scripts the single-chunk assistant answer streamed for the next {@code generateStream} call.
      */
     protected void stubAssistantReply(String answer) {
-        doAnswer(inv -> {
-            Consumer<LlmResponseChunk> onChunk = inv.getArgument(1);
-            onChunk
-                .accept(new LlmResponseChunk(answer, null, null, new LlmUsage(10, 10, 20, 0, 0)));
-            return null;
-        }).when(llmClient).generateStream(any(LlmRequest.class), any());
+        doAnswer(
+                        inv -> {
+                            Consumer<LlmResponseChunk> onChunk = inv.getArgument(1);
+                            onChunk.accept(
+                                    new LlmResponseChunk(
+                                            answer, null, null, new LlmUsage(10, 10, 20, 0, 0)));
+                            return null;
+                        })
+                .when(llmClient)
+                .generateStream(any(LlmRequest.class), any());
     }
 }

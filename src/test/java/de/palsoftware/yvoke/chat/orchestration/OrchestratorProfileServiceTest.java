@@ -30,24 +30,64 @@ public class OrchestratorProfileServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(OrchestratorProfileRepository.class);
-        properties = new OrchestratorProperties(2, 8, 10, 50,
-            new RoleDefaults(new RoleConfig("gemini-3.1-pro", "high"),
-                new RoleConfig("gemini-3.1-pro", "high"),
-                new RoleConfig("gemini-3.1-flash", "medium")),
-            List.of(
-                new Profile("OIM", "oim-orch", "oim-rev", List.of("spec-1"), null, null, null)));
-        chatProperties = new ChatProperties(true,
-            List.of("model-a", "model-b", "model-c", "gemini-3.8-flash", "gpt-5.4-mini"), true,
-            false, "", Duration.ofMinutes(5), 100_000, 400_000);
-        service = new OrchestratorProfileService(repository, properties, TestAreas.withAreas("OIM"),
-            chatProperties);
+        properties =
+                new OrchestratorProperties(
+                        2,
+                        8,
+                        10,
+                        50,
+                        new RoleDefaults(
+                                new RoleConfig("gemini-3.1-pro", "high"),
+                                new RoleConfig("gemini-3.1-pro", "high"),
+                                new RoleConfig("gemini-3.1-flash", "medium")),
+                        List.of(
+                                new Profile(
+                                        "OIM",
+                                        "oim-orch",
+                                        "oim-rev",
+                                        List.of("spec-1"),
+                                        null,
+                                        null,
+                                        null)));
+        chatProperties =
+                new ChatProperties(
+                        true,
+                        List.of(
+                                "model-a",
+                                "model-b",
+                                "model-c",
+                                "gemini-3.8-flash",
+                                "gpt-5.4-mini"),
+                        true,
+                        false,
+                        "",
+                        Duration.ofMinutes(5),
+                        100_000,
+                        400_000);
+        service =
+                new OrchestratorProfileService(
+                        repository, properties, TestAreas.withAreas("OIM"), chatProperties);
     }
 
     @Test
     void testListAllProfiles() {
         OrchestratorProfile profile =
-            new OrchestratorProfile("TestProfile", 3, 10, "orch-pb", "rev-pb", List.of("spec-pb"),
-                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
+                new OrchestratorProfile(
+                        "TestProfile",
+                        3,
+                        10,
+                        "orch-pb",
+                        "rev-pb",
+                        List.of("spec-pb"),
+                        "model-a",
+                        "high",
+                        "model-b",
+                        "high",
+                        "model-c",
+                        "low",
+                        false,
+                        null,
+                        null);
         when(repository.findAll()).thenReturn(List.of(profile));
 
         List<OrchestratorProfile> result = service.listAllProfiles();
@@ -60,9 +100,23 @@ public class OrchestratorProfileServiceTest {
 
     @Test
     void testResolveProfileFromDb() {
-        OrchestratorProfile profile = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
-            List.of("spec-1"), "custom-orch-model", "high", "custom-rev-model", "high",
-            "custom-spec-model", "low", false, null, null);
+        OrchestratorProfile profile =
+                new OrchestratorProfile(
+                        "OIM",
+                        4,
+                        12,
+                        "oim-orch",
+                        "oim-rev",
+                        List.of("spec-1"),
+                        "custom-orch-model",
+                        "high",
+                        "custom-rev-model",
+                        "high",
+                        "custom-spec-model",
+                        "low",
+                        false,
+                        null,
+                        null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(profile));
 
         ResolvedProfile resolved = service.resolve("OIM");
@@ -79,14 +133,13 @@ public class OrchestratorProfileServiceTest {
      * The two caps are what stop a run running away, and a zero is not a tighter budget — it is a
      * disabled agent. {@code maxSpecialistCalls=0} makes {@code specialistCalls >= maxCalls} true
      * before the FIRST delegation, so every {@code call_specialist} comes back "budget exhausted"
-     * and the orchestrator answers from model weights with no retrieval at all;
-     * {@code maxReviewRounds=0} makes {@code round >= maxReviewRounds} true at the first verdict,
-     * so a rejected answer is never revised and goes straight out {@code delivered_flagged}. Both
-     * runs look entirely normal from outside — steps written, tokens accounted, a status the UI
-     * knows — which is why this has to be caught at resolution.
+     * and the orchestrator answers from model weights with no retrieval at all; {@code
+     * maxReviewRounds=0} makes {@code round >= maxReviewRounds} true at the first verdict, so a
+     * rejected answer is never revised and goes straight out {@code delivered_flagged}. Both runs
+     * look entirely normal from outside — steps written, tokens accounted, a status the UI knows —
+     * which is why this has to be caught at resolution.
      *
-     * <p>
-     * And zero is not hypothetical: the columns are plain {@code NOT NULL} ints, an admin form
+     * <p>And zero is not hypothetical: the columns are plain {@code NOT NULL} ints, an admin form
      * posting an empty number field binds to 0, and an imported profile JSON that simply omits the
      * fields deserializes to 0. The sibling resolve test uses 4 and 12, so the fallback branch is
      * never taken there; a check loosened to {@code >= 0} would keep it green while handing every
@@ -95,22 +148,50 @@ public class OrchestratorProfileServiceTest {
     @Test
     void nonPositiveCapsInheritThePropertyDefaults() {
         OrchestratorProfile uncapped =
-            new OrchestratorProfile("OIM", 0, 0, "oim-orch", "oim-rev", List.of("spec-1"),
-                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
+                new OrchestratorProfile(
+                        "OIM",
+                        0,
+                        0,
+                        "oim-orch",
+                        "oim-rev",
+                        List.of("spec-1"),
+                        "model-a",
+                        "high",
+                        "model-b",
+                        "high",
+                        "model-c",
+                        "low",
+                        false,
+                        null,
+                        null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(uncapped));
 
         ResolvedProfile resolved = service.resolve("OIM");
 
         assertThat(resolved.maxReviewRounds())
-            .as("0 rounds would deliver every rejection flagged without ever revising")
-            .isEqualTo(2);
+                .as("0 rounds would deliver every rejection flagged without ever revising")
+                .isEqualTo(2);
         assertThat(resolved.maxSpecialistCalls())
-            .as("0 calls would refuse the first delegation and strip the run of all retrieval")
-            .isEqualTo(8);
+                .as("0 calls would refuse the first delegation and strip the run of all retrieval")
+                .isEqualTo(8);
 
         OrchestratorProfile negative =
-            new OrchestratorProfile("OIM", -1, -5, "oim-orch", "oim-rev", List.of("spec-1"),
-                "model-a", "high", "model-b", "high", "model-c", "low", false, null, null);
+                new OrchestratorProfile(
+                        "OIM",
+                        -1,
+                        -5,
+                        "oim-orch",
+                        "oim-rev",
+                        List.of("spec-1"),
+                        "model-a",
+                        "high",
+                        "model-b",
+                        "high",
+                        "model-c",
+                        "low",
+                        false,
+                        null,
+                        null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(negative));
 
         ResolvedProfile fromNegative = service.resolve("OIM");
@@ -122,27 +203,56 @@ public class OrchestratorProfileServiceTest {
     /**
      * The dropdown's options carry the prototype flag and nothing else about the profile.
      *
-     * <p>
-     * Both halves matter. Without the flag the client cannot hide anything, and the feature is a
+     * <p>Both halves matter. Without the flag the client cannot hide anything, and the feature is a
      * no-op that looks implemented from the admin side. And the mapping is what keeps the per-role
      * MODEL bindings — operator configuration naming the provider deployments a run bills against —
-     * out of a page any signed-in user can view source on; handing the template
-     * {@code listAllProfiles()} would be one character shorter and would publish them.
+     * out of a page any signed-in user can view source on; handing the template {@code
+     * listAllProfiles()} would be one character shorter and would publish them.
      */
     @Test
     void profileOptionsCarryThePrototypeFlagAndNoOperatorConfiguration() {
-        when(repository.findAll()).thenReturn(List.of(
-            new OrchestratorProfile("OIM", 3, 10, "orch-pb", "rev-pb", List.of("spec-pb"),
-                "gpt-5.6-luna", "high", "gpt-5.6-luna", "high", "gemini-3.1-flash", "low", false,
-                null, null),
-            new OrchestratorProfile("OIM - Browsing", 3, 10, "orch-pb", "rev-pb",
-                List.of("spec-pb"), "gpt-5.6-luna", "high", "gpt-5.6-luna", "high",
-                "gemini-3.1-flash", "low", true, null, null)));
+        when(repository.findAll())
+                .thenReturn(
+                        List.of(
+                                new OrchestratorProfile(
+                                        "OIM",
+                                        3,
+                                        10,
+                                        "orch-pb",
+                                        "rev-pb",
+                                        List.of("spec-pb"),
+                                        "gpt-5.6-luna",
+                                        "high",
+                                        "gpt-5.6-luna",
+                                        "high",
+                                        "gemini-3.1-flash",
+                                        "low",
+                                        false,
+                                        null,
+                                        null),
+                                new OrchestratorProfile(
+                                        "OIM - Browsing",
+                                        3,
+                                        10,
+                                        "orch-pb",
+                                        "rev-pb",
+                                        List.of("spec-pb"),
+                                        "gpt-5.6-luna",
+                                        "high",
+                                        "gpt-5.6-luna",
+                                        "high",
+                                        "gemini-3.1-flash",
+                                        "low",
+                                        true,
+                                        null,
+                                        null)));
 
         List<OrchestratorProfileOption> options = service.listProfileOptions();
 
-        assertThat(options).containsExactly(new OrchestratorProfileOption("OIM", false),
-            new OrchestratorProfileOption("OIM - Browsing", true));
+        assertThat(options)
+                .containsExactly(
+                        new OrchestratorProfileOption("OIM", false),
+                        new OrchestratorProfileOption("OIM - Browsing", true));
     }
 
     /**
@@ -154,12 +264,27 @@ public class OrchestratorProfileServiceTest {
      */
     @Test
     void aPrototypeProfileIsListedRatherThanFilteredOutByTheService() {
-        OrchestratorProfile prototype = new OrchestratorProfile("OIM - Browsing", 3, 10, "orch-pb",
-            "rev-pb", List.of("spec-pb"), null, null, null, null, null, null, true, null, null);
+        OrchestratorProfile prototype =
+                new OrchestratorProfile(
+                        "OIM - Browsing",
+                        3,
+                        10,
+                        "orch-pb",
+                        "rev-pb",
+                        List.of("spec-pb"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null);
         when(repository.findAll()).thenReturn(List.of(prototype));
 
         assertThat(service.listProfileOptions())
-            .containsExactly(new OrchestratorProfileOption("OIM - Browsing", true));
+                .containsExactly(new OrchestratorProfileOption("OIM - Browsing", true));
         assertThat(service.listAllProfiles()).containsExactly(prototype);
     }
 
@@ -171,9 +296,23 @@ public class OrchestratorProfileServiceTest {
      */
     @Test
     void aPrototypeProfileResolvesExactlyLikeAnyOther() {
-        OrchestratorProfile prototype = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
-            List.of("spec-1"), "custom-orch-model", "high", "custom-rev-model", "high",
-            "custom-spec-model", "low", true, null, null);
+        OrchestratorProfile prototype =
+                new OrchestratorProfile(
+                        "OIM",
+                        4,
+                        12,
+                        "oim-orch",
+                        "oim-rev",
+                        List.of("spec-1"),
+                        "custom-orch-model",
+                        "high",
+                        "custom-rev-model",
+                        "high",
+                        "custom-spec-model",
+                        "low",
+                        true,
+                        null,
+                        null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(prototype));
 
         ResolvedProfile resolved = service.resolve("OIM");
@@ -187,8 +326,24 @@ public class OrchestratorProfileServiceTest {
 
     @Test
     void testSaveAndDeleteProfile() {
-        OrchestratorProfile profile = new OrchestratorProfile("NewProfile", 2, 8, "orch", "rev",
-            List.of("spec"), null, null, null, null, null, null, false, null, null, "OIM");
+        OrchestratorProfile profile =
+                new OrchestratorProfile(
+                        "NewProfile",
+                        2,
+                        8,
+                        "orch",
+                        "rev",
+                        List.of("spec"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        "OIM");
 
         service.saveProfile(profile);
         verify(repository).upsert(profile);
@@ -200,47 +355,152 @@ public class OrchestratorProfileServiceTest {
     @Test
     void saveProfileEnforcesBoundsAllowedModelsAndThinkingLevels() {
         ChatProperties chatProps =
-            new ChatProperties(true, List.of("gemini-3.8-flash", "gpt-5.4-mini"), true, false, "",
-                Duration.ofMinutes(5), 100_000, 400_000);
-        OrchestratorProfileService strictService = new OrchestratorProfileService(repository,
-            properties, TestAreas.withAreas("OIM"), chatProps);
+                new ChatProperties(
+                        true,
+                        List.of("gemini-3.8-flash", "gpt-5.4-mini"),
+                        true,
+                        false,
+                        "",
+                        Duration.ofMinutes(5),
+                        100_000,
+                        400_000);
+        OrchestratorProfileService strictService =
+                new OrchestratorProfileService(
+                        repository, properties, TestAreas.withAreas("OIM"), chatProps);
 
         // Excess review rounds rejected
-        assertThatThrownBy(() -> strictService
-            .saveProfile(new OrchestratorProfile("p1", 11, 8, "o", "r", List.of("s"),
-                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
+        assertThatThrownBy(() ->
+                        strictService.saveProfile(
+                                new OrchestratorProfile(
+                                        "p1",
+                                        11,
+                                        8,
+                                        "o",
+                                        "r",
+                                        List.of("s"),
+                                        "gemini-3.8-flash",
+                                        "high",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null,
+                                        "OIM")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxReviewRounds");
 
         // Excess specialist calls rejected
-        assertThatThrownBy(() -> strictService
-            .saveProfile(new OrchestratorProfile("p1", 3, 51, "o", "r", List.of("s"),
-                "gemini-3.8-flash", "high", null, null, null, null, false, null, null, "OIM")))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("maxSpecialistCalls");
+        assertThatThrownBy(() ->
+                        strictService.saveProfile(
+                                new OrchestratorProfile(
+                                        "p1",
+                                        3,
+                                        51,
+                                        "o",
+                                        "r",
+                                        List.of("s"),
+                                        "gemini-3.8-flash",
+                                        "high",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null,
+                                        "OIM")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxSpecialistCalls");
 
         // Unlisted model rejected
-        assertThatThrownBy(() -> strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o",
-            "r", List.of("s"), "unapproved-expensive-model", "high", null, null, null, null, false,
-            null, null, "OIM"))).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("allowed-models");
+        assertThatThrownBy(() ->
+                        strictService.saveProfile(
+                                new OrchestratorProfile(
+                                        "p1",
+                                        3,
+                                        8,
+                                        "o",
+                                        "r",
+                                        List.of("s"),
+                                        "unapproved-expensive-model",
+                                        "high",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null,
+                                        "OIM")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("allowed-models");
 
         // Invalid thinking level rejected
-        assertThatThrownBy(() -> strictService
-            .saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
-                "gemini-3.8-flash", "ultra-max", null, null, null, null, false, null, null, "OIM")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("thinking level");
+        assertThatThrownBy(() ->
+                        strictService.saveProfile(
+                                new OrchestratorProfile(
+                                        "p1",
+                                        3,
+                                        8,
+                                        "o",
+                                        "r",
+                                        List.of("s"),
+                                        "gemini-3.8-flash",
+                                        "ultra-max",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null,
+                                        "OIM")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("thinking level");
 
         // Valid whitelisted model + normalized thinking level accepted
-        strictService.saveProfile(new OrchestratorProfile("p1", 3, 8, "o", "r", List.of("s"),
-            "gemini-3.8-flash", "HIGH", "gpt-5.4-mini", "Low", null, "", false, null, null, "OIM"));
+        strictService.saveProfile(
+                new OrchestratorProfile(
+                        "p1",
+                        3,
+                        8,
+                        "o",
+                        "r",
+                        List.of("s"),
+                        "gemini-3.8-flash",
+                        "HIGH",
+                        "gpt-5.4-mini",
+                        "Low",
+                        null,
+                        "",
+                        false,
+                        null,
+                        null,
+                        "OIM"));
         verify(repository).upsert(any(OrchestratorProfile.class));
     }
 
     @Test
     void testExportAndImportProfile() {
-        OrchestratorProfile profile = new OrchestratorProfile("ExportImportProfile", 3, 9,
-            "orch-pb", "rev-pb", List.of("spec-1", "spec-2"), "model-a", "high", "model-b", "low",
-            "model-c", "medium", false, null, null);
+        OrchestratorProfile profile =
+                new OrchestratorProfile(
+                        "ExportImportProfile",
+                        3,
+                        9,
+                        "orch-pb",
+                        "rev-pb",
+                        List.of("spec-1", "spec-2"),
+                        "model-a",
+                        "high",
+                        "model-b",
+                        "low",
+                        "model-c",
+                        "medium",
+                        false,
+                        null,
+                        null);
         when(repository.findByName("ExportImportProfile")).thenReturn(Optional.of(profile));
 
         String json = service.exportProfileToJson("ExportImportProfile");
@@ -258,17 +518,31 @@ public class OrchestratorProfileServiceTest {
     /**
      * The exported JSON carries {@code prototype}, and re-importing it keeps the flag.
      *
-     * <p>
-     * Export/import is how a profile moves between environments, and the flag is what keeps an
-     * experimental profile out of every user's dropdown. A field the export omits comes back
-     * {@code false} on import — Jackson's default for an absent boolean — so the profile silently
-     * goes live for everyone in the target environment, with the import reporting success. The
-     * sibling round-trip test above uses a non-prototype profile, so it is green either way.
+     * <p>Export/import is how a profile moves between environments, and the flag is what keeps an
+     * experimental profile out of every user's dropdown. A field the export omits comes back {@code
+     * false} on import — Jackson's default for an absent boolean — so the profile silently goes
+     * live for everyone in the target environment, with the import reporting success. The sibling
+     * round-trip test above uses a non-prototype profile, so it is green either way.
      */
     @Test
     void theExportedJsonCarriesThePrototypeFlagAndTheImportKeepsIt() {
-        OrchestratorProfile prototype = new OrchestratorProfile("Browsing", 3, 9, "orch-pb",
-            "rev-pb", List.of("spec-1"), null, null, null, null, null, null, true, null, null);
+        OrchestratorProfile prototype =
+                new OrchestratorProfile(
+                        "Browsing",
+                        3,
+                        9,
+                        "orch-pb",
+                        "rev-pb",
+                        List.of("spec-1"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null);
         when(repository.findByName("Browsing")).thenReturn(Optional.of(prototype));
 
         String json = service.exportProfileToJson("Browsing");
@@ -282,17 +556,32 @@ public class OrchestratorProfileServiceTest {
      * An EMPTY STRING per-role model or thinking level must inherit the configured default, exactly
      * as a null does.
      *
-     * <p>
-     * This is not defensive nulling — empty string is the value the admin form actually produces. A
-     * select with no choice made posts {@code ""}, not {@code null}, so the column stores
-     * {@code ""} and a null-only check would hand that straight through as the model name. The
-     * provider then rejects the call, or worse the empty thinking level silently disables reasoning
-     * for that role, and the profile appears configured while behaving nothing like its defaults.
+     * <p>This is not defensive nulling — empty string is the value the admin form actually
+     * produces. A select with no choice made posts {@code ""}, not {@code null}, so the column
+     * stores {@code ""} and a null-only check would hand that straight through as the model name.
+     * The provider then rejects the call, or worse the empty thinking level silently disables
+     * reasoning for that role, and the profile appears configured while behaving nothing like its
+     * defaults.
      */
     @Test
     void emptyStringModelAndThinkingLevelInheritTheRoleDefaults() {
-        OrchestratorProfile blanks = new OrchestratorProfile("OIM", 4, 12, "oim-orch", "oim-rev",
-            List.of("spec-1"), "", "", "", "", "", "", false, null, null);
+        OrchestratorProfile blanks =
+                new OrchestratorProfile(
+                        "OIM",
+                        4,
+                        12,
+                        "oim-orch",
+                        "oim-rev",
+                        List.of("spec-1"),
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        false,
+                        null,
+                        null);
         when(repository.findByName("OIM")).thenReturn(Optional.of(blanks));
 
         ResolvedProfile resolved = service.resolve("OIM");
@@ -307,12 +596,16 @@ public class OrchestratorProfileServiceTest {
 
     @Test
     void importUsesTheFilesAreaOverTheFallback() {
-        OrchestratorProfileService twoAreas = new OrchestratorProfileService(repository, properties,
-            TestAreas.withAreas("OIM", "PingID"), chatProperties);
+        OrchestratorProfileService twoAreas =
+                new OrchestratorProfileService(
+                        repository,
+                        properties,
+                        TestAreas.withAreas("OIM", "PingID"),
+                        chatProperties);
         twoAreas.importProfileFromJson("{\"name\":\"P\",\"area\":\"pingid\"}", "OIM");
 
         ArgumentCaptor<OrchestratorProfile> saved =
-            ArgumentCaptor.forClass(OrchestratorProfile.class);
+                ArgumentCaptor.forClass(OrchestratorProfile.class);
         verify(repository).upsert(saved.capture());
         assertThat(saved.getValue().area()).isEqualTo("PingID");
     }
@@ -322,35 +615,55 @@ public class OrchestratorProfileServiceTest {
         service.importProfileFromJson("{\"name\":\"P\"}", "OIM");
 
         ArgumentCaptor<OrchestratorProfile> saved =
-            ArgumentCaptor.forClass(OrchestratorProfile.class);
+                ArgumentCaptor.forClass(OrchestratorProfile.class);
         verify(repository).upsert(saved.capture());
         assertThat(saved.getValue().area()).isEqualTo("OIM");
     }
 
     @Test
     void anUnknownAreaIsRefusedByName() {
-        assertThatThrownBy(
-            () -> service.importProfileFromJson("{\"name\":\"P\",\"area\":\"SAP\"}", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("Area 'SAP' does not exist.");
+        assertThatThrownBy(() ->
+                        service.importProfileFromJson("{\"name\":\"P\",\"area\":\"SAP\"}", "OIM"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Area 'SAP' does not exist.");
         verify(repository, never()).upsert(any());
     }
 
     @Test
     void exportWritesTheArea() {
         when(repository.findByName("P"))
-            .thenReturn(Optional.of(new OrchestratorProfile("P", 2, 8, null, null, List.of(), null,
-                null, null, null, null, null, false, null, null, "PingID")));
+                .thenReturn(
+                        Optional.of(
+                                new OrchestratorProfile(
+                                        "P", 2, 8, null, null, List.of(), null, null, null, null,
+                                        null, null, false, null, null, "PingID")));
         assertThat(service.exportProfileToJson("P")).contains("\"area\" : \"PingID\"");
     }
 
     @Test
     void resolveProfileInstanceDirectlyAppliesDefaultsNormalizesNullSpecialistsAndRejectsNull() {
         assertThatThrownBy(() -> service.resolve((OrchestratorProfile) null))
-            .isInstanceOf(NullPointerException.class).hasMessage("profile must not be null");
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("profile must not be null");
 
-        OrchestratorProfile positiveOverrides = new OrchestratorProfile("OIM ", 4, 12,
-            "  oim-orch  ", "  oim-rev  ", List.of(" spec-1 ", ""), "custom-orch", "low",
-            "custom-rev", "medium", "custom-spec", "high", true, null, null, "OIM");
+        OrchestratorProfile positiveOverrides =
+                new OrchestratorProfile(
+                        "OIM ",
+                        4,
+                        12,
+                        "  oim-orch  ",
+                        "  oim-rev  ",
+                        List.of(" spec-1 ", ""),
+                        "custom-orch",
+                        "low",
+                        "custom-rev",
+                        "medium",
+                        "custom-spec",
+                        "high",
+                        true,
+                        null,
+                        null,
+                        "OIM");
         ResolvedProfile resolvedPositive = service.resolve(positiveOverrides);
         assertThat(resolvedPositive.name()).isEqualTo("OIM ");
         assertThat(resolvedPositive.orchestratorPlaybook()).isEqualTo("  oim-orch  ");
@@ -362,8 +675,24 @@ public class OrchestratorProfileServiceTest {
         assertThat(resolvedPositive.reviewer()).isEqualTo(new RoleConfig("custom-rev", "medium"));
         assertThat(resolvedPositive.specialist()).isEqualTo(new RoleConfig("custom-spec", "high"));
 
-        OrchestratorProfile zeroAndBlanksAndNullSpecialists = new OrchestratorProfile("ZeroProf", 0,
-            0, "orch", "rev", null, "", "   ", null, "", "   ", null, false, null, null, "OIM");
+        OrchestratorProfile zeroAndBlanksAndNullSpecialists =
+                new OrchestratorProfile(
+                        "ZeroProf",
+                        0,
+                        0,
+                        "orch",
+                        "rev",
+                        null,
+                        "",
+                        "   ",
+                        null,
+                        "",
+                        "   ",
+                        null,
+                        false,
+                        null,
+                        null,
+                        "OIM");
         ResolvedProfile resolvedZero = service.resolve(zeroAndBlanksAndNullSpecialists);
         assertThat(resolvedZero.specialistPlaybooks()).isEmpty();
         assertThat(resolvedZero.maxReviewRounds()).isEqualTo(2);
@@ -371,10 +700,26 @@ public class OrchestratorProfileServiceTest {
         assertThat(resolvedZero.orchestrator()).isEqualTo(new RoleConfig("gemini-3.1-pro", "high"));
         assertThat(resolvedZero.reviewer()).isEqualTo(new RoleConfig("gemini-3.1-pro", "high"));
         assertThat(resolvedZero.specialist())
-            .isEqualTo(new RoleConfig("gemini-3.1-flash", "medium"));
+                .isEqualTo(new RoleConfig("gemini-3.1-flash", "medium"));
 
-        OrchestratorProfile negativeCaps = new OrchestratorProfile("NegProf", -1, -5, "orch", "rev",
-            List.of("spec-1"), null, null, null, null, null, null, false, null, null, "OIM");
+        OrchestratorProfile negativeCaps =
+                new OrchestratorProfile(
+                        "NegProf",
+                        -1,
+                        -5,
+                        "orch",
+                        "rev",
+                        List.of("spec-1"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        "OIM");
         ResolvedProfile resolvedNegative = service.resolve(negativeCaps);
         assertThat(resolvedNegative.maxReviewRounds()).isEqualTo(2);
         assertThat(resolvedNegative.maxSpecialistCalls()).isEqualTo(8);
@@ -384,18 +729,23 @@ public class OrchestratorProfileServiceTest {
 
     @Test
     void importProfileFromJsonRejectsExplicitZeroLimitsAndInheritsOmittedLimits() {
-        assertThatThrownBy(() -> service.importProfileFromJson(
-            "{\"name\":\"ZeroRounds\",\"maxReviewRounds\":0,\"maxSpecialistCalls\":5}", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("maxReviewRounds");
-        assertThatThrownBy(() -> service.importProfileFromJson(
-            "{\"name\":\"ZeroCalls\",\"maxReviewRounds\":2,\"maxSpecialistCalls\":0}", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("maxSpecialistCalls");
+        assertThatThrownBy(() ->
+                        service.importProfileFromJson(
+                                "{\"name\":\"ZeroRounds\",\"maxReviewRounds\":0,\"maxSpecialistCalls\":5}",
+                                "OIM"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxReviewRounds");
+        assertThatThrownBy(() ->
+                        service.importProfileFromJson(
+                                "{\"name\":\"ZeroCalls\",\"maxReviewRounds\":2,\"maxSpecialistCalls\":0}",
+                                "OIM"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxSpecialistCalls");
         verify(repository, never()).upsert(any());
 
         service.importProfileFromJson("{\"name\":\"OmittedLimits\"}", "OIM");
         ArgumentCaptor<OrchestratorProfile> saved =
-            ArgumentCaptor.forClass(OrchestratorProfile.class);
+                ArgumentCaptor.forClass(OrchestratorProfile.class);
         verify(repository).upsert(saved.capture());
         assertThat(saved.getValue().maxReviewRounds()).isEqualTo(2);
         assertThat(saved.getValue().maxSpecialistCalls()).isEqualTo(8);

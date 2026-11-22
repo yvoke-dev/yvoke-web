@@ -16,21 +16,28 @@ public final class KgAdminViews {
     private KgAdminViews() {}
 
     /** A scope row on the KG overview (admin/kg). */
-    public record KgScopeView(String collection, String tag, long entityCount,
-        long relationshipCount) {}
+    public record KgScopeView(
+            String collection, String tag, long entityCount, long relationshipCount) {}
 
     /**
      * An entity in the search/browse list or the active-entity panel (admin/kg-view). Carries the
-     * tag list purely to reproduce {@link #displayTag(String)}; {@code metadataJson} is pre-rendered
-     * so the template never touches a raw metadata map beyond the emptiness guard.
+     * tag list purely to reproduce {@link #displayTag(String)}; {@code metadataJson} is
+     * pre-rendered so the template never touches a raw metadata map beyond the emptiness guard.
      */
-    public record KgEntityView(String name, @Nullable String kind, List<String> tags,
-        @Nullable String description, Map<String, Object> metadata, String metadataJson) {
+    public record KgEntityView(
+            String name,
+            @Nullable String kind,
+            List<String> tags,
+            @Nullable String description,
+            Map<String, Object> metadata,
+            String metadataJson) {
 
         @Nullable
         public String displayTag(@Nullable String activeTag) {
-            if (activeTag != null && !activeTag.isBlank() && tags != null
-                && tags.contains(activeTag.trim())) {
+            if (activeTag != null
+                    && !activeTag.isBlank()
+                    && tags != null
+                    && tags.contains(activeTag.trim())) {
                 return activeTag.trim();
             }
             if (tags != null && !tags.isEmpty()) {
@@ -41,21 +48,23 @@ public final class KgAdminViews {
     }
 
     /** A relationship / neighborhood edge (admin/kg-view). */
-    public record KgRelationshipView(String subject, String predicate, String object,
-        @Nullable String description) {}
+    public record KgRelationshipView(
+            String subject, String predicate, String object, @Nullable String description) {}
 
     /** The neighborhood panel; {@code entity} is used server-side to seed the active entity. */
-    public record KgNeighborhoodView(@Nullable KgEntityView entity,
-        List<KgRelationshipView> outgoing, List<KgRelationshipView> incoming) {}
+    public record KgNeighborhoodView(
+            @Nullable KgEntityView entity,
+            List<KgRelationshipView> outgoing,
+            List<KgRelationshipView> incoming) {}
 
     /** A row in the FK-walk table (admin/kg-view, schema graphs with FK edges). */
     public record KgWalkView(int depth, List<String> path) {}
 
     /**
      * A caller/callee row in the call-graph table (admin/kg-view, schema graphs with call edges).
-     * Exposes {@code category()} to match the template — the raw {@link KgCall} only had
-     * {@code kind()}, so the call-graph section used to fail to render; mapping
-     * {@code category = kind} fixes it.
+     * Exposes {@code category()} to match the template — the raw {@link KgCall} only had {@code
+     * kind()}, so the call-graph section used to fail to render; mapping {@code category = kind}
+     * fixes it.
      */
     public record KgCallView(String name, @Nullable String category) {}
 }

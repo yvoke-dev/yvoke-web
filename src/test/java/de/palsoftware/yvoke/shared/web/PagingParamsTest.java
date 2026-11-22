@@ -28,7 +28,7 @@ class PagingParamsTest {
         int hugePage = PagingParams.clampPageForOffset(Integer.MAX_VALUE, 100);
         assertThat((long) hugePage * 100L).isLessThanOrEqualTo(PagingParams.MAX_OFFSET);
         assertThat(PagingParams.safeOffset(Integer.MAX_VALUE, 100))
-            .isEqualTo(PagingParams.MAX_OFFSET);
+                .isEqualTo(PagingParams.MAX_OFFSET);
         assertThat(PagingParams.safeOffset(-5, 20)).isEqualTo(0);
     }
 

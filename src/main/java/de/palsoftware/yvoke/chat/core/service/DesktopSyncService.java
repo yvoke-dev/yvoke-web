@@ -46,22 +46,44 @@ public class DesktopSyncService {
     private final FeedbackRepository feedbackRepository;
     private final PlaybookService playbookService;
 
-    public record NewMessage(String role, String content, Integer promptTokens,
-        Integer completionTokens, Integer totalTokens, Integer cachedTokens, Integer thoughtTokens,
-        String playbook, Integer playbookVersion) {
+    public record NewMessage(
+            String role,
+            String content,
+            Integer promptTokens,
+            Integer completionTokens,
+            Integer totalTokens,
+            Integer cachedTokens,
+            Integer thoughtTokens,
+            String playbook,
+            Integer playbookVersion) {
 
-        public NewMessage(String role, String content, Integer promptTokens,
-            Integer completionTokens, Integer totalTokens, Integer cachedTokens,
-            Integer thoughtTokens) {
-            this(role, content, promptTokens, completionTokens, totalTokens, cachedTokens,
-                thoughtTokens, null, null);
+        public NewMessage(
+                String role,
+                String content,
+                Integer promptTokens,
+                Integer completionTokens,
+                Integer totalTokens,
+                Integer cachedTokens,
+                Integer thoughtTokens) {
+            this(
+                    role,
+                    content,
+                    promptTokens,
+                    completionTokens,
+                    totalTokens,
+                    cachedTokens,
+                    thoughtTokens,
+                    null,
+                    null);
         }
     }
 
     @Autowired
-    public DesktopSyncService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, FeedbackRepository feedbackRepository,
-        PlaybookService playbookService) {
+    public DesktopSyncService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            FeedbackRepository feedbackRepository,
+            PlaybookService playbookService) {
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.feedbackRepository = Objects.requireNonNull(feedbackRepository);
@@ -78,8 +100,12 @@ public class DesktopSyncService {
     }
 
     public List<Conversation> listConversations(User user, int limit, int offset) {
-        return conversationRepository.listByUserAndSource(user.id(), SOURCE_DESKTOP, limit, offset,
-            AreaAccessContext.allowedUserAreasLower().orElse(null));
+        return conversationRepository.listByUserAndSource(
+                user.id(),
+                SOURCE_DESKTOP,
+                limit,
+                offset,
+                AreaAccessContext.allowedUserAreasLower().orElse(null));
     }
 
     public List<Message> getMessages(UUID conversationId, User user, int limit, int offset) {
@@ -90,7 +116,7 @@ public class DesktopSyncService {
     public Map<UUID, Feedback> getFeedbackByMessageId(UUID conversationId, User user) {
         verifyOwnership(conversationId, user);
         return feedbackRepository.findByConversationId(conversationId).stream()
-            .collect(Collectors.toMap(Feedback::messageId, Function.identity()));
+                .collect(Collectors.toMap(Feedback::messageId, Function.identity()));
     }
 
     @Transactional
@@ -102,31 +128,34 @@ public class DesktopSyncService {
 
         List<UUID> ids = new ArrayList<>(newMessages.size());
         Map<String, Optional<Playbook>> playbooksByName = new HashMap<>();
-        String effectiveArea = (conversation.area() != null && !conversation.area().isBlank())
-            ? conversation.area().trim()
-            : null;
+        String effectiveArea =
+                (conversation.area() != null && !conversation.area().isBlank())
+                        ? conversation.area().trim()
+                        : null;
         for (NewMessage m : newMessages) {
             if (m.role() == null || !(m.role().equals("user") || m.role().equals("assistant"))) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "role must be 'user' or 'assistant'");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "role must be 'user' or 'assistant'");
             }
             if (m.content() == null || m.content().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "content must not be blank");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "content must not be blank");
             }
             if (m.playbook() != null && !m.playbook().isBlank()) {
-                Playbook pb = playbooksByName
-                    .computeIfAbsent(m.playbook().trim(), playbookService::getPlaybook)
-                    .orElse(null);
+                Playbook pb =
+                        playbooksByName
+                                .computeIfAbsent(m.playbook().trim(), playbookService::getPlaybook)
+                                .orElse(null);
                 if (pb != null && pb.area() != null && !pb.area().isBlank()) {
                     if (!AreaAccessContext.canAccessUserArea(pb.area())) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Playbook not found: " + m.playbook());
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "Playbook not found: " + m.playbook());
                     }
                     String pbArea = pb.area().trim();
                     if (effectiveArea != null && !effectiveArea.equalsIgnoreCase(pbArea)) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Playbook area does not match conversation area");
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "Playbook area does not match conversation area");
                     }
                     if (effectiveArea == null) {
                         conversationRepository.updateAreaIfAbsent(conversationId, pb.area());
@@ -137,9 +166,22 @@ public class DesktopSyncService {
             UUID id = UUID.randomUUID();
             final Message msgToSave;
             try {
-                msgToSave = new Message(id, conversationId, m.role(), m.content(), m.playbook(),
-                    m.playbookVersion(), null, null, null, m.promptTokens(), m.completionTokens(),
-                    m.totalTokens(), m.cachedTokens(), m.thoughtTokens());
+                msgToSave =
+                        new Message(
+                                id,
+                                conversationId,
+                                m.role(),
+                                m.content(),
+                                m.playbook(),
+                                m.playbookVersion(),
+                                null,
+                                null,
+                                null,
+                                m.promptTokens(),
+                                m.completionTokens(),
+                                m.totalTokens(),
+                                m.cachedTokens(),
+                                m.thoughtTokens());
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
             }
@@ -148,8 +190,12 @@ public class DesktopSyncService {
         }
 
         if (conversation.title() == null || DEFAULT_TITLE.equals(conversation.title())) {
-            newMessages.stream().filter(m -> "user".equals(m.role())).findFirst().ifPresent(
-                m -> conversationRepository.updateTitle(conversationId, autoTitle(m.content())));
+            newMessages.stream()
+                    .filter(m -> "user".equals(m.role()))
+                    .findFirst()
+                    .ifPresent(m ->
+                            conversationRepository.updateTitle(
+                                    conversationId, autoTitle(m.content())));
         }
         conversationRepository.touch(conversationId);
         return ids;
@@ -164,8 +210,8 @@ public class DesktopSyncService {
     }
 
     @Transactional
-    public void updateConversation(UUID conversationId, User user, String title,
-        Map<String, Object> settings) {
+    public void updateConversation(
+            UUID conversationId, User user, String title, Map<String, Object> settings) {
         Conversation conversation = verifyOwnership(conversationId, user);
         Map<String, Object> mapped = validateSettings(settings);
         if (title != null && !title.isBlank()) {
@@ -173,8 +219,9 @@ public class DesktopSyncService {
         }
         if (!mapped.isEmpty()) {
             String versionKey = ConversationSetting.DESKTOP_VERSION.getValue();
-            String existingVersion = ConversationSettings.getString(conversation.settings(),
-                ConversationSetting.DESKTOP_VERSION);
+            String existingVersion =
+                    ConversationSettings.getString(
+                            conversation.settings(), ConversationSetting.DESKTOP_VERSION);
             if (existingVersion != null && !existingVersion.isBlank()) {
                 mapped.put(versionKey, existingVersion);
             }
@@ -201,31 +248,41 @@ public class DesktopSyncService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating must be 1 or -1");
         }
         if (rating == -1 && (comment == null || comment.isBlank())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "comment is required for negative feedback");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "comment is required for negative feedback");
         }
         if (comment != null && comment.length() > ChatFeedbackService.MAX_COMMENT_CHARS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "comment exceeds maximum allowed length of " + ChatFeedbackService.MAX_COMMENT_CHARS
-                    + " characters");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "comment exceeds maximum allowed length of "
+                            + ChatFeedbackService.MAX_COMMENT_CHARS
+                            + " characters");
         }
-        Message message = messageRepository.findById(messageId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Message not found: " + messageId));
+        Message message =
+                messageRepository
+                        .findById(messageId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Message not found: " + messageId));
         verifyOwnership(message.conversationId(), user);
-        feedbackRepository.upsert(messageId, rating,
-            comment == null || comment.isBlank() ? null : comment.trim());
+        feedbackRepository.upsert(
+                messageId, rating, comment == null || comment.isBlank() ? null : comment.trim());
         return feedbackRepository.findByMessageId(messageId).orElseThrow();
     }
 
     private Conversation verifyOwnership(UUID conversationId, User user) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId));
-        if (conversation.area() != null && !conversation.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId);
+        Conversation conversation =
+                conversationRepository
+                        .findById(conversationId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Conversation not found: " + conversationId));
+        if (conversation.area() != null
+                && !conversation.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Conversation not found: " + conversationId);
         }
         if (user == null || !ChatConversationService.isOwner(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);

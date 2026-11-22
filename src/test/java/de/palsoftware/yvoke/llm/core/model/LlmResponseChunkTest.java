@@ -7,14 +7,14 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The end-of-call marker exists so
- * {@link de.palsoftware.yvoke.llm.core.service.AccountingLlmClient} can write one
- * {@code llm_call_logs} row per HTTP call rather than one per {@code generateStream}.
+ * The end-of-call marker exists so {@link
+ * de.palsoftware.yvoke.llm.core.service.AccountingLlmClient} can write one {@code llm_call_logs}
+ * row per HTTP call rather than one per {@code generateStream}.
  *
- * <p>
- * It cannot be inferred from "this chunk carried usage": Gemini reports an absolute whole-request
- * snapshot on <i>every</i> event that carries usage (see {@code GeminiLlmClient#parseChunk}), so
- * inferring a boundary there would mint a row per chunk. Hence an explicit flag.
+ * <p>It cannot be inferred from "this chunk carried usage": Gemini reports an absolute
+ * whole-request snapshot on <i>every</i> event that carries usage (see {@code
+ * GeminiLlmClient#parseChunk}), so inferring a boundary there would mint a row per chunk. Hence an
+ * explicit flag.
  */
 class LlmResponseChunkTest {
 
@@ -41,21 +41,36 @@ class LlmResponseChunkTest {
      */
     @Test
     void anEndOfCallMarkerCannotCarryContent() {
-        assertThatThrownBy(
-            () -> new LlmResponseChunk("answer text", null, null, null, null, null, true))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("end-of-call");
+        assertThatThrownBy(() ->
+                        new LlmResponseChunk("answer text", null, null, null, null, null, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("end-of-call");
 
         assertThatThrownBy(
-            () -> new LlmResponseChunk(null, "reasoning", null, null, null, null, true))
-            .isInstanceOf(IllegalArgumentException.class);
+                        () -> new LlmResponseChunk(null, "reasoning", null, null, null, null, true))
+                .isInstanceOf(IllegalArgumentException.class);
 
-        assertThatThrownBy(() -> new LlmResponseChunk(null, null,
-            List.of(new LlmToolCallDelta(0, "id", "name", "{}")), null, null, null, true))
-            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new LlmResponseChunk(
+                                null,
+                                null,
+                                List.of(new LlmToolCallDelta(0, "id", "name", "{}")),
+                                null,
+                                null,
+                                null,
+                                true))
+                .isInstanceOf(IllegalArgumentException.class);
 
-        assertThatThrownBy(() -> new LlmResponseChunk(null, null, null, null,
-            List.of(new LlmPart("text", "hi", null, null)), null, true))
-            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new LlmResponseChunk(
+                                null,
+                                null,
+                                null,
+                                null,
+                                List.of(new LlmPart("text", "hi", null, null)),
+                                null,
+                                true))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /** Every existing construction site must keep producing an ordinary, forwardable chunk. */

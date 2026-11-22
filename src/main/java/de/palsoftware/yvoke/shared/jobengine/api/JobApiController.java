@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.shared.jobengine.api;
 
-
 import de.palsoftware.yvoke.shared.jobengine.PrivilegedJobKindGuard;
 import de.palsoftware.yvoke.shared.jobengine.api.dto.JobDto;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
@@ -35,8 +34,8 @@ public class JobApiController {
     private final JobRepository jobRepository;
     private final JobProgressBroker progressBroker;
 
-    public JobApiController(JobService jobService, JobRepository jobRepository,
-        JobProgressBroker progressBroker) {
+    public JobApiController(
+            JobService jobService, JobRepository jobRepository, JobProgressBroker progressBroker) {
         this.jobService = jobService;
         this.jobRepository = jobRepository;
         this.progressBroker = progressBroker;
@@ -51,26 +50,27 @@ public class JobApiController {
     public ResponseEntity<Map<String, UUID>> enqueue(@Valid @RequestBody EnqueueRequest request) {
         PrivilegedJobKindGuard.requireAdminForPrivilegedKind(request.kind());
         String requestedCollection =
-            request.collection() != null ? request.collection().trim() : null;
+                request.collection() != null ? request.collection().trim() : null;
         Optional<String> colArea = jobRepository.findCollectionArea(requestedCollection);
         if (colArea.isPresent() && !colArea.get().isBlank()) {
             String area = colArea.get().trim();
             if (!AreaAccessContext.canIngestArea(area)
-                && !AreaAccessContext.canAdministerArea(area)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + requestedCollection);
+                    && !AreaAccessContext.canAdministerArea(area)) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Collection not found: " + requestedCollection);
             }
         }
         if (request.kind() != null
-            && request.kind().trim().toLowerCase(Locale.ROOT).startsWith("kg-extract")) {
+                && request.kind().trim().toLowerCase(Locale.ROOT).startsWith("kg-extract")) {
             UUID sourceDocId = parseUuidOrNull(request.sourceRef());
             String docArea =
-                sourceDocId != null ? jobRepository.findDocumentArea(sourceDocId).orElse(null)
-                    : null;
+                    sourceDocId != null
+                            ? jobRepository.findDocumentArea(sourceDocId).orElse(null)
+                            : null;
             if (!AreaAccessContext.canIngestArea(docArea)
-                && !AreaAccessContext.canAdministerArea(docArea)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Document not found: " + request.sourceRef());
+                    && !AreaAccessContext.canAdministerArea(docArea)) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Document not found: " + request.sourceRef());
             }
         }
         EnqueueResult result;
@@ -85,23 +85,30 @@ public class JobApiController {
 
     @GetMapping("/{id}")
     public JobDto get(@PathVariable UUID id) {
-        JobDto dto = jobRepository.findById(id).map(JobDto::from).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
+        JobDto dto =
+                jobRepository
+                        .findById(id)
+                        .map(JobDto::from)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Unknown job id: " + id));
         assertJobAccess(id);
         return dto;
     }
 
     @GetMapping("/{id}/progress")
     public SseEmitter progress(@PathVariable UUID id) {
-        jobRepository.findById(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
+        jobRepository
+                .findById(id)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id));
         assertJobAccess(id);
 
         // Subscribe BEFORE re-reading the DB snapshot so any transition that lands concurrently
         // cannot slip between the read and registration, and all writes to the emitter are
         // serialized through the broker.
-        return progressBroker.subscribeWithInitial(id,
-            () -> jobRepository.findById(id).map(ProgressEvent::of));
+        return progressBroker.subscribeWithInitial(
+                id, () -> jobRepository.findById(id).map(ProgressEvent::of));
     }
 
     private void assertJobAccess(UUID id) {
@@ -109,7 +116,7 @@ public class JobApiController {
         if (jobArea.isPresent() && !jobArea.get().isBlank()) {
             String area = jobArea.get().trim();
             if (!AreaAccessContext.canAdministerArea(area)
-                && !AreaAccessContext.canIngestArea(area)) {
+                    && !AreaAccessContext.canIngestArea(area)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job id: " + id);
             }
         }

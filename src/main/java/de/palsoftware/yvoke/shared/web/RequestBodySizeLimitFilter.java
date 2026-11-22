@@ -30,10 +30,10 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
     private final long maxBodyBytes;
 
     public RequestBodySizeLimitFilter(
-        @Value("${app.security.max-json-body-bytes}") long maxBodyBytes) {
+            @Value("${app.security.max-json-body-bytes}") long maxBodyBytes) {
         if (maxBodyBytes <= 0) {
             throw new IllegalArgumentException(
-                "app.security.max-json-body-bytes must be positive, got: " + maxBodyBytes);
+                    "app.security.max-json-body-bytes must be positive, got: " + maxBodyBytes);
         }
         this.maxBodyBytes = maxBodyBytes;
     }
@@ -48,8 +48,9 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-        FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         long contentLength = request.getContentLengthLong();
         if (contentLength > maxBodyBytes) {
             writePayloadTooLarge(response);
@@ -77,8 +78,11 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         response.setStatus(HttpStatus.CONTENT_TOO_LARGE.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write("{\"error\":\"Request body exceeds maximum allowed size of "
-            + maxBodyBytes + " bytes.\"}");
+        response.getWriter()
+                .write(
+                        "{\"error\":\"Request body exceeds maximum allowed size of "
+                                + maxBodyBytes
+                                + " bytes.\"}");
     }
 
     private static boolean hasPayloadTooLargeCause(Throwable t) {
@@ -114,7 +118,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         @Override
         public BufferedReader getReader() throws IOException {
             return new BufferedReader(
-                new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
+                    new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
         }
     }
 

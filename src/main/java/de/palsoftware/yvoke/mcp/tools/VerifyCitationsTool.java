@@ -14,7 +14,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class VerifyCitationsTool {
 
@@ -26,21 +25,21 @@ public class VerifyCitationsTool {
      * faithfulness or hallucination check without over-claiming.
      */
     public static final String DESCRIPTION =
-        "Check that cited ids are real: confirms each chunk/document id EXISTS in the corpus. "
-            + "This is an existence check only — it does not read the cited text, so it does NOT "
-            + "confirm that the source supports the claim it is attached to (a real id attached to "
-            + "an invented or mistranslated paraphrase still passes). Accepts citation tokens from "
-            + "'search_corpus' results (chunk ids, document ids) and numbered reference markers "
-            + "like [1]. Returns a markdown table with columns: citation, kind, status, detail. "
-            + "FABRICATED = the id does not exist and must be removed or corrected. UNVERIFIED = "
-            + "the id was not checked in the form given; re-send it in full.";
+            "Check that cited ids are real: confirms each chunk/document id EXISTS in the corpus. "
+                    + "This is an existence check only — it does not read the cited text, so it does NOT "
+                    + "confirm that the source supports the claim it is attached to (a real id attached to "
+                    + "an invented or mistranslated paraphrase still passes). Accepts citation tokens from "
+                    + "'search_corpus' results (chunk ids, document ids) and numbered reference markers "
+                    + "like [1]. Returns a markdown table with columns: citation, kind, status, detail. "
+                    + "FABRICATED = the id does not exist and must be removed or corrected. UNVERIFIED = "
+                    + "the id was not checked in the form given; re-send it in full.";
 
     /** Kept in one place: the old two examples advertised a form the tool then condemned. */
     public static final String CITATIONS_PARAM_DESCRIPTION =
-        "List of citation tokens to verify, e.g. "
-            + "\"[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]\", "
-            + "\"[document_id=e3b0c442-98fc-1c14-9afb-f4c8996fb924]\", a bare full chunk uuid, or "
-            + "\"[1]\". Ids must be complete: a truncated 8-character id cannot be checked.";
+            "List of citation tokens to verify, e.g. "
+                    + "\"[chunk_id=8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b]\", "
+                    + "\"[document_id=e3b0c442-98fc-1c14-9afb-f4c8996fb924]\", a bare full chunk uuid, or "
+                    + "\"[1]\". Ids must be complete: a truncated 8-character id cannot be checked.";
 
     /** Appended to every report, so the scope of the verdict travels with the verdict. */
     public static final String SCOPE_NOTE = CitationVerifier.SCOPE_NOTE;
@@ -56,8 +55,9 @@ public class VerifyCitationsTool {
      * assistant via {@link VerifyCitationsToolCallback} in {@code McpToolsConfig}.
      */
     public String verifyCitations(List<String> citations, @Nullable AgenticChatContext context) {
-        log.info("VerifyCitationsTool: verifying {} citations",
-            citations != null ? citations.size() : 0);
+        log.info(
+                "VerifyCitationsTool: verifying {} citations",
+                citations != null ? citations.size() : 0);
         if (citations == null || citations.isEmpty()) {
             return "Error: 'citations' parameter is required. At least one citation token must be specified.";
         }
@@ -68,15 +68,18 @@ public class VerifyCitationsTool {
             } else {
                 SecurityContext securityContext = SecurityContextHolder.getContext();
                 Authentication auth =
-                    securityContext != null ? securityContext.getAuthentication() : null;
-                allowedAreasLower = (auth != null && auth.isAuthenticated()
-                    && !(auth instanceof AnonymousAuthenticationToken))
-                        ? AreaAccessContext.allowedUserAreasLower(auth).orElse(null)
-                        : Set.of();
+                        securityContext != null ? securityContext.getAuthentication() : null;
+                allowedAreasLower =
+                        (auth != null
+                                        && auth.isAuthenticated()
+                                        && !(auth instanceof AnonymousAuthenticationToken))
+                                ? AreaAccessContext.allowedUserAreasLower(auth).orElse(null)
+                                : Set.of();
             }
-            List<CitationVerifier.CitationCheckResult> checkResults = (allowedAreasLower != null)
-                ? citationVerifier.checkCitations(citations, allowedAreasLower)
-                : citationVerifier.checkCitations(citations);
+            List<CitationVerifier.CitationCheckResult> checkResults =
+                    (allowedAreasLower != null)
+                            ? citationVerifier.checkCitations(citations, allowedAreasLower)
+                            : citationVerifier.checkCitations(citations);
             return formatReport(checkResults);
         } catch (Exception e) {
             return McpToolUtils.toolError("verify_citations", e);

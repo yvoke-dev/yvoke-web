@@ -25,15 +25,14 @@ import org.junit.jupiter.api.Test;
 /**
  * Which documents get a section-summary panel on the admin detail page.
  *
- * <p>
- * This used to be decided by {@code document.kind()}: hierarchical and confluence yes, everything
- * else an unconditional empty list. That was a correct proxy only while {@code SectionSummarizer}
- * ran in the hierarchical ingest alone. Standard documents can now carry summaries — either
- * ingested with the opt-in setting, or copied from their hierarchical twin — and the kind test hid
- * every one of them, so a document with 485 summaries in the table rendered no panel at all.
+ * <p>This used to be decided by {@code document.kind()}: hierarchical and confluence yes,
+ * everything else an unconditional empty list. That was a correct proxy only while {@code
+ * SectionSummarizer} ran in the hierarchical ingest alone. Standard documents can now carry
+ * summaries — either ingested with the opt-in setting, or copied from their hierarchical twin — and
+ * the kind test hid every one of them, so a document with 485 summaries in the table rendered no
+ * panel at all.
  *
- * <p>
- * The gate is now the data itself, which cannot go stale the same way: a document with no rows
+ * <p>The gate is now the data itself, which cannot go stale the same way: a document with no rows
  * renders nothing because there is nothing to render, and the template already keys off an empty
  * list ({@code th:if="${not #lists.isEmpty(sectionSummaries)}"}).
  */
@@ -49,8 +48,12 @@ public class DocumentAdminViewServiceTest {
     public void setUp() {
         documentRepository = mock(DocumentRepository.class);
         chunkRepository = mock(ChunkRepository.class);
-        service = new DocumentAdminViewService(documentRepository, chunkRepository,
-            mock(ChunkSurfacingMessageLookup.class), new ObjectMapper());
+        service =
+                new DocumentAdminViewService(
+                        documentRepository,
+                        chunkRepository,
+                        mock(ChunkSurfacingMessageLookup.class),
+                        new ObjectMapper());
     }
 
     private void seed(String kind, List<Map<String, Object>> summaries) {
@@ -60,14 +63,33 @@ public class DocumentAdminViewServiceTest {
     }
 
     private DocumentRow document(String kind) {
-        return new DocumentRow(DOC_ID, UUID.randomUUID(), "TEST", kind,
-            "Connecting to Microsoft Entra", Map.of("source_file", "manual.md"), "completed",
-            List.of("9.3.1"), Instant.now());
+        return new DocumentRow(
+                DOC_ID,
+                UUID.randomUUID(),
+                "TEST",
+                kind,
+                "Connecting to Microsoft Entra",
+                Map.of("source_file", "manual.md"),
+                "completed",
+                List.of("9.3.1"),
+                Instant.now());
     }
 
     private ChunkRow chunk() {
-        return new ChunkRow(UUID.randomUUID(), DOC_ID, "body", List.of("Installing"),
-            "Prerequisites", 2, 0, null, null, null, "TEST", null, 0.0);
+        return new ChunkRow(
+                UUID.randomUUID(),
+                DOC_ID,
+                "body",
+                List.of("Installing"),
+                "Prerequisites",
+                2,
+                0,
+                null,
+                null,
+                null,
+                "TEST",
+                null,
+                0.0);
     }
 
     private static Map<String, Object> summary(String... path) {
@@ -81,8 +103,9 @@ public class DocumentAdminViewServiceTest {
         DocumentDetailPage page = service.documentDetailPage(DOC_ID).orElseThrow();
 
         assertThat(page.sectionSummaries())
-            .as("standard documents carry summaries now — gating the panel on kind hides every one")
-            .hasSize(1);
+                .as(
+                        "standard documents carry summaries now — gating the panel on kind hides every one")
+                .hasSize(1);
     }
 
     @Test
@@ -103,9 +126,8 @@ public class DocumentAdminViewServiceTest {
      * The lookup is by document id, so a kind that never has summaries costs one cheap query that
      * returns nothing. That is the point: the emptiness is discovered, not assumed.
      *
-     * <p>
-     * The seeded kind must be one the deleted gate REJECTED. Seeding {@code confluence} — which the
-     * old {@code HIERARCHICAL || CONFLUENCE} test already allowed — makes this pass identically
+     * <p>The seeded kind must be one the deleted gate REJECTED. Seeding {@code confluence} — which
+     * the old {@code HIERARCHICAL || CONFLUENCE} test already allowed — makes this pass identically
      * before and after the change, so it would pin nothing while being named for the thing it
      * failed to pin. {@code custom} is rejected by the old gate, so restoring the gate fails here.
      */

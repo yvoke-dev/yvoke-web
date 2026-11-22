@@ -27,18 +27,18 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class ChatConversationTagsIT {
 
-    @Autowired
-    private ChatConversationService chatConversationService;
+    @Autowired private ChatConversationService chatConversationService;
 
-    @Autowired
-    private ConversationRepository conversationRepository;
+    @Autowired private ConversationRepository conversationRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -54,8 +54,10 @@ public class ChatConversationTagsIT {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
-            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        List<GrantedAuthority> authorities =
+                List.of(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -111,18 +113,16 @@ public class ChatConversationTagsIT {
      * folder names, and it handed every user every other user's folder names, which are free text
      * an operator types about customers and projects.
      *
-     * <p>
-     * Nothing pins the derivation today. {@code TagServiceTest} only forbids {@code findAll*} on
+     * <p>Nothing pins the derivation today. {@code TagServiceTest} only forbids {@code findAll*} on
      * {@code TagService}/{@code TagRepository}, so re-pointing {@code findAllTags} at any other
      * source — a wider conversation query, or {@code CollectionRepository.findAllTagNames()} —
-     * passes the entire suite, and the existing assertion here is a bare
-     * {@code contains("AI", "Spring")} by a single user, which every wrong source also satisfies.
-     * The failure is silent by construction: an autocomplete that offers too many names looks like
-     * a longer list, not like a leak.
+     * passes the entire suite, and the existing assertion here is a bare {@code contains("AI",
+     * "Spring")} by a single user, which every wrong source also satisfies. The failure is silent
+     * by construction: an autocomplete that offers too many names looks like a longer list, not
+     * like a leak.
      *
-     * <p>
-     * So the vocabulary is asserted to be EXACTLY the tag set of the conversations the caller can
-     * list — no more (user A's private folder name must not reach user B) and no less (B's own
+     * <p>So the vocabulary is asserted to be EXACTLY the tag set of the conversations the caller
+     * can list — no more (user A's private folder name must not reach user B) and no less (B's own
      * folder must be offered to B).
      */
     @Test
@@ -147,17 +147,23 @@ public class ChatConversationTagsIT {
 
         List<String> foldersOfferedToB = chatConversationService.findAllTags();
         List<String> tagsOnConversationsBCanSee =
-            chatConversationService.listAllConversations(100, 0).stream().map(Conversation::tags)
-                .filter(Objects::nonNull).flatMap(List::stream).distinct().toList();
+                chatConversationService.listAllConversations(100, 0).stream()
+                        .map(Conversation::tags)
+                        .filter(Objects::nonNull)
+                        .flatMap(List::stream)
+                        .distinct()
+                        .toList();
 
-        assertThat(foldersOfferedToB).as("B's own folder has to be offered to B")
-            .contains("B-Eigener-Ordner");
         assertThat(foldersOfferedToB)
-            .as("a folder name is free text about a customer - not another user's business")
-            .doesNotContain("Kunde-Mustermann-Angebot");
+                .as("B's own folder has to be offered to B")
+                .contains("B-Eigener-Ordner");
         assertThat(foldersOfferedToB)
-            .as("the vocabulary is derived from the visible conversations and from nothing else")
-            .containsExactlyInAnyOrderElementsOf(tagsOnConversationsBCanSee);
+                .as("a folder name is free text about a customer - not another user's business")
+                .doesNotContain("Kunde-Mustermann-Angebot");
+        assertThat(foldersOfferedToB)
+                .as(
+                        "the vocabulary is derived from the visible conversations and from nothing else")
+                .containsExactlyInAnyOrderElementsOf(tagsOnConversationsBCanSee);
 
         chatConversationService.deleteConversation(ownedByB.id());
         setUp();
@@ -184,8 +190,10 @@ public class ChatConversationTagsIT {
         Authentication authB = mock(Authentication.class);
         when(authB.isAuthenticated()).thenReturn(true);
         when(authB.getPrincipal()).thenReturn(oidcUserB);
-        List<GrantedAuthority> authoritiesB = List.of(new SimpleGrantedAuthority("ROLE_USER"),
-            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        List<GrantedAuthority> authoritiesB =
+                List.of(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(authB.getAuthorities()).thenAnswer(inv -> authoritiesB);
 
         SecurityContext contextB = SecurityContextHolder.createEmptyContext();
@@ -194,7 +202,8 @@ public class ChatConversationTagsIT {
 
         // Before the conversation is stamped with an area, an area-scoped user cannot see it
         assertThat(chatConversationService.listAllConversations(100, 0))
-            .extracting(Conversation::id).doesNotContain(convId);
+                .extracting(Conversation::id)
+                .doesNotContain(convId);
 
         conversationRepository.updateAreaIfAbsent(convId, "OIM");
 
@@ -202,8 +211,12 @@ public class ChatConversationTagsIT {
         // Conversations" tag "tutorial"
         List<Conversation> bConversations = chatConversationService.listAllConversations(100, 0);
         Conversation retrievedByB =
-            bConversations.stream().filter(c -> c.id().equals(convId)).findFirst().orElseThrow(
-                () -> new AssertionError("User A's public conversation not visible to User B"));
+                bConversations.stream()
+                        .filter(c -> c.id().equals(convId))
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new AssertionError(
+                                        "User A's public conversation not visible to User B"));
 
         assertThat(retrievedByB.tags()).containsExactlyInAnyOrder("public", "tutorial");
 
@@ -214,10 +227,12 @@ public class ChatConversationTagsIT {
 
         // 5. User B cannot add a tag or delete User A's public conversation (throws
         // AccessDeniedException)
-        assertThrows(AccessDeniedException.class,
-            () -> chatConversationService.addTag(convId, "hacker"));
-        assertThrows(AccessDeniedException.class,
-            () -> chatConversationService.deleteConversation(convId));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> chatConversationService.addTag(convId, "hacker"));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> chatConversationService.deleteConversation(convId));
 
         // Switch back to User A for cleanup
         setUp();
@@ -230,11 +245,21 @@ public class ChatConversationTagsIT {
         UUID userId = webConv.userId();
         UUID pluginConvId = UUID.randomUUID();
 
-        conversationRepository.createIfAbsent(pluginConvId, userId, "First Title",
-            Map.of("turnId", "t-1"), "claude-plugin", "OIM");
+        conversationRepository.createIfAbsent(
+                pluginConvId,
+                userId,
+                "First Title",
+                Map.of("turnId", "t-1"),
+                "claude-plugin",
+                "OIM");
         // Second call with same ID is a no-op (ON CONFLICT DO NOTHING)
-        conversationRepository.createIfAbsent(pluginConvId, userId, "Overwritten Title",
-            Map.of("turnId", "t-2"), "claude-plugin", "OIM");
+        conversationRepository.createIfAbsent(
+                pluginConvId,
+                userId,
+                "Overwritten Title",
+                Map.of("turnId", "t-2"),
+                "claude-plugin",
+                "OIM");
 
         Conversation storedPluginConv = conversationRepository.findById(pluginConvId).orElseThrow();
         assertThat(storedPluginConv.title()).isEqualTo("First Title");
@@ -242,14 +267,17 @@ public class ChatConversationTagsIT {
 
         // Web sidebar / listAll must exclude claude-plugin conversations
         List<Conversation> visible = chatConversationService.listAllConversations(100, 0);
-        assertThat(visible).extracting(Conversation::id).contains(webConv.id())
-            .doesNotContain(pluginConvId);
+        assertThat(visible)
+                .extracting(Conversation::id)
+                .contains(webConv.id())
+                .doesNotContain(pluginConvId);
 
         // Owner can still read the claude-plugin conversation directly, but cannot mutate/delete it
         // via service
         assertThat(chatConversationService.getConversation(pluginConvId)).isPresent();
-        assertThrows(AccessDeniedException.class,
-            () -> chatConversationService.deleteConversation(pluginConvId));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> chatConversationService.deleteConversation(pluginConvId));
 
         conversationRepository.delete(pluginConvId);
         chatConversationService.deleteConversation(webConv.id());

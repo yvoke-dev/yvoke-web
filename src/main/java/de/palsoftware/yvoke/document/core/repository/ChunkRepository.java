@@ -20,13 +20,18 @@ public class ChunkRepository {
         this.objectMapper = objectMapper;
     }
 
-    public List<ChunkRow> findSemanticCandidates(String vectorStr, int limit, int offset,
-        List<String> tags, List<String> collections) {
+    public List<ChunkRow> findSemanticCandidates(
+            String vectorStr, int limit, int offset, List<String> tags, List<String> collections) {
         return findSemanticCandidates(vectorStr, limit, offset, tags, collections, null);
     }
 
-    public List<ChunkRow> findSemanticCandidates(String vectorStr, int limit, int offset,
-        List<String> tags, List<String> collections, @Nullable List<UUID> documentIds) {
+    public List<ChunkRow> findSemanticCandidates(
+            String vectorStr,
+            int limit,
+            int offset,
+            List<String> tags,
+            List<String> collections,
+            @Nullable List<UUID> documentIds) {
         String tagClause = "";
         if (tags != null && !tags.isEmpty()) {
             tagClause = " AND EXISTS (SELECT 1 FROM unnest(d.tags) t WHERE t IN (:tags)) ";
@@ -61,7 +66,7 @@ public class ChunkRepository {
         // hnsw.iterative_scan=relaxed_order may emit index results slightly out of distance
         // order; the outer sort restores strict ranking (callers use row position as rank).
         String sql =
-            """
+                """
                 SELECT * FROM (
                 SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata,
                        (1.0 - (ch.embedding <=> :embedding::vector)) AS cosine_similarity
@@ -70,27 +75,37 @@ public class ChunkRepository {
                 JOIN documents d ON ch.document_id = d.id
                 WHERE 1=1
                 """
-                + collDocClause + tagClause + """
-                    ORDER BY ch.embedding <=> :embedding::vector ASC
-                    LIMIT :limit OFFSET :offset
-                    ) candidates ORDER BY cosine_similarity DESC
-                    """;
+                        + collDocClause
+                        + tagClause
+                        + """
+                        ORDER BY ch.embedding <=> :embedding::vector ASC
+                        LIMIT :limit OFFSET :offset
+                        ) candidates ORDER BY cosine_similarity DESC
+                        """;
 
         if (tags != null && !tags.isEmpty()) {
             params.put("tags", tags);
         }
 
-        return jdbcClient.sql(sql).params(params)
-            .query(new ChunkRowMapper(objectMapper, "cosine_similarity")).list();
+        return jdbcClient
+                .sql(sql)
+                .params(params)
+                .query(new ChunkRowMapper(objectMapper, "cosine_similarity"))
+                .list();
     }
 
-    public List<ChunkRow> findFulltextCandidates(String query, int limit, int offset,
-        List<String> tags, List<String> collections) {
+    public List<ChunkRow> findFulltextCandidates(
+            String query, int limit, int offset, List<String> tags, List<String> collections) {
         return findFulltextCandidates(query, limit, offset, tags, collections, null);
     }
 
-    public List<ChunkRow> findFulltextCandidates(String query, int limit, int offset,
-        List<String> tags, List<String> collections, @Nullable List<UUID> documentIds) {
+    public List<ChunkRow> findFulltextCandidates(
+            String query,
+            int limit,
+            int offset,
+            List<String> tags,
+            List<String> collections,
+            @Nullable List<UUID> documentIds) {
 
         List<UUID> collectionIds = resolveCollectionIds(collections);
         if (collections != null && !collections.isEmpty() && collectionIds.isEmpty()) {
@@ -126,10 +141,10 @@ public class ChunkRepository {
         }
 
         String filterClause =
-            filterClauses.isEmpty() ? "" : " AND " + String.join(" AND ", filterClauses) + " ";
+                filterClauses.isEmpty() ? "" : " AND " + String.join(" AND ", filterClauses) + " ";
 
         String sql =
-            """
+                """
                 SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata,
                        pdb.score(ch.id) AS bm25_score
                 FROM chunks ch
@@ -137,26 +152,33 @@ public class ChunkRepository {
                 JOIN documents d ON ch.document_id = d.id
                 WHERE ch.text ||| :query
                 """
-                + filterClause + """
-                    ORDER BY bm25_score DESC
-                    LIMIT :limit OFFSET :offset
-                    """;
+                        + filterClause
+                        + """
+                        ORDER BY bm25_score DESC
+                        LIMIT :limit OFFSET :offset
+                        """;
 
-        return jdbcClient.sql(sql).params(params)
-            .query(new ChunkRowMapper(objectMapper, "bm25_score")).list();
+        return jdbcClient
+                .sql(sql)
+                .params(params)
+                .query(new ChunkRowMapper(objectMapper, "bm25_score"))
+                .list();
     }
 
     private List<UUID> resolveCollectionIds(@Nullable List<String> collections) {
         if (collections == null || collections.isEmpty()) {
             return List.of();
         }
-        return jdbcClient.sql("SELECT id FROM collections WHERE name IN (:names)")
-            .param("names", collections).query(UUID.class).list();
+        return jdbcClient
+                .sql("SELECT id FROM collections WHERE name IN (:names)")
+                .param("names", collections)
+                .query(UUID.class)
+                .list();
     }
 
     public List<ChunkRow> findChunksByDocumentId(UUID documentId, @Nullable String tag) {
         String sql =
-            """
+                """
                 SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
                 FROM chunks ch
                 JOIN collections coll ON ch.collection_id = coll.id
@@ -174,8 +196,11 @@ public class ChunkRepository {
 
         sql += " ORDER BY ch.sort_order ASC";
 
-        return jdbcClient.sql(sql).params(params).query(new ChunkRowMapper(objectMapper, null))
-            .list();
+        return jdbcClient
+                .sql(sql)
+                .params(params)
+                .query(new ChunkRowMapper(objectMapper, null))
+                .list();
     }
 
     /**
@@ -183,19 +208,27 @@ public class ChunkRepository {
      * and section-path matching.
      */
     public List<ChunkPathRow> findChunkPathsByDocumentId(UUID documentId) {
-        String sql = """
-            SELECT ch.id, ch.heading_path, ch.heading, ch.sort_order,
-                   coalesce(length(ch.text), 0) AS text_len
-            FROM chunks ch
-            WHERE ch.document_id = :documentId
-            ORDER BY ch.sort_order ASC
-            """;
-        return jdbcClient.sql(sql).param("documentId", documentId).query((rs, rowNum) -> {
-            List<String> headingPath = JdbcMappers.arrayToStringList(rs, "heading_path");
-            return new ChunkPathRow(rs.getObject("id", UUID.class), headingPath,
-                rs.getString("heading"), rs.getObject("sort_order", Integer.class),
-                rs.getInt("text_len"));
-        }).list();
+        String sql =
+                """
+                SELECT ch.id, ch.heading_path, ch.heading, ch.sort_order,
+                       coalesce(length(ch.text), 0) AS text_len
+                FROM chunks ch
+                WHERE ch.document_id = :documentId
+                ORDER BY ch.sort_order ASC
+                """;
+        return jdbcClient
+                .sql(sql)
+                .param("documentId", documentId)
+                .query((rs, rowNum) -> {
+                    List<String> headingPath = JdbcMappers.arrayToStringList(rs, "heading_path");
+                    return new ChunkPathRow(
+                            rs.getObject("id", UUID.class),
+                            headingPath,
+                            rs.getString("heading"),
+                            rs.getObject("sort_order", Integer.class),
+                            rs.getInt("text_len"));
+                })
+                .list();
     }
 
     /** Full chunk rows for the given ids, ordered by sort_order. */
@@ -204,7 +237,7 @@ public class ChunkRepository {
             return List.of();
         }
         String sql =
-            """
+                """
                 SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
                 FROM chunks ch
                 JOIN collections coll ON ch.collection_id = coll.id
@@ -213,19 +246,22 @@ public class ChunkRepository {
                 ORDER BY ch.sort_order ASC
                 """;
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
-        return jdbcClient.sql(sql).param("ids", idStrings)
-            .query(new ChunkRowMapper(objectMapper, null)).list();
+        return jdbcClient
+                .sql(sql)
+                .param("ids", idStrings)
+                .query(new ChunkRowMapper(objectMapper, null))
+                .list();
     }
 
-    public Optional<ChunkRow> findByIdPrefix(String idPrefix,
-        @Nullable Set<String> allowedAreasLower) {
+    public Optional<ChunkRow> findByIdPrefix(
+            String idPrefix, @Nullable Set<String> allowedAreasLower) {
         if (idPrefix == null) {
             throw new IllegalArgumentException("ID prefix cannot be null.");
         }
         if (!idPrefix.isEmpty()) {
             if (!idPrefix.matches("^[0-9a-fA-F-]+$")) {
                 throw new IllegalArgumentException(
-                    "Invalid ID prefix format. Must contain only hex characters and dashes.");
+                        "Invalid ID prefix format. Must contain only hex characters and dashes.");
             }
             if (idPrefix.length() < 8) {
                 throw new IllegalArgumentException("ID prefix must be at least 8 characters long.");
@@ -246,7 +282,7 @@ public class ChunkRepository {
         if (cleanPrefix.length() == 32) {
             UUID exactId = uuidFromCleanHex(cleanPrefix);
             String sql =
-                """
+                    """
                     SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
                     FROM chunks ch
                     JOIN collections coll ON ch.collection_id = coll.id
@@ -255,16 +291,24 @@ public class ChunkRepository {
                     """;
             if (filterByArea) {
                 sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
-                matches = jdbcClient.sql(sql).param("id", exactId)
-                    .param("allowedAreasLower", allowedAreasLower)
-                    .query(new ChunkRowMapper(objectMapper, null)).list();
+                matches =
+                        jdbcClient
+                                .sql(sql)
+                                .param("id", exactId)
+                                .param("allowedAreasLower", allowedAreasLower)
+                                .query(new ChunkRowMapper(objectMapper, null))
+                                .list();
             } else {
-                matches = jdbcClient.sql(sql).param("id", exactId)
-                    .query(new ChunkRowMapper(objectMapper, null)).list();
+                matches =
+                        jdbcClient
+                                .sql(sql)
+                                .param("id", exactId)
+                                .query(new ChunkRowMapper(objectMapper, null))
+                                .list();
             }
         } else {
             String sql =
-                """
+                    """
                     SELECT ch.id, ch.document_id, ch.text, ch.heading_path, ch.heading, ch.depth, ch.sort_order, d.tags[1] AS tag, d.title AS document_title, d.kind, coll.name AS collection, d.metadata
                     FROM chunks ch
                     JOIN collections coll ON ch.collection_id = coll.id
@@ -273,12 +317,20 @@ public class ChunkRepository {
                     """;
             if (filterByArea) {
                 sql += " AND coll.area IS NOT NULL AND LOWER(coll.area) IN (:allowedAreasLower)";
-                matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
-                    .param("allowedAreasLower", allowedAreasLower)
-                    .query(new ChunkRowMapper(objectMapper, null)).list();
+                matches =
+                        jdbcClient
+                                .sql(sql)
+                                .param("prefix", cleanPrefix + "%")
+                                .param("allowedAreasLower", allowedAreasLower)
+                                .query(new ChunkRowMapper(objectMapper, null))
+                                .list();
             } else {
-                matches = jdbcClient.sql(sql).param("prefix", cleanPrefix + "%")
-                    .query(new ChunkRowMapper(objectMapper, null)).list();
+                matches =
+                        jdbcClient
+                                .sql(sql)
+                                .param("prefix", cleanPrefix + "%")
+                                .query(new ChunkRowMapper(objectMapper, null))
+                                .list();
             }
         }
 
@@ -286,11 +338,21 @@ public class ChunkRepository {
             return Optional.empty();
         }
         if (matches.size() > 1) {
-            StringBuilder sb = new StringBuilder(
-                "Ambiguous chunk ID '" + idPrefix + "' — " + matches.size() + " matches:\n");
+            StringBuilder sb =
+                    new StringBuilder(
+                            "Ambiguous chunk ID '"
+                                    + idPrefix
+                                    + "' — "
+                                    + matches.size()
+                                    + " matches:\n");
             for (ChunkRow c : matches) {
-                sb.append("  ").append(c.id().toString().substring(0, 8)).append("  ")
-                    .append(c.documentTitle()).append("  ").append(c.heading()).append("\n");
+                sb.append("  ")
+                        .append(c.id().toString().substring(0, 8))
+                        .append("  ")
+                        .append(c.documentTitle())
+                        .append("  ")
+                        .append(c.heading())
+                        .append("\n");
             }
             throw new IllegalArgumentException(sb.toString().trim());
         }
@@ -298,9 +360,16 @@ public class ChunkRepository {
     }
 
     private static UUID uuidFromCleanHex(String cleanHex) {
-        return UUID.fromString(cleanHex.substring(0, 8) + "-" + cleanHex.substring(8, 12) + "-"
-            + cleanHex.substring(12, 16) + "-" + cleanHex.substring(16, 20) + "-"
-            + cleanHex.substring(20, 32));
+        return UUID.fromString(
+                cleanHex.substring(0, 8)
+                        + "-"
+                        + cleanHex.substring(8, 12)
+                        + "-"
+                        + cleanHex.substring(12, 16)
+                        + "-"
+                        + cleanHex.substring(16, 20)
+                        + "-"
+                        + cleanHex.substring(20, 32));
     }
 
     /** Returns which of the given chunk ids exist, in a single query. */
@@ -311,8 +380,8 @@ public class ChunkRepository {
     /**
      * Returns which of the given chunk ids exist and belong to allowed areas, in a single query.
      */
-    public Set<UUID> findExistingIds(Collection<UUID> ids,
-        @Nullable Set<String> allowedAreasLower) {
+    public Set<UUID> findExistingIds(
+            Collection<UUID> ids, @Nullable Set<String> allowedAreasLower) {
         if (ids == null || ids.isEmpty()) {
             return Set.of();
         }
@@ -322,24 +391,37 @@ public class ChunkRepository {
         String[] idStrings = ids.stream().map(UUID::toString).toArray(String[]::new);
         if (allowedAreasLower == null || allowedAreasLower.contains("*")) {
             return new HashSet<>(
-                jdbcClient.sql("SELECT id FROM chunks WHERE id = ANY(:ids::uuid[])")
-                    .param("ids", idStrings).query(UUID.class).list());
+                    jdbcClient
+                            .sql("SELECT id FROM chunks WHERE id = ANY(:ids::uuid[])")
+                            .param("ids", idStrings)
+                            .query(UUID.class)
+                            .list());
         }
-        String sql = """
-            SELECT ch.id
-            FROM chunks ch
-            JOIN collections coll ON ch.collection_id = coll.id
-            WHERE ch.id = ANY(:ids::uuid[])
-              AND coll.area IS NOT NULL
-              AND LOWER(coll.area) IN (:allowedAreasLower)
-            """;
-        return new HashSet<>(jdbcClient.sql(sql).param("ids", idStrings)
-            .param("allowedAreasLower", allowedAreasLower).query(UUID.class).list());
+        String sql =
+                """
+                SELECT ch.id
+                FROM chunks ch
+                JOIN collections coll ON ch.collection_id = coll.id
+                WHERE ch.id = ANY(:ids::uuid[])
+                  AND coll.area IS NOT NULL
+                  AND LOWER(coll.area) IN (:allowedAreasLower)
+                """;
+        return new HashSet<>(
+                jdbcClient
+                        .sql(sql)
+                        .param("ids", idStrings)
+                        .param("allowedAreasLower", allowedAreasLower)
+                        .query(UUID.class)
+                        .list());
     }
 
     public boolean chunkHasEmbedding(UUID chunkId) {
-        return jdbcClient.sql("SELECT (embedding IS NOT NULL) FROM chunks WHERE id = :id")
-            .param("id", chunkId).query(Boolean.class).optional().orElse(false);
+        return jdbcClient
+                .sql("SELECT (embedding IS NOT NULL) FROM chunks WHERE id = :id")
+                .param("id", chunkId)
+                .query(Boolean.class)
+                .optional()
+                .orElse(false);
     }
 
     public long countByIdPrefix(String idPrefix, @Nullable String tag) {
@@ -358,8 +440,10 @@ public class ChunkRepository {
     }
 
     public List<String> findDistinctDocumentTitles(@Nullable String tag) {
-        String sql = "SELECT DISTINCT d.title FROM chunks ch "
-            + " JOIN documents d ON ch.document_id = d.id " + " WHERE d.title IS NOT NULL ";
+        String sql =
+                "SELECT DISTINCT d.title FROM chunks ch "
+                        + " JOIN documents d ON ch.document_id = d.id "
+                        + " WHERE d.title IS NOT NULL ";
         Map<String, Object> params = new HashMap<>();
         if (tag != null) {
             sql += " AND :tag = ANY(d.tags) ";

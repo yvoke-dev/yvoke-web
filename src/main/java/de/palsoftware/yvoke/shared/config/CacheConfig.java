@@ -20,7 +20,7 @@ public class CacheConfig {
     public CacheManager cacheManager() {
         CaffeineCacheManager manager = new CaffeineCacheManager(SYSTEM_PROMPTS, PLAYBOOKS);
         manager.setCaffeine(
-            Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(60)).maximumSize(1_000));
+                Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(60)).maximumSize(1_000));
         return manager;
     }
 }

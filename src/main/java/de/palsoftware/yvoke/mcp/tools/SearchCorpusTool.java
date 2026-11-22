@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class SearchCorpusTool {
 
@@ -26,6 +25,7 @@ public class SearchCorpusTool {
 
     private final HybridSearch hybridSearch;
     private final CollectionService collectionService;
+
     /**
      * The same property {@link HybridSearch} falls back to. Needed here only to know the effective
      * cap when the caller passed no limit, so a full page can be labelled as possibly truncated.
@@ -38,9 +38,11 @@ public class SearchCorpusTool {
      */
     private final int maxLimit;
 
-    public SearchCorpusTool(HybridSearch hybridSearch, CollectionService collectionService,
-        @Value("${app.retrieval.default-limit}") int defaultLimit,
-        @Value("${app.retrieval.max-limit}") int maxLimit) {
+    public SearchCorpusTool(
+            HybridSearch hybridSearch,
+            CollectionService collectionService,
+            @Value("${app.retrieval.default-limit}") int defaultLimit,
+            @Value("${app.retrieval.max-limit}") int maxLimit) {
         this.hybridSearch = hybridSearch;
         this.collectionService = collectionService;
         this.defaultLimit = defaultLimit;
@@ -49,12 +51,16 @@ public class SearchCorpusTool {
 
     /**
      * @param limit max chunks to return; {@code null} leaves {@code app.retrieval.default-limit} in
-     *        effect. Deliberately not defaulted here — that property is the single source of truth
-     *        and is shared with the chat retrieval path. {@link SearchOptions} floors it at 1;
-     *        {@link HybridSearch} caps it at {@code app.retrieval.max-limit}.
+     *     effect. Deliberately not defaulted here — that property is the single source of truth and
+     *     is shared with the chat retrieval path. {@link SearchOptions} floors it at 1; {@link
+     *     HybridSearch} caps it at {@code app.retrieval.max-limit}.
      */
-    public String searchCorpus(String query, String collection, @Nullable String tag,
-        @Nullable Integer limit, @Nullable AgenticChatContext context) {
+    public String searchCorpus(
+            String query,
+            String collection,
+            @Nullable String tag,
+            @Nullable Integer limit,
+            @Nullable AgenticChatContext context) {
         log.info("SearchCorpusTool: searching for '{}' in collection '{}'", query, collection);
 
         if (query == null || query.isBlank()) {
@@ -69,8 +75,10 @@ public class SearchCorpusTool {
             if (context == null) {
                 return "Error: 'collection' parameter is required.";
             }
-            List<Collection> allowed = collectionService.listCollections().stream()
-                .filter(c -> context.isAreaAllowed(c.area())).toList();
+            List<Collection> allowed =
+                    collectionService.listCollections().stream()
+                            .filter(c -> context.isAreaAllowed(c.area()))
+                            .toList();
             if (allowed.isEmpty()) {
                 return "No relevant documents found.";
             }
@@ -83,8 +91,11 @@ public class SearchCorpusTool {
         } else {
             String col = collection.trim();
             List<Collection> allCols = collectionService.listCollections();
-            Collection matchedCol = allCols.stream().filter(c -> c.name().equalsIgnoreCase(col))
-                .findFirst().orElse(null);
+            Collection matchedCol =
+                    allCols.stream()
+                            .filter(c -> c.name().equalsIgnoreCase(col))
+                            .findFirst()
+                            .orElse(null);
             if (matchedCol == null) {
                 return "Error: Collection '" + col + "' does not exist.";
             }
@@ -102,8 +113,11 @@ public class SearchCorpusTool {
             }
             if (parsedTag != null) {
                 if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                    return "Error: Tag '" + parsedTag + "' does not exist in collection '" + col
-                        + "'.";
+                    return "Error: Tag '"
+                            + parsedTag
+                            + "' does not exist in collection '"
+                            + col
+                            + "'.";
                 }
             }
 
@@ -124,7 +138,7 @@ public class SearchCorpusTool {
             effectiveOptLimit = Math.max(1, Math.min(limit, maxLimit));
         }
         SearchOptions opts =
-            new SearchOptions(cols, effectiveOptLimit, null, null, 0, rrk, tagList);
+                new SearchOptions(cols, effectiveOptLimit, null, null, 0, rrk, tagList);
         try {
             String effectiveQuery = omitCollection ? query.trim() : query;
             SearchWithId result = hybridSearch.searchWithId(effectiveQuery, opts);
@@ -132,7 +146,7 @@ public class SearchCorpusTool {
                 return "No relevant documents found.";
             }
             List<HybridSearchResult> chunks =
-                result.results() != null ? result.results() : List.of();
+                    result.results() != null ? result.results() : List.of();
 
             // Record telemetry in AgenticChatContext if active
             if (context != null) {
@@ -155,7 +169,7 @@ public class SearchCorpusTool {
             // at. No ledger is cached on this bean — it is a singleton shared by the MCP transport
             // and the in-app loop, so a field here would be one ledger spanning every user.
             String formatted =
-                ChunkBlocks.format(chunks, context != null ? context : SeenChunks.NONE);
+                    ChunkBlocks.format(chunks, context != null ? context : SeenChunks.NONE);
             String suffix = "";
             if (parsedTag != null) {
                 suffix += " (tag=" + parsedTag + ")";
@@ -168,19 +182,30 @@ public class SearchCorpusTool {
             // app.retrieval.max-limit. Comparing against the caller's original figure would call a
             // genuinely truncated page complete.
             int effectiveLimit =
-                Math.min((opts.limit() != null) ? opts.limit() : defaultLimit, maxLimit);
-            String truncation = (chunks.size() >= effectiveLimit) ? "\n\n_(showing " + chunks.size()
-                + " chunks — the result is capped and more may match. Raise `limit` or narrow "
-                + "the query; for a whole section use `get_section`.)_" : "";
-            return "Searched **" + colLabel + "**" + suffix + " for: _" + effectiveQuery + "_\n\n"
-                + formatted + truncation;
+                    Math.min((opts.limit() != null) ? opts.limit() : defaultLimit, maxLimit);
+            String truncation =
+                    (chunks.size() >= effectiveLimit)
+                            ? "\n\n_(showing "
+                                    + chunks.size()
+                                    + " chunks — the result is capped and more may match. Raise `limit` or narrow "
+                                    + "the query; for a whole section use `get_section`.)_"
+                            : "";
+            return "Searched **"
+                    + colLabel
+                    + "**"
+                    + suffix
+                    + " for: _"
+                    + effectiveQuery
+                    + "_\n\n"
+                    + formatted
+                    + truncation;
         } catch (Exception e) {
             return McpToolUtils.toolError("search_corpus", e);
         }
     }
 
-    private static boolean isAreaAllowed(@Nullable String area,
-        @Nullable AgenticChatContext context) {
+    private static boolean isAreaAllowed(
+            @Nullable String area, @Nullable AgenticChatContext context) {
         if (context != null) {
             return context.isAreaAllowed(area);
         }

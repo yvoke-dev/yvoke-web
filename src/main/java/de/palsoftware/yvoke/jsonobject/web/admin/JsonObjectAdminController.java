@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin/json-objects")
 public class JsonObjectAdminController {
@@ -43,9 +42,11 @@ public class JsonObjectAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    public JsonObjectAdminController(JsonObjectService jsonObjectService,
-        CollectionService collectionService, ObjectMapper objectMapper,
-        AdminAuditLogger auditLogger) {
+    public JsonObjectAdminController(
+            JsonObjectService jsonObjectService,
+            CollectionService collectionService,
+            ObjectMapper objectMapper,
+            AdminAuditLogger auditLogger) {
         this.jsonObjectService = jsonObjectService;
         this.collectionService = collectionService;
         this.objectMapper = objectMapper;
@@ -53,12 +54,15 @@ public class JsonObjectAdminController {
     }
 
     @GetMapping
-    public String listObjects(@RequestParam(required = false) String collection,
-        @RequestParam(required = false) String tag, @RequestParam(required = false) String search,
-        @RequestParam(required = false) UUID selectedObject,
-        @RequestParam(required = false) String displayField,
-        @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
-        Model model) {
+    public String listObjects(
+            @RequestParam(required = false) String collection,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID selectedObject,
+            @RequestParam(required = false) String displayField,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
         log.info("JsonObjectAdminController: Accessing JSON Objects view");
         List<Collection> collections = collectionService.listForAdminUser();
         model.addAttribute("collections", collections);
@@ -67,8 +71,8 @@ public class JsonObjectAdminController {
         if (targetCollection != null && !targetCollection.isBlank()) {
             Optional<Collection> colOpt = collectionService.getCollection(targetCollection);
             if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + targetCollection);
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Collection not found: " + targetCollection);
             }
         } else if (!collections.isEmpty()) {
             targetCollection = collections.get(0).name();
@@ -86,10 +90,13 @@ public class JsonObjectAdminController {
                 model.addAttribute("tags", tags);
 
                 List<String> tagsFilter =
-                    (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : null;
+                        (tag != null && !tag.isBlank()) ? List.of(tag.trim()) : null;
 
-                int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-                    PagingParams.MAX_ADMIN_PAGE_SIZE);
+                int clampedSize =
+                        PagingParams.clampSize(
+                                size,
+                                PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                                PagingParams.MAX_ADMIN_PAGE_SIZE);
                 int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
 
                 List<JsonObject> objects;
@@ -97,19 +104,22 @@ public class JsonObjectAdminController {
 
                 if (search != null && !search.isBlank()) {
                     try {
-                        objects = jsonObjectService.searchObjects(colId, search, tagsFilter,
-                            clampedPage, clampedSize);
+                        objects =
+                                jsonObjectService.searchObjects(
+                                        colId, search, tagsFilter, clampedPage, clampedSize);
                         totalElements =
-                            jsonObjectService.countSearchObjects(colId, search, tagsFilter);
+                                jsonObjectService.countSearchObjects(colId, search, tagsFilter);
                     } catch (BadSqlGrammarException e) {
-                        model.addAttribute("error",
-                            "Invalid JSON Path syntax. Note: string literals must be in double quotes (e.g. \"AAD\").");
+                        model.addAttribute(
+                                "error",
+                                "Invalid JSON Path syntax. Note: string literals must be in double quotes (e.g. \"AAD\").");
                         objects = List.of();
                         totalElements = 0;
                     }
                 } else {
                     objects =
-                        jsonObjectService.listObjects(colId, tagsFilter, clampedPage, clampedSize);
+                            jsonObjectService.listObjects(
+                                    colId, tagsFilter, clampedPage, clampedSize);
                     totalElements = jsonObjectService.countObjects(colId, tagsFilter);
                 }
 
@@ -124,8 +134,10 @@ public class JsonObjectAdminController {
                 Optional<JsonSchema> schemaOpt = jsonObjectService.getSchema(colId, tag);
                 if (schemaOpt.isPresent()) {
                     try {
-                        String schemaStr = objectMapper.writerWithDefaultPrettyPrinter()
-                            .writeValueAsString(schemaOpt.get().schemaData());
+                        String schemaStr =
+                                objectMapper
+                                        .writerWithDefaultPrettyPrinter()
+                                        .writeValueAsString(schemaOpt.get().schemaData());
                         model.addAttribute("schemaJson", schemaStr);
                         model.addAttribute("schemaSource", schemaOpt.get().source());
 
@@ -144,23 +156,26 @@ public class JsonObjectAdminController {
                     if (objOpt.isPresent()) {
                         JsonObject obj = objOpt.get();
                         Optional<Collection> objColOpt =
-                            collectionService.findByIdForAdmin(obj.collectionId());
+                                collectionService.findByIdForAdmin(obj.collectionId());
                         if (objColOpt.isPresent()) {
                             model.addAttribute("activeObject", obj);
                             try {
-                                model.addAttribute("formattedData",
-                                    objectMapper.writerWithDefaultPrettyPrinter()
-                                        .writeValueAsString(obj.data()));
+                                model.addAttribute(
+                                        "formattedData",
+                                        objectMapper
+                                                .writerWithDefaultPrettyPrinter()
+                                                .writeValueAsString(obj.data()));
                             } catch (JsonProcessingException e) {
                                 model.addAttribute("formattedData", "{}");
                             }
                         } else {
-                            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                                "JSON Object not found: " + selectedObject);
+                            throw new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND,
+                                    "JSON Object not found: " + selectedObject);
                         }
                     } else {
-                        throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "JSON Object not found: " + selectedObject);
+                        throw new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "JSON Object not found: " + selectedObject);
                     }
                 }
             }
@@ -174,12 +189,10 @@ public class JsonObjectAdminController {
         return "admin/json-objects";
     }
 
-
-
     @GetMapping("/distinct-values")
     @ResponseBody
-    public List<String> getDistinctValues(@RequestParam String collection,
-        @RequestParam String fieldName) {
+    public List<String> getDistinctValues(
+            @RequestParam String collection, @RequestParam String fieldName) {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             return List.of();
@@ -188,9 +201,12 @@ public class JsonObjectAdminController {
     }
 
     @PostMapping("/schema/edit")
-    public String editSchema(@RequestParam String collection,
-        @RequestParam(required = false) String tag, @RequestParam String schemaJson,
-        RedirectAttributes redirectAttributes) throws JsonProcessingException {
+    public String editSchema(
+            @RequestParam String collection,
+            @RequestParam(required = false) String tag,
+            @RequestParam String schemaJson,
+            RedirectAttributes redirectAttributes)
+            throws JsonProcessingException {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             redirectAttributes.addFlashAttribute("error", "Collection not found.");
@@ -198,10 +214,12 @@ public class JsonObjectAdminController {
         }
 
         Map<String, Object> schemaMap =
-            objectMapper.readValue(schemaJson, new TypeReference<Map<String, Object>>() {});
+                objectMapper.readValue(schemaJson, new TypeReference<Map<String, Object>>() {});
         jsonObjectService.saveManualSchema(colOpt.get().id(), tag, schemaMap);
-        auditLogger.log("EDIT_JSON_SCHEMA", colOpt.get().name(),
-            Map.of("tag", tag != null ? tag.trim() : ""));
+        auditLogger.log(
+                "EDIT_JSON_SCHEMA",
+                colOpt.get().name(),
+                Map.of("tag", tag != null ? tag.trim() : ""));
 
         redirectAttributes.addFlashAttribute("success", "Schema updated successfully.");
         redirectAttributes.addAttribute("collection", colOpt.get().name());
@@ -212,8 +230,10 @@ public class JsonObjectAdminController {
     }
 
     @PostMapping("/schema/rebuild")
-    public String rebuildSchema(@RequestParam String collection,
-        @RequestParam(required = false) String tag, RedirectAttributes redirectAttributes) {
+    public String rebuildSchema(
+            @RequestParam String collection,
+            @RequestParam(required = false) String tag,
+            RedirectAttributes redirectAttributes) {
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
             redirectAttributes.addFlashAttribute("error", "Collection not found.");
@@ -221,13 +241,16 @@ public class JsonObjectAdminController {
         }
         boolean rebuilt = jsonObjectService.rebuildSchema(colOpt.get().id(), tag);
         if (rebuilt) {
-            auditLogger.log("REBUILD_JSON_SCHEMA", colOpt.get().name(),
-                Map.of("tag", tag != null ? tag.trim() : ""));
-            redirectAttributes.addFlashAttribute("success",
-                "Schema re-inferred from current objects.");
+            auditLogger.log(
+                    "REBUILD_JSON_SCHEMA",
+                    colOpt.get().name(),
+                    Map.of("tag", tag != null ? tag.trim() : ""));
+            redirectAttributes.addFlashAttribute(
+                    "success", "Schema re-inferred from current objects.");
         } else {
-            redirectAttributes.addFlashAttribute("error",
-                "Schema is manually maintained; rebuild skipped. Switch it to inferred first.");
+            redirectAttributes.addFlashAttribute(
+                    "error",
+                    "Schema is manually maintained; rebuild skipped. Switch it to inferred first.");
         }
 
         redirectAttributes.addAttribute("collection", colOpt.get().name());
@@ -246,8 +269,8 @@ public class JsonObjectAdminController {
         return paths.stream().distinct().sorted().toList();
     }
 
-    private void collectSchemaFieldPaths(String prefix, Map<String, Object> node,
-        List<String> paths) {
+    private void collectSchemaFieldPaths(
+            String prefix, Map<String, Object> node, List<String> paths) {
         if (node == null) {
             return;
         }

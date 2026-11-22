@@ -17,17 +17,19 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * It is capped at {@code app.chat.cost-explorer.max-rows}; here we set the cap low and seed more
  * rows to prove the fetch is bounded.
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration", "app.chat.cost-explorer.max-rows=3"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration",
+            "app.chat.cost-explorer.max-rows=3"
+        })
 public class CostExplorerRowCapIT {
 
     private static final String MODEL = "CAP-IT-MODEL";
 
-    @Autowired
-    private CostCalculationService costCalculationService;
+    @Autowired private CostCalculationService costCalculationService;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     public void tearDown() {
@@ -38,13 +40,15 @@ public class CostExplorerRowCapIT {
     public void rawViewIsCappedAtConfiguredMaxRows() {
         for (int i = 0; i < 10; i++) {
             jdbcTemplate.update(
-                "INSERT INTO llm_call_logs (id, model, source, prompt_tokens, completion_tokens, created_at) "
-                    + "VALUES (?, ?, 'chat', 10, 10, now())",
-                UUID.randomUUID(), MODEL);
+                    "INSERT INTO llm_call_logs (id, model, source, prompt_tokens, completion_tokens, created_at) "
+                            + "VALUES (?, ?, 'chat', 10, 10, now())",
+                    UUID.randomUUID(),
+                    MODEL);
         }
 
-        FilteredCostExplorerReport report = costCalculationService.getFilteredExplorerReport("RAW",
-            null, null, List.of(MODEL), List.of(), List.of());
+        FilteredCostExplorerReport report =
+                costCalculationService.getFilteredExplorerReport(
+                        "RAW", null, null, List.of(MODEL), List.of(), List.of());
 
         // 10 rows seeded, cap is 3 → the view returns at most the cap, never the full set.
         assertThat(report.messages()).hasSize(3);
@@ -60,36 +64,49 @@ public class CostExplorerRowCapIT {
     public void conversationViewTruncatesDeterministicallyAndKeepsTheMostRecent() {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)", userId,
-            "cap-it-" + userId, userId + "@example.com", "Cap IT User");
+                "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+                userId,
+                "cap-it-" + userId,
+                userId + "@example.com",
+                "Cap IT User");
 
         // Six conversations, ascending updated_at; the cap is 3, so the three newest must win.
         List<UUID> newest = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
             UUID convId = UUID.randomUUID();
             jdbcTemplate.update(
-                "INSERT INTO conversations (id, user_id, title, updated_at) "
-                    + "VALUES (?, ?, ?, now() - make_interval(mins => ?))",
-                convId, userId, "cap-conv-" + i, 6 - i);
+                    "INSERT INTO conversations (id, user_id, title, updated_at) "
+                            + "VALUES (?, ?, ?, now() - make_interval(mins => ?))",
+                    convId,
+                    userId,
+                    "cap-conv-" + i,
+                    6 - i);
             jdbcTemplate.update(
-                "INSERT INTO llm_call_logs (id, conversation_id, user_id, model, source, "
-                    + "prompt_tokens, completion_tokens, created_at) "
-                    + "VALUES (?, ?, ?, ?, 'chat', 10, 10, now())",
-                UUID.randomUUID(), convId, userId, MODEL);
+                    "INSERT INTO llm_call_logs (id, conversation_id, user_id, model, source, "
+                            + "prompt_tokens, completion_tokens, created_at) "
+                            + "VALUES (?, ?, ?, ?, 'chat', 10, 10, now())",
+                    UUID.randomUUID(),
+                    convId,
+                    userId,
+                    MODEL);
             newest.add(convId);
         }
         List<UUID> expected = newest.subList(3, 6);
 
-        FilteredCostExplorerReport first = costCalculationService.getFilteredExplorerReport(
-            "CONVERSATION", null, null, List.of(MODEL), List.of(), List.of());
-        FilteredCostExplorerReport second = costCalculationService.getFilteredExplorerReport(
-            "CONVERSATION", null, null, List.of(MODEL), List.of(), List.of());
+        FilteredCostExplorerReport first =
+                costCalculationService.getFilteredExplorerReport(
+                        "CONVERSATION", null, null, List.of(MODEL), List.of(), List.of());
+        FilteredCostExplorerReport second =
+                costCalculationService.getFilteredExplorerReport(
+                        "CONVERSATION", null, null, List.of(MODEL), List.of(), List.of());
 
         assertThat(first.conversations()).hasSize(3);
-        assertThat(first.conversations()).extracting(r -> r.conversationId())
-            .containsExactlyInAnyOrderElementsOf(expected);
-        assertThat(second.conversations()).extracting(r -> r.conversationId())
-            .containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(first.conversations())
+                .extracting(r -> r.conversationId())
+                .containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(second.conversations())
+                .extracting(r -> r.conversationId())
+                .containsExactlyInAnyOrderElementsOf(expected);
 
         jdbcTemplate.update("DELETE FROM llm_call_logs WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM conversations WHERE user_id = ?", userId);

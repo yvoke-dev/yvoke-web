@@ -16,8 +16,9 @@ public class PlaybookInitializer {
     private final PlaybookService playbookService;
     private final McpSyncServer mcpSyncServer;
 
-    public PlaybookInitializer(PlaybookService playbookService,
-        @Autowired(required = false) McpSyncServer mcpSyncServer) {
+    public PlaybookInitializer(
+            PlaybookService playbookService,
+            @Autowired(required = false) McpSyncServer mcpSyncServer) {
         this.playbookService = playbookService;
         this.mcpSyncServer = mcpSyncServer;
     }
@@ -29,7 +30,7 @@ public class PlaybookInitializer {
             playbookService.registerAllPlaybooksWithMcp(mcpSyncServer);
         } else {
             log.info(
-                "McpSyncServer is not present in context (disabled or in test context). Skipping dynamic prompt registration.");
+                    "McpSyncServer is not present in context (disabled or in test context). Skipping dynamic prompt registration.");
         }
     }
 }

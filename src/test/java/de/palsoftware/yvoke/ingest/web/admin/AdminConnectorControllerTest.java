@@ -32,19 +32,32 @@ class AdminConnectorControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         collectionService = mock(CollectionService.class);
         instanceService = mock(ConfluenceInstanceService.class);
-        controller = new AdminConnectorController(collectionService, instanceService,
-            mock(SystemPromptService.class));
+        controller =
+                new AdminConnectorController(
+                        collectionService, instanceService, mock(SystemPromptService.class));
         model = new ConcurrentModel();
 
-        when(collectionService.listCollections()).thenReturn(List.of(
-            new Collection(UUID.randomUUID(), "A - Archive", null, List.of("1.0", "2.0"),
-                OffsetDateTime.now(), "OIM"),
-            new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of("9.3.1", "10.0"),
-                OffsetDateTime.now(), "OIM")));
+        when(collectionService.listCollections())
+                .thenReturn(
+                        List.of(
+                                new Collection(
+                                        UUID.randomUUID(),
+                                        "A - Archive",
+                                        null,
+                                        List.of("1.0", "2.0"),
+                                        OffsetDateTime.now(),
+                                        "OIM"),
+                                new Collection(
+                                        UUID.randomUUID(),
+                                        "OIM - Docs",
+                                        null,
+                                        List.of("9.3.1", "10.0"),
+                                        OffsetDateTime.now(),
+                                        "OIM")));
     }
 
     @AfterEach
@@ -54,28 +67,68 @@ class AdminConnectorControllerTest {
 
     @Test
     void getConnectors_filtersByAdministeredArea() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM - Docs", null, List.of("9.3.1"),
-            OffsetDateTime.now(), "OIM");
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", null,
-            List.of("1.0"), OffsetDateTime.now(), "Finance");
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM - Docs",
+                        null,
+                        List.of("9.3.1"),
+                        OffsetDateTime.now(),
+                        "OIM");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        null,
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.listCollections()).thenReturn(List.of(oimCol, finCol));
 
-        ConfluenceInstanceView oimView = new ConfluenceInstanceView(UUID.randomUUID(), "OIM Wiki",
-            "oim-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345",
-            "public", null, "OIM - Docs", "9.3.1", true, true, TokenHealth.OK);
-        ConfluenceInstanceView finView = new ConfluenceInstanceView(UUID.randomUUID(), "Fin Wiki",
-            "fin-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "54321",
-            "public", null, "Finance - Docs", "1.0", true, true, TokenHealth.OK);
+        ConfluenceInstanceView oimView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "OIM Wiki",
+                        "oim-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "DOCS",
+                        "12345",
+                        "public",
+                        null,
+                        "OIM - Docs",
+                        "9.3.1",
+                        true,
+                        true,
+                        TokenHealth.OK);
+        ConfluenceInstanceView finView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "Fin Wiki",
+                        "fin-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "FIN",
+                        "54321",
+                        "public",
+                        null,
+                        "Finance - Docs",
+                        "1.0",
+                        true,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.listInstances()).thenReturn(List.of(oimView, finView));
 
         controller.getConnectors(model);
 
         @SuppressWarnings("unchecked")
         List<ConfluenceInstanceView> instances =
-            (List<ConfluenceInstanceView>) model.getAttribute("instances");
+                (List<ConfluenceInstanceView>) model.getAttribute("instances");
         assertThat(instances).containsExactly(oimView);
         @SuppressWarnings("unchecked")
         List<Collection> collections = (List<Collection>) model.getAttribute("collections");
@@ -83,16 +136,30 @@ class AdminConnectorControllerTest {
     }
 
     private static ConfluenceInstanceView view(String name, String slug, TokenHealth health) {
-        return new ConfluenceInstanceView(UUID.randomUUID(), name, slug,
-            "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345", "public",
-            "draft", "OIM - Docs", "10.0", true, true, health);
+        return new ConfluenceInstanceView(
+                UUID.randomUUID(),
+                name,
+                slug,
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                true,
+                true,
+                health);
     }
 
     @Test
     void everyInstanceIsListedWithItsTokenHealth() {
         when(instanceService.listInstances())
-            .thenReturn(List.of(view("iCC Wiki", "icc-wiki", TokenHealth.OK),
-                view("Acme", "acme", TokenHealth.UNDECRYPTABLE)));
+                .thenReturn(
+                        List.of(
+                                view("iCC Wiki", "icc-wiki", TokenHealth.OK),
+                                view("Acme", "acme", TokenHealth.UNDECRYPTABLE)));
 
         assertThat(controller.getConnectors(model)).isEqualTo("admin/connectors");
 
@@ -118,7 +185,7 @@ class AdminConnectorControllerTest {
     @Test
     void theTagDropdownStartsEmptyRatherThanShowingSomeOtherCollectionsTags() {
         when(instanceService.listInstances())
-            .thenReturn(List.of(view("iCC Wiki", "icc-wiki", TokenHealth.OK)));
+                .thenReturn(List.of(view("iCC Wiki", "icc-wiki", TokenHealth.OK)));
 
         controller.getConnectors(model);
 
@@ -133,40 +200,71 @@ class AdminConnectorControllerTest {
     @Test
     void noInstanceRecordAndNoCiphertextReachTheTemplate() {
         when(instanceService.listInstances())
-            .thenReturn(List.of(view("iCC Wiki", "icc-wiki", TokenHealth.OK)));
+                .thenReturn(List.of(view("iCC Wiki", "icc-wiki", TokenHealth.OK)));
 
         controller.getConnectors(model);
 
         assertThat(model.asMap().values()).noneMatch(v -> v instanceof ConfluenceInstance);
-        assertThat(model.asMap().values()).noneMatch(v -> v instanceof List<?> list
-            && list.stream().anyMatch(item -> item instanceof ConfluenceInstance));
         assertThat(model.asMap().values())
-            .noneMatch(v -> v != null && String.valueOf(v).contains("enc:"));
+                .noneMatch(v ->
+                        v instanceof List<?> list
+                                && list.stream()
+                                        .anyMatch(item -> item instanceof ConfluenceInstance));
+        assertThat(model.asMap().values())
+                .noneMatch(v -> v != null && String.valueOf(v).contains("enc:"));
     }
 
     @Test
     void superAdminSeesOrphanedInstancesAndAreaAdminMatchesCollectionCaseInsensitively() {
-        ConfluenceInstanceView orphanView = new ConfluenceInstanceView(UUID.randomUUID(),
-            "Orphan Wiki", "orphan-wiki", "https://acme.atlassian.net/wiki", "svc@example.com",
-            "ORP", "1", "public", null, "Deleted - Docs", "1.0", true, true, TokenHealth.OK);
-        ConfluenceInstanceView caseView = new ConfluenceInstanceView(UUID.randomUUID(), "Case Wiki",
-            "case-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "2",
-            "public", null, "oim - docs", "9.3.1", true, true, TokenHealth.OK);
+        ConfluenceInstanceView orphanView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "Orphan Wiki",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "ORP",
+                        "1",
+                        "public",
+                        null,
+                        "Deleted - Docs",
+                        "1.0",
+                        true,
+                        true,
+                        TokenHealth.OK);
+        ConfluenceInstanceView caseView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "Case Wiki",
+                        "case-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "DOCS",
+                        "2",
+                        "public",
+                        null,
+                        "oim - docs",
+                        "9.3.1",
+                        true,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.listInstances()).thenReturn(List.of(orphanView, caseView));
 
         controller.getConnectors(model);
         @SuppressWarnings("unchecked")
         List<ConfluenceInstanceView> superAdminInstances =
-            (List<ConfluenceInstanceView>) model.getAttribute("instances");
+                (List<ConfluenceInstanceView>) model.getAttribute("instances");
         assertThat(superAdminInstances).containsExactly(orphanView, caseView);
 
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         Model areaAdminModel = new ConcurrentModel();
         controller.getConnectors(areaAdminModel);
         @SuppressWarnings("unchecked")
         List<ConfluenceInstanceView> areaAdminInstances =
-            (List<ConfluenceInstanceView>) areaAdminModel.getAttribute("instances");
+                (List<ConfluenceInstanceView>) areaAdminModel.getAttribute("instances");
         assertThat(areaAdminInstances).containsExactly(caseView);
     }
 }

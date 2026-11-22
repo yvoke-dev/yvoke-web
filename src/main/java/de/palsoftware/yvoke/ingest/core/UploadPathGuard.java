@@ -21,7 +21,7 @@ public class UploadPathGuard {
         Path resolved = (candidate.isAbsolute() ? candidate : root.resolve(candidate)).normalize();
         if (!resolved.startsWith(root)) {
             throw new SecurityException(
-                "sourceRef resolves outside the permitted upload directory");
+                    "sourceRef resolves outside the permitted upload directory");
         }
         return resolved;
     }

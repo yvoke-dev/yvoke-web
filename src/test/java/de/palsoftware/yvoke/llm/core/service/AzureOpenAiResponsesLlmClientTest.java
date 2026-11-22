@@ -42,9 +42,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The streaming tests replay SSE captured verbatim from the live Azure endpoint
- * ({@code src/test/resources/llm/azure-responses/*.sse}), so the event shapes under test are the
- * service's own rather than a hand-written guess at them.
+ * The streaming tests replay SSE captured verbatim from the live Azure endpoint ({@code
+ * src/test/resources/llm/azure-responses/*.sse}), so the event shapes under test are the service's
+ * own rather than a hand-written guess at them.
  */
 class AzureOpenAiResponsesLlmClientTest {
 
@@ -52,6 +52,7 @@ class AzureOpenAiResponsesLlmClientTest {
 
     /** Requests the mock server actually received, and how many of them to answer 503. */
     private final AtomicInteger requests = new AtomicInteger();
+
     private int failFirst;
 
     @AfterEach
@@ -66,20 +67,21 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void theResponsesBaseUrlIsTheV1SurfaceOfTheResourceRoot() {
         assertThat(AzureOpenAiResponsesLlmClient.baseUrl("https://res.services.ai.azure.com"))
-            .isEqualTo("https://res.services.ai.azure.com/openai/v1");
+                .isEqualTo("https://res.services.ai.azure.com/openai/v1");
     }
 
     @Test
     void aTrailingSlashDoesNotDoubleUpInThePath() {
         assertThat(AzureOpenAiResponsesLlmClient.baseUrl("https://res.services.ai.azure.com/"))
-            .isEqualTo("https://res.services.ai.azure.com/openai/v1");
+                .isEqualTo("https://res.services.ai.azure.com/openai/v1");
     }
 
     @Test
     void anEndpointThatAlreadyNamesTheV1SurfaceIsLeftAlone() {
         assertThat(
-            AzureOpenAiResponsesLlmClient.baseUrl("https://res.services.ai.azure.com/openai/v1"))
-            .isEqualTo("https://res.services.ai.azure.com/openai/v1");
+                        AzureOpenAiResponsesLlmClient.baseUrl(
+                                "https://res.services.ai.azure.com/openai/v1"))
+                .isEqualTo("https://res.services.ai.azure.com/openai/v1");
     }
 
     @Test
@@ -87,8 +89,8 @@ class AzureOpenAiResponsesLlmClientTest {
         // openai-java falls back to api.openai.com, which would send the Azure key to a third
         // party.
         assertThatThrownBy(() -> AzureOpenAiResponsesLlmClient.baseUrl("  "))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("endpoint is required");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("endpoint is required");
     }
 
     // ------------------------------------------------------- request building
@@ -97,7 +99,7 @@ class AzureOpenAiResponsesLlmClientTest {
     void aReasoningModelIsSentBothToolsAndAReasoningEffort() {
         // The whole reason this client exists: chat completions answers this pair with a 400.
         ResponseCreateParams params =
-            client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
+                client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
 
         assertThat(params.tools()).isPresent();
         assertThat(params.tools().get()).hasSize(1);
@@ -118,7 +120,7 @@ class AzureOpenAiResponsesLlmClientTest {
     void aReasoningModelIsSentNoTemperature() {
         // Reasoning models reject any temperature but their own default.
         ResponseCreateParams params =
-            client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
+                client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
 
         assertThat(params.temperature()).isEmpty();
     }
@@ -135,13 +137,13 @@ class AzureOpenAiResponsesLlmClientTest {
     void theRequestIsNotStoredServerSide() {
         // Azure defaults Responses to store=true; nothing here reads a stored response back.
         assertThat(client("medium").buildParams(requestWithTools("gpt-5.6-luna")).store())
-            .contains(false);
+                .contains(false);
     }
 
     @Test
     void thinkingDisabledLeavesTheModelsOwnDefaultInPlace() {
         AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient((OpenAIClient) null, false, "high", "");
+                new AzureOpenAiResponsesLlmClient((OpenAIClient) null, false, "high", "");
 
         assertThat(client.resolveReasoningEffort(requestWithTools("gpt-5.6-luna"))).isNull();
     }
@@ -150,13 +152,19 @@ class AzureOpenAiResponsesLlmClientTest {
     void anUnusableThinkingLevelLeavesTheEffortUnsetRatherThanGuessing() {
         // An unknown value is a 400, so it must not be forwarded.
         assertThat(client("enthusiastic").resolveReasoningEffort(requestWithTools("gpt-5.6-luna")))
-            .isNull();
+                .isNull();
     }
 
     @Test
     void aPerRequestThinkingLevelBeatsTheClientWideDefault() {
-        LlmRequest request = new LlmRequest("gpt-5.6-luna", List.of(new LlmMessage("user", "hi")),
-            0.5, 1024, List.of(), "low");
+        LlmRequest request =
+                new LlmRequest(
+                        "gpt-5.6-luna",
+                        List.of(new LlmMessage("user", "hi")),
+                        0.5,
+                        1024,
+                        List.of(),
+                        "low");
 
         assertThat(client("high").resolveReasoningEffort(request)).isEqualTo(ReasoningEffort.LOW);
     }
@@ -174,11 +182,11 @@ class AzureOpenAiResponsesLlmClientTest {
         assertThat(items).hasSize(5);
         // Reasoning models take their instructions as `developer`, not `system`.
         assertThat(items.get(0).easyInputMessage().orElseThrow().role())
-            .isEqualTo(EasyInputMessage.Role.DEVELOPER);
+                .isEqualTo(EasyInputMessage.Role.DEVELOPER);
         assertThat(items.get(1).easyInputMessage().orElseThrow().role())
-            .isEqualTo(EasyInputMessage.Role.USER);
+                .isEqualTo(EasyInputMessage.Role.USER);
         assertThat(items.get(2).easyInputMessage().orElseThrow().role())
-            .isEqualTo(EasyInputMessage.Role.ASSISTANT);
+                .isEqualTo(EasyInputMessage.Role.ASSISTANT);
 
         ResponseFunctionToolCall call = items.get(3).functionCall().orElseThrow();
         assertThat(call.callId()).isEqualTo("call_abc");
@@ -187,7 +195,7 @@ class AzureOpenAiResponsesLlmClientTest {
 
         // The result must come back under the SAME call id, or the model cannot pair them.
         ResponseInputItem.FunctionCallOutput output =
-            items.get(4).functionCallOutput().orElseThrow();
+                items.get(4).functionCallOutput().orElseThrow();
         assertThat(output.callId()).isEqualTo("call_abc");
         assertThat(output.output().asString()).isEqualTo("3 chunks found");
     }
@@ -195,12 +203,12 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void anOrdinaryModelGetsASystemRoleRatherThanDeveloper() {
         LlmRequest request =
-            new LlmRequest("gpt-4o", agenticTurn().messages(), 0.5, 1024, List.of(), "medium");
+                new LlmRequest("gpt-4o", agenticTurn().messages(), 0.5, 1024, List.of(), "medium");
 
         List<ResponseInputItem> items = inputItems(client("medium").buildParams(request));
 
         assertThat(items.get(0).easyInputMessage().orElseThrow().role())
-            .isEqualTo(EasyInputMessage.Role.SYSTEM);
+                .isEqualTo(EasyInputMessage.Role.SYSTEM);
     }
 
     // ------------------------------------------------- structured output / seed
@@ -215,11 +223,24 @@ class AzureOpenAiResponsesLlmClientTest {
         // Asserting only isPresent() would be satisfied by an EMPTY Schema, so this reaches the
         // contents: neutering the copy loop while leaving the wrapper intact used to keep the whole
         // suite green.
-        ResponseCreateParams params = client("medium").buildParams(requestWithSchema(
-            Map.of("type", "object", "properties", Map.of("answer", Map.of("type", "string")))));
+        ResponseCreateParams params =
+                client("medium")
+                        .buildParams(
+                                requestWithSchema(
+                                        Map.of(
+                                                "type",
+                                                "object",
+                                                "properties",
+                                                Map.of("answer", Map.of("type", "string")))));
 
         var schema =
-            params.text().orElseThrow().format().orElseThrow().jsonSchema().orElseThrow().schema();
+                params.text()
+                        .orElseThrow()
+                        .format()
+                        .orElseThrow()
+                        .jsonSchema()
+                        .orElseThrow()
+                        .schema();
         assertThat(schema._additionalProperties()).containsKeys("type", "properties");
         assertThat(schema._additionalProperties().get("properties").toString()).contains("answer");
     }
@@ -234,8 +255,15 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void structuredOutputIsCombinedWithToolsRatherThanDropped() {
         // Unlike Gemini, this surface allows both; the request under test carries tools too.
-        ResponseCreateParams params = client("medium").buildParams(requestWithSchema(
-            Map.of("type", "object", "properties", Map.of("answer", Map.of("type", "string")))));
+        ResponseCreateParams params =
+                client("medium")
+                        .buildParams(
+                                requestWithSchema(
+                                        Map.of(
+                                                "type",
+                                                "object",
+                                                "properties",
+                                                Map.of("answer", Map.of("type", "string")))));
 
         assertThat(params.tools().orElseThrow()).hasSize(1);
         assertThat(params.text()).isPresent();
@@ -246,15 +274,22 @@ class AzureOpenAiResponsesLlmClientTest {
         // Verified against the live endpoint: this surface accepts code_interpreter and answers
         // with a code_interpreter_call item. Chat completions has no equivalent and can only warn.
         LlmRequest request =
-            new LlmRequest("gpt-5.6-luna", List.of(new LlmMessage("user", "compute 17*23")), 0.5,
-                1024, List.of(new LlmTool("get_weather", "Get weather", Map.of("type", "object"))),
-                "medium", true);
+                new LlmRequest(
+                        "gpt-5.6-luna",
+                        List.of(new LlmMessage("user", "compute 17*23")),
+                        0.5,
+                        1024,
+                        List.of(
+                                new LlmTool(
+                                        "get_weather", "Get weather", Map.of("type", "object"))),
+                        "medium",
+                        true);
 
         ResponseCreateParams params = client("medium").buildParams(request);
 
         assertThat(params.tools().orElseThrow()).hasSize(2);
         assertThat(params.tools().get().stream().filter(t -> t.codeInterpreter().isPresent()))
-            .hasSize(1);
+                .hasSize(1);
     }
 
     @Test
@@ -264,13 +299,13 @@ class AzureOpenAiResponsesLlmClientTest {
         ResponseCreateParams params = client("medium").buildParams(codeExecutionRequest());
 
         assertThat(params.include().orElseThrow())
-            .contains(ResponseIncludable.CODE_INTERPRETER_CALL_OUTPUTS);
+                .contains(ResponseIncludable.CODE_INTERPRETER_CALL_OUTPUTS);
     }
 
     @Test
     void withoutCodeExecutionOnlyTheFunctionToolsAreSent() {
         ResponseCreateParams params =
-            client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
+                client("medium").buildParams(requestWithTools("gpt-5.6-luna"));
 
         assertThat(params.tools().orElseThrow()).hasSize(1);
         assertThat(params.tools().get().get(0).function()).isPresent();
@@ -282,16 +317,26 @@ class AzureOpenAiResponsesLlmClientTest {
         // with parameters:{} would pass the whole suite. The model would then call it with {} and
         // SearchCorpusTool would answer "(no matching chunks)" — which an agent reads as "the
         // corpus does not contain this", not as a bug.
-        FunctionTool tool = client("medium").buildParams(requestWithTools("gpt-5.6-luna")).tools()
-            .orElseThrow().get(0).function().orElseThrow();
+        FunctionTool tool =
+                client("medium")
+                        .buildParams(requestWithTools("gpt-5.6-luna"))
+                        .tools()
+                        .orElseThrow()
+                        .get(0)
+                        .function()
+                        .orElseThrow();
 
         assertThat(tool.name()).isEqualTo("get_weather");
         assertThat(tool.description()).contains("Get weather");
-        assertThat(tool.parameters().orElseThrow()._additionalProperties()).containsKeys("type",
-            "properties");
+        assertThat(tool.parameters().orElseThrow()._additionalProperties())
+                .containsKeys("type", "properties");
         assertThat(
-            tool.parameters().orElseThrow()._additionalProperties().get("properties").toString())
-            .contains("city");
+                        tool.parameters()
+                                .orElseThrow()
+                                ._additionalProperties()
+                                .get("properties")
+                                .toString())
+                .contains("city");
     }
 
     // --------------------------------------------------------------- lifecycle
@@ -300,7 +345,7 @@ class AzureOpenAiResponsesLlmClientTest {
     void closingTheClientReleasesTheUnderlyingHttpPool() {
         OpenAIClient underlying = mock(OpenAIClient.class);
         AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient(underlying, true, "medium", "");
+                new AzureOpenAiResponsesLlmClient(underlying, true, "medium", "");
 
         client.close();
         client.close();
@@ -316,8 +361,9 @@ class AzureOpenAiResponsesLlmClientTest {
         List<LlmResponseChunk> chunks = replay("reasoning-and-text.sse");
 
         String reasoning = joined(chunks, LlmResponseChunk::reasoning);
-        assertThat(reasoning).startsWith("**Finding the trick in the question**")
-            .contains("all but 9 run away");
+        assertThat(reasoning)
+                .startsWith("**Finding the trick in the question**")
+                .contains("all but 9 run away");
         // 79 delta events in the recording; every one must reach the caller.
         assertThat(chunks.stream().filter(c -> c.reasoning() != null)).hasSize(79);
     }
@@ -349,8 +395,12 @@ class AzureOpenAiResponsesLlmClientTest {
         assertThat(deltas.get(0).id()).isNotBlank();
         assertThat(deltas.get(0).name()).isEqualTo("get_weather");
         assertThat(deltas.get(0).argumentsDelta()).isNull();
-        assertThat(deltas.stream().skip(1).map(LlmToolCallDelta::argumentsDelta).reduce("",
-            (a, b) -> a + (b == null ? "" : b))).isEqualTo("{\"city\":\"Berlin\"}");
+        assertThat(
+                        deltas.stream()
+                                .skip(1)
+                                .map(LlmToolCallDelta::argumentsDelta)
+                                .reduce("", (a, b) -> a + (b == null ? "" : b)))
+                .isEqualTo("{\"city\":\"Berlin\"}");
     }
 
     @Test
@@ -429,8 +479,10 @@ class AzureOpenAiResponsesLlmClientTest {
         assertThat(argumentsFor(deltas, 0)).isEqualTo("{\"city\":\"Berlin\"}");
         assertThat(argumentsFor(deltas, 1)).isEqualTo("{\"city\":\"Paris\"}");
         assertThat(idFor(deltas, 0)).isNotEqualTo(idFor(deltas, 1));
-        assertThat(deltas).filteredOn(d -> d.name() != null).extracting(LlmToolCallDelta::name)
-            .containsExactly("get_weather", "get_weather");
+        assertThat(deltas)
+                .filteredOn(d -> d.name() != null)
+                .extracting(LlmToolCallDelta::name)
+                .containsExactly("get_weather", "get_weather");
     }
 
     @Test
@@ -457,15 +509,17 @@ class AzureOpenAiResponsesLlmClientTest {
     void aFailedTurnThrowsCarryingTheTokensItBurned() throws IOException {
         // The non-benign counterpart: AccountingLlmClient catches LlmCallFailedException and
         // publishes e.usage(), so the spend is recorded even though the call failed.
-        assertThatThrownBy(() -> replay("failed.sse")).isInstanceOf(LlmCallFailedException.class)
-            .hasMessageContaining("server_error")
-            .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
-            .extracting(LlmCallFailedException::usage)
-            // total is deliberately NOT input+output in this fixture (1200+340=1540, reported
-            // 1600), so recomputing the total instead of forwarding what the provider reported is
-            // detectable. Every other fixture has them consistent, which made that mutation
-            // survive.
-            .isEqualTo(new LlmUsage(1200, 340, 1600, 100, 300));
+        assertThatThrownBy(() -> replay("failed.sse"))
+                .isInstanceOf(LlmCallFailedException.class)
+                .hasMessageContaining("server_error")
+                .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
+                .extracting(LlmCallFailedException::usage)
+                // total is deliberately NOT input+output in this fixture (1200+340=1540, reported
+                // 1600), so recomputing the total instead of forwarding what the provider reported
+                // is
+                // detectable. Every other fixture has them consistent, which made that mutation
+                // survive.
+                .isEqualTo(new LlmUsage(1200, 340, 1600, 100, 300));
     }
 
     @Test
@@ -507,7 +561,7 @@ class AzureOpenAiResponsesLlmClientTest {
         // blank answer. Safe to re-request for one reason only: empty means nothing reached the
         // consumer, so there is no rendered output a second attempt could duplicate.
         List<LlmResponseChunk> chunks =
-            replaySequence("reasoning-only-empty.sse", "reasoning-and-text.sse");
+                replaySequence("reasoning-only-empty.sse", "reasoning-and-text.sse");
 
         assertThat(requests.get()).isEqualTo(2);
         assertThat(joined(chunks, LlmResponseChunk::content)).isEqualTo("9 sheep are left.");
@@ -520,16 +574,16 @@ class AzureOpenAiResponsesLlmClientTest {
         // row per generateStream — so the attempt was billed but invisible, and every retrying
         // client had to carry its own usage-accumulation code to make that come out right.
         List<LlmResponseChunk> chunks =
-            replaySequence("reasoning-only-empty.sse", "reasoning-and-text.sse");
+                replaySequence("reasoning-only-empty.sse", "reasoning-and-text.sse");
 
         List<LlmResponseChunk> markers =
-            chunks.stream().filter(LlmResponseChunk::endOfCall).toList();
+                chunks.stream().filter(LlmResponseChunk::endOfCall).toList();
         assertThat(markers).hasSize(2);
         assertThat(markers.get(0).usage()).isEqualTo(new LlmUsage(137, 1040, 1177, 41, 1024));
         assertThat(markers.get(1).usage()).isEqualTo(new LlmUsage(137, 64, 201, 41, 29));
         assertThat(lastUsage(chunks.stream().filter(c -> !c.endOfCall()).toList()))
-            .as("the winning attempt reports only what IT cost; the sum would be 1378 total")
-            .isEqualTo(new LlmUsage(137, 64, 201, 41, 29));
+                .as("the winning attempt reports only what IT cost; the sum would be 1378 total")
+                .isEqualTo(new LlmUsage(137, 64, 201, 41, 29));
     }
 
     /**
@@ -539,28 +593,29 @@ class AzureOpenAiResponsesLlmClientTest {
      */
     @Test
     void aTruncatedTurnThatProducedNothingFailsRatherThanDeliveringABlankAnswer()
-        throws IOException {
+            throws IOException {
         assertThatThrownBy(() -> replaySequence("truncated-empty.sse"))
-            .isInstanceOf(LlmCallFailedException.class)
-            .hasMessageContaining("no content and no tool calls after 1 attempt(s)");
+                .isInstanceOf(LlmCallFailedException.class)
+                .hasMessageContaining("no content and no tool calls after 1 attempt(s)");
 
         assertThat(requests.get())
-            .as("a truncated turn exhausts its budget again on a retry; it must cost one request")
-            .isEqualTo(1);
+                .as(
+                        "a truncated turn exhausts its budget again on a retry; it must cost one request")
+                .isEqualTo(1);
     }
 
     @Test
     void anEmptyTurnThatRepeatsFailsInsteadOfLoopingForever() throws IOException {
         // Bounded at two: an empty turn that repeats is systematic rather than a glitch. Both
         // attempts' tokens are already recorded, one row each, via their end-of-call markers.
-        assertThatThrownBy(
-            () -> replaySequence("reasoning-only-empty.sse", "reasoning-only-empty.sse"))
-            .isInstanceOf(LlmCallFailedException.class)
-            .hasMessageContaining("no content and no tool calls after 2 attempt(s)")
-            .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
-            .extracting(LlmCallFailedException::usage)
-            .as("each attempt already has its own row; the failure names the last one's cost")
-            .isEqualTo(new LlmUsage(137, 1040, 1177, 41, 1024));
+        assertThatThrownBy(() ->
+                        replaySequence("reasoning-only-empty.sse", "reasoning-only-empty.sse"))
+                .isInstanceOf(LlmCallFailedException.class)
+                .hasMessageContaining("no content and no tool calls after 2 attempt(s)")
+                .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
+                .extracting(LlmCallFailedException::usage)
+                .as("each attempt already has its own row; the failure names the last one's cost")
+                .isEqualTo(new LlmUsage(137, 1040, 1177, 41, 1024));
         assertThat(requests.get()).isEqualTo(2);
     }
 
@@ -573,9 +628,10 @@ class AzureOpenAiResponsesLlmClientTest {
         List<LlmResponseChunk> chunks = replay("refusal.sse");
 
         assertThat(joined(chunks, LlmResponseChunk::content))
-            .isEqualTo("I'm sorry, I can't help with that.");
-        assertThat(requests.get()).as("a refusal is an answer, so it is not re-requested")
-            .isEqualTo(1);
+                .isEqualTo("I'm sorry, I can't help with that.");
+        assertThat(requests.get())
+                .as("a refusal is an answer, so it is not re-requested")
+                .isEqualTo(1);
     }
 
     @Test
@@ -584,19 +640,20 @@ class AzureOpenAiResponsesLlmClientTest {
         // at its own default whatever we ask, so nesting the summary inside the effort guard threw
         // away the thinking TEXT of a turn that was still being billed for the thinking.
         AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient((OpenAIClient) null, false, "high", "");
+                new AzureOpenAiResponsesLlmClient((OpenAIClient) null, false, "high", "");
 
         ResponseCreateParams params = client.buildParams(requestWithTools("gpt-5.6-luna"));
 
         assertThat(params.reasoning().orElseThrow().summary()).isPresent();
         assertThat(params.reasoning().orElseThrow().effort())
-            .as("only the LEVEL is given up when thinking is off").isEmpty();
+                .as("only the LEVEL is given up when thinking is off")
+                .isEmpty();
     }
 
     @Test
     void aReasoningSummaryIsRequestedEvenWhenTheConfiguredLevelIsUnusable() {
         ResponseCreateParams params =
-            client("enthusiastic").buildParams(requestWithTools("gpt-5.6-luna"));
+                client("enthusiastic").buildParams(requestWithTools("gpt-5.6-luna"));
 
         assertThat(params.reasoning().orElseThrow().summary()).isPresent();
         assertThat(params.reasoning().orElseThrow().effort()).isEmpty();
@@ -609,12 +666,14 @@ class AzureOpenAiResponsesLlmClientTest {
         // generate() read only the completed shape, so a failed turn came back as a partial answer
         // that looked finished — and, having thrown nothing, left the caller no evidence at all.
         assertThatThrownBy(() -> blocking(FAILED_RESPONSE))
-            .isInstanceOf(LlmCallFailedException.class).hasMessageContaining("server_error")
-            .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
-            .extracting(LlmCallFailedException::usage)
-            // total deliberately NOT input+output, so recomputing it instead of forwarding what the
-            // provider reported is detectable.
-            .isEqualTo(new LlmUsage(1200, 340, 1600, 100, 300));
+                .isInstanceOf(LlmCallFailedException.class)
+                .hasMessageContaining("server_error")
+                .asInstanceOf(InstanceOfAssertFactories.type(LlmCallFailedException.class))
+                .extracting(LlmCallFailedException::usage)
+                // total deliberately NOT input+output, so recomputing it instead of forwarding what
+                // the
+                // provider reported is detectable.
+                .isEqualTo(new LlmUsage(1200, 340, 1600, 100, 300));
     }
 
     @Test
@@ -627,51 +686,70 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void aNonStreamingRefusalIsReturnedRatherThanDroppedIntoAnEmptyString() throws IOException {
         assertThat(blocking(REFUSAL_RESPONSE).content())
-            .isEqualTo("I'm sorry, I can't help with that.");
+                .isEqualTo("I'm sorry, I can't help with that.");
     }
 
     // ----------------------------------------------------------------- helpers
 
-    private static final String FAILED_RESPONSE = """
-        {"id":"resp_x","object":"response","status":"failed","model":"gpt-5.6-luna",
-         "error":{"code":"server_error","message":"The model failed to generate a response."},
-         "output":[],
-         "usage":{"input_tokens":1200,"input_tokens_details":{"cached_tokens":100},
-                  "output_tokens":340,"output_tokens_details":{"reasoning_tokens":300},
-                  "total_tokens":1600}}""";
+    private static final String FAILED_RESPONSE =
+            """
+            {"id":"resp_x","object":"response","status":"failed","model":"gpt-5.6-luna",
+             "error":{"code":"server_error","message":"The model failed to generate a response."},
+             "output":[],
+             "usage":{"input_tokens":1200,"input_tokens_details":{"cached_tokens":100},
+                      "output_tokens":340,"output_tokens_details":{"reasoning_tokens":300},
+                      "total_tokens":1600}}\
+            """;
 
-    private static final String INCOMPLETE_RESPONSE = """
-        {"id":"resp_x","object":"response","status":"incomplete","model":"gpt-5.6-luna",
-         "incomplete_details":{"reason":"max_output_tokens"},
-         "output":[{"id":"msg_1","type":"message","status":"incomplete","role":"assistant",
-                    "content":[{"type":"output_text","text":"9 sheep are","annotations":[]}]}],
-         "usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},
-                  "output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},
-                  "total_tokens":14}}""";
+    private static final String INCOMPLETE_RESPONSE =
+            """
+            {"id":"resp_x","object":"response","status":"incomplete","model":"gpt-5.6-luna",
+             "incomplete_details":{"reason":"max_output_tokens"},
+             "output":[{"id":"msg_1","type":"message","status":"incomplete","role":"assistant",
+                        "content":[{"type":"output_text","text":"9 sheep are","annotations":[]}]}],
+             "usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},
+                      "output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},
+                      "total_tokens":14}}\
+            """;
 
-    private static final String REFUSAL_RESPONSE = """
-        {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
-         "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
-                    "content":[{"type":"refusal",
-                                "refusal":"I'm sorry, I can't help with that."}]}],
-         "usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},
-                  "output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},
-                  "total_tokens":19}}""";
+    private static final String REFUSAL_RESPONSE =
+            """
+            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                        "content":[{"type":"refusal",
+                                    "refusal":"I'm sorry, I can't help with that."}]}],
+             "usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},
+                      "output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},
+                      "total_tokens":19}}\
+            """;
 
     private AzureOpenAiResponsesLlmClient client(String thinkingLevel) {
         return new AzureOpenAiResponsesLlmClient((OpenAIClient) null, true, thinkingLevel, "");
     }
 
     private static LlmRequest agenticTurn() {
-        return new LlmRequest("gpt-5.6-luna",
-            List.of(new LlmMessage("system", "You are terse."),
-                new LlmMessage("user", "How many sheep?"),
-                new LlmMessage("assistant", "Let me look that up.",
-                    List.of(new LlmToolCall("call_abc", "function", "search_corpus",
-                        "{\"query\":\"sheep\"}")),
-                    null, null),
-                new LlmMessage("tool", "3 chunks found", null, "call_abc", "search_corpus")),
-            0.5, 1024, List.of(), "medium");
+        return new LlmRequest(
+                "gpt-5.6-luna",
+                List.of(
+                        new LlmMessage("system", "You are terse."),
+                        new LlmMessage("user", "How many sheep?"),
+                        new LlmMessage(
+                                "assistant",
+                                "Let me look that up.",
+                                List.of(
+                                        new LlmToolCall(
+                                                "call_abc",
+                                                "function",
+                                                "search_corpus",
+                                                "{\"query\":\"sheep\"}")),
+                                null,
+                                null),
+                        new LlmMessage(
+                                "tool", "3 chunks found", null, "call_abc", "search_corpus")),
+                0.5,
+                1024,
+                List.of(),
+                "medium");
     }
 
     private static List<ResponseInputItem> inputItems(ResponseCreateParams params) {
@@ -679,26 +757,57 @@ class AzureOpenAiResponsesLlmClientTest {
     }
 
     private static LlmRequest codeExecutionRequest() {
-        return new LlmRequest("gpt-5.6-luna", List.of(new LlmMessage("user", "compute 17*23")), 0.5,
-            1024, List.of(new LlmTool("get_weather", "Get weather", Map.of("type", "object"))),
-            "medium", true);
+        return new LlmRequest(
+                "gpt-5.6-luna",
+                List.of(new LlmMessage("user", "compute 17*23")),
+                0.5,
+                1024,
+                List.of(new LlmTool("get_weather", "Get weather", Map.of("type", "object"))),
+                "medium",
+                true);
     }
 
     private static LlmRequest requestWithSchema(Map<String, Object> schema) {
-        return new LlmRequest("gpt-5.6-luna", List.of(new LlmMessage("user", "answer")), 0.5, 1024,
-            List.of(new LlmTool("get_weather", "Get weather", Map.of("type", "object"))), "medium",
-            "application/json", schema, null);
+        return new LlmRequest(
+                "gpt-5.6-luna",
+                List.of(new LlmMessage("user", "answer")),
+                0.5,
+                1024,
+                List.of(new LlmTool("get_weather", "Get weather", Map.of("type", "object"))),
+                "medium",
+                "application/json",
+                schema,
+                null);
     }
 
     private static LlmRequest requestWithMimeType() {
-        return new LlmRequest("gpt-5.6-luna", List.of(new LlmMessage("user", "answer")), 0.5, 1024,
-            List.of(), "medium", "application/json", null, null);
+        return new LlmRequest(
+                "gpt-5.6-luna",
+                List.of(new LlmMessage("user", "answer")),
+                0.5,
+                1024,
+                List.of(),
+                "medium",
+                "application/json",
+                null,
+                null);
     }
 
     private static LlmRequest requestWithTools(String model) {
-        return new LlmRequest(model, List.of(new LlmMessage("user", "What is the weather?")), 0.5,
-            1024, List.of(new LlmTool("get_weather", "Get weather",
-                Map.of("type", "object", "properties", Map.of("city", Map.of("type", "string"))))));
+        return new LlmRequest(
+                model,
+                List.of(new LlmMessage("user", "What is the weather?")),
+                0.5,
+                1024,
+                List.of(
+                        new LlmTool(
+                                "get_weather",
+                                "Get weather",
+                                Map.of(
+                                        "type",
+                                        "object",
+                                        "properties",
+                                        Map.of("city", Map.of("type", "string"))))));
     }
 
     /**
@@ -718,54 +827,70 @@ class AzureOpenAiResponsesLlmClientTest {
      * assigns from a return value loses its evidence when it does.
      */
     private void replayInto(List<LlmResponseChunk> sink, String fixture) throws IOException {
-        String body = new String(
-            getClass().getResourceAsStream("/llm/azure-responses/" + fixture).readAllBytes(),
-            StandardCharsets.UTF_8);
+        String body =
+                new String(
+                        getClass()
+                                .getResourceAsStream("/llm/azure-responses/" + fixture)
+                                .readAllBytes(),
+                        StandardCharsets.UTF_8);
         AtomicReference<String> request = new AtomicReference<>();
 
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            // Consume the request body before responding, or the socket closes early.
-            try (InputStream in = exchange.getRequestBody()) {
-                request.set(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            }
-            if (requests.incrementAndGet() <= failFirst) {
-                byte[] error =
-                    "{\"error\":{\"message\":\"upstream busy\"}}".getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(503, error.length);
-                try (OutputStream out = exchange.getResponseBody()) {
-                    out.write(error);
-                }
-                return;
-            }
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-            exchange.sendResponseHeaders(200, 0);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-        });
+        server.createContext(
+                "/",
+                exchange -> {
+                    // Consume the request body before responding, or the socket closes early.
+                    try (InputStream in = exchange.getRequestBody()) {
+                        request.set(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    }
+                    if (requests.incrementAndGet() <= failFirst) {
+                        byte[] error =
+                                "{\"error\":{\"message\":\"upstream busy\"}}"
+                                        .getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().add("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(503, error.length);
+                        try (OutputStream out = exchange.getResponseBody()) {
+                            out.write(error);
+                        }
+                        return;
+                    }
+                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, 0);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(body.getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                });
         server.start();
 
-        OpenAIClient transport = OpenAIOkHttpClient.builder()
-            .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).apiKey("test-key")
-            .maxRetries(0).build();
+        OpenAIClient transport =
+                OpenAIOkHttpClient.builder()
+                        .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                        .apiKey("test-key")
+                        .maxRetries(0)
+                        .build();
         AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient(transport, true, "medium", "");
+                new AzureOpenAiResponsesLlmClient(transport, true, "medium", "");
 
         client.generateStream(requestWithTools("gpt-5.6-luna"), sink::add);
         assertThat(request.get()).as("the client must actually have sent a request").isNotNull();
     }
 
     private static String argumentsFor(List<LlmToolCallDelta> deltas, int index) {
-        return deltas.stream().filter(d -> d.index() == index).map(LlmToolCallDelta::argumentsDelta)
-            .filter(a -> a != null).collect(Collectors.joining());
+        return deltas.stream()
+                .filter(d -> d.index() == index)
+                .map(LlmToolCallDelta::argumentsDelta)
+                .filter(a -> a != null)
+                .collect(Collectors.joining());
     }
 
     private static String idFor(List<LlmToolCallDelta> deltas, int index) {
-        return deltas.stream().filter(d -> d.index() == index).map(LlmToolCallDelta::id)
-            .filter(id -> id != null).findFirst().orElseThrow();
+        return deltas.stream()
+                .filter(d -> d.index() == index)
+                .map(LlmToolCallDelta::id)
+                .filter(id -> id != null)
+                .findFirst()
+                .orElseThrow();
     }
 
     /**
@@ -776,30 +901,35 @@ class AzureOpenAiResponsesLlmClientTest {
     private List<LlmResponseChunk> replaySequence(String... fixtures) throws IOException {
         List<String> bodies = new ArrayList<>();
         for (String fixture : fixtures) {
-            bodies.add(new String(
-                getClass().getResourceAsStream("/llm/azure-responses/" + fixture).readAllBytes(),
-                StandardCharsets.UTF_8));
+            bodies.add(
+                    new String(
+                            getClass()
+                                    .getResourceAsStream("/llm/azure-responses/" + fixture)
+                                    .readAllBytes(),
+                            StandardCharsets.UTF_8));
         }
 
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            try (InputStream in = exchange.getRequestBody()) {
-                in.readAllBytes();
-            }
-            int nth = requests.getAndIncrement();
-            String body = bodies.get(Math.min(nth, bodies.size() - 1));
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-            exchange.sendResponseHeaders(200, 0);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-        });
+        server.createContext(
+                "/",
+                exchange -> {
+                    try (InputStream in = exchange.getRequestBody()) {
+                        in.readAllBytes();
+                    }
+                    int nth = requests.getAndIncrement();
+                    String body = bodies.get(Math.min(nth, bodies.size() - 1));
+                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, 0);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(body.getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                });
         server.start();
 
         List<LlmResponseChunk> chunks = new ArrayList<>();
         try (AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
+                new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
             client.generateStream(requestWithTools("gpt-5.6-luna"), chunks::add);
         }
         return chunks;
@@ -808,35 +938,42 @@ class AzureOpenAiResponsesLlmClientTest {
     /** Answers the non-streaming call with one fixed JSON body. */
     private LlmResponse blocking(String json) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            try (InputStream in = exchange.getRequestBody()) {
-                in.readAllBytes();
-            }
-            requests.incrementAndGet();
-            byte[] body = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body);
-            }
-        });
+        server.createContext(
+                "/",
+                exchange -> {
+                    try (InputStream in = exchange.getRequestBody()) {
+                        in.readAllBytes();
+                    }
+                    requests.incrementAndGet();
+                    byte[] body = json.getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
         server.start();
 
         try (AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
+                new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
             return client.generate(requestWithTools("gpt-5.6-luna"));
         }
     }
 
     private static OpenAIClient transportTo(HttpServer server) {
         return OpenAIOkHttpClient.builder()
-            .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).apiKey("test-key")
-            .maxRetries(0).build();
+                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                .apiKey("test-key")
+                .maxRetries(0)
+                .build();
     }
 
     private static LlmUsage lastUsage(List<LlmResponseChunk> chunks) {
-        return chunks.stream().map(LlmResponseChunk::usage).filter(u -> u != null)
-            .reduce((a, b) -> b).orElse(null);
+        return chunks.stream()
+                .map(LlmResponseChunk::usage)
+                .filter(u -> u != null)
+                .reduce((a, b) -> b)
+                .orElse(null);
     }
 
     private static List<LlmToolCallDelta> toolDeltas(List<LlmResponseChunk> chunks) {
@@ -849,8 +986,8 @@ class AzureOpenAiResponsesLlmClientTest {
         return deltas;
     }
 
-    private static String joined(List<LlmResponseChunk> chunks,
-        Function<LlmResponseChunk, String> field) {
+    private static String joined(
+            List<LlmResponseChunk> chunks, Function<LlmResponseChunk, String> field) {
         StringBuilder text = new StringBuilder();
         for (LlmResponseChunk chunk : chunks) {
             String value = field.apply(chunk);
@@ -866,11 +1003,10 @@ class AzureOpenAiResponsesLlmClientTest {
     /**
      * Classification decides what is on the wire, and getting it wrong is a 400 on EVERY call in
      * either direction: a reasoning model rejects any {@code temperature} but its default, and an
-     * ordinary one rejects {@code reasoning.effort}. Until now nothing exercised
-     * {@link AzureOpenAiResponsesLlmClient#isReasoningModel} at all.
+     * ordinary one rejects {@code reasoning.effort}. Until now nothing exercised {@link
+     * AzureOpenAiResponsesLlmClient#isReasoningModel} at all.
      *
-     * <p>
-     * {@code DeepSeek-V4-Flash} is the case worth naming: it refuses {@code reasoning.effort} on
+     * <p>{@code DeepSeek-V4-Flash} is the case worth naming: it refuses {@code reasoning.effort} on
      * both the chat-completions and the Responses surface, so it must classify as ordinary — which
      * the heuristic gets right only because nothing in its name matches.
      */
@@ -881,8 +1017,9 @@ class AzureOpenAiResponsesLlmClientTest {
         assertThat(client.isReasoningModel("gpt-5.4-mini")).isTrue();
         assertThat(client.isReasoningModel("gpt-5.6-luna")).isTrue();
         assertThat(client.isReasoningModel("DeepSeek-V4-Flash"))
-            .as("DeepSeek refuses reasoning.effort on both surfaces; sending one 400s every call")
-            .isFalse();
+                .as(
+                        "DeepSeek refuses reasoning.effort on both surfaces; sending one 400s every call")
+                .isFalse();
     }
 
     /**
@@ -890,8 +1027,7 @@ class AzureOpenAiResponsesLlmClientTest {
      * which is right for its stated purpose — naming deployments that are not called after the
      * model they serve — and is a trap when half-filled.
      *
-     * <p>
-     * Naming only one of two reasoning deployments silently declassifies the other, which then
+     * <p>Naming only one of two reasoning deployments silently declassifies the other, which then
      * receives a {@code temperature} and 400s on every call. Pinned here so the semantics cannot be
      * changed, or half-configured, without something going red.
      */
@@ -901,16 +1037,18 @@ class AzureOpenAiResponsesLlmClientTest {
 
         assertThat(client.isReasoningModel("gpt-5.6-luna")).isTrue();
         assertThat(client.isReasoningModel("gpt-5.4-mini"))
-            .as("naming one deployment declassifies every other the heuristic would have caught — "
-                + "the list is an override, so it must be complete or empty")
-            .isFalse();
+                .as(
+                        "naming one deployment declassifies every other the heuristic would have caught — "
+                                + "the list is an override, so it must be complete or empty")
+                .isFalse();
         // Mixed case on the CONFIGURED side, which is the side the parser lowercases. A lowercase
         // fixture here proves nothing: dropping the parser's toLowerCase leaves it unchanged, so
         // the assertion stays green against the very bug it names.
         assertThat(reasoningModels("GPT-5.6-Luna").isReasoningModel("gpt-5.6-luna"))
-            .as("a deployment name is hand-typed into a manifest; the override must match "
-                + "case-insensitively on the configured spelling too")
-            .isTrue();
+                .as(
+                        "a deployment name is hand-typed into a manifest; the override must match "
+                                + "case-insensitively on the configured spelling too")
+                .isTrue();
     }
 
     /**
@@ -923,11 +1061,14 @@ class AzureOpenAiResponsesLlmClientTest {
 
     @Test
     void nonStreamingCallSucceedsWhenUsageOmitsTokenDetails() throws IOException {
-        LlmResponse response = blocking("""
-            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
-             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
-                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
-             "usage":{"input_tokens":120,"output_tokens":34,"total_tokens":154}}""");
+        LlmResponse response =
+                blocking(
+                        """
+                        {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+                         "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                                    "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+                         "usage":{"input_tokens":120,"output_tokens":34,"total_tokens":154}}\
+                        """);
 
         assertThat(response.content()).isEqualTo("Hello world");
         assertThat(response.usage()).isEqualTo(new LlmUsage(120, 34, 154, 0, 0));
@@ -935,11 +1076,14 @@ class AzureOpenAiResponsesLlmClientTest {
 
     @Test
     void nonStreamingCallWhenUsageOmitsInputTokens() throws IOException {
-        LlmResponse response = blocking("""
-            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
-             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
-                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
-             "usage":{"output_tokens":34,"total_tokens":34}}""");
+        LlmResponse response =
+                blocking(
+                        """
+                        {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+                         "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                                    "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+                         "usage":{"output_tokens":34,"total_tokens":34}}\
+                        """);
 
         assertThat(response.content()).isEqualTo("Hello world");
         assertThat(response.usage()).isEqualTo(new LlmUsage(0, 34, 34, 0, 0));
@@ -947,11 +1091,14 @@ class AzureOpenAiResponsesLlmClientTest {
 
     @Test
     void nonStreamingCallWhenUsageIsEmptyObject() throws IOException {
-        LlmResponse response = blocking("""
-            {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
-             "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
-                        "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
-             "usage":{}}""");
+        LlmResponse response =
+                blocking(
+                        """
+                        {"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-luna",
+                         "output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant",
+                                    "content":[{"type":"output_text","text":"Hello world","annotations":[]}]}],
+                         "usage":{}}\
+                        """);
 
         assertThat(response.content()).isEqualTo("Hello world");
         assertThat(response.usage()).isEqualTo(new LlmUsage(0, 0, 0, 0, 0));
@@ -959,23 +1106,25 @@ class AzureOpenAiResponsesLlmClientTest {
 
     private List<LlmResponseChunk> replaySse(String sse) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            try (InputStream in = exchange.getRequestBody()) {
-                in.readAllBytes();
-            }
-            requests.incrementAndGet();
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-            exchange.sendResponseHeaders(200, 0);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(sse.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-        });
+        server.createContext(
+                "/",
+                exchange -> {
+                    try (InputStream in = exchange.getRequestBody()) {
+                        in.readAllBytes();
+                    }
+                    requests.incrementAndGet();
+                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, 0);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(sse.getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                });
         server.start();
 
         List<LlmResponseChunk> chunks = new ArrayList<>();
         try (AzureOpenAiResponsesLlmClient client =
-            new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
+                new AzureOpenAiResponsesLlmClient(transportTo(server), true, "medium", "")) {
             client.generateStream(requestWithTools("gpt-5.6-luna"), chunks::add);
         }
         return chunks;
@@ -984,7 +1133,7 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void streamingCallSucceedsWhenUsageOmitsTokenDetails() throws IOException {
         String sse =
-            """
+                """
                 event: response.created
                 data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
 
@@ -1011,7 +1160,7 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void streamingCallSucceedsWhenUsageCarriesFullTokenDetails() throws IOException {
         String sse =
-            """
+                """
                 event: response.created
                 data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
 
@@ -1038,7 +1187,7 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void streamingCallSucceedsWhenUsageIsNull() throws IOException {
         String sse =
-            """
+                """
                 event: response.created
                 data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
 
@@ -1065,7 +1214,7 @@ class AzureOpenAiResponsesLlmClientTest {
     @Test
     void streamingCallCapturesUsageOnFailedEventWhenDetailsAreOmitted() throws IOException {
         String sse =
-            """
+                """
                 event: response.created
                 data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"gpt-5.6-luna","output":[]}}
 
@@ -1083,8 +1232,10 @@ class AzureOpenAiResponsesLlmClientTest {
 
                 """;
 
-        assertThatThrownBy(() -> replaySse(sse)).isInstanceOf(LlmCallFailedException.class)
-            .satisfies(e -> assertThat(((LlmCallFailedException) e).usage())
-                .isEqualTo(new LlmUsage(50, 10, 60, 0, 0)));
+        assertThatThrownBy(() -> replaySse(sse))
+                .isInstanceOf(LlmCallFailedException.class)
+                .satisfies(e ->
+                        assertThat(((LlmCallFailedException) e).usage())
+                                .isEqualTo(new LlmUsage(50, 10, 60, 0, 0)));
     }
 }

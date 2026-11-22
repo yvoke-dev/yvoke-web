@@ -111,30 +111,46 @@ public class Milestone3AdversarialChallengeTest {
         conversationRepository = mock(ConversationRepository.class);
         userService = mock(UserService.class);
         tagRepository = mock(TagRepository.class);
-        ChatProperties chatProperties = new ChatProperties(true, List.of("model-a"), true, false,
-            "", Duration.ofMinutes(5), 100_000, 400_000);
-        chatConversationService = new ChatConversationService(conversationRepository, userService,
-            chatProperties, tagRepository);
+        ChatProperties chatProperties =
+                new ChatProperties(
+                        true,
+                        List.of("model-a"),
+                        true,
+                        false,
+                        "",
+                        Duration.ofMinutes(5),
+                        100_000,
+                        400_000);
+        chatConversationService =
+                new ChatConversationService(
+                        conversationRepository, userService, chatProperties, tagRepository);
         chatMessageService = mock(ChatMessageService.class);
         chatFeedbackService = mock(ChatFeedbackService.class);
         chatCancellationService = mock(ChatCancellationService.class);
         playbookService = mock(PlaybookService.class);
         OrchestratorProperties orchestratorProperties =
-            new OrchestratorProperties(3, 8, 10, 50, null, List.of());
+                new OrchestratorProperties(3, 8, 10, 50, null, List.of());
         orchestratorProfileService = mock(OrchestratorProfileService.class);
-        chatController = new ChatController(chatConversationService, chatMessageService,
-            chatFeedbackService, chatCancellationService, playbookService, orchestratorProperties,
-            orchestratorProfileService);
+        chatController =
+                new ChatController(
+                        chatConversationService,
+                        chatMessageService,
+                        chatFeedbackService,
+                        chatCancellationService,
+                        playbookService,
+                        orchestratorProperties,
+                        orchestratorProfileService);
         when(chatMessageService.resolveLockState(any(), any()))
-            .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
+                .thenReturn(ConversationLockState.from(Optional.empty(), false, false));
 
         // Citation setup
         sectionService = mock(SectionService.class);
         chunkRepository = mock(ChunkRepository.class);
         documentRepository = mock(DocumentRepository.class);
         collectionService = mock(CollectionService.class);
-        citationController = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        citationController =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         // MCP Tools setup
         areaRepository = mock(AreaRepository.class);
@@ -143,7 +159,7 @@ public class Milestone3AdversarialChallengeTest {
 
         playbookRepository = mock(PlaybookRepository.class);
         playbookTools =
-            new PlaybookTools(playbookService, playbookRepository, areaService, objectMapper);
+                new PlaybookTools(playbookService, playbookRepository, areaService, objectMapper);
 
         hybridSearch = mock(HybridSearch.class);
         searchCorpusTool = new SearchCorpusTool(hybridSearch, collectionService, 10, 50);
@@ -160,38 +176,53 @@ public class Milestone3AdversarialChallengeTest {
     // =========================================================================
 
     @Test
-    public void authenticatedUserInAreaPingId_accessingConversationInOim_receives404OpaqueRefusal() {
+    public void
+            authenticatedUserInAreaPingId_accessingConversationInOim_receives404OpaqueRefusal() {
         UUID convId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         User currentUser = new User(ownerId, "entra-user", "user@test.local", "U", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(currentUser));
 
-        Conversation oimConv = new Conversation(convId, ownerId, "OIM Secret",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of(), "web", "OIM");
+        Conversation oimConv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "OIM Secret",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of(),
+                        "web",
+                        "OIM");
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(oimConv));
 
         // Authenticated user with PingID area only
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         // 1. getConversation throws 404
         assertThatThrownBy(() -> chatConversationService.getConversation(convId))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
         // 2. verifyOwnership(id, false) throws 404
         assertThatThrownBy(() -> chatConversationService.verifyOwnership(convId, false))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
         // 3. chatController.threadView throws 404
         Model model = new ConcurrentModel();
         assertThatThrownBy(() -> chatController.threadView(convId, model))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -202,34 +233,48 @@ public class Milestone3AdversarialChallengeTest {
         User viewer = new User(viewerId, "viewer", "viewer@test.local", "V", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
-        Conversation oimPublicConv = new Conversation(convId, ownerId, "OIM Public Chat",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of("public"), "web", "OIM");
+        Conversation oimPublicConv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "OIM Public Chat",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of("public"),
+                        "web",
+                        "OIM");
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(oimPublicConv));
 
         // Caller has only AREA_USER_PINGID
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         // 1. Direct access via getConversation yields 404
         assertThatThrownBy(() -> chatConversationService.getConversation(convId))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
         // 2. Direct read-only verifyOwnership yields 404
         assertThatThrownBy(() -> chatConversationService.verifyOwnership(convId, true))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
         // 3. listAllConversations passes allowedAreasLower = ['pingid'] to repository
         chatConversationService.listAllConversations(50, 0);
         verify(conversationRepository).listAll(viewerId, 50, 0, Set.of("pingid"));
 
         // 4. buildSidebar passes allowedAreasLower = ['pingid'] and excludes OIM from sidebar
-        when(conversationRepository.listAll(eq(viewerId), any(Integer.class), eq(0),
-            eq(Set.of("pingid")))).thenReturn(List.of()); // Simulated SQL response which filtered
-                                                          // out OIM
+        when(conversationRepository.listAll(
+                        eq(viewerId), any(Integer.class), eq(0), eq(Set.of("pingid"))))
+                .thenReturn(List.of()); // Simulated SQL response which filtered
+        // out OIM
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
         assertThat(sidebar.conversations()).isEmpty();
         assertThat(sidebar.publicFolders()).isEmpty();
@@ -245,13 +290,24 @@ public class Milestone3AdversarialChallengeTest {
         User viewer = new User(viewerId, "viewer", "viewer@test.local", "V", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
-        Conversation oimPublicConv = new Conversation(convId, ownerId, "OIM Public Chat",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of("public"), "web", "OIM");
+        Conversation oimPublicConv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "OIM Public Chat",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of("public"),
+                        "web",
+                        "OIM");
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(oimPublicConv));
 
         // Caller has AREA_USER_OIM
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         // Direct access succeeds
         Optional<Conversation> conv = chatConversationService.getConversation(convId);
@@ -275,28 +331,44 @@ public class Milestone3AdversarialChallengeTest {
         User viewer = new User(viewerId, "viewer", "viewer@test.local", "V", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
-        Conversation globalPublicConv = new Conversation(convId, ownerId, "Global Public Chat",
-            Collections.emptyMap(), Instant.now(), Instant.now(), List.of("public"), "web", null);
+        Conversation globalPublicConv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "Global Public Chat",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of("public"),
+                        "web",
+                        null);
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(globalPublicConv));
 
         // Caller has PingID authority only -> non-owner denied on null-area public conversation
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_PINGID"));
         assertThatThrownBy(() -> chatConversationService.getConversation(convId))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
         // Global user can access null-area public conversation
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_*"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_*"));
         assertThat(chatConversationService.getConversation(convId)).isPresent();
 
         // Owner with area-restricted authority can access their own null-area conversation
         User owner = new User(ownerId, "owner", "owner@test.local", "O", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "owner", "pass", "ROLE_USER", "AREA_USER_PINGID"));
         assertThat(chatConversationService.getConversation(convId)).isPresent();
     }
 
@@ -307,17 +379,38 @@ public class Milestone3AdversarialChallengeTest {
     @Test
     public void getChunkCitation_unauthorizedArea_throws404OpaqueRefusal() {
         String chunkId = "chunk-oim-123";
-        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
-            "heading", 1, 1, null, "docTitle", "md", "OIM-Col", null, 1.0);
+        ChunkRow chunk =
+                new ChunkRow(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "text",
+                        List.of(),
+                        "heading",
+                        1,
+                        1,
+                        null,
+                        "docTitle",
+                        "md",
+                        "OIM-Col",
+                        null,
+                        1.0);
         when(chunkRepository.findByIdPrefix(eq(chunkId), any())).thenReturn(Optional.of(chunk));
 
-        Collection col = new Collection(UUID.randomUUID(), "OIM-Col", "desc", List.of(),
-            OffsetDateTime.now(), "OIM");
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM-Col",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.getCollection("OIM-Col")).thenReturn(Optional.of(col));
 
         // User only has AREA_USER_PINGID
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         // HTML partial endpoint returns NOT_FOUND_ERROR without leaking source
         Model model = new ConcurrentModel();
@@ -331,17 +424,28 @@ public class Milestone3AdversarialChallengeTest {
     public void getDocumentCitation_unauthorizedArea_throws404OpaqueRefusal() {
         UUID docId = UUID.randomUUID();
         UUID colId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, colId, "OIM-Col", "md", "Secret OIM Doc", null,
-            "SUCCESS", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        colId,
+                        "OIM-Col",
+                        "md",
+                        "Secret OIM Doc",
+                        null,
+                        "SUCCESS",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
 
         Collection col =
-            new Collection(colId, "OIM-Col", "desc", List.of(), OffsetDateTime.now(), "OIM");
+                new Collection(colId, "OIM-Col", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionService.findById(colId)).thenReturn(Optional.of(col));
 
         // User only has AREA_USER_PINGID
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         // HTML partial endpoint returns NOT_FOUND_ERROR
         Model model = new ConcurrentModel();
@@ -354,21 +458,42 @@ public class Milestone3AdversarialChallengeTest {
     @Test
     public void getCitation_authorizedArea_returnsSectionContent() {
         String chunkId = "chunk-ping-123";
-        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
-            "heading", 1, 1, null, "docTitle", "md", "Ping-Col", null, 1.0);
+        ChunkRow chunk =
+                new ChunkRow(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "text",
+                        List.of(),
+                        "heading",
+                        1,
+                        1,
+                        null,
+                        "docTitle",
+                        "md",
+                        "Ping-Col",
+                        null,
+                        1.0);
         when(chunkRepository.findByIdPrefix(eq(chunkId), any())).thenReturn(Optional.of(chunk));
 
-        Collection col = new Collection(UUID.randomUUID(), "Ping-Col", "desc", List.of(),
-            OffsetDateTime.now(), "PingID");
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Ping-Col",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "PingID");
         when(collectionService.getCollection("Ping-Col")).thenReturn(Optional.of(col));
 
         SectionResponse section =
-            new SectionResponse(List.of("Intro"), "file.md", "1.0", 1, "heading", "ping text");
+                new SectionResponse(List.of("Intro"), "file.md", "1.0", 1, "heading", "ping text");
         when(sectionService.getChunkContent(chunkId)).thenReturn(section);
 
         // User has AREA_USER_PINGID
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         Model model = new ConcurrentModel();
         String view = citationController.getCitation(chunkId, null, model);
@@ -383,18 +508,45 @@ public class Milestone3AdversarialChallengeTest {
 
     @Test
     public void mcpAreaTools_unauthorizedArea_returnsIdenticalErrorToNonexistent()
-        throws Exception {
-        when(areaRepository.findAll()).thenReturn(
-            List.of(new Area("OIM", "Oracle Identity", "desc", false, null, null, null, null),
-                new Area("PingID", "Ping Identity", "desc", false, null, null, null, null)));
-        when(areaRepository.findAllMembers()).thenReturn(
-            Map.of("OIM", new AreaMembers(List.of(), List.of("OIM-Docs"), List.of(), List.of()),
-                "PingID", new AreaMembers(List.of(), List.of("Ping-Docs"), List.of(), List.of())));
+            throws Exception {
+        when(areaRepository.findAll())
+                .thenReturn(
+                        List.of(
+                                new Area(
+                                        "OIM",
+                                        "Oracle Identity",
+                                        "desc",
+                                        false,
+                                        null,
+                                        null,
+                                        null,
+                                        null),
+                                new Area(
+                                        "PingID",
+                                        "Ping Identity",
+                                        "desc",
+                                        false,
+                                        null,
+                                        null,
+                                        null,
+                                        null)));
+        when(areaRepository.findAllMembers())
+                .thenReturn(
+                        Map.of(
+                                "OIM",
+                                new AreaMembers(
+                                        List.of(), List.of("OIM-Docs"), List.of(), List.of()),
+                                "PingID",
+                                new AreaMembers(
+                                        List.of(), List.of("Ping-Docs"), List.of(), List.of())));
 
         // User with PingID area authority only
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
 
         // list_areas filters out OIM
         String listJson = areaTools.listAreas();
@@ -409,23 +561,52 @@ public class Milestone3AdversarialChallengeTest {
 
     @Test
     public void mcpPlaybookTools_unauthorizedArea_returnsIdenticalErrorToNonexistent()
-        throws Exception {
-        Playbook oimPlaybook = new Playbook("oim-full", "OIM Full", "desc", "instructions",
-            List.of(), false, "specialist", false, null, null, false, "OIM", 1);
-        Playbook pingPlaybook = new Playbook("ping-full", "Ping Full", "desc", "instructions",
-            List.of(), false, "specialist", false, null, null, false, "PingID", 1);
+            throws Exception {
+        Playbook oimPlaybook =
+                new Playbook(
+                        "oim-full",
+                        "OIM Full",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        null,
+                        null,
+                        false,
+                        "OIM",
+                        1);
+        Playbook pingPlaybook =
+                new Playbook(
+                        "ping-full",
+                        "Ping Full",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        null,
+                        null,
+                        false,
+                        "PingID",
+                        1);
 
         when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(oimPlaybook));
         when(playbookRepository.findByName("ping-full")).thenReturn(Optional.of(pingPlaybook));
         when(playbookRepository.findByName("unknown")).thenReturn(Optional.empty());
 
         when(playbookService.listSpecializedPlaybooks())
-            .thenReturn(List.of(oimPlaybook, pingPlaybook));
+                .thenReturn(List.of(oimPlaybook, pingPlaybook));
 
         // User with PingID authority only
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
 
         // list_playbooks filters out OIM
         String listJson = playbookTools.listPlaybooks(null);
@@ -448,33 +629,49 @@ public class Milestone3AdversarialChallengeTest {
     }
 
     @Test
-    public void mcpSearchCorpusAndListDocuments_unauthorizedArea_returnsIdenticalErrorToNonexistent() {
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM-Col", "OIM docs", List.of(),
-            OffsetDateTime.now(), "OIM");
-        Collection pingCol = new Collection(UUID.randomUUID(), "Ping-Col", "Ping docs", List.of(),
-            OffsetDateTime.now(), "PingID");
+    public void
+            mcpSearchCorpusAndListDocuments_unauthorizedArea_returnsIdenticalErrorToNonexistent() {
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM-Col",
+                        "OIM docs",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "OIM");
+        Collection pingCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Ping-Col",
+                        "Ping docs",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "PingID");
 
         when(collectionService.listCollections()).thenReturn(List.of(oimCol, pingCol));
 
         // User with PingID authority only
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_PINGID"))));
 
         // SearchCorpus: unauthorized vs nonexistent
         String searchUnauthorized =
-            searchCorpusTool.searchCorpus("query", "OIM-Col", null, null, null);
+                searchCorpusTool.searchCorpus("query", "OIM-Col", null, null, null);
         String searchNonexistent =
-            searchCorpusTool.searchCorpus("query", "Unknown-Col", null, null, null);
+                searchCorpusTool.searchCorpus("query", "Unknown-Col", null, null, null);
 
         assertThat(searchUnauthorized).isEqualTo("Error: Collection 'OIM-Col' does not exist.");
         assertThat(searchNonexistent).isEqualTo("Error: Collection 'Unknown-Col' does not exist.");
 
         // ListDocuments: unauthorized vs nonexistent
         String listUnauthorized =
-            listDocumentsTool.listDocuments("OIM-Col", null, null, null, null, null, null);
+                listDocumentsTool.listDocuments("OIM-Col", null, null, null, null, null, null);
         String listNonexistent =
-            listDocumentsTool.listDocuments("Unknown-Col", null, null, null, null, null, null);
+                listDocumentsTool.listDocuments("Unknown-Col", null, null, null, null, null, null);
 
         assertThat(listUnauthorized).isEqualTo("Error: Collection 'OIM-Col' does not exist.");
         assertThat(listNonexistent).isEqualTo("Error: Collection 'Unknown-Col' does not exist.");

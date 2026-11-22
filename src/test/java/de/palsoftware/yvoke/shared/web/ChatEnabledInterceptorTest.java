@@ -25,10 +25,11 @@ public class ChatEnabledInterceptorTest {
         ChatEnabledInterceptor interceptor = new ChatEnabledInterceptor(false);
 
         assertThatThrownBy(() -> interceptor.preHandle(null, null, new Object()))
-            .isInstanceOf(ResponseStatusException.class).satisfies(t -> {
-                ResponseStatusException e = (ResponseStatusException) t;
-                assertThat(e.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-                assertThat(e.getReason()).isEqualTo("Webchat is disabled.");
-            });
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(t -> {
+                    ResponseStatusException e = (ResponseStatusException) t;
+                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(e.getReason()).isEqualTo("Webchat is disabled.");
+                });
     }
 }

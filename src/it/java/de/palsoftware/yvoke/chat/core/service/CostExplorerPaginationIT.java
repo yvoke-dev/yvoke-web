@@ -22,17 +22,19 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * skips/duplicates when timestamps collide; (3) a malformed/blank cursor safely falls back to the
  * first page (the cursor is URL-supplied).
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration", "app.chat.cost-explorer.max-rows=2"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration",
+            "app.chat.cost-explorer.max-rows=2"
+        })
 public class CostExplorerPaginationIT {
 
     private static final String MODEL = "PAGE-IT-MODEL";
 
-    @Autowired
-    private CostCalculationService costCalculationService;
+    @Autowired private CostCalculationService costCalculationService;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     public void tearDown() {
@@ -40,14 +42,17 @@ public class CostExplorerPaginationIT {
     }
 
     private FilteredCostExplorerReport rawPage(String cursor) {
-        return costCalculationService.getFilteredExplorerReport("RAW", null, null, List.of(MODEL),
-            List.of(), List.of(), List.of(), cursor);
+        return costCalculationService.getFilteredExplorerReport(
+                "RAW", null, null, List.of(MODEL), List.of(), List.of(), List.of(), cursor);
     }
 
     private void seedAtNowMinusMinutes(int minutes) {
-        jdbcTemplate.update("INSERT INTO llm_call_logs (id, model, source, prompt_tokens, "
-            + "completion_tokens, created_at) VALUES (?, ?, 'chat', 10, 10, now() - make_interval(mins => ?))",
-            UUID.randomUUID(), MODEL, minutes);
+        jdbcTemplate.update(
+                "INSERT INTO llm_call_logs (id, model, source, prompt_tokens, "
+                        + "completion_tokens, created_at) VALUES (?, ?, 'chat', 10, 10, now() - make_interval(mins => ?))",
+                UUID.randomUUID(),
+                MODEL,
+                minutes);
     }
 
     @Test
@@ -70,8 +75,9 @@ public class CostExplorerPaginationIT {
 
         // Every row seen exactly once across the three pages.
         Set<UUID> ids = new HashSet<>();
-        Stream.of(p1, p2, p3).flatMap(r -> r.messages().stream())
-            .forEach(m -> assertThat(ids.add(m.id())).as("no duplicate across pages").isTrue());
+        Stream.of(p1, p2, p3)
+                .flatMap(r -> r.messages().stream())
+                .forEach(m -> assertThat(ids.add(m.id())).as("no duplicate across pages").isTrue());
         assertThat(ids).hasSize(5);
 
         // Descending created_at within and across pages.
@@ -83,9 +89,12 @@ public class CostExplorerPaginationIT {
     @Test
     public void keysetTiebreakerHandlesEqualTimestampsWithoutSkipOrDuplicate() {
         for (int i = 0; i < 4; i++) {
-            jdbcTemplate.update("INSERT INTO llm_call_logs (id, model, source, prompt_tokens, "
-                + "completion_tokens, created_at) VALUES (?, ?, 'chat', 10, 10, "
-                + "TIMESTAMPTZ '2026-01-01 00:00:00+00')", UUID.randomUUID(), MODEL);
+            jdbcTemplate.update(
+                    "INSERT INTO llm_call_logs (id, model, source, prompt_tokens, "
+                            + "completion_tokens, created_at) VALUES (?, ?, 'chat', 10, 10, "
+                            + "TIMESTAMPTZ '2026-01-01 00:00:00+00')",
+                    UUID.randomUUID(),
+                    MODEL);
         }
 
         FilteredCostExplorerReport p1 = rawPage(null);
@@ -97,8 +106,8 @@ public class CostExplorerPaginationIT {
         Set<UUID> ids = new HashSet<>();
         Stream.of(p1, p2).flatMap(r -> r.messages().stream()).forEach(m -> ids.add(m.id()));
         assertThat(ids)
-            .as("id tiebreaker: all 4 equal-timestamp rows covered, none skipped/duplicated")
-            .hasSize(4);
+                .as("id tiebreaker: all 4 equal-timestamp rows covered, none skipped/duplicated")
+                .hasSize(4);
     }
 
     @Test

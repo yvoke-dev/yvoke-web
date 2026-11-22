@@ -18,8 +18,7 @@ import org.junit.jupiter.api.Test;
  * Tests for the diagnostic renderer that turns a provider exception into something an admin can act
  * on.
  *
- * <p>
- * The motivating incident: an orchestrated run died and {@code agent_runs.error} recorded the
+ * <p>The motivating incident: an orchestrated run died and {@code agent_runs.error} recorded the
  * literal string {@code "429 . "} — the whole message. That is {@code ApiException.getMessage()} =
  * {@code String.format("%d %s. %s", code, status, message)} with both trailing fields empty, which
  * is what the Cloudflare AI Gateway produces (no HTTP/2 reason phrase, and a gateway-shaped body
@@ -47,11 +46,11 @@ class LlmFailureSummaryTest {
     @Test
     void shortLine_mapsTheStatusCodesThatActuallyOccur() {
         assertThat(LlmFailureSummary.shortLine(new ClientException(408, "", "")))
-            .contains("timeout");
+                .contains("timeout");
         assertThat(LlmFailureSummary.shortLine(new ClientException(401, "", "")))
-            .contains("credentials");
+                .contains("credentials");
         assertThat(LlmFailureSummary.shortLine(new ClientException(404, "", "")))
-            .contains("not found");
+                .contains("not found");
     }
 
     @Test
@@ -77,7 +76,7 @@ class LlmFailureSummaryTest {
     @Test
     void detail_carriesTheProviderFieldsAndACauseChain() {
         Exception wrapped =
-            new IllegalStateException("orchestrator turn failed", incidentException());
+                new IllegalStateException("orchestrator turn failed", incidentException());
 
         String out = LlmFailureSummary.detail(wrapped);
 
@@ -105,8 +104,9 @@ class LlmFailureSummaryTest {
 
     @Test
     void detail_redactsBearerTokens() {
-        String out = LlmFailureSummary
-            .detail(new RuntimeException("request failed: Authorization: Bearer sk-abc123XYZ"));
+        String out =
+                LlmFailureSummary.detail(
+                        new RuntimeException("request failed: Authorization: Bearer sk-abc123XYZ"));
 
         assertThat(out).doesNotContain("sk-abc123XYZ");
         assertThat(out).contains("Bearer ***");
@@ -114,11 +114,15 @@ class LlmFailureSummaryTest {
 
     @Test
     void detail_redactsCredentialQueryParameters() {
-        String out = LlmFailureSummary.detail(new RuntimeException(
-            "GET https://host/v1?key=AIzaTOPSECRET&api_key=sEcOnDkEy&access_token=tHiRdKeY failed"));
+        String out =
+                LlmFailureSummary.detail(
+                        new RuntimeException(
+                                "GET https://host/v1?key=AIzaTOPSECRET&api_key=sEcOnDkEy&access_token=tHiRdKeY failed"));
 
-        assertThat(out).doesNotContain("AIzaTOPSECRET").doesNotContain("sEcOnDkEy")
-            .doesNotContain("tHiRdKeY");
+        assertThat(out)
+                .doesNotContain("AIzaTOPSECRET")
+                .doesNotContain("sEcOnDkEy")
+                .doesNotContain("tHiRdKeY");
     }
 
     @Test
@@ -152,44 +156,46 @@ class LlmFailureSummaryTest {
     @Test
     void shortLine_describesCancellationPlainly() {
         assertThat(LlmFailureSummary.shortLine(new CancellationException("stopped")))
-            .contains("CancellationException");
+                .contains("CancellationException");
     }
 
     /** The redaction applies whatever produced the text: it is third-party input either way. */
     @Test
     void detail_redactsCredentialsInsideAProviderMessage() {
-        OpenAIServiceException e = new OpenAIServiceException(
-            "Status code 401, \"{\"error\":\"bad api_key=sk-live-abcdef123456\"}\"", null) {
-            @Override
-            public int statusCode() {
-                return 401;
-            }
+        OpenAIServiceException e =
+                new OpenAIServiceException(
+                        "Status code 401, \"{\"error\":\"bad api_key=sk-live-abcdef123456\"}\"",
+                        null) {
+                    @Override
+                    public int statusCode() {
+                        return 401;
+                    }
 
-            @Override
-            public Headers headers() {
-                return Headers.builder().build();
-            }
+                    @Override
+                    public Headers headers() {
+                        return Headers.builder().build();
+                    }
 
-            @Override
-            public JsonValue body() {
-                return JsonValue.from(null);
-            }
+                    @Override
+                    public JsonValue body() {
+                        return JsonValue.from(null);
+                    }
 
-            @Override
-            public Optional<String> code() {
-                return Optional.empty();
-            }
+                    @Override
+                    public Optional<String> code() {
+                        return Optional.empty();
+                    }
 
-            @Override
-            public Optional<String> param() {
-                return Optional.empty();
-            }
+                    @Override
+                    public Optional<String> param() {
+                        return Optional.empty();
+                    }
 
-            @Override
-            public Optional<String> type() {
-                return Optional.empty();
-            }
-        };
+                    @Override
+                    public Optional<String> type() {
+                        return Optional.empty();
+                    }
+                };
 
         String out = LlmFailureSummary.detail(e);
 
@@ -200,8 +206,7 @@ class LlmFailureSummaryTest {
     /**
      * openai-java's exception must be read by the SAME extractor the retry classifier uses.
      *
-     * <p>
-     * It was not. {@code LlmRetry.providerStatus} was taught this type when the OpenRouter and
+     * <p>It was not. {@code LlmRetry.providerStatus} was taught this type when the OpenRouter and
      * Responses clients were added; the two readers that produce what an ADMIN sees were not. So a
      * 429 on those clients was correctly retried and then rendered as a bare class name, with the
      * {@code rate-limit:} line — the only place a shared-capacity rejection says anything useful —
@@ -213,35 +218,39 @@ class LlmFailureSummaryTest {
     void anOpenAiServiceExceptionIsRenderedWithItsStatusAndRateLimitHeaders() {
         Throwable fault = openAiRateLimited();
 
-        assertTrue(LlmFailureSummary.shortLine(fault).contains("HTTP 429"),
-            "the status is the one field every SDK supplies: "
-                + LlmFailureSummary.shortLine(fault));
-        assertTrue(LlmFailureSummary.shortLine(fault).contains("rate limit"),
-            "and it must be rendered into something an admin can act on");
+        assertTrue(
+                LlmFailureSummary.shortLine(fault).contains("HTTP 429"),
+                "the status is the one field every SDK supplies: "
+                        + LlmFailureSummary.shortLine(fault));
+        assertTrue(
+                LlmFailureSummary.shortLine(fault).contains("rate limit"),
+                "and it must be rendered into something an admin can act on");
 
         String detail = LlmFailureSummary.detail(fault);
-        assertTrue(detail.contains("retry-after=30s"),
-            "the server's own interval is the only trustworthy number in a 429: " + detail);
+        assertTrue(
+                detail.contains("retry-after=30s"),
+                "the server's own interval is the only trustworthy number in a 429: " + detail);
         assertTrue(detail.contains("remaining-tokens=0"), detail);
         // The two structured fields, asserted because dropping them is silent: replacing
         // ProviderFault's openai branch with null status and null message renders
         // provider: status="" message="" and leaves the whole suite green — the same block going
         // missing that this test exists to restore.
-        assertTrue(detail.contains("status=\"requests\""),
-            "the provider's own status token must survive into the persisted trace: " + detail);
-        assertTrue(detail.contains("message=\"rate_limit_exceeded\""),
-            "and so must the code that names WHICH limit was hit: " + detail);
+        assertTrue(
+                detail.contains("status=\"requests\""),
+                "the provider's own status token must survive into the persisted trace: " + detail);
+        assertTrue(
+                detail.contains("message=\"rate_limit_exceeded\""),
+                "and so must the code that names WHICH limit was hit: " + detail);
     }
 
     /**
      * {@code Optional<String>} reads as "absent is expected". openai-java does not mean that: a
-     * field missing from the response body makes the getter <b>throw</b>
-     * {@code OpenAIInvalidDataException}, and a plain transport-level 5xx carries no JSON error
-     * body at all — so the very failure {@link ProviderFault} exists to describe is the one that
-     * blows up while describing it.
+     * field missing from the response body makes the getter <b>throw</b> {@code
+     * OpenAIInvalidDataException}, and a plain transport-level 5xx carries no JSON error body at
+     * all — so the very failure {@link ProviderFault} exists to describe is the one that blows up
+     * while describing it.
      *
-     * <p>
-     * The blast radius is not the trace but the retry: {@link ProviderFault#at} is called from
+     * <p>The blast radius is not the trace but the retry: {@link ProviderFault#at} is called from
      * {@code LlmRetry.isTransient}, i.e. from inside {@code withRetry}'s own catch block, so the
      * throw escapes as a hard error and a retryable 503 dies on attempt 1 under a message naming
      * the wrong problem entirely. This was reached live, by an Azure Responses 503 whose body was
@@ -255,8 +264,9 @@ class LlmFailureSummaryTest {
 
         assertEquals(503, fault.code(), "the status is readable even when the body is not");
         assertNull(fault.status(), "an unreadable field is absent, not fatal");
-        assertTrue(LlmRetry.isTransient(transportError),
-            "and the 503 must still be classified retryable rather than escaping as a hard error");
+        assertTrue(
+                LlmRetry.isTransient(transportError),
+                "and the 503 must still be classified retryable rather than escaping as a hard error");
     }
 
     /** A 5xx with no JSON error body, which is what every transport-level failure looks like. */
@@ -297,20 +307,28 @@ class LlmFailureSummaryTest {
     /** The same headers must reach the backoff, not just the admin page. */
     @Test
     void anOpenAiServiceExceptionHonoursItsRetryAfter() {
-        assertEquals(30_000L, ProviderRateLimit.from(openAiRateLimited()).retryAfterMillisClamped(),
-            "an invented 15s schedule must not override an interval the server actually stated");
+        assertEquals(
+                30_000L,
+                ProviderRateLimit.from(openAiRateLimited()).retryAfterMillisClamped(),
+                "an invented 15s schedule must not override an interval the server actually stated");
     }
 
     /** Header lookup must be case-insensitive: HTTP/2 lowercases, mock servers capitalise. */
     @Test
     void openAiHeaderLookupIsCaseInsensitive() {
-        assertEquals(30L, ProviderRateLimit.from(openAiRateLimited()).retryAfterSeconds(),
-            "the double supplies mixed-case names, as com.sun.net.httpserver does");
+        assertEquals(
+                30L,
+                ProviderRateLimit.from(openAiRateLimited()).retryAfterSeconds(),
+                "the double supplies mixed-case names, as com.sun.net.httpserver does");
     }
 
     private static OpenAIServiceException openAiRateLimited() {
-        Headers headers = Headers.builder().put("Retry-After", "30")
-            .put("X-RateLimit-Remaining-Tokens", "0").put("apim-request-id", "abc-123").build();
+        Headers headers =
+                Headers.builder()
+                        .put("Retry-After", "30")
+                        .put("X-RateLimit-Remaining-Tokens", "0")
+                        .put("apim-request-id", "abc-123")
+                        .build();
         return new OpenAIServiceException("429: rate limited", null) {
             @Override
             public int statusCode() {

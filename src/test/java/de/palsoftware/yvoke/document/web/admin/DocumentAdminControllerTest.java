@@ -61,20 +61,33 @@ public class DocumentAdminControllerTest {
         userService = mock(UserService.class);
 
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
-        Collection col = new Collection(UUID.randomUUID(), "OIM", "manual", List.of("9.3"),
-            OffsetDateTime.now(), "OIM");
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        List.of("9.3"),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.listCollections()).thenReturn(List.of(col));
         when(collectionService.listForAdminUser()).thenReturn(List.of(col));
         when(collectionService.getCollection("OIM")).thenReturn(Optional.of(col));
         when(collectionService.listAllTags()).thenReturn(Collections.emptyList());
         when(collectionService.listTagsOf(any())).thenReturn(Collections.emptyList());
 
-        controller = new DocumentAdminController(documentRepository, documentAdminViewService,
-            collectionService, tagService, jobService, auditLogRepository, userService);
+        controller =
+                new DocumentAdminController(
+                        documentRepository,
+                        documentAdminViewService,
+                        collectionService,
+                        tagService,
+                        jobService,
+                        auditLogRepository,
+                        userService);
 
         model = new ConcurrentModel();
     }
@@ -86,10 +99,11 @@ public class DocumentAdminControllerTest {
 
     @Test
     public void testListDocuments() {
-        when(documentAdminViewService.listDocuments(any(), anyInt(), anyInt(), any(), any(), any(),
-            any(), any())).thenReturn(Collections.emptyList());
+        when(documentAdminViewService.listDocuments(
+                        any(), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
         when(documentAdminViewService.countDocuments(any(), any(), any(), any(), any(), any()))
-            .thenReturn(0L);
+                .thenReturn(0L);
         when(documentAdminViewService.distinctKinds()).thenReturn(List.of("manual"));
 
         String view = controller.listDocuments(null, null, null, null, null, 0, 20, model);
@@ -117,13 +131,12 @@ public class DocumentAdminControllerTest {
      * Clicking "Process KG" twice must not 500 on the admission-control index: the second click
      * lands on the job already in flight, and says so.
      *
-     * <p>
-     * It says so on the WARNING channel, not the success one. The admission key is
-     * {@code (kind, source_ref, collection_id, tags)} and does NOT include {@code settings}, so a
-     * resubmission of the same document into the same target adopts the in-flight job and runs
-     * under THAT job's prompt — including a job the REST path enqueued with no settings at all. The
-     * prompt the operator just picked is silently dropped, so the message has to name the
-     * consequence and the remedy.
+     * <p>It says so on the WARNING channel, not the success one. The admission key is {@code (kind,
+     * source_ref, collection_id, tags)} and does NOT include {@code settings}, so a resubmission of
+     * the same document into the same target adopts the in-flight job and runs under THAT job's
+     * prompt — including a job the REST path enqueued with no settings at all. The prompt the
+     * operator just picked is silently dropped, so the message has to name the consequence and the
+     * remedy.
      */
     @Test
     public void testProcessKgOnADocumentAlreadyQueuedWarnsThatTheSettingsWereNotApplied() {
@@ -138,8 +151,9 @@ public class DocumentAdminControllerTest {
         assertThat(view).isEqualTo("redirect:/admin/jobs/" + activeJobId);
         assertThat(redirect.getFlashAttributes()).doesNotContainKey("success");
         assertThat(redirect.getFlashAttributes().get("warning").toString())
-            .contains("already queued or running").contains("settings it was enqueued with")
-            .contains("cancel");
+                .contains("already queued or running")
+                .contains("settings it was enqueued with")
+                .contains("cancel");
     }
 
     // ---------------------------------------------------------------------
@@ -174,15 +188,15 @@ public class DocumentAdminControllerTest {
     /**
      * The active filter must always be among the options.
      *
-     * <p>
-     * The template marks an option selected with {@code th:selected="${t == selectedTag}"}; if the
-     * scoped list does not contain the tag currently being filtered on — switch collection while a
-     * tag is applied, or filter on a tag a collection carries on its documents but never declared —
-     * the {@code <select>} falls back to displaying "All Tags" while the query is still filtered,
-     * which reads as "the filter was cleared" and hides rows with no visible cause.
+     * <p>The template marks an option selected with {@code th:selected="${t == selectedTag}"}; if
+     * the scoped list does not contain the tag currently being filtered on — switch collection
+     * while a tag is applied, or filter on a tag a collection carries on its documents but never
+     * declared — the {@code <select>} falls back to displaying "All Tags" while the query is still
+     * filtered, which reads as "the filter was cleared" and hides rows with no visible cause.
      */
     @Test
-    public void listDocumentsKeepsTheActiveTagAmongTheOptionsEvenWhenTheCollectionDoesNotDeclareIt() {
+    public void
+            listDocumentsKeepsTheActiveTagAmongTheOptionsEvenWhenTheCollectionDoesNotDeclareIt() {
         stubEmptyDocumentList();
         when(collectionService.listTagsOf("OIM")).thenReturn(List.of("9.3.1"));
 
@@ -193,36 +207,62 @@ public class DocumentAdminControllerTest {
     }
 
     private void stubEmptyDocumentList() {
-        when(documentAdminViewService.listDocuments(any(), anyInt(), anyInt(), any(), any(), any(),
-            any(), any())).thenReturn(Collections.emptyList());
+        when(documentAdminViewService.listDocuments(
+                        any(), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
         when(documentAdminViewService.countDocuments(any(), any(), any(), any(), any(), any()))
-            .thenReturn(0L);
+                .thenReturn(0L);
         when(documentAdminViewService.distinctKinds()).thenReturn(List.of("manual"));
     }
 
     @Test
     public void listDocuments_unauthorizedCollection_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.listDocuments("Finance", null, null, null, null, 0, 20, model));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.listDocuments("Finance", null, null, null, null, 0, 20, model));
     }
 
     @Test
     public void getDocumentDetails_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID id = UUID.randomUUID();
-        DocumentDetail detail = new DocumentDetail(id, "title", "Finance", "standard", List.of(),
-            "completed", Instant.now(), "{}");
+        DocumentDetail detail =
+                new DocumentDetail(
+                        id,
+                        "title",
+                        "Finance",
+                        "standard",
+                        List.of(),
+                        "completed",
+                        Instant.now(),
+                        "{}");
         DocumentDetailPage page = new DocumentDetailPage(detail, 1, List.of(), List.of());
         when(documentAdminViewService.documentDetailPage(id)).thenReturn(Optional.of(page));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         assertThrows(ResponseStatusException.class, () -> controller.getDocumentDetails(id, model));
@@ -230,15 +270,34 @@ public class DocumentAdminControllerTest {
 
     @Test
     public void getChunkDetails_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID id = UUID.randomUUID();
-        ChunkDetail detail = new ChunkDetail(id, UUID.randomUUID(), "Finance", "tag", "standard",
-            "heading", 0, 1, List.of(), "text", "{}");
+        ChunkDetail detail =
+                new ChunkDetail(
+                        id,
+                        UUID.randomUUID(),
+                        "Finance",
+                        "tag",
+                        "standard",
+                        "heading",
+                        0,
+                        1,
+                        List.of(),
+                        "text",
+                        "{}");
         ChunkDetailPage page = new ChunkDetailPage(detail, true, List.of());
         when(documentAdminViewService.chunkDetailPage(id.toString())).thenReturn(Optional.of(page));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         assertThrows(ResponseStatusException.class, () -> controller.getChunkDetails(id, model));
@@ -246,57 +305,119 @@ public class DocumentAdminControllerTest {
 
     @Test
     public void processDocumentKg_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "Finance", "standard", "title",
-            null, "completed", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "Finance",
+                        "standard",
+                        "title",
+                        null,
+                        "completed",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         RedirectAttributes redirect = new RedirectAttributesModelMap();
-        assertThrows(ResponseStatusException.class,
-            () -> controller.processDocumentKg(docId, null, null, null, redirect));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.processDocumentKg(docId, null, null, null, redirect));
     }
 
     @Test
     public void addDocumentTag_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "Finance", "standard", "title",
-            null, "completed", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "Finance",
+                        "standard",
+                        "title",
+                        null,
+                        "completed",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         RedirectAttributes redirect = new RedirectAttributesModelMap();
-        assertThrows(ResponseStatusException.class,
-            () -> controller.addDocumentTag(docId, "tag", redirect));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.addDocumentTag(docId, "tag", redirect));
     }
 
     @Test
     public void removeDocumentTag_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "Finance", "standard", "title",
-            null, "completed", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "Finance",
+                        "standard",
+                        "title",
+                        null,
+                        "completed",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "manual", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "manual",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         RedirectAttributes redirect = new RedirectAttributesModelMap();
-        assertThrows(ResponseStatusException.class,
-            () -> controller.removeDocumentTag(docId, "tag", redirect));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.removeDocumentTag(docId, "tag", redirect));
     }
 
     private static DocumentRow document(UUID id) {
-        return new DocumentRow(id, UUID.randomUUID(), "OIM", "manual", "Title", null, "completed",
-            List.of("9.3"), Instant.now());
+        return new DocumentRow(
+                id,
+                UUID.randomUUID(),
+                "OIM",
+                "manual",
+                "Title",
+                null,
+                "completed",
+                List.of("9.3"),
+                Instant.now());
     }
 }

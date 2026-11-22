@@ -16,8 +16,10 @@ public class JsonSchemaExtractorTest {
 
     @Test
     public void testInferSchema() {
-        List<Map<String, Object>> objects = List.of(Map.of("name", "Alice", "age", 30),
-            Map.of("name", "Bob", "isActive", true, "tags", List.of("admin", "user")));
+        List<Map<String, Object>> objects =
+                List.of(
+                        Map.of("name", "Alice", "age", 30),
+                        Map.of("name", "Bob", "isActive", true, "tags", List.of("admin", "user")));
 
         Map<String, Object> schema = extractor.extractSchema(objects);
 
@@ -50,8 +52,12 @@ public class JsonSchemaExtractorTest {
         // Regression: previously the first array element's properties were dropped because a
         // "null" items slot only copied the type, not the structure.
         List<Map<String, Object>> objects =
-            List.of(Map.of("servers", List.of(Map.of("name", "MAIL", "roles", List.of("SMTP host")),
-                Map.of("name", "HOME", "roles", List.of("Home server")))));
+                List.of(
+                        Map.of(
+                                "servers",
+                                List.of(
+                                        Map.of("name", "MAIL", "roles", List.of("SMTP host")),
+                                        Map.of("name", "HOME", "roles", List.of("Home server")))));
 
         Map<String, Object> schema = extractor.extractSchema(objects);
         Map<String, Object> items = nested(schema, "properties", "servers", "items");
@@ -67,8 +73,7 @@ public class JsonSchemaExtractorTest {
      * by {@code get_json_schema} — and the schema declaration is a separate deliverable from the
      * data, so nothing ever compares it back against the rows.
      *
-     * <p>
-     * A non-integral {@code Number} must declare {@code "number"}: a {@code 1.5} declared as
+     * <p>A non-integral {@code Number} must declare {@code "number"}: a {@code 1.5} declared as
      * {@code "integer"} tells the agent the field is whole, and the admin filter builder then
      * quotes numeric comparisons as strings, so {@code @.price > 10} matches nothing at all. An
      * EMPTY array must default its {@code items} to {@code {"type":"object"}} rather than leaving
@@ -95,29 +100,37 @@ public class JsonSchemaExtractorTest {
         Map<String, Object> schema = extractor.extractSchema(List.of(first, second, third));
 
         assertThat(nested(schema, "properties", "price").get("type"))
-            .as("a fractional Double must be 'number', not 'integer'").isEqualTo("number");
+                .as("a fractional Double must be 'number', not 'integer'")
+                .isEqualTo("number");
         assertThat(nested(schema, "properties", "ratio").get("type"))
-            .as("a BigDecimal is a Number but not an integer").isEqualTo("number");
+                .as("a BigDecimal is a Number but not an integer")
+                .isEqualTo("number");
         assertThat(nested(schema, "properties", "count").get("type"))
-            .as("control: an Integer must stay 'integer'").isEqualTo("integer");
+                .as("control: an Integer must stay 'integer'")
+                .isEqualTo("integer");
         assertThat(nested(schema, "properties", "tags", "items").get("type"))
-            .as("an empty array's items must default to object, never to the 'null' placeholder")
-            .isEqualTo("object");
+                .as(
+                        "an empty array's items must default to object, never to the 'null' placeholder")
+                .isEqualTo("object");
 
         Map<String, Object> meta = nested(schema, "properties", "meta");
-        assertThat(meta.get("type")).as("a null-first slot must adopt the object it later sees")
-            .isEqualTo("object");
+        assertThat(meta.get("type"))
+                .as("a null-first slot must adopt the object it later sees")
+                .isEqualTo("object");
         @SuppressWarnings("unchecked")
         Map<String, Object> metaProps = (Map<String, Object>) meta.get("properties");
-        assertThat(metaProps).as("adoption must be wholesale — the nested structure comes with it")
-            .containsKey("a");
+        assertThat(metaProps)
+                .as("adoption must be wholesale — the nested structure comes with it")
+                .containsKey("a");
     }
 
     @Test
     public void conflictingPrimitiveTypesWidenToTypeList() {
-        List<Map<String, Object>> objects = List.of(Map.of("id", 2), // integer
-            Map.of("id", "two") // string
-        );
+        List<Map<String, Object>> objects =
+                List.of(
+                        Map.of("id", 2), // integer
+                        Map.of("id", "two") // string
+                        );
 
         Map<String, Object> schema = extractor.extractSchema(objects);
         Map<String, Object> idProp = nested(schema, "properties", "id");
@@ -151,8 +164,9 @@ public class JsonSchemaExtractorTest {
         Map<String, Object> current = root;
         for (String key : path) {
             current = (Map<String, Object>) current.get(key);
-            assertThat(current).as("path segment '%s' in %s", key, Arrays.toString(path))
-                .isNotNull();
+            assertThat(current)
+                    .as("path segment '%s' in %s", key, Arrays.toString(path))
+                    .isNotNull();
         }
         return current;
     }

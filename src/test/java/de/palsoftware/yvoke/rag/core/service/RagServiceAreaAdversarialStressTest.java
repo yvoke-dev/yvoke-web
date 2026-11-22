@@ -77,12 +77,30 @@ class RagServiceAreaAdversarialStressTest {
     private final UUID chunkPingId = UUID.randomUUID();
     private final UUID chunkNullAreaId = UUID.randomUUID();
 
-    private final Collection colOim = new Collection(colOimId, "oim-col", "OIM Docs", List.of(),
-        OffsetDateTime.now(), AREA_OIM_PADDED);
-    private final Collection colPing = new Collection(colPingId, "pingid-col", "PingID Docs",
-        List.of(), OffsetDateTime.now(), AREA_PINGID_UPPER);
-    private final Collection colNullArea = new Collection(colNullAreaId, "null-area-col",
-        "Null Area Docs", List.of(), OffsetDateTime.now(), null);
+    private final Collection colOim =
+            new Collection(
+                    colOimId,
+                    "oim-col",
+                    "OIM Docs",
+                    List.of(),
+                    OffsetDateTime.now(),
+                    AREA_OIM_PADDED);
+    private final Collection colPing =
+            new Collection(
+                    colPingId,
+                    "pingid-col",
+                    "PingID Docs",
+                    List.of(),
+                    OffsetDateTime.now(),
+                    AREA_PINGID_UPPER);
+    private final Collection colNullArea =
+            new Collection(
+                    colNullAreaId,
+                    "null-area-col",
+                    "Null Area Docs",
+                    List.of(),
+                    OffsetDateTime.now(),
+                    null);
 
     @BeforeEach
     void setUp() {
@@ -98,44 +116,130 @@ class RagServiceAreaAdversarialStressTest {
         when(collectionService.findById(colPingId)).thenReturn(Optional.of(colPing));
         when(collectionService.findById(colNullAreaId)).thenReturn(Optional.of(colNullArea));
 
-        DocumentRow docOim = new DocumentRow(docOimId, colOimId, "oim-col", "manual", "OIM Guide",
-            null, "COMPLETED", List.of(), Instant.now());
+        DocumentRow docOim =
+                new DocumentRow(
+                        docOimId,
+                        colOimId,
+                        "oim-col",
+                        "manual",
+                        "OIM Guide",
+                        null,
+                        "COMPLETED",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docOimId)).thenReturn(Optional.of(docOim));
 
-        DocumentRow docPing = new DocumentRow(docPingId, colPingId, "pingid-col", "manual",
-            "PingID Guide", null, "COMPLETED", List.of(), Instant.now());
+        DocumentRow docPing =
+                new DocumentRow(
+                        docPingId,
+                        colPingId,
+                        "pingid-col",
+                        "manual",
+                        "PingID Guide",
+                        null,
+                        "COMPLETED",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docPingId)).thenReturn(Optional.of(docPing));
 
-        DocumentRow docNullArea = new DocumentRow(docNullAreaId, colNullAreaId, "null-area-col",
-            "manual", "Null Area Guide", null, "COMPLETED", List.of(), Instant.now());
+        DocumentRow docNullArea =
+                new DocumentRow(
+                        docNullAreaId,
+                        colNullAreaId,
+                        "null-area-col",
+                        "manual",
+                        "Null Area Guide",
+                        null,
+                        "COMPLETED",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docNullAreaId)).thenReturn(Optional.of(docNullArea));
 
-        ChunkRow chunkOim = new ChunkRow(chunkOimId, docOimId, "OIM chunk content",
-            List.of("Intro"), "Intro", 1, 0, null, "OIM Guide", "manual", "oim-col", null, 0.95);
+        ChunkRow chunkOim =
+                new ChunkRow(
+                        chunkOimId,
+                        docOimId,
+                        "OIM chunk content",
+                        List.of("Intro"),
+                        "Intro",
+                        1,
+                        0,
+                        null,
+                        "OIM Guide",
+                        "manual",
+                        "oim-col",
+                        null,
+                        0.95);
         when(chunkRepository.findByIdPrefix(eq(chunkOimId.toString()), any()))
-            .thenReturn(Optional.of(chunkOim));
+                .thenReturn(Optional.of(chunkOim));
 
         ChunkRow chunkPing =
-            new ChunkRow(chunkPingId, docPingId, "PingID chunk content", List.of("Intro"), "Intro",
-                1, 0, null, "PingID Guide", "manual", "pingid-col", null, 0.95);
+                new ChunkRow(
+                        chunkPingId,
+                        docPingId,
+                        "PingID chunk content",
+                        List.of("Intro"),
+                        "Intro",
+                        1,
+                        0,
+                        null,
+                        "PingID Guide",
+                        "manual",
+                        "pingid-col",
+                        null,
+                        0.95);
         when(chunkRepository.findByIdPrefix(eq(chunkPingId.toString()), any()))
-            .thenReturn(Optional.of(chunkPing));
+                .thenReturn(Optional.of(chunkPing));
 
-        ChunkRow chunkNullArea = new ChunkRow(chunkNullAreaId, docNullAreaId,
-            "Null Area chunk content", List.of("Intro"), "Intro", 1, 0, null, "Null Area Guide",
-            "manual", "null-area-col", null, 0.95);
+        ChunkRow chunkNullArea =
+                new ChunkRow(
+                        chunkNullAreaId,
+                        docNullAreaId,
+                        "Null Area chunk content",
+                        List.of("Intro"),
+                        "Intro",
+                        1,
+                        0,
+                        null,
+                        "Null Area Guide",
+                        "manual",
+                        "null-area-col",
+                        null,
+                        0.95);
         when(chunkRepository.findByIdPrefix(eq(chunkNullAreaId.toString()), any()))
-            .thenReturn(Optional.of(chunkNullArea));
+                .thenReturn(Optional.of(chunkNullArea));
 
         ObjectMapper mapper = new ObjectMapper();
-        ragService = new RagService(hybridSearch, llmClient, citationVerifier, mapper,
-            collectionService, documentRepository, chunkRepository);
-        ragService.getToolRegistry().put("search_corpus", new SearchCorpusToolCallback(
-            new SearchCorpusTool(hybridSearch, collectionService, 10, 50), mapper, 50));
-        ragService.getToolRegistry().put("list_documents", new ListDocumentsToolCallback(
-            new ListDocumentsTool(documentRepository, collectionService), mapper));
-        ragService.getToolRegistry().put("verify_citations",
-            new VerifyCitationsToolCallback(new VerifyCitationsTool(citationVerifier), mapper));
+        ragService =
+                new RagService(
+                        hybridSearch,
+                        llmClient,
+                        citationVerifier,
+                        mapper,
+                        collectionService,
+                        documentRepository,
+                        chunkRepository);
+        ragService
+                .getToolRegistry()
+                .put(
+                        "search_corpus",
+                        new SearchCorpusToolCallback(
+                                new SearchCorpusTool(hybridSearch, collectionService, 10, 50),
+                                mapper,
+                                50));
+        ragService
+                .getToolRegistry()
+                .put(
+                        "list_documents",
+                        new ListDocumentsToolCallback(
+                                new ListDocumentsTool(documentRepository, collectionService),
+                                mapper));
+        ragService
+                .getToolRegistry()
+                .put(
+                        "verify_citations",
+                        new VerifyCitationsToolCallback(
+                                new VerifyCitationsTool(citationVerifier), mapper));
     }
 
     private ToolCallback createMockTool(String name) {
@@ -149,28 +253,45 @@ class RagServiceAreaAdversarialStressTest {
         return callback;
     }
 
-    private String runTurnWithToolCall(String toolName, String jsonArgs,
-        @Nullable Set<String> allowedAreasLower) {
-        doAnswer((Answer<Void>) inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            LlmToolCallDelta delta = new LlmToolCallDelta(0, "call_1", toolName, jsonArgs);
-            cb.accept(new LlmResponseChunk(null, null, List.of(delta), null));
-            return null;
-        }).doAnswer((Answer<Void>) inv -> {
-            Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Turn 2 finish", null, null, null));
-            return null;
-        }).when(llmClient).generateStream(any(), any());
+    private String runTurnWithToolCall(
+            String toolName, String jsonArgs, @Nullable Set<String> allowedAreasLower) {
+        doAnswer(
+                        (Answer<Void>)
+                                inv -> {
+                                    Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                    LlmToolCallDelta delta =
+                                            new LlmToolCallDelta(0, "call_1", toolName, jsonArgs);
+                                    cb.accept(
+                                            new LlmResponseChunk(null, null, List.of(delta), null));
+                                    return null;
+                                })
+                .doAnswer(
+                        (Answer<Void>)
+                                inv -> {
+                                    Consumer<LlmResponseChunk> cb = inv.getArgument(1);
+                                    cb.accept(
+                                            new LlmResponseChunk(
+                                                    "Turn 2 finish", null, null, null));
+                                    return null;
+                                })
+                .when(llmClient)
+                .generateStream(any(), any());
 
         AgenticRequest request =
-            AgenticRequest.builder().query("adversarial test question").modelOverride("gemini-test")
-                .allowedTools(List.of(toolName)).allowedAreasLower(allowedAreasLower).build();
+                AgenticRequest.builder()
+                        .query("adversarial test question")
+                        .modelOverride("gemini-test")
+                        .allowedTools(List.of(toolName))
+                        .allowedAreasLower(allowedAreasLower)
+                        .build();
 
-        RagResult result = ragService.generateAgenticAnswer(request, token -> {
-        });
+        RagResult result = ragService.generateAgenticAnswer(request, token -> {});
         LlmMessage toolMsg =
-            result.messages().stream().filter(m -> "tool".equals(m.role())).findFirst()
-                .orElseThrow(() -> new IllegalStateException("No tool response found in messages"));
+                result.messages().stream()
+                        .filter(m -> "tool".equals(m.role()))
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new IllegalStateException("No tool response found in messages"));
         return toolMsg.content();
     }
 
@@ -191,7 +312,8 @@ class RagServiceAreaAdversarialStressTest {
     }
 
     @Test
-    @DisplayName("Casing & whitespace in collection area: PingID uppercase matches user with 'pingid'")
+    @DisplayName(
+            "Casing & whitespace in collection area: PingID uppercase matches user with 'pingid'")
     void uppercaseAreaNameMatchesNormalizedAllowedArea() {
         AgenticChatContext ctx = new AgenticChatContext(Set.of("pingid"));
         assertThat(ctx.isAreaAllowed("PINGID")).isTrue();
@@ -206,8 +328,11 @@ class RagServiceAreaAdversarialStressTest {
     @DisplayName("Crafted tool arguments with mixed case and whitespace resolve correctly")
     void toolArgumentsWithWhitespaceAndMixedCase() {
         ToolCallback mockTool = createMockTool("search_corpus");
-        String response = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"  OIM-COL  \", \"query\": \"test\"}", Set.of("oim"));
+        String response =
+                runTurnWithToolCall(
+                        "search_corpus",
+                        "{\"collection\": \"  OIM-COL  \", \"query\": \"test\"}",
+                        Set.of("oim"));
 
         assertThat(response).isEqualTo("mock tool result for search_corpus");
         verify(mockTool).call(anyString());
@@ -217,8 +342,11 @@ class RagServiceAreaAdversarialStressTest {
     @DisplayName("Cross-area access with crafted casing and spaces is strictly rejected")
     void crossAreaAccessWithWhitespaceAndMixedCaseRejected() {
         ToolCallback mockTool = createMockTool("search_corpus");
-        String response = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"  PINGID-COL  \", \"query\": \"test\"}", Set.of("oim"));
+        String response =
+                runTurnWithToolCall(
+                        "search_corpus",
+                        "{\"collection\": \"  PINGID-COL  \", \"query\": \"test\"}",
+                        Set.of("oim"));
 
         assertThat(response).isEqualTo("Error: Collection 'PINGID-COL' does not exist.");
         verify(mockTool, never()).call(anyString());
@@ -241,27 +369,30 @@ class RagServiceAreaAdversarialStressTest {
     }
 
     @Test
-    @DisplayName("Empty allowedAreasLower Set.of() in search_corpus omit-collection yields no results")
+    @DisplayName(
+            "Empty allowedAreasLower Set.of() in search_corpus omit-collection yields no results")
     void emptyAllowedAreasOmitCollectionSearch() {
         String response =
-            runTurnWithToolCall("search_corpus", "{\"query\": \"anything\"}", Set.of());
+                runTurnWithToolCall("search_corpus", "{\"query\": \"anything\"}", Set.of());
 
         assertThat(response).isEqualTo("No relevant documents found.");
         verify(hybridSearch, never()).searchWithId(anyString(), any());
     }
 
     @Test
-    @DisplayName("Empty allowedAreasLower Set.of() in list_documents omit-collection yields empty notice")
+    @DisplayName(
+            "Empty allowedAreasLower Set.of() in list_documents omit-collection yields empty notice")
     void emptyAllowedAreasOmitCollectionListDocs() {
         String response = runTurnWithToolCall("list_documents", "{}", Set.of());
 
         assertThat(response).isEqualTo("(no documents in **all allowed collections**)");
-        verify(documentRepository, never()).listDocuments(anyString(), anyInt(), anyInt(), any(),
-            any(), any(), any(), any());
+        verify(documentRepository, never())
+                .listDocuments(anyString(), anyInt(), anyInt(), any(), any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("ALL_AREAS allowedAreasLower (unrestricted) permits access to collections with null area")
+    @DisplayName(
+            "ALL_AREAS allowedAreasLower (unrestricted) permits access to collections with null area")
     void nullAllowedAreasPermitsAllIncludingNullArea() {
         AgenticChatContext globalCtx = new AgenticChatContext(AgenticChatContext.ALL_AREAS);
         assertThat(globalCtx.isAreaAllowed(null)).isTrue();
@@ -289,14 +420,21 @@ class RagServiceAreaAdversarialStressTest {
     // ---------------------------------------------------------------------------------------------
 
     @ParameterizedTest
-    @ValueSource(strings = {"search_graph_entities", "get_graph_neighbors", "get_json_schema",
-        "query_json_objects"})
+    @ValueSource(
+            strings = {
+                "search_graph_entities",
+                "get_graph_neighbors",
+                "get_json_schema",
+                "query_json_objects"
+            })
     @DisplayName("All KG and JSON tools reject cross-area collection targeting")
     void allKgAndJsonToolsRejectCrossArea(String toolName) {
         ToolCallback mockTool = createMockTool(toolName);
-        String response = runTurnWithToolCall(toolName,
-            "{\"collection\": \"pingid-col\", \"query\": \"test\", \"entity_name\": \"test\", \"jsonPath\": \"$\"}",
-            Set.of("oim"));
+        String response =
+                runTurnWithToolCall(
+                        toolName,
+                        "{\"collection\": \"pingid-col\", \"query\": \"test\", \"entity_name\": \"test\", \"jsonPath\": \"$\"}",
+                        Set.of("oim"));
 
         assertThat(response).isEqualTo("Error: Collection 'pingid-col' does not exist.");
         verify(mockTool, never()).call(anyString());
@@ -306,8 +444,9 @@ class RagServiceAreaAdversarialStressTest {
     @DisplayName("get_toc rejects document in unauthorized area")
     void getTocRejectsUnauthorizedAreaDoc() {
         ToolCallback mockTool = createMockTool("get_toc");
-        String response = runTurnWithToolCall("get_toc", "{\"document_id\": \"" + docPingId + "\"}",
-            Set.of("oim"));
+        String response =
+                runTurnWithToolCall(
+                        "get_toc", "{\"document_id\": \"" + docPingId + "\"}", Set.of("oim"));
 
         assertThat(response).isEqualTo("Error: Document with ID '" + docPingId + "' not found.");
         verify(mockTool, never()).call(anyString());
@@ -318,12 +457,14 @@ class RagServiceAreaAdversarialStressTest {
     void getSectionRejectsUnauthorizedAreaDocAndChunk() {
         ToolCallback mockTool = createMockTool("get_section");
 
-        String docResp = runTurnWithToolCall("get_section",
-            "{\"document_id\": \"" + docPingId + "\"}", Set.of("oim"));
+        String docResp =
+                runTurnWithToolCall(
+                        "get_section", "{\"document_id\": \"" + docPingId + "\"}", Set.of("oim"));
         assertThat(docResp).isEqualTo("Error: Document not found: " + docPingId);
 
-        String chunkResp = runTurnWithToolCall("get_section",
-            "{\"chunk_id\": \"" + chunkPingId + "\"}", Set.of("oim"));
+        String chunkResp =
+                runTurnWithToolCall(
+                        "get_section", "{\"chunk_id\": \"" + chunkPingId + "\"}", Set.of("oim"));
         assertThat(chunkResp).isEqualTo("Error: Chunk not found: " + chunkPingId);
 
         verify(mockTool, never()).call(anyString());
@@ -333,11 +474,20 @@ class RagServiceAreaAdversarialStressTest {
     @DisplayName("verify_citations marks cross-area chunk citations as FABRICATED")
     void verifyCitationsCrossAreaIsFabricated() {
         String pingCit = "[chunk_id=" + chunkPingId + "]";
-        when(citationVerifier.checkCitations(List.of(pingCit), Set.of("oim"))).thenReturn(List.of(
-            new CitationCheckResult(pingCit, "chunk", CitationStatus.FABRICATED, "0 chunk(s)")));
+        when(citationVerifier.checkCitations(List.of(pingCit), Set.of("oim")))
+                .thenReturn(
+                        List.of(
+                                new CitationCheckResult(
+                                        pingCit,
+                                        "chunk",
+                                        CitationStatus.FABRICATED,
+                                        "0 chunk(s)")));
 
-        String response = runTurnWithToolCall("verify_citations",
-            "{\"citations\": [\"" + pingCit + "\"]}", Set.of("oim"));
+        String response =
+                runTurnWithToolCall(
+                        "verify_citations",
+                        "{\"citations\": [\"" + pingCit + "\"]}",
+                        Set.of("oim"));
 
         assertThat(response).contains("FABRICATED");
         assertThat(response).contains("Remove or correct every FABRICATED citation");
@@ -348,41 +498,57 @@ class RagServiceAreaAdversarialStressTest {
     // ---------------------------------------------------------------------------------------------
 
     @Test
-    @DisplayName("Error messages for unauthorized collection vs non-existent collection are 100% identical")
+    @DisplayName(
+            "Error messages for unauthorized collection vs non-existent collection are 100% identical")
     void errorMessagesForUnauthorizedVsNonExistentAreIdentical() {
         createMockTool("search_corpus");
 
-        String unauthorizedResp = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"pingid-col\", \"query\": \"auth\"}", Set.of("oim"));
-        String nonExistentResp = runTurnWithToolCall("search_corpus",
-            "{\"collection\": \"non-existent-col\", \"query\": \"auth\"}", Set.of("oim"));
+        String unauthorizedResp =
+                runTurnWithToolCall(
+                        "search_corpus",
+                        "{\"collection\": \"pingid-col\", \"query\": \"auth\"}",
+                        Set.of("oim"));
+        String nonExistentResp =
+                runTurnWithToolCall(
+                        "search_corpus",
+                        "{\"collection\": \"non-existent-col\", \"query\": \"auth\"}",
+                        Set.of("oim"));
 
         assertThat(unauthorizedResp).isEqualTo("Error: Collection 'pingid-col' does not exist.");
         assertThat(nonExistentResp)
-            .isEqualTo("Error: Collection 'non-existent-col' does not exist.");
+                .isEqualTo("Error: Collection 'non-existent-col' does not exist.");
 
         // Structural template must match exactly
         assertThat(unauthorizedResp.replace("pingid-col", "X"))
-            .isEqualTo(nonExistentResp.replace("non-existent-col", "X"));
+                .isEqualTo(nonExistentResp.replace("non-existent-col", "X"));
 
         // No info leakage: no auth/forbidden wording, no area name if different from collection
-        assertThat(unauthorizedResp.toLowerCase()).doesNotContain("unauthorized", "forbidden",
-            "area", "permission");
+        assertThat(unauthorizedResp.toLowerCase())
+                .doesNotContain("unauthorized", "forbidden", "area", "permission");
     }
 
     @Test
-    @DisplayName("Error messages for unauthorized document vs non-existent document in get_toc are 100% identical")
+    @DisplayName(
+            "Error messages for unauthorized document vs non-existent document in get_toc are 100% identical")
     void errorMessagesForUnauthorizedDocumentAreIdentical() {
         createMockTool("get_toc");
         UUID randomId = UUID.randomUUID();
 
-        String unauthorizedResp = runTurnWithToolCall("get_toc",
-            "{\"document_id\": \"" + docPingId + "\"}", Set.of("oim"));
+        String unauthorizedResp =
+                runTurnWithToolCall(
+                        "get_toc", "{\"document_id\": \"" + docPingId + "\"}", Set.of("oim"));
 
         assertThat(unauthorizedResp)
-            .isEqualTo("Error: Document with ID '" + docPingId + "' not found.");
+                .isEqualTo("Error: Document with ID '" + docPingId + "' not found.");
         // Does not leak collection name, area name, or document title!
-        assertThat(unauthorizedResp.toLowerCase()).doesNotContain("unauthorized", "forbidden",
-            "area", "permission", "pingid-col", "pingid", "guide");
+        assertThat(unauthorizedResp.toLowerCase())
+                .doesNotContain(
+                        "unauthorized",
+                        "forbidden",
+                        "area",
+                        "permission",
+                        "pingid-col",
+                        "pingid",
+                        "guide");
     }
 }

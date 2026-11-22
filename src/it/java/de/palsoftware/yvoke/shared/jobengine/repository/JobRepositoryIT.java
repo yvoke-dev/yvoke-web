@@ -31,33 +31,33 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-
-@SpringBootTest(properties = {"app.worker.enabled=false", "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "app.worker.enabled=false",
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class JobRepositoryIT {
 
     private static final String COLLECTION = "OIM-JOBQ-TEST";
     private static final String OTHER_COLLECTION = "OIM-JOBQ-TEST-OTHER";
+
     /** A second kind, so kind-scoped operations can be shown NOT to touch their neighbours. */
     private static final String OTHER_KIND = ItTestJobHandler.KIND + "-other";
 
-    @Autowired
-    private JobRepository jobRepository;
+    @Autowired private JobRepository jobRepository;
 
     /**
      * Every registered handler bean, so the kind vocabulary can be checked against the routing
      * table the engine actually dispatches on.
      */
-    @Autowired
-    private List<JobHandler> jobHandlers;
+    @Autowired private List<JobHandler> jobHandlers;
 
     // claimNext's transaction now lives on JobService (Wave 3.5); exercise it through the same
     // transactional entry point the worker uses so the SKIP-LOCKED single-claim invariant holds.
-    @Autowired
-    private JobService jobService;
+    @Autowired private JobService jobService;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     public void setUp() {
@@ -65,15 +65,16 @@ public class JobRepositoryIT {
         jdbcTemplate.update("DELETE FROM collections WHERE name = ?", OTHER_COLLECTION);
         // Collections are no longer auto-created by enqueue; the target must pre-exist.
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-            UUID.randomUUID(), COLLECTION);
+                "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+                UUID.randomUUID(),
+                COLLECTION);
     }
 
     @AfterEach
     public void tearDown() {
         cleanup();
-        jdbcTemplate.update("DELETE FROM collections WHERE name IN (?, ?)", COLLECTION,
-            OTHER_COLLECTION);
+        jdbcTemplate.update(
+                "DELETE FROM collections WHERE name IN (?, ?)", COLLECTION, OTHER_COLLECTION);
     }
 
     private void cleanup() {
@@ -81,8 +82,8 @@ public class JobRepositoryIT {
     }
 
     private EnqueueRequest itTestRequest() {
-        return new EnqueueRequest(ItTestJobHandler.KIND, "ref-" + UUID.randomUUID(), "1.0",
-            COLLECTION);
+        return new EnqueueRequest(
+                ItTestJobHandler.KIND, "ref-" + UUID.randomUUID(), "1.0", COLLECTION);
     }
 
     @Test
@@ -129,14 +130,15 @@ public class JobRepositoryIT {
         var pool = Executors.newFixedThreadPool(workers);
         List<Future<List<UUID>>> futures = new ArrayList<>();
         for (int i = 0; i < workers; i++) {
-            futures.add(pool.submit(() -> {
-                List<UUID> claimed = new ArrayList<>();
-                Optional<IngestionJob> job;
-                while ((job = jobService.claimNext()).isPresent()) {
-                    claimed.add(job.get().id());
-                }
-                return claimed;
-            }));
+            futures.add(
+                    pool.submit(() -> {
+                        List<UUID> claimed = new ArrayList<>();
+                        Optional<IngestionJob> job;
+                        while ((job = jobService.claimNext()).isPresent()) {
+                            claimed.add(job.get().id());
+                        }
+                        return claimed;
+                    }));
         }
 
         List<UUID> allClaimed = new ArrayList<>();
@@ -216,8 +218,8 @@ public class JobRepositoryIT {
 
         // Backdate staleId's heartbeat beyond the threshold; freshId keeps its fresh heartbeat.
         jdbcTemplate.update(
-            "UPDATE ingestion_jobs SET heartbeat_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id = ?",
-            staleId);
+                "UPDATE ingestion_jobs SET heartbeat_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id = ?",
+                staleId);
 
         int requeued = jobRepository.requeueStaleRunningJobs(Duration.ofMinutes(5));
         assertThat(requeued).isEqualTo(1);
@@ -229,8 +231,9 @@ public class JobRepositoryIT {
         assertThat(staleJob.attempts()).isEqualTo(1);
 
         assertThat(statusOf(freshId))
-            .as("a running job with a fresh heartbeat must not be requeued during rolling deploy")
-            .isEqualTo(JobStatus.RUNNING);
+                .as(
+                        "a running job with a fresh heartbeat must not be requeued during rolling deploy")
+                .isEqualTo(JobStatus.RUNNING);
     }
 
     // ---------------------------------------------------------------------
@@ -244,7 +247,7 @@ public class JobRepositoryIT {
     @Test
     public void enqueueOfWorkAlreadyQueuedAdoptsTheActiveJob() {
         EnqueueRequest req =
-            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
+                new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
 
         EnqueueResult first = jobRepository.enqueue(req);
         EnqueueResult second = jobRepository.enqueue(req);
@@ -257,13 +260,12 @@ public class JobRepositoryIT {
 
     /**
      * Adoption is {@code DO NOTHING}, and that word is the whole contract: an adopted job runs with
-     * the settings it was FIRST enqueued with, never with this request's.
-     * {@code enqueueOfWorkAlreadyQueuedAdoptsTheActiveJob} posts identical settings twice and
-     * asserts only the id and the row count, so nothing observes which settings survive — and both
-     * directions of a regression are invisible in production.
+     * the settings it was FIRST enqueued with, never with this request's. {@code
+     * enqueueOfWorkAlreadyQueuedAdoptsTheActiveJob} posts identical settings twice and asserts only
+     * the id and the row count, so nothing observes which settings survive — and both directions of
+     * a regression are invisible in production.
      *
-     * <p>
-     * As it stands, a client that spots a wrong setting, corrects it and re-POSTs the same work
+     * <p>As it stands, a client that spots a wrong setting, corrects it and re-POSTs the same work
      * gets HTTP 200 with a job id back and believes the correction took effect, while the job runs
      * on the originals — e.g. a re-ingest whose {@code jsonUniqueField} was fixed still INSERTs
      * instead of upserting and duplicates the whole corpus, reporting an entirely normal count.
@@ -277,11 +279,17 @@ public class JobRepositoryIT {
     @Test
     public void anAdoptedJobKeepsTheSettingsItWasFirstEnqueuedWith() {
         Map<String, Object> asFirstEnqueued =
-            Map.of("jsonUniqueField", "customer.id", "attempt", "first");
-        EnqueueRequest original = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION, asFirstEnqueued);
-        EnqueueRequest corrected = new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0",
-            COLLECTION, Map.of("jsonUniqueField", "WRONG", "attempt", "second"));
+                Map.of("jsonUniqueField", "customer.id", "attempt", "first");
+        EnqueueRequest original =
+                new EnqueueRequest(
+                        ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION, asFirstEnqueued);
+        EnqueueRequest corrected =
+                new EnqueueRequest(
+                        ItTestJobHandler.KIND,
+                        "same-ref",
+                        "1.0",
+                        COLLECTION,
+                        Map.of("jsonUniqueField", "WRONG", "attempt", "second"));
 
         EnqueueResult first = jobRepository.enqueue(original);
         EnqueueResult adopted = jobRepository.enqueue(corrected);
@@ -291,8 +299,8 @@ public class JobRepositoryIT {
         assertThat(adopted.jobId()).isEqualTo(first.jobId());
         assertThat(countJobs()).isEqualTo(1);
         assertThat(jobRepository.findById(first.jobId()).orElseThrow().settings())
-            .as("the queued job keeps the settings it was first enqueued with")
-            .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
+                .as("the queued job keeps the settings it was first enqueued with")
+                .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
 
         // The same guard once the work is mid-flight: those settings are already in use.
         jobService.claimNext().orElseThrow();
@@ -301,15 +309,15 @@ public class JobRepositoryIT {
         assertThat(whileRunning.created()).isFalse();
         assertThat(whileRunning.jobId()).isEqualTo(first.jobId());
         assertThat(jobRepository.findById(first.jobId()).orElseThrow().settings())
-            .as("no caller may rewrite the settings of a job that is already executing")
-            .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
+                .as("no caller may rewrite the settings of a job that is already executing")
+                .containsExactlyInAnyOrderEntriesOf(asFirstEnqueued);
     }
 
     /** The slot is held while the job RUNS too, not only while it waits. */
     @Test
     public void enqueueOfWorkAlreadyRunningAdoptsTheRunningJob() {
         EnqueueRequest req =
-            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
+                new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobService.claimNext().orElseThrow();
 
@@ -323,7 +331,7 @@ public class JobRepositoryIT {
     @Test
     public void enqueueAfterTheEarlierJobFinishedCreatesANewJob() {
         EnqueueRequest req =
-            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
+                new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobService.claimNext();
         jobRepository.markCompleted(first, new JobCounts(1, 1, 0, 0, 0));
@@ -342,15 +350,21 @@ public class JobRepositoryIT {
     @Test
     public void sameKindAndSourceRefIntoADifferentTargetIsSeparateWork() {
         UUID otherCollection = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", otherCollection,
-            OTHER_COLLECTION);
+        jdbcTemplate.update(
+                "INSERT INTO collections (id, name) VALUES (?, ?)",
+                otherCollection,
+                OTHER_COLLECTION);
 
-        EnqueueResult intoFirst = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "shared-ref", "1.0", COLLECTION));
-        EnqueueResult intoSecond = jobRepository.enqueue(
-            new EnqueueRequest(ItTestJobHandler.KIND, "shared-ref", "1.0", OTHER_COLLECTION));
-        EnqueueResult otherTag = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "shared-ref", "2.0", COLLECTION));
+        EnqueueResult intoFirst =
+                jobRepository.enqueue(
+                        new EnqueueRequest(ItTestJobHandler.KIND, "shared-ref", "1.0", COLLECTION));
+        EnqueueResult intoSecond =
+                jobRepository.enqueue(
+                        new EnqueueRequest(
+                                ItTestJobHandler.KIND, "shared-ref", "1.0", OTHER_COLLECTION));
+        EnqueueResult otherTag =
+                jobRepository.enqueue(
+                        new EnqueueRequest(ItTestJobHandler.KIND, "shared-ref", "2.0", COLLECTION));
 
         assertThat(intoFirst.created()).isTrue();
         assertThat(intoSecond.created()).isTrue();
@@ -438,7 +452,7 @@ public class JobRepositoryIT {
     @Test
     public void cancellingAJobReleasesItsAdmissionSlot() {
         EnqueueRequest req =
-            new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
+                new EnqueueRequest(ItTestJobHandler.KIND, "same-ref", "1.0", COLLECTION);
         UUID first = jobRepository.enqueue(req).jobId();
         jobRepository.stopJob(first);
 
@@ -450,23 +464,36 @@ public class JobRepositoryIT {
 
     @Test
     public void cancelQueuedCancelsEveryQueuedJobOfAKindAndLeavesRunningOnesAlone() {
-        UUID running = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-running", "1.0", COLLECTION))
-            .jobId();
+        UUID running =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND, "ref-running", "1.0", COLLECTION))
+                        .jobId();
         jobService.claimNext().orElseThrow();
-        UUID queuedA = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION)).jobId();
-        UUID queuedB = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION)).jobId();
-        UUID otherKind = jobRepository
-            .enqueue(new EnqueueRequest(OTHER_KIND, "ref-c", "1.0", COLLECTION)).jobId();
+        UUID queuedA =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION))
+                        .jobId();
+        UUID queuedB =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION))
+                        .jobId();
+        UUID otherKind =
+                jobRepository
+                        .enqueue(new EnqueueRequest(OTHER_KIND, "ref-c", "1.0", COLLECTION))
+                        .jobId();
 
         assertThat(jobRepository.cancelQueued(ItTestJobHandler.KIND)).hasSize(2);
 
         assertThat(statusOf(queuedA)).isEqualTo(JobStatus.CANCELLED);
         assertThat(statusOf(queuedB)).isEqualTo(JobStatus.CANCELLED);
         assertThat(jobRepository.findById(queuedA).orElseThrow().error())
-            .isEqualTo("Cancelled by administrator");
+                .isEqualTo("Cancelled by administrator");
         assertThat(statusOf(running)).isEqualTo(JobStatus.RUNNING);
         assertThat(statusOf(otherKind)).isEqualTo(JobStatus.QUEUED);
     }
@@ -477,14 +504,24 @@ public class JobRepositoryIT {
      */
     @Test
     public void cancelQueuedIsInstanceScopedWhenTheKindIsQualified() {
-        UUID wiki = jobRepository
-            .enqueue(
-                new EnqueueRequest(ItTestJobHandler.KIND + ":wiki", "ref-a", "1.0", COLLECTION))
-            .jobId();
-        UUID docs = jobRepository
-            .enqueue(
-                new EnqueueRequest(ItTestJobHandler.KIND + ":docs", "ref-b", "1.0", COLLECTION))
-            .jobId();
+        UUID wiki =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND + ":wiki",
+                                        "ref-a",
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
+        UUID docs =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND + ":docs",
+                                        "ref-b",
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
 
         assertThat(jobRepository.cancelQueued(ItTestJobHandler.KIND + ":wiki")).hasSize(1);
         assertThat(statusOf(wiki)).isEqualTo(JobStatus.CANCELLED);
@@ -505,17 +542,44 @@ public class JobRepositoryIT {
     public void cancelQueuedBySettingSweepsJobsWhoseKindNoLongerNamesTheInstance() {
         String instanceId = UUID.randomUUID().toString();
         // Queued under the old slug, but carrying the instance id.
-        UUID renamed = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":old-slug",
-            "ref-a", "1.0", COLLECTION, Map.of("instanceId", instanceId))).jobId();
+        UUID renamed =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND + ":old-slug",
+                                        "ref-a",
+                                        "1.0",
+                                        COLLECTION,
+                                        Map.of("instanceId", instanceId)))
+                        .jobId();
         // Same instance, current slug.
-        UUID current = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":new-slug",
-            "ref-b", "1.0", COLLECTION, Map.of("instanceId", instanceId))).jobId();
+        UUID current =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND + ":new-slug",
+                                        "ref-b",
+                                        "1.0",
+                                        COLLECTION,
+                                        Map.of("instanceId", instanceId)))
+                        .jobId();
         // A different instance, and a job with no settings at all — neither may be touched.
         UUID otherInstance =
-            jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND + ":other", "ref-c",
-                "1.0", COLLECTION, Map.of("instanceId", UUID.randomUUID().toString()))).jobId();
-        UUID noSettings = jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-d", "1.0", COLLECTION)).jobId();
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND + ":other",
+                                        "ref-c",
+                                        "1.0",
+                                        COLLECTION,
+                                        Map.of("instanceId", UUID.randomUUID().toString())))
+                        .jobId();
+        UUID noSettings =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND, "ref-d", "1.0", COLLECTION))
+                        .jobId();
 
         assertThat(jobRepository.cancelQueuedBySetting("instanceId", instanceId)).hasSize(2);
 
@@ -531,8 +595,16 @@ public class JobRepositoryIT {
     @Test
     public void cancelQueuedBySettingLeavesRunningJobsAlone() {
         String instanceId = UUID.randomUUID().toString();
-        UUID running = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
-            "ref-running", "1.0", COLLECTION, Map.of("instanceId", instanceId))).jobId();
+        UUID running =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "ref-running",
+                                        "1.0",
+                                        COLLECTION,
+                                        Map.of("instanceId", instanceId)))
+                        .jobId();
         jobService.claimNext().orElseThrow();
 
         assertThat(jobRepository.cancelQueuedBySetting("instanceId", instanceId)).isEmpty();
@@ -543,16 +615,18 @@ public class JobRepositoryIT {
     public void listQueuedKindsCountsOnlyQueuedWork() {
         // Enqueued and claimed FIRST, so claimNext (oldest queued wins) takes this one and not one
         // of the jobs the assertion counts.
-        UUID running = jobRepository
-            .enqueue(new EnqueueRequest(OTHER_KIND, "ref-c", "1.0", COLLECTION)).jobId();
+        UUID running =
+                jobRepository
+                        .enqueue(new EnqueueRequest(OTHER_KIND, "ref-c", "1.0", COLLECTION))
+                        .jobId();
         jobService.claimNext().orElseThrow();
-        jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION));
-        jobRepository
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION));
+        jobRepository.enqueue(
+                new EnqueueRequest(ItTestJobHandler.KIND, "ref-a", "1.0", COLLECTION));
+        jobRepository.enqueue(
+                new EnqueueRequest(ItTestJobHandler.KIND, "ref-b", "1.0", COLLECTION));
 
         assertThat(jobRepository.listQueuedKinds())
-            .containsExactly(new QueuedKindSummary(ItTestJobHandler.KIND, 2L));
+                .containsExactly(new QueuedKindSummary(ItTestJobHandler.KIND, 2L));
         assertThat(statusOf(running)).isEqualTo(JobStatus.RUNNING);
     }
 
@@ -575,29 +649,33 @@ public class JobRepositoryIT {
      * dead job minutes later, and what an operator sees is a failure attributed to the worker
      * rather than to the rename that caused it.
      *
-     * <p>
-     * Nothing else ties the two sides of this contract together — one is a Java enum in the ingest
-     * domain, the other a set of {@code @Component}s discovered by classpath scanning, with no
-     * compile-time link — so renaming a handler's {@code kind()}, or adding an
-     * {@link IngestJobKind} value without its handler, compiles and starts cleanly. Duplicates are
-     * asserted too: two handlers claiming one kind is a silent overwrite of a routing entry.
-     * {@code ItTestJobHandler} is this suite's own fixture handler and deliberately not an
-     * {@code IngestJobKind}; it is named explicitly rather than filtered by a pattern so a future
+     * <p>Nothing else ties the two sides of this contract together — one is a Java enum in the
+     * ingest domain, the other a set of {@code @Component}s discovered by classpath scanning, with
+     * no compile-time link — so renaming a handler's {@code kind()}, or adding an {@link
+     * IngestJobKind} value without its handler, compiles and starts cleanly. Duplicates are
+     * asserted too: two handlers claiming one kind is a silent overwrite of a routing entry. {@code
+     * ItTestJobHandler} is this suite's own fixture handler and deliberately not an {@code
+     * IngestJobKind}; it is named explicitly rather than filtered by a pattern so a future
      * production handler cannot slip in unnoticed under the same exemption.
      */
     @Test
     public void everyIngestJobKindHasExactlyOneRegisteredHandler() {
         List<String> registeredKinds = jobHandlers.stream().map(JobHandler::kind).toList();
-        Set<String> declaredKinds = Arrays.stream(IngestJobKind.values())
-            .map(IngestJobKind::getValue).collect(Collectors.toSet());
+        Set<String> declaredKinds =
+                Arrays.stream(IngestJobKind.values())
+                        .map(IngestJobKind::getValue)
+                        .collect(Collectors.toSet());
 
-        assertThat(registeredKinds).as("two handlers on one kind silently overwrite each other")
-            .doesNotHaveDuplicates();
-        assertThat(registeredKinds).as("every declared job kind must be routable to a handler")
-            .containsAll(declaredKinds);
-        assertThat(registeredKinds).filteredOn(kind -> !declaredKinds.contains(kind))
-            .as("the only handler outside the IngestJobKind vocabulary is this suite's fixture")
-            .containsExactly(ItTestJobHandler.KIND);
+        assertThat(registeredKinds)
+                .as("two handlers on one kind silently overwrite each other")
+                .doesNotHaveDuplicates();
+        assertThat(registeredKinds)
+                .as("every declared job kind must be routable to a handler")
+                .containsAll(declaredKinds);
+        assertThat(registeredKinds)
+                .filteredOn(kind -> !declaredKinds.contains(kind))
+                .as("the only handler outside the IngestJobKind vocabulary is this suite's fixture")
+                .containsExactly(ItTestJobHandler.KIND);
     }
 
     private JobStatus statusOf(UUID id) {
@@ -606,7 +684,7 @@ public class JobRepositoryIT {
 
     private int countJobs() {
         Integer n =
-            jdbcTemplate.queryForObject("SELECT count(*) FROM ingestion_jobs", Integer.class);
+                jdbcTemplate.queryForObject("SELECT count(*) FROM ingestion_jobs", Integer.class);
         return n == null ? 0 : n;
     }
 
@@ -614,44 +692,78 @@ public class JobRepositoryIT {
      * The startup recovery sweep is a global {@code UPDATE ingestion_jobs SET status='queued'}
      * whose only scope is {@code WHERE status = 'running'} — it runs unattended on every boot with
      * no user, job or instance filter. Widening or dropping that predicate would re-queue finished
-     * work: a {@code completed} job would run a second time (re-ingesting a corpus), and a
-     * {@code cancelled} one would resurrect work an admin deliberately stopped. Nothing else
-     * constrains it — {@code messages.status} has no CHECK constraint and neither does this column.
+     * work: a {@code completed} job would run a second time (re-ingesting a corpus), and a {@code
+     * cancelled} one would resurrect work an admin deliberately stopped. Nothing else constrains it
+     * — {@code messages.status} has no CHECK constraint and neither does this column.
      */
     @Test
     public void requeueOrphansMovesRunningJobsOnlyAndLeavesEveryOtherStatusUntouched() {
-        UUID running = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
-            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
-        UUID completed = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
-            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
-        UUID cancelled = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
-            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
-        UUID queued = jobRepository.enqueue(new EnqueueRequest(ItTestJobHandler.KIND,
-            "ref-" + UUID.randomUUID(), "1.0", COLLECTION)).jobId();
+        UUID running =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "ref-" + UUID.randomUUID(),
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
+        UUID completed =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "ref-" + UUID.randomUUID(),
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
+        UUID cancelled =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "ref-" + UUID.randomUUID(),
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
+        UUID queued =
+                jobRepository
+                        .enqueue(
+                                new EnqueueRequest(
+                                        ItTestJobHandler.KIND,
+                                        "ref-" + UUID.randomUUID(),
+                                        "1.0",
+                                        COLLECTION))
+                        .jobId();
 
         jdbcTemplate.update(
-            "UPDATE ingestion_jobs SET status = 'running', heartbeat_at = NULL WHERE id = ?",
-            running);
-        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'completed' WHERE id = ?",
-            completed);
-        jdbcTemplate.update("UPDATE ingestion_jobs SET status = 'cancelled' WHERE id = ?",
-            cancelled);
+                "UPDATE ingestion_jobs SET status = 'running', heartbeat_at = NULL WHERE id = ?",
+                running);
+        jdbcTemplate.update(
+                "UPDATE ingestion_jobs SET status = 'completed' WHERE id = ?", completed);
+        jdbcTemplate.update(
+                "UPDATE ingestion_jobs SET status = 'cancelled' WHERE id = ?", cancelled);
 
         int moved = jobRepository.requeueStaleRunningJobs(Duration.ofMinutes(5));
 
         assertThat(moved).isEqualTo(1);
         assertThat(statusOf(running)).isEqualTo(JobStatus.QUEUED);
-        assertThat(statusOf(completed)).as("a finished job must never be re-run")
-            .isEqualTo(JobStatus.COMPLETED);
-        assertThat(statusOf(cancelled)).as("an admin's cancellation must survive a restart")
-            .isEqualTo(JobStatus.CANCELLED);
+        assertThat(statusOf(completed))
+                .as("a finished job must never be re-run")
+                .isEqualTo(JobStatus.COMPLETED);
+        assertThat(statusOf(cancelled))
+                .as("an admin's cancellation must survive a restart")
+                .isEqualTo(JobStatus.CANCELLED);
         assertThat(statusOf(queued)).isEqualTo(JobStatus.QUEUED);
     }
 
     @Test
     public void enqueueAllowsParameterizedJobKinds() {
-        EnqueueRequest req = new EnqueueRequest(ItTestJobHandler.KIND + ":no-kg",
-            "ref-" + UUID.randomUUID(), "1.0", COLLECTION);
+        EnqueueRequest req =
+                new EnqueueRequest(
+                        ItTestJobHandler.KIND + ":no-kg",
+                        "ref-" + UUID.randomUUID(),
+                        "1.0",
+                        COLLECTION);
         UUID id = jobRepository.enqueue(req).jobId();
 
         IngestionJob job = jobRepository.findById(id).orElseThrow();

@@ -62,16 +62,15 @@ public class ChatMessageService {
      * provider / stack-trace detail to the end user (SEC-17).
      */
     private static final String GENERIC_ERROR_TEXT =
-        "⚠️ *[System Error: the assistant could not complete this response.]*";
+            "⚠️ *[System Error: the assistant could not complete this response.]*";
 
     /**
      * Terminal status for a generation the user stopped, as distinct from one that failed.
      *
-     * <p>
-     * Both used to persist "error", so nothing downstream could tell a Stop from a fault — which is
-     * how a run killed by an HTTP 429 came to be captioned "[Generation stopped by user]" in the
-     * chat. {@code messages.status} is an unconstrained TEXT column and no query filters on
-     * {@code 'error'}, so the new value needs no migration.
+     * <p>Both used to persist "error", so nothing downstream could tell a Stop from a fault — which
+     * is how a run killed by an HTTP 429 came to be captioned "[Generation stopped by user]" in the
+     * chat. {@code messages.status} is an unconstrained TEXT column and no query filters on {@code
+     * 'error'}, so the new value needs no migration.
      */
     static final String STATUS_CANCELLED = "cancelled";
 
@@ -93,16 +92,22 @@ public class ChatMessageService {
     private final Set<UUID> activeGeneratingMessageIds = ConcurrentHashMap.newKeySet();
 
     @Autowired
-    public ChatMessageService(MessageRepository messageRepository,
-        ConversationRepository conversationRepository,
-        ChatConversationService chatConversationService, RagService ragService,
-        PlaybookService playbookService, PlatformTransactionManager transactionManager,
-        @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
-        ChatCancellationService chatCancellationService, OrchestrationService orchestrationService,
-        MessageToolCallRepository messageToolCallRepository,
-        ToolCallTraceExtractor toolCallTraceExtractor, ChatProperties chatProperties,
-        AgentRunRepository agentRunRepository, AgentStepRepository agentStepRepository,
-        RetrievalTelemetryService retrievalTelemetryService) {
+    public ChatMessageService(
+            MessageRepository messageRepository,
+            ConversationRepository conversationRepository,
+            ChatConversationService chatConversationService,
+            RagService ragService,
+            PlaybookService playbookService,
+            PlatformTransactionManager transactionManager,
+            @Qualifier("mvcTaskExecutor") AsyncTaskExecutor taskExecutor,
+            ChatCancellationService chatCancellationService,
+            OrchestrationService orchestrationService,
+            MessageToolCallRepository messageToolCallRepository,
+            ToolCallTraceExtractor toolCallTraceExtractor,
+            ChatProperties chatProperties,
+            AgentRunRepository agentRunRepository,
+            AgentStepRepository agentStepRepository,
+            RetrievalTelemetryService retrievalTelemetryService) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -117,8 +122,9 @@ public class ChatMessageService {
         this.chatProperties = chatProperties;
         this.agentRunRepository = agentRunRepository;
         this.agentStepRepository = agentStepRepository;
-        this.retrievalTelemetryService = Objects.requireNonNull(retrievalTelemetryService,
-            "retrievalTelemetryService must not be null");
+        this.retrievalTelemetryService =
+                Objects.requireNonNull(
+                        retrievalTelemetryService, "retrievalTelemetryService must not be null");
     }
 
     public List<Message> getMessages(UUID conversationId) {
@@ -131,7 +137,7 @@ public class ChatMessageService {
         int maxChars = chatProperties.maxMessageChars();
         if (content != null && maxChars > 0 && content.length() > maxChars) {
             throw new IllegalArgumentException(
-                "Message exceeds maximum allowed length of " + maxChars + " characters.");
+                    "Message exceeds maximum allowed length of " + maxChars + " characters.");
         }
     }
 
@@ -143,25 +149,28 @@ public class ChatMessageService {
      * Resolves the mode and playbook immutability lock state for a conversation based on its
      * initial playbook, in-depth turns, and active orchestrator profile.
      *
-     * <p>
-     * Note: Does not verify conversation ownership; callers must verify ownership prior to calling
-     * this method if user scoping is required.
+     * <p>Note: Does not verify conversation ownership; callers must verify ownership prior to
+     * calling this method if user scoping is required.
      */
     public ConversationLockState resolveLockState(UUID conversationId, String orchestratorProfile) {
         Optional<String> initialPlaybook = messageRepository.findInitialPlaybook(conversationId);
-        Optional<Integer> initialPlaybookVersion = initialPlaybook.isPresent()
-            ? messageRepository.findInitialPlaybookVersion(conversationId)
-            : Optional.empty();
-        boolean hasActiveProfile = orchestratorProfile != null && !orchestratorProfile.isBlank()
-            && orchestrationService.hasProfile(orchestratorProfile.trim());
+        Optional<Integer> initialPlaybookVersion =
+                initialPlaybook.isPresent()
+                        ? messageRepository.findInitialPlaybookVersion(conversationId)
+                        : Optional.empty();
+        boolean hasActiveProfile =
+                orchestratorProfile != null
+                        && !orchestratorProfile.isBlank()
+                        && orchestrationService.hasProfile(orchestratorProfile.trim());
 
         // Avoid count query when conversation is neither locked nor configured with an active
         // orchestrator profile
-        boolean hasInDepthTurns = (initialPlaybook.isPresent() || hasActiveProfile)
-            && messageRepository.hasInDepthTurns(conversationId);
+        boolean hasInDepthTurns =
+                (initialPlaybook.isPresent() || hasActiveProfile)
+                        && messageRepository.hasInDepthTurns(conversationId);
 
-        return ConversationLockState.from(initialPlaybook, initialPlaybookVersion, hasInDepthTurns,
-            hasActiveProfile);
+        return ConversationLockState.from(
+                initialPlaybook, initialPlaybookVersion, hasInDepthTurns, hasActiveProfile);
     }
 
     /**
@@ -177,46 +186,56 @@ public class ChatMessageService {
 
         Map<String, Object> settings = conversation.settings();
         String orchestratorProfile =
-            ConversationSettings.getString(settings, ConversationSetting.ORCHESTRATOR_PROFILE);
+                ConversationSettings.getString(settings, ConversationSetting.ORCHESTRATOR_PROFILE);
 
         ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
         return prepareWithLockState(conversation, userContent, promptName, lockState);
     }
 
-    private PreparedChat prepareWithLockState(Conversation conversation, String userContent,
-        String promptName, ConversationLockState lockState) {
+    private PreparedChat prepareWithLockState(
+            Conversation conversation,
+            String userContent,
+            String promptName,
+            ConversationLockState lockState) {
         UUID conversationId = conversation.id();
         Map<String, Object> settings = conversation.settings();
 
         if (!lockState.isSinglePlaybookLocked() && lockState.hasActiveProfile()) {
             throw new IllegalArgumentException(
-                "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
+                    "Cannot use single-playbook chat in in-depth (orchestrator) mode.");
         }
 
         String effectivePlaybookName;
         if (lockState.isPlaybookLocked()) {
             String lockedPlaybook = lockState.lockedPlaybookName();
-            if (promptName != null && !promptName.isBlank()
-                && !promptName.trim().equals(lockedPlaybook)) {
+            if (promptName != null
+                    && !promptName.isBlank()
+                    && !promptName.trim().equals(lockedPlaybook)) {
                 throw new IllegalArgumentException(
-                    "Playbook cannot be changed once a conversation has started.");
+                        "Playbook cannot be changed once a conversation has started.");
             }
             effectivePlaybookName = lockedPlaybook;
         } else {
             if (promptName == null || promptName.isBlank()) {
                 throw new IllegalArgumentException(
-                    "A playbook must be selected before asking a question.");
+                        "A playbook must be selected before asking a question.");
             }
             effectivePlaybookName = promptName.trim();
         }
 
-        Playbook playbook = playbookService.getPlaybook(effectivePlaybookName).orElseThrow(() -> {
-            if (lockState.isPlaybookLocked()) {
-                return new IllegalArgumentException("The locked playbook '" + effectivePlaybookName
-                    + "' no longer exists; please start a new conversation.");
-            }
-            return new IllegalArgumentException("The selected playbook is invalid.");
-        });
+        Playbook playbook =
+                playbookService
+                        .getPlaybook(effectivePlaybookName)
+                        .orElseThrow(() -> {
+                            if (lockState.isPlaybookLocked()) {
+                                return new IllegalArgumentException(
+                                        "The locked playbook '"
+                                                + effectivePlaybookName
+                                                + "' no longer exists; please start a new conversation.");
+                            }
+                            return new IllegalArgumentException(
+                                    "The selected playbook is invalid.");
+                        });
 
         if (playbook.templateText() == null || playbook.templateText().isBlank()) {
             throw new IllegalArgumentException("The selected playbook has empty template text.");
@@ -224,14 +243,18 @@ public class ChatMessageService {
 
         Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
         if (userAllowedAreas.isPresent()) {
-            if (playbook.area() == null || playbook.area().isBlank() || !userAllowedAreas.get()
-                .contains(playbook.area().trim().toLowerCase(Locale.ROOT))) {
+            if (playbook.area() == null
+                    || playbook.area().isBlank()
+                    || !userAllowedAreas
+                            .get()
+                            .contains(playbook.area().trim().toLowerCase(Locale.ROOT))) {
                 throw new IllegalArgumentException("The selected playbook is invalid.");
             }
         }
-        Set<String> turnAreas = (playbook.area() != null && !playbook.area().isBlank())
-            ? Set.of(playbook.area().trim().toLowerCase(Locale.ROOT))
-            : userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS);
+        Set<String> turnAreas =
+                (playbook.area() != null && !playbook.area().isBlank())
+                        ? Set.of(playbook.area().trim().toLowerCase(Locale.ROOT))
+                        : userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS);
 
         List<String> allowedTools = playbook.tools();
         boolean codeExecution = playbook.codeExecution();
@@ -245,50 +268,71 @@ public class ChatMessageService {
             conversationRepository.lockForUpdate(conversationId);
             Optional<String> currentInitial = messageRepository.findInitialPlaybook(conversationId);
             if (currentInitial.isPresent()
-                && !currentInitial.get().trim().equals(effectivePlaybookName)) {
+                    && !currentInitial.get().trim().equals(effectivePlaybookName)) {
                 throw new IllegalArgumentException(
-                    "Playbook cannot be changed once a conversation has started.");
+                        "Playbook cannot be changed once a conversation has started.");
             }
             if (playbook.area() != null && !playbook.area().isBlank()) {
                 Optional<Conversation> lockedConv = conversationRepository.findById(conversationId);
-                if (lockedConv.isPresent() && lockedConv.get().area() != null
-                    && !lockedConv.get().area().isBlank()
-                    && !lockedConv.get().area().trim().equalsIgnoreCase(playbook.area().trim())) {
+                if (lockedConv.isPresent()
+                        && lockedConv.get().area() != null
+                        && !lockedConv.get().area().isBlank()
+                        && !lockedConv
+                                .get()
+                                .area()
+                                .trim()
+                                .equalsIgnoreCase(playbook.area().trim())) {
                     throw new IllegalArgumentException(
-                        "Playbook cannot be changed once a conversation has started.");
+                            "Playbook cannot be changed once a conversation has started.");
                 }
                 conversationRepository.updateAreaIfAbsent(conversationId, playbook.area());
             }
-            saveUserMessage(conversationId, userMessageId, userContent, effectivePlaybookName,
-                playbook.version());
+            saveUserMessage(
+                    conversationId,
+                    userMessageId,
+                    userContent,
+                    effectivePlaybookName,
+                    playbook.version());
         });
 
         List<LlmMessage> historyMessages = getPriorHistory(conversationId, userMessageId);
 
-        return new PreparedChat(conversationId, userMessageId, userContent, modelToUse,
-            systemPrompt, historyMessages, allowedTools, thinkingLevel, codeExecution,
-            effectivePlaybookName, playbook.version(), turnAreas);
+        return new PreparedChat(
+                conversationId,
+                userMessageId,
+                userContent,
+                modelToUse,
+                systemPrompt,
+                historyMessages,
+                allowedTools,
+                thinkingLevel,
+                codeExecution,
+                effectivePlaybookName,
+                playbook.version(),
+                turnAreas);
     }
 
     public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName) {
         return prepareAndSubmitAsync(conversationId, content, promptName, null);
     }
 
-    public UUID prepareAndSubmitAsync(UUID conversationId, String content, String promptName,
-        Runnable onComplete) {
+    public UUID prepareAndSubmitAsync(
+            UUID conversationId, String content, String promptName, Runnable onComplete) {
         chatConversationService.checkChatEnabled();
         validateMessageLength(content);
         Conversation conversation = chatConversationService.verifyOwnership(conversationId, false);
 
-        String orchestratorProfile = ConversationSettings.getString(conversation.settings(),
-            ConversationSetting.ORCHESTRATOR_PROFILE);
+        String orchestratorProfile =
+                ConversationSettings.getString(
+                        conversation.settings(), ConversationSetting.ORCHESTRATOR_PROFILE);
 
         ConversationLockState lockState = resolveLockState(conversationId, orchestratorProfile);
 
-        if (!lockState.isSinglePlaybookLocked() && orchestratorProfile != null
-            && !orchestratorProfile.isBlank()) {
-            return submitOrchestratedAsync(conversationId, content, orchestratorProfile,
-                onComplete);
+        if (!lockState.isSinglePlaybookLocked()
+                && orchestratorProfile != null
+                && !orchestratorProfile.isBlank()) {
+            return submitOrchestratedAsync(
+                    conversationId, content, orchestratorProfile, onComplete);
         }
 
         chatCancellationService.reset(conversationId);
@@ -296,27 +340,43 @@ public class ChatMessageService {
         return dispatchAsync(conversation, prepared, onComplete);
     }
 
-    private UUID dispatchAsync(Conversation conversation, PreparedChat prepared,
-        Runnable onComplete) {
+    private UUID dispatchAsync(
+            Conversation conversation, PreparedChat prepared, Runnable onComplete) {
         UUID conversationId = conversation.id();
         UUID assistantMessageId = UUID.randomUUID();
 
         String pbName = prepared.playbookName();
         Integer pbVersion = prepared.playbookVersion();
         transactionTemplate.executeWithoutResult(status -> {
-            Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
-                "", pbName, pbVersion, Collections.emptyList(), Collections.emptyList(),
-                Instant.now(), null, null, null, null, null, "generating", prepared.modelToUse());
+            Message assistantMessage =
+                    new Message(
+                            assistantMessageId,
+                            conversationId,
+                            "assistant",
+                            "",
+                            pbName,
+                            pbVersion,
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Instant.now(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "generating",
+                            prepared.modelToUse());
             messageRepository.save(assistantMessage);
         });
 
         UUID userId = conversation.userId();
         StringBuilder assistantContent = new StringBuilder();
-        Consumer<String> sink = token -> {
-            if (token != null) {
-                assistantContent.append(token);
-            }
-        };
+        Consumer<String> sink =
+                token -> {
+                    if (token != null) {
+                        assistantContent.append(token);
+                    }
+                };
         activeGeneratingMessageIds.add(assistantMessageId);
         try {
             taskExecutor.submit(() -> {
@@ -328,56 +388,92 @@ public class ChatMessageService {
                     // make llm_call_logs.message_id mean different things depending on which entry
                     // point served the turn, and any GROUP BY message_id would silently mix the
                     // two.
-                    LlmCallContextHolder.set(conversationId, prepared.userMessageId(), null, userId,
-                        "chat", "assistant");
+                    LlmCallContextHolder.set(
+                            conversationId,
+                            prepared.userMessageId(),
+                            null,
+                            userId,
+                            "chat",
+                            "assistant");
                     RagResult ragResult =
-                        ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
+                            ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
 
                     String generatedContent = assistantContent.toString();
                     // Persist tool-call trace before marking status "done" in database
                     // so clients polling async status find trace available upon completion.
                     saveToolCallTrace(ragResult, assistantMessageId);
                     transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId,
-                            generatedContent, ragResult.retrievedChunkIds(),
-                            Collections.emptyList(), ragResult.promptTokens(),
-                            ragResult.completionTokens(), ragResult.totalTokens(),
-                            ragResult.cachedTokens(), ragResult.thoughtTokens(), "done",
-                            prepared.modelToUse());
+                        messageRepository.updateContentAndStatus(
+                                assistantMessageId,
+                                generatedContent,
+                                ragResult.retrievedChunkIds(),
+                                Collections.emptyList(),
+                                ragResult.promptTokens(),
+                                ragResult.completionTokens(),
+                                ragResult.totalTokens(),
+                                ragResult.cachedTokens(),
+                                ragResult.thoughtTokens(),
+                                "done",
+                                prepared.modelToUse());
                         // LLM usage is accounted for by AccountingLlmClient, one row per actual
                         // call.
                     });
                     linkRetrievalLogs(ragResult, assistantMessageId);
                 } catch (CancellationException e) {
                     Thread.interrupted(); // Clear interrupted status so DB updates can execute
-                    log.info("Async generation cancelled by user for conversation: {}",
-                        conversationId);
+                    log.info(
+                            "Async generation cancelled by user for conversation: {}",
+                            conversationId);
                     String stopMsg =
-                        assistantContent.toString() + "\n\n*[Generation stopped by user]*";
+                            assistantContent.toString() + "\n\n*[Generation stopped by user]*";
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
-                            messageRepository.updateContentAndStatus(assistantMessageId, stopMsg,
-                                Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
-                                STATUS_CANCELLED, prepared.modelToUse());
+                            messageRepository.updateContentAndStatus(
+                                    assistantMessageId,
+                                    stopMsg,
+                                    Collections.emptyList(),
+                                    Collections.emptyList(),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    STATUS_CANCELLED,
+                                    prepared.modelToUse());
                         });
                     } catch (Throwable dbErr) {
-                        log.error("Failed to mark cancelled assistant message {} in DB",
-                            assistantMessageId, dbErr);
+                        log.error(
+                                "Failed to mark cancelled assistant message {} in DB",
+                                assistantMessageId,
+                                dbErr);
                     }
                 } catch (Throwable e) {
                     Thread.interrupted(); // Clear interrupted status so DB updates can execute
-                    log.error("Error during async generation for conversation: {}", conversationId,
-                        e);
+                    log.error(
+                            "Error during async generation for conversation: {}",
+                            conversationId,
+                            e);
                     String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
-                            messageRepository.updateContentAndStatus(assistantMessageId, errorMsg,
-                                Collections.emptyList(), Collections.emptyList(), 0, 0, 0, 0, 0,
-                                "error", prepared.modelToUse());
+                            messageRepository.updateContentAndStatus(
+                                    assistantMessageId,
+                                    errorMsg,
+                                    Collections.emptyList(),
+                                    Collections.emptyList(),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    "error",
+                                    prepared.modelToUse());
                         });
                     } catch (Throwable dbErr) {
-                        log.error("Failed to mark errored assistant message {} in DB",
-                            assistantMessageId, dbErr);
+                        log.error(
+                                "Failed to mark errored assistant message {} in DB",
+                                assistantMessageId,
+                                dbErr);
                     }
                 } finally {
                     activeGeneratingMessageIds.remove(assistantMessageId);
@@ -385,8 +481,10 @@ public class ChatMessageService {
                         try {
                             onComplete.run();
                         } catch (Throwable t) {
-                            log.error("Error executing onComplete callback for conversation: {}",
-                                conversationId, t);
+                            log.error(
+                                    "Error executing onComplete callback for conversation: {}",
+                                    conversationId,
+                                    t);
                         }
                     }
                     LlmCallContextHolder.clear();
@@ -394,8 +492,8 @@ public class ChatMessageService {
                 }
             });
         } catch (Throwable submitError) {
-            markFailedToStart(assistantMessageId, prepared.modelToUse(), conversationId,
-                submitError);
+            markFailedToStart(
+                    assistantMessageId, prepared.modelToUse(), conversationId, submitError);
             throw submitError;
         }
 
@@ -407,45 +505,58 @@ public class ChatMessageService {
      * background executor, and lands the final answer in the placeholder assistant message. The
      * per-agent trace is persisted to agent_runs/agent_steps by {@link OrchestrationService}.
      */
-    private UUID submitOrchestratedAsync(UUID conversationId, String content, String profileName,
-        Runnable onComplete) {
+    private UUID submitOrchestratedAsync(
+            UUID conversationId, String content, String profileName, Runnable onComplete) {
         if (!orchestrationService.hasProfile(profileName)) {
-            throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
-                + "' no longer exists; please start a new conversation.");
+            throw new IllegalArgumentException(
+                    "The locked orchestrator profile '"
+                            + profileName
+                            + "' no longer exists; please start a new conversation.");
         }
 
         Optional<Set<String>> userAllowedAreas = AreaAccessContext.allowedUserAreasLower();
         Optional<String> profileArea = orchestrationService.getProfileArea(profileName);
         if (userAllowedAreas.isPresent()) {
-            if (profileArea.isEmpty() || profileArea.get().isBlank() || !userAllowedAreas.get()
-                .contains(profileArea.get().trim().toLowerCase(Locale.ROOT))) {
-                throw new IllegalArgumentException("The locked orchestrator profile '" + profileName
-                    + "' no longer exists; please start a new conversation.");
+            if (profileArea.isEmpty()
+                    || profileArea.get().isBlank()
+                    || !userAllowedAreas
+                            .get()
+                            .contains(profileArea.get().trim().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException(
+                        "The locked orchestrator profile '"
+                                + profileName
+                                + "' no longer exists; please start a new conversation.");
             }
         }
-        Set<String> turnAreas = profileArea.filter(a -> !a.isBlank())
-            .map(a -> Set.of(a.trim().toLowerCase(Locale.ROOT)))
-            .orElseGet(() -> userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS));
+        Set<String> turnAreas =
+                profileArea
+                        .filter(a -> !a.isBlank())
+                        .map(a -> Set.of(a.trim().toLowerCase(Locale.ROOT)))
+                        .orElseGet(() -> userAllowedAreas.orElse(AgenticChatContext.ALL_AREAS));
 
         chatCancellationService.reset(conversationId);
         UUID userMessageId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
             conversationRepository.lockForUpdate(conversationId);
             if (messageRepository.findInitialPlaybook(conversationId).isPresent()
-                && !messageRepository.hasInDepthTurns(conversationId)) {
+                    && !messageRepository.hasInDepthTurns(conversationId)) {
                 throw new IllegalArgumentException(
-                    "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
+                        "Conversation was started in single-playbook mode and cannot be switched to in-depth mode.");
             }
-            profileArea.filter(a -> !a.isBlank()).ifPresent(a -> {
-                Optional<Conversation> lockedConv = conversationRepository.findById(conversationId);
-                if (lockedConv.isPresent() && lockedConv.get().area() != null
-                    && !lockedConv.get().area().isBlank()
-                    && !lockedConv.get().area().trim().equalsIgnoreCase(a.trim())) {
-                    throw new IllegalArgumentException(
-                        "Orchestrator profile area does not match the conversation area.");
-                }
-                conversationRepository.updateAreaIfAbsent(conversationId, a);
-            });
+            profileArea
+                    .filter(a -> !a.isBlank())
+                    .ifPresent(a -> {
+                        Optional<Conversation> lockedConv =
+                                conversationRepository.findById(conversationId);
+                        if (lockedConv.isPresent()
+                                && lockedConv.get().area() != null
+                                && !lockedConv.get().area().isBlank()
+                                && !lockedConv.get().area().trim().equalsIgnoreCase(a.trim())) {
+                            throw new IllegalArgumentException(
+                                    "Orchestrator profile area does not match the conversation area.");
+                        }
+                        conversationRepository.updateAreaIfAbsent(conversationId, a);
+                    });
             saveUserMessage(conversationId, userMessageId, content, null, null);
         });
         List<LlmMessage> history = getPriorHistory(conversationId, userMessageId);
@@ -453,9 +564,23 @@ public class ChatMessageService {
         UUID assistantMessageId = UUID.randomUUID();
         UUID agentRunId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> {
-            Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
-                "", null, Collections.emptyList(), Collections.emptyList(), Instant.now(), null,
-                null, null, null, null, "generating", null);
+            Message assistantMessage =
+                    new Message(
+                            assistantMessageId,
+                            conversationId,
+                            "assistant",
+                            "",
+                            null,
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Instant.now(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "generating",
+                            null);
             messageRepository.save(assistantMessage);
         });
 
@@ -468,47 +593,86 @@ public class ChatMessageService {
                     // attribute LLM spend to the persisted user message, and a GROUP BY message_id
                     // that mixed the two would be comparing questions with answers.
                     OrchestrationResult result =
-                        orchestrationService.runOrchestration(conversationId, userMessageId,
-                            content, history, agentRunId, profileName, turnAreas);
+                            orchestrationService.runOrchestration(
+                                    conversationId,
+                                    userMessageId,
+                                    content,
+                                    history,
+                                    agentRunId,
+                                    profileName,
+                                    turnAreas);
                     transactionTemplate.executeWithoutResult(status -> {
-                        messageRepository.updateContentAndStatus(assistantMessageId,
-                            result.content(), result.retrievedChunkIds(), Collections.emptyList(),
-                            result.promptTokens(), result.completionTokens(), result.totalTokens(),
-                            result.cachedTokens(), result.thoughtTokens(), "done", null);
+                        messageRepository.updateContentAndStatus(
+                                assistantMessageId,
+                                result.content(),
+                                result.retrievedChunkIds(),
+                                Collections.emptyList(),
+                                result.promptTokens(),
+                                result.completionTokens(),
+                                result.totalTokens(),
+                                result.cachedTokens(),
+                                result.thoughtTokens(),
+                                "done",
+                                null);
                         agentRunRepository.updateAssistantMessageId(agentRunId, assistantMessageId);
                     });
                     linkRetrievalLogIds(result.searchIds(), assistantMessageId);
                 } catch (CancellationException e) {
                     Thread.interrupted();
-                    log.info("Orchestrated generation cancelled for conversation: {}",
-                        conversationId);
+                    log.info(
+                            "Orchestrated generation cancelled for conversation: {}",
+                            conversationId);
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
-                            messageRepository.updateContentAndStatus(assistantMessageId,
-                                "*[Generation stopped by user]*", Collections.emptyList(),
-                                Collections.emptyList(), 0, 0, 0, 0, 0, STATUS_CANCELLED, null);
-                            agentRunRepository.updateAssistantMessageId(agentRunId,
-                                assistantMessageId);
+                            messageRepository.updateContentAndStatus(
+                                    assistantMessageId,
+                                    "*[Generation stopped by user]*",
+                                    Collections.emptyList(),
+                                    Collections.emptyList(),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    STATUS_CANCELLED,
+                                    null);
+                            agentRunRepository.updateAssistantMessageId(
+                                    agentRunId, assistantMessageId);
                         });
                     } catch (Throwable dbErr) {
-                        log.error("Failed to mark cancelled orchestrated message {} in DB",
-                            assistantMessageId, dbErr);
+                        log.error(
+                                "Failed to mark cancelled orchestrated message {} in DB",
+                                assistantMessageId,
+                                dbErr);
                     }
                 } catch (Throwable e) {
                     Thread.interrupted();
-                    log.error("Error during orchestrated generation for conversation: {}",
-                        conversationId, e);
+                    log.error(
+                            "Error during orchestrated generation for conversation: {}",
+                            conversationId,
+                            e);
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
-                            messageRepository.updateContentAndStatus(assistantMessageId,
-                                GENERIC_ERROR_TEXT, Collections.emptyList(),
-                                Collections.emptyList(), 0, 0, 0, 0, 0, "error", null);
-                            agentRunRepository.updateAssistantMessageId(agentRunId,
-                                assistantMessageId);
+                            messageRepository.updateContentAndStatus(
+                                    assistantMessageId,
+                                    GENERIC_ERROR_TEXT,
+                                    Collections.emptyList(),
+                                    Collections.emptyList(),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    "error",
+                                    null);
+                            agentRunRepository.updateAssistantMessageId(
+                                    agentRunId, assistantMessageId);
                         });
                     } catch (Throwable dbErr) {
-                        log.error("Failed to mark errored orchestrated message {} in DB",
-                            assistantMessageId, dbErr);
+                        log.error(
+                                "Failed to mark errored orchestrated message {} in DB",
+                                assistantMessageId,
+                                dbErr);
                     }
                 } finally {
                     activeGeneratingMessageIds.remove(assistantMessageId);
@@ -516,8 +680,10 @@ public class ChatMessageService {
                         try {
                             onComplete.run();
                         } catch (Throwable t) {
-                            log.error("Error executing onComplete callback for conversation: {}",
-                                conversationId, t);
+                            log.error(
+                                    "Error executing onComplete callback for conversation: {}",
+                                    conversationId,
+                                    t);
                         }
                     }
                     chatCancellationService.deregister(conversationId, Thread.currentThread());
@@ -531,19 +697,35 @@ public class ChatMessageService {
         return assistantMessageId;
     }
 
-    private void markFailedToStart(UUID assistantMessageId, @Nullable String modelToUse,
-        UUID conversationId, Throwable submitError) {
+    private void markFailedToStart(
+            UUID assistantMessageId,
+            @Nullable String modelToUse,
+            UUID conversationId,
+            Throwable submitError) {
         activeGeneratingMessageIds.remove(assistantMessageId);
-        log.error("Failed to submit async generation task for conversation {}", conversationId,
-            submitError);
+        log.error(
+                "Failed to submit async generation task for conversation {}",
+                conversationId,
+                submitError);
         try {
-            transactionTemplate.executeWithoutResult(
-                status -> messageRepository.updateContentAndStatus(assistantMessageId,
-                    GENERIC_ERROR_TEXT, Collections.emptyList(), Collections.emptyList(), 0, 0, 0,
-                    0, 0, "error", modelToUse));
+            transactionTemplate.executeWithoutResult(status ->
+                    messageRepository.updateContentAndStatus(
+                            assistantMessageId,
+                            GENERIC_ERROR_TEXT,
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            "error",
+                            modelToUse));
         } catch (Throwable dbErr) {
-            log.error("Failed to mark unstarted assistant message {} as error", assistantMessageId,
-                dbErr);
+            log.error(
+                    "Failed to mark unstarted assistant message {} as error",
+                    assistantMessageId,
+                    dbErr);
         }
     }
 
@@ -592,16 +774,19 @@ public class ChatMessageService {
      */
     public void stream(PreparedChat prepared, UUID assistantMessageId, Consumer<String> sink) {
         log.info(
-            "ChatService: Processing user message for conversation {} using model '{}' and thinkingLevel '{}'",
-            prepared.conversationId(), prepared.modelToUse(), prepared.thinkingLevel());
+                "ChatService: Processing user message for conversation {} using model '{}' and thinkingLevel '{}'",
+                prepared.conversationId(),
+                prepared.modelToUse(),
+                prepared.thinkingLevel());
 
         StringBuilder assistantContent = new StringBuilder();
-        Consumer<String> wrappedSink = token -> {
-            if (token != null) {
-                assistantContent.append(token);
-            }
-            sink.accept(token);
-        };
+        Consumer<String> wrappedSink =
+                token -> {
+                    if (token != null) {
+                        assistantContent.append(token);
+                    }
+                    sink.accept(token);
+                };
 
         UUID userId = resolveUserId(prepared.conversationId());
 
@@ -610,14 +795,25 @@ public class ChatMessageService {
             // referenced here: AccountingLlmClient publishes one row per call, mid-generation, and
             // fk_llm_call_logs_messages would reject it. The user message is already persisted by
             // prepare(), so spend attributes to the question it answers.
-            LlmCallContextHolder.set(prepared.conversationId(), prepared.userMessageId(), null,
-                userId, "chat", "assistant");
+            LlmCallContextHolder.set(
+                    prepared.conversationId(),
+                    prepared.userMessageId(),
+                    null,
+                    userId,
+                    "chat",
+                    "assistant");
             RagResult ragResult =
-                ragService.generateAgenticAnswer(buildAgenticRequest(prepared), wrappedSink);
+                    ragService.generateAgenticAnswer(buildAgenticRequest(prepared), wrappedSink);
 
-            transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
-                prepared.conversationId(), assistantMessageId, assistantContent.toString(),
-                prepared.playbookName(), prepared.playbookVersion(), prepared.modelToUse()));
+            transactionTemplate.executeWithoutResult(status ->
+                    saveAssistantMessage(
+                            ragResult,
+                            prepared.conversationId(),
+                            assistantMessageId,
+                            assistantContent.toString(),
+                            prepared.playbookName(),
+                            prepared.playbookVersion(),
+                            prepared.modelToUse()));
             linkRetrievalLogs(ragResult, assistantMessageId);
 
             // Persist tool-call trace before emitting [DONE] so clients reading the trace
@@ -625,22 +821,38 @@ public class ChatMessageService {
             saveToolCallTrace(ragResult, assistantMessageId);
             sink.accept(formatDoneToken(ragResult, assistantMessageId));
         } catch (CancellationException e) {
-            log.info("Streaming generation cancelled by user for conversation: {}",
-                prepared.conversationId());
+            log.info(
+                    "Streaming generation cancelled by user for conversation: {}",
+                    prepared.conversationId());
             throw e;
         } catch (Exception e) {
             Thread.interrupted();
-            log.error("Error during streaming generation for conversation: {}",
-                prepared.conversationId(), e);
+            log.error(
+                    "Error during streaming generation for conversation: {}",
+                    prepared.conversationId(),
+                    e);
             String errorMsg = "\n\n" + GENERIC_ERROR_TEXT;
             assistantContent.append(errorMsg);
 
             transactionTemplate.executeWithoutResult(status -> {
-                Message assistantMessage = new Message(assistantMessageId,
-                    prepared.conversationId(), "assistant", assistantContent.toString(),
-                    prepared.playbookName(), prepared.playbookVersion(), Collections.emptyList(),
-                    Collections.emptyList(), Instant.now(), 0, 0, 0, 0, 0, "error",
-                    prepared.modelToUse());
+                Message assistantMessage =
+                        new Message(
+                                assistantMessageId,
+                                prepared.conversationId(),
+                                "assistant",
+                                assistantContent.toString(),
+                                prepared.playbookName(),
+                                prepared.playbookVersion(),
+                                Collections.emptyList(),
+                                Collections.emptyList(),
+                                Instant.now(),
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                "error",
+                                prepared.modelToUse());
                 messageRepository.save(assistantMessage);
             });
 
@@ -653,15 +865,18 @@ public class ChatMessageService {
 
     public Message generateSync(PreparedChat prepared, UUID assistantMessageId) {
         log.info(
-            "ChatService: Processing user message (sync) for conversation {} using model '{}' and thinkingLevel '{}'",
-            prepared.conversationId(), prepared.modelToUse(), prepared.thinkingLevel());
+                "ChatService: Processing user message (sync) for conversation {} using model '{}' and thinkingLevel '{}'",
+                prepared.conversationId(),
+                prepared.modelToUse(),
+                prepared.thinkingLevel());
 
         StringBuilder assistantContent = new StringBuilder();
-        Consumer<String> sink = token -> {
-            if (token != null) {
-                assistantContent.append(token);
-            }
-        };
+        Consumer<String> sink =
+                token -> {
+                    if (token != null) {
+                        assistantContent.append(token);
+                    }
+                };
 
         UUID userId = resolveUserId(prepared.conversationId());
         try {
@@ -669,66 +884,139 @@ public class ChatMessageService {
             // referenced here: AccountingLlmClient publishes one row per call, mid-generation, and
             // fk_llm_call_logs_messages would reject it. The user message is already persisted by
             // prepare(), so spend attributes to the question it answers.
-            LlmCallContextHolder.set(prepared.conversationId(), prepared.userMessageId(), null,
-                userId, "chat", "assistant");
+            LlmCallContextHolder.set(
+                    prepared.conversationId(),
+                    prepared.userMessageId(),
+                    null,
+                    userId,
+                    "chat",
+                    "assistant");
             RagResult ragResult =
-                ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
+                    ragService.generateAgenticAnswer(buildAgenticRequest(prepared), sink);
 
             String content = assistantContent.toString();
-            transactionTemplate.executeWithoutResult(status -> saveAssistantMessage(ragResult,
-                prepared.conversationId(), assistantMessageId, content, prepared.playbookName(),
-                prepared.playbookVersion(), prepared.modelToUse()));
+            transactionTemplate.executeWithoutResult(status ->
+                    saveAssistantMessage(
+                            ragResult,
+                            prepared.conversationId(),
+                            assistantMessageId,
+                            content,
+                            prepared.playbookName(),
+                            prepared.playbookVersion(),
+                            prepared.modelToUse()));
             linkRetrievalLogs(ragResult, assistantMessageId);
             saveToolCallTrace(ragResult, assistantMessageId);
 
-            return new Message(assistantMessageId, prepared.conversationId(), "assistant", content,
-                prepared.playbookName(), prepared.playbookVersion(), ragResult.retrievedChunkIds(),
-                Collections.emptyList(), Instant.now(), ragResult.promptTokens(),
-                ragResult.completionTokens(), ragResult.totalTokens(), ragResult.cachedTokens(),
-                ragResult.thoughtTokens(), "done", prepared.modelToUse());
+            return new Message(
+                    assistantMessageId,
+                    prepared.conversationId(),
+                    "assistant",
+                    content,
+                    prepared.playbookName(),
+                    prepared.playbookVersion(),
+                    ragResult.retrievedChunkIds(),
+                    Collections.emptyList(),
+                    Instant.now(),
+                    ragResult.promptTokens(),
+                    ragResult.completionTokens(),
+                    ragResult.totalTokens(),
+                    ragResult.cachedTokens(),
+                    ragResult.thoughtTokens(),
+                    "done",
+                    prepared.modelToUse());
         } catch (CancellationException e) {
-            log.info("Sync generation cancelled by user for conversation: {}",
-                prepared.conversationId());
+            log.info(
+                    "Sync generation cancelled by user for conversation: {}",
+                    prepared.conversationId());
             throw e;
         } catch (Exception e) {
-            log.error("Error during sync generation for conversation: {}",
-                prepared.conversationId(), e);
+            log.error(
+                    "Error during sync generation for conversation: {}",
+                    prepared.conversationId(),
+                    e);
             String errorMsg = assistantContent.toString() + "\n\n" + GENERIC_ERROR_TEXT;
 
             transactionTemplate.executeWithoutResult(status -> {
-                Message assistantMessage = new Message(assistantMessageId,
-                    prepared.conversationId(), "assistant", errorMsg, prepared.playbookName(),
-                    prepared.playbookVersion(), Collections.emptyList(), Collections.emptyList(),
-                    Instant.now(), 0, 0, 0, 0, 0, "error", prepared.modelToUse());
+                Message assistantMessage =
+                        new Message(
+                                assistantMessageId,
+                                prepared.conversationId(),
+                                "assistant",
+                                errorMsg,
+                                prepared.playbookName(),
+                                prepared.playbookVersion(),
+                                Collections.emptyList(),
+                                Collections.emptyList(),
+                                Instant.now(),
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                "error",
+                                prepared.modelToUse());
                 messageRepository.save(assistantMessage);
             });
 
-            return new Message(assistantMessageId, prepared.conversationId(), "assistant", errorMsg,
-                prepared.playbookName(), prepared.playbookVersion(), Collections.emptyList(),
-                Collections.emptyList(), Instant.now(), 0, 0, 0, 0, 0, "error",
-                prepared.modelToUse());
+            return new Message(
+                    assistantMessageId,
+                    prepared.conversationId(),
+                    "assistant",
+                    errorMsg,
+                    prepared.playbookName(),
+                    prepared.playbookVersion(),
+                    Collections.emptyList(),
+                    Collections.emptyList(),
+                    Instant.now(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "error",
+                    prepared.modelToUse());
         } finally {
             LlmCallContextHolder.clear();
         }
     }
 
-
     /** Immutable setup produced on the request thread and consumed by the streaming task. */
-    public record PreparedChat(UUID conversationId, UUID userMessageId, String modelContent,
-        String modelToUse, String systemPrompt, List<LlmMessage> history, List<String> allowedTools,
-        String thinkingLevel, boolean codeExecution, String playbookName,
-        Integer playbookVersion, Set<String> allowedAreasLower) {
+    public record PreparedChat(
+            UUID conversationId,
+            UUID userMessageId,
+            String modelContent,
+            String modelToUse,
+            String systemPrompt,
+            List<LlmMessage> history,
+            List<String> allowedTools,
+            String thinkingLevel,
+            boolean codeExecution,
+            String playbookName,
+            Integer playbookVersion,
+            Set<String> allowedAreasLower) {
 
         public PreparedChat {
             Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null");
         }
     }
 
-    private void saveUserMessage(UUID conversationId, UUID userMessageId, String userContent,
-        String playbookName, Integer playbookVersion) {
+    private void saveUserMessage(
+            UUID conversationId,
+            UUID userMessageId,
+            String userContent,
+            String playbookName,
+            Integer playbookVersion) {
         Message userMessage =
-            new Message(userMessageId, conversationId, "user", userContent, playbookName,
-                playbookVersion, Collections.emptyList(), Collections.emptyList(), Instant.now());
+                new Message(
+                        userMessageId,
+                        conversationId,
+                        "user",
+                        userContent,
+                        playbookName,
+                        playbookVersion,
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        Instant.now());
         messageRepository.save(userMessage);
 
         long messageCount = messageRepository.countByConversationId(conversationId);
@@ -742,9 +1030,10 @@ public class ChatMessageService {
         // since been retired must answer on the current default rather than keep calling a model
         // the picker can no longer even display. The rule is static so this path runs the REAL one
         // and takes only the list from the collaborator.
-        String modelToUse = ChatConversationService.effectiveModel(
-            ConversationSettings.getString(settings, ConversationSetting.MODEL),
-            chatConversationService.getAllowedModels());
+        String modelToUse =
+                ChatConversationService.effectiveModel(
+                        ConversationSettings.getString(settings, ConversationSetting.MODEL),
+                        chatConversationService.getAllowedModels());
         if (modelToUse == null || modelToUse.isBlank()) {
             throw new IllegalStateException("No model selected in conversation settings");
         }
@@ -758,7 +1047,7 @@ public class ChatMessageService {
 
     private List<LlmMessage> getPriorHistory(UUID conversationId, UUID excludeMessageId) {
         List<Message> priorMessages =
-            messageRepository.findLatestByConversationId(conversationId, 100);
+                messageRepository.findLatestByConversationId(conversationId, 100);
         List<LlmMessage> candidates = new ArrayList<>();
 
         for (Message msg : priorMessages) {
@@ -768,8 +1057,9 @@ public class ChatMessageService {
             if ("user".equalsIgnoreCase(msg.role())) {
                 candidates.add(new LlmMessage("user", msg.content()));
             } else if ("assistant".equalsIgnoreCase(msg.role())) {
-                if ("generating".equalsIgnoreCase(msg.status()) || msg.content() == null
-                    || msg.content().isBlank()) {
+                if ("generating".equalsIgnoreCase(msg.status())
+                        || msg.content() == null
+                        || msg.content().isBlank()) {
                     continue;
                 }
                 candidates.add(new LlmMessage("assistant", msg.content()));
@@ -794,17 +1084,21 @@ public class ChatMessageService {
         return kept;
     }
 
-
     /**
      * Builds the agentic RAG request from a prepared chat (shared by the stream/sync/async paths).
      */
     private AgenticRequest buildAgenticRequest(PreparedChat prepared) {
-        return AgenticRequest.builder().query(prepared.modelContent())
-            .modelOverride(prepared.modelToUse()).history(prepared.history())
-            .systemPromptOverride(prepared.systemPrompt()).allowedTools(prepared.allowedTools())
-            .thinkingLevel(prepared.thinkingLevel()).codeExecution(prepared.codeExecution())
-            .traceToolCalls(chatProperties.traceToolCalls())
-            .allowedAreasLower(prepared.allowedAreasLower()).build();
+        return AgenticRequest.builder()
+                .query(prepared.modelContent())
+                .modelOverride(prepared.modelToUse())
+                .history(prepared.history())
+                .systemPromptOverride(prepared.systemPrompt())
+                .allowedTools(prepared.allowedTools())
+                .thinkingLevel(prepared.thinkingLevel())
+                .codeExecution(prepared.codeExecution())
+                .traceToolCalls(chatProperties.traceToolCalls())
+                .allowedAreasLower(prepared.allowedAreasLower())
+                .build();
     }
 
     /**
@@ -815,20 +1109,41 @@ public class ChatMessageService {
      */
     private UUID resolveUserId(UUID conversationId) {
         return conversationRepository != null
-            ? conversationRepository.findById(conversationId).map(Conversation::userId).orElse(null)
-            : null;
+                ? conversationRepository
+                        .findById(conversationId)
+                        .map(Conversation::userId)
+                        .orElse(null)
+                : null;
     }
 
-    private void saveAssistantMessage(RagResult ragResult, UUID conversationId,
-        UUID assistantMessageId, String content, String playbookName, Integer playbookVersion,
-        String modelToUse) {
+    private void saveAssistantMessage(
+            RagResult ragResult,
+            UUID conversationId,
+            UUID assistantMessageId,
+            String content,
+            String playbookName,
+            Integer playbookVersion,
+            String modelToUse) {
         log.info("ChatService sendMessage stream completed for conversation: {}", conversationId);
 
-        Message assistantMessage = new Message(assistantMessageId, conversationId, "assistant",
-            content, playbookName, playbookVersion, ragResult.retrievedChunkIds(),
-            Collections.emptyList(), Instant.now(), ragResult.promptTokens(),
-            ragResult.completionTokens(), ragResult.totalTokens(), ragResult.cachedTokens(),
-            ragResult.thoughtTokens(), "done", modelToUse);
+        Message assistantMessage =
+                new Message(
+                        assistantMessageId,
+                        conversationId,
+                        "assistant",
+                        content,
+                        playbookName,
+                        playbookVersion,
+                        ragResult.retrievedChunkIds(),
+                        Collections.emptyList(),
+                        Instant.now(),
+                        ragResult.promptTokens(),
+                        ragResult.completionTokens(),
+                        ragResult.totalTokens(),
+                        ragResult.cachedTokens(),
+                        ragResult.thoughtTokens(),
+                        "done",
+                        modelToUse);
         messageRepository.save(assistantMessage);
 
         // LLM usage is accounted for by AccountingLlmClient, one row per actual call.
@@ -840,13 +1155,15 @@ public class ChatMessageService {
         }
         try {
             List<ToolCallRecord> records =
-                toolCallTraceExtractor.extract(assistantMessageId, ragResult.messages());
+                    toolCallTraceExtractor.extract(assistantMessageId, ragResult.messages());
             if (!records.isEmpty()) {
                 messageToolCallRepository.insertAll(assistantMessageId, records);
             }
         } catch (Exception e) {
-            log.error("Failed to persist tool call trace for assistant message {}",
-                assistantMessageId, e);
+            log.error(
+                    "Failed to persist tool call trace for assistant message {}",
+                    assistantMessageId,
+                    e);
         }
     }
 
@@ -865,14 +1182,21 @@ public class ChatMessageService {
         try {
             retrievalTelemetryService.linkMessageIds(searchIds, assistantMessageId);
         } catch (Exception e) {
-            log.error("Failed to link retrieval logs for assistant message {}", assistantMessageId,
-                e);
+            log.error(
+                    "Failed to link retrieval logs for assistant message {}",
+                    assistantMessageId,
+                    e);
         }
     }
 
     private String formatDoneToken(RagResult ragResult, UUID assistantMessageId) {
-        return doneEvent(assistantMessageId, ragResult.promptTokens(), ragResult.completionTokens(),
-            ragResult.totalTokens(), ragResult.cachedTokens(), ragResult.thoughtTokens());
+        return doneEvent(
+                assistantMessageId,
+                ragResult.promptTokens(),
+                ragResult.completionTokens(),
+                ragResult.totalTokens(),
+                ragResult.cachedTokens(),
+                ragResult.thoughtTokens());
     }
 
     /**
@@ -882,10 +1206,25 @@ public class ChatMessageService {
      * Every field is a server-owned primitive (a UUID and non-negative ints), none of it
      * user/LLM-derived, so the small fixed JSON is assembled directly.
      */
-    private static String doneEvent(UUID messageId, int promptTokens, int completionTokens,
-        int totalTokens, int cachedTokens, int thoughtTokens) {
-        return "[DONE] {\"messageId\":\"" + messageId + "\",\"promptTokens\":" + promptTokens
-            + ",\"completionTokens\":" + completionTokens + ",\"totalTokens\":" + totalTokens
-            + ",\"cachedTokens\":" + cachedTokens + ",\"thoughtTokens\":" + thoughtTokens + "}";
+    private static String doneEvent(
+            UUID messageId,
+            int promptTokens,
+            int completionTokens,
+            int totalTokens,
+            int cachedTokens,
+            int thoughtTokens) {
+        return "[DONE] {\"messageId\":\""
+                + messageId
+                + "\",\"promptTokens\":"
+                + promptTokens
+                + ",\"completionTokens\":"
+                + completionTokens
+                + ",\"totalTokens\":"
+                + totalTokens
+                + ",\"cachedTokens\":"
+                + cachedTokens
+                + ",\"thoughtTokens\":"
+                + thoughtTokens
+                + "}";
     }
 }

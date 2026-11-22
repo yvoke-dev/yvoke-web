@@ -20,12 +20,9 @@ import org.springframework.beans.factory.annotation.Autowired;
  */
 class ConversationMgmtE2EIT extends AbstractE2E {
 
-    @Autowired
-    private ConversationRepository conversationRepository;
-    @Autowired
-    private TagRepository tagRepository;
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private ConversationRepository conversationRepository;
+    @Autowired private TagRepository tagRepository;
+    @Autowired private UserRepository userRepository;
 
     private UUID publicConvId;
 
@@ -52,7 +49,7 @@ class ConversationMgmtE2EIT extends AbstractE2E {
         assertThat(page.locator(".chat-thread-tags .tag-badge")).containsText("billing");
 
         page.click(
-            ".tag-badge:has(.tag-text:text-is('billing')) .remove-tag-form button.remove-tag-btn");
+                ".tag-badge:has(.tag-text:text-is('billing')) .remove-tag-form button.remove-tag-btn");
         assertThat(page.locator(".chat-thread-tags .tag-badge")).hasCount(0);
     }
 
@@ -65,8 +62,10 @@ class ConversationMgmtE2EIT extends AbstractE2E {
 
         // The sidebar delete form fires a native confirm(); accept it (default is auto-dismiss).
         page.onceDialog(dialog -> dialog.accept());
-        page.click(".conversation-item:has(a[href$='/chat/" + convId
-            + "']) .delete-conv-form button.delete-conv-btn");
+        page.click(
+                ".conversation-item:has(a[href$='/chat/"
+                        + convId
+                        + "']) .delete-conv-form button.delete-conv-btn");
 
         page.waitForURL(Pattern.compile(".*/chat$")); // POST /chat/{id}/delete -> redirect:/chat
         assertThat(page.locator("a.conversation-link[href$='/chat/" + convId + "']")).hasCount(0);

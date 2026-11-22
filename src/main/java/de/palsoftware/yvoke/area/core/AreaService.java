@@ -57,8 +57,9 @@ public class AreaService implements AvailableAreasProvider {
             return Optional.empty();
         }
         String wanted = name.trim();
-        return areaRepository.findAll().stream().filter(a -> a.name().equalsIgnoreCase(wanted))
-            .findFirst();
+        return areaRepository.findAll().stream()
+                .filter(a -> a.name().equalsIgnoreCase(wanted))
+                .findFirst();
     }
 
     /**
@@ -70,16 +71,18 @@ public class AreaService implements AvailableAreasProvider {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("An area is required.");
         }
-        return findArea(name).map(Area::name).orElseThrow(
-            () -> new IllegalArgumentException("Area '" + name.trim() + "' does not exist."));
+        return findArea(name)
+                .map(Area::name)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Area '" + name.trim() + "' does not exist."));
     }
 
     /** Every area with its members, sorted by name. */
     public List<AreaWithMembers> listAreasWithMembers() {
         Map<String, AreaMembers> members = areaRepository.findAllMembers();
         return areaRepository.findAll().stream()
-            .map(a -> new AreaWithMembers(a, members.getOrDefault(a.name(), AreaMembers.NONE)))
-            .toList();
+                .map(a -> new AreaWithMembers(a, members.getOrDefault(a.name(), AreaMembers.NONE)))
+                .toList();
     }
 
     /**
@@ -91,8 +94,13 @@ public class AreaService implements AvailableAreasProvider {
 
     /** One area with its members, matched as {@link #findArea(String)} matches. */
     public Optional<AreaWithMembers> findAreaWithMembers(String name) {
-        return findArea(name).map(a -> new AreaWithMembers(a,
-            areaRepository.findAllMembers().getOrDefault(a.name(), AreaMembers.NONE)));
+        return findArea(name)
+                .map(a ->
+                        new AreaWithMembers(
+                                a,
+                                areaRepository
+                                        .findAllMembers()
+                                        .getOrDefault(a.name(), AreaMembers.NONE)));
     }
 
     /**
@@ -102,46 +110,70 @@ public class AreaService implements AvailableAreasProvider {
      * transaction, so a failed upsert also undoes the rename.
      */
     @Transactional
-    public void saveArea(String originalName, String name, String title, String description,
-        boolean prototype, String defaultPlaybook, String defaultProfile) {
+    public void saveArea(
+            String originalName,
+            String name,
+            String title,
+            String description,
+            boolean prototype,
+            String defaultPlaybook,
+            String defaultProfile) {
         String newName = blankToNull(name);
         if (newName == null) {
             throw new IllegalArgumentException("An area name is required.");
         }
-        if (newName.contains(".") || newName.contains("*")
-            || !newName.equals(newName.replaceAll("\\s+", "")) || !newName.toUpperCase(Locale.ROOT)
-                .toLowerCase(Locale.ROOT).equals(newName.toLowerCase(Locale.ROOT))) {
-            throw new IllegalArgumentException("Area name '" + newName
-                + "' is invalid: area names must not contain spaces, dots, or '*'.");
+        if (newName.contains(".")
+                || newName.contains("*")
+                || !newName.equals(newName.replaceAll("\\s+", ""))
+                || !newName.toUpperCase(Locale.ROOT)
+                        .toLowerCase(Locale.ROOT)
+                        .equals(newName.toLowerCase(Locale.ROOT))) {
+            throw new IllegalArgumentException(
+                    "Area name '"
+                            + newName
+                            + "' is invalid: area names must not contain spaces, dots, or '*'.");
         }
         String stored = null;
         if (blankToNull(originalName) == null) {
-            findArea(newName).ifPresent(existing -> {
-                throw new IllegalArgumentException(
-                    "Area '" + existing.name() + "' already exists.");
-            });
+            findArea(newName)
+                    .ifPresent(existing -> {
+                        throw new IllegalArgumentException(
+                                "Area '" + existing.name() + "' already exists.");
+                    });
         } else {
             String current = requireArea(originalName);
-            findArea(newName).filter(other -> !other.name().equals(current)).ifPresent(other -> {
-                throw new IllegalArgumentException("Area '" + other.name() + "' already exists.");
-            });
+            findArea(newName)
+                    .filter(other -> !other.name().equals(current))
+                    .ifPresent(other -> {
+                        throw new IllegalArgumentException(
+                                "Area '" + other.name() + "' already exists.");
+                    });
             stored = current;
         }
-        AreaMembers members = stored == null ? AreaMembers.NONE
-            : areaRepository.findAllMembers().getOrDefault(stored, AreaMembers.NONE);
+        AreaMembers members =
+                stored == null
+                        ? AreaMembers.NONE
+                        : areaRepository.findAllMembers().getOrDefault(stored, AreaMembers.NONE);
         // Before any rename, so a refused default leaves the area as it was.
         checkDefaults(newName, members, blankToNull(defaultPlaybook), blankToNull(defaultProfile));
         if (stored != null && !stored.equals(newName)) {
             if (SecurityContextHolder.getContext().getAuthentication() != null
-                && !AreaAccessContext.isSuperAdmin()) {
+                    && !AreaAccessContext.isSuperAdmin()) {
                 throw new IllegalArgumentException("Area admins cannot rename areas.");
             }
             areaRepository.rename(stored, newName);
         }
         String storedTitle = blankToNull(title);
         areaRepository.upsert(
-            new Area(newName, storedTitle != null ? storedTitle : newName, blankToNull(description),
-                prototype, blankToNull(defaultPlaybook), blankToNull(defaultProfile), null, null));
+                new Area(
+                        newName,
+                        storedTitle != null ? storedTitle : newName,
+                        blankToNull(description),
+                        prototype,
+                        blankToNull(defaultPlaybook),
+                        blankToNull(defaultProfile),
+                        null,
+                        null));
     }
 
     /**
@@ -155,21 +187,27 @@ public class AreaService implements AvailableAreasProvider {
             areaRepository.delete(stored);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException(
-                "Area '" + stored + "' still has system prompts, collections, playbooks or "
-                    + "profiles. Move or delete them first.");
+                    "Area '"
+                            + stored
+                            + "' still has system prompts, collections, playbooks or "
+                            + "profiles. Move or delete them first.");
         }
         return stored;
     }
 
-    private static void checkDefaults(String area, AreaMembers members, String playbook,
-        String profile) {
+    private static void checkDefaults(
+            String area, AreaMembers members, String playbook, String profile) {
         if (playbook != null && !members.playbooks().contains(playbook)) {
             throw new IllegalArgumentException(
-                "Playbook '" + playbook + "' is not a pickable playbook of area '" + area + "'.");
+                    "Playbook '"
+                            + playbook
+                            + "' is not a pickable playbook of area '"
+                            + area
+                            + "'.");
         }
         if (profile != null && !members.profiles().contains(profile)) {
             throw new IllegalArgumentException(
-                "Profile '" + profile + "' is not a profile of area '" + area + "'.");
+                    "Profile '" + profile + "' is not a profile of area '" + area + "'.");
         }
     }
 

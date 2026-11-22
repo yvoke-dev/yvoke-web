@@ -19,21 +19,22 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.stereotype.Component;
 
 /**
- * {@link McpToolsConfig} publishes annotation-driven tool classes in {@code mcp.tools} via
- * {@code ToolCallbacks.from(bean)}, which reads {@code @Tool}/{@code @ToolParam}, while the classes
- * in {@link McpToolsConfig#CALLBACK_PUBLISHED} ship hand-written {@code ContextAwareToolCallback}
+ * {@link McpToolsConfig} publishes annotation-driven tool classes in {@code mcp.tools} via {@code
+ * ToolCallbacks.from(bean)}, which reads {@code @Tool}/{@code @ToolParam}, while the classes in
+ * {@link McpToolsConfig#CALLBACK_PUBLISHED} ship hand-written {@code ContextAwareToolCallback}
  * schemas instead. Annotation-published methods also carry {@code @McpTool}/{@code @McpToolParam}
  * alongside {@code @Tool}/{@code @ToolParam}; keeping both annotation sets in lockstep prevents
  * silent schema divergence across tool catalogues.
  *
- * <p>
- * This is pure reflection and classpath metadata scanning: no Spring context, so it cannot affect
- * the TestContext cache.
+ * <p>This is pure reflection and classpath metadata scanning: no Spring context, so it cannot
+ * affect the TestContext cache.
  */
 class McpToolCatalogueParityTest {
 
-    private static final List<Class<?>> TOOLS = McpToolsConfig.scanToolClasses().stream()
-        .filter(c -> !McpToolsConfig.CALLBACK_PUBLISHED.contains(c)).toList();
+    private static final List<Class<?>> TOOLS =
+            McpToolsConfig.scanToolClasses().stream()
+                    .filter(c -> !McpToolsConfig.CALLBACK_PUBLISHED.contains(c))
+                    .toList();
 
     @Test
     void everyAnnotationPublishedToolClassDeclaresAtLeastOneTool() {
@@ -51,47 +52,59 @@ class McpToolCatalogueParityTest {
             }
         }
         assertThat(emptyTools)
-            .as("every annotation-published tool class must declare at least one @Tool method")
-            .isEmpty();
+                .as("every annotation-published tool class must declare at least one @Tool method")
+                .isEmpty();
     }
 
     @Test
     void callbackPublishedToolClassesCarryNoDeadAnnotations() {
-        assertThat(McpToolsConfig.CALLBACK_PUBLISHED).containsExactlyInAnyOrder(
-            SearchCorpusTool.class, GetSectionTool.class, ListDocumentsTool.class,
-            VerifyCitationsTool.class);
+        assertThat(McpToolsConfig.CALLBACK_PUBLISHED)
+                .containsExactlyInAnyOrder(
+                        SearchCorpusTool.class,
+                        GetSectionTool.class,
+                        ListDocumentsTool.class,
+                        VerifyCitationsTool.class);
         List<String> deadAnnotations = new ArrayList<>();
         for (Class<?> tool : McpToolsConfig.CALLBACK_PUBLISHED) {
             for (Method m : tool.getDeclaredMethods()) {
                 if (m.isAnnotationPresent(McpTool.class) || m.isAnnotationPresent(Tool.class)) {
-                    deadAnnotations.add(tool.getSimpleName() + "." + m.getName()
-                        + " carries method-level @McpTool/@Tool");
+                    deadAnnotations.add(
+                            tool.getSimpleName()
+                                    + "."
+                                    + m.getName()
+                                    + " carries method-level @McpTool/@Tool");
                 }
                 for (Parameter p : m.getParameters()) {
                     if (p.isAnnotationPresent(McpToolParam.class)
-                        || p.isAnnotationPresent(ToolParam.class)) {
-                        deadAnnotations.add(tool.getSimpleName() + "." + m.getName() + "("
-                            + p.getName() + ") carries @McpToolParam/@ToolParam");
+                            || p.isAnnotationPresent(ToolParam.class)) {
+                        deadAnnotations.add(
+                                tool.getSimpleName()
+                                        + "."
+                                        + m.getName()
+                                        + "("
+                                        + p.getName()
+                                        + ") carries @McpToolParam/@ToolParam");
                     }
                 }
             }
         }
         assertThat(deadAnnotations)
-            .as("CALLBACK_PUBLISHED classes ship hand-written ContextAwareToolCallback schemas; "
-                + "leaving @McpTool/@Tool/@McpToolParam/@ToolParam on the underlying bean leaves "
-                + "dead, unchecked schema annotations that never ship")
-            .isEmpty();
+                .as(
+                        "CALLBACK_PUBLISHED classes ship hand-written ContextAwareToolCallback schemas; "
+                                + "leaving @McpTool/@Tool/@McpToolParam/@ToolParam on the underlying bean leaves "
+                                + "dead, unchecked schema annotations that never ship")
+                .isEmpty();
     }
 
     @Test
     void everyClientOnlyToolsClassIsPublishedThroughTheComponentScan()
-        throws ClassNotFoundException {
+            throws ClassNotFoundException {
         ClassPathScanningCandidateComponentProvider scanner =
-            new ClassPathScanningCandidateComponentProvider(false);
+                new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(ClientOnlyTools.class));
         List<Class<?>> clientOnlyClasses = new ArrayList<>();
-        for (BeanDefinition bd : scanner
-            .findCandidateComponents("de.palsoftware.yvoke.mcp.tools")) {
+        for (BeanDefinition bd :
+                scanner.findCandidateComponents("de.palsoftware.yvoke.mcp.tools")) {
             String className = bd.getBeanClassName();
             if (className != null) {
                 clientOnlyClasses.add(Class.forName(className));
@@ -99,16 +112,19 @@ class McpToolCatalogueParityTest {
         }
         assertThat(clientOnlyClasses).isNotEmpty().contains(ProfileTools.class);
         for (Class<?> clazz : clientOnlyClasses) {
-            assertThat(clazz.isAnnotationPresent(Component.class)).as(clazz.getSimpleName()
-                + " is @ClientOnlyTools so it must also carry @Component to be discovered by McpToolsConfig.scanToolClasses()")
-                .isTrue();
+            assertThat(clazz.isAnnotationPresent(Component.class))
+                    .as(
+                            clazz.getSimpleName()
+                                    + " is @ClientOnlyTools so it must also carry @Component to be discovered by McpToolsConfig.scanToolClasses()")
+                    .isTrue();
             assertThat(McpToolsConfig.CALLBACK_PUBLISHED)
-                .as(clazz.getSimpleName()
-                    + " is @ClientOnlyTools and must not be skipped via CALLBACK_PUBLISHED")
-                .doesNotContain(clazz);
+                    .as(
+                            clazz.getSimpleName()
+                                    + " is @ClientOnlyTools and must not be skipped via CALLBACK_PUBLISHED")
+                    .doesNotContain(clazz);
             assertThat(TOOLS)
-                .as(clazz.getSimpleName() + " must be present in annotation-published TOOLS")
-                .contains(clazz);
+                    .as(clazz.getSimpleName() + " must be present in annotation-published TOOLS")
+                    .contains(clazz);
         }
     }
 
@@ -120,13 +136,20 @@ class McpToolCatalogueParityTest {
                 boolean mcp = m.isAnnotationPresent(McpTool.class);
                 boolean agentic = m.isAnnotationPresent(Tool.class);
                 if (mcp != agentic) {
-                    mismatches.add(tool.getSimpleName() + "." + m.getName() + ": @McpTool=" + mcp
-                        + " but @Tool=" + agentic);
+                    mismatches.add(
+                            tool.getSimpleName()
+                                    + "."
+                                    + m.getName()
+                                    + ": @McpTool="
+                                    + mcp
+                                    + " but @Tool="
+                                    + agentic);
                 }
             }
         }
-        assertThat(mismatches).as("a tool must be published to both catalogues or neither")
-            .isEmpty();
+        assertThat(mismatches)
+                .as("a tool must be published to both catalogues or neither")
+                .isEmpty();
     }
 
     @Test
@@ -143,29 +166,49 @@ class McpToolCatalogueParityTest {
                     boolean mcp = mcpParam != null;
                     boolean agentic = toolParam != null;
                     if (mcp != agentic) {
-                        mismatches.add(tool.getSimpleName() + "." + m.getName() + "(" + p.getName()
-                            + "): @McpToolParam=" + mcp + " but @ToolParam=" + agentic);
+                        mismatches.add(
+                                tool.getSimpleName()
+                                        + "."
+                                        + m.getName()
+                                        + "("
+                                        + p.getName()
+                                        + "): @McpToolParam="
+                                        + mcp
+                                        + " but @ToolParam="
+                                        + agentic);
                         continue;
                     }
                     if (mcpParam != null) {
                         if (mcpParam.required() != toolParam.required()) {
-                            mismatches
-                                .add(tool.getSimpleName() + "." + m.getName() + "(" + p.getName()
-                                    + "): required differs (@McpToolParam=" + mcpParam.required()
-                                    + " vs @ToolParam=" + toolParam.required() + ")");
+                            mismatches.add(
+                                    tool.getSimpleName()
+                                            + "."
+                                            + m.getName()
+                                            + "("
+                                            + p.getName()
+                                            + "): required differs (@McpToolParam="
+                                            + mcpParam.required()
+                                            + " vs @ToolParam="
+                                            + toolParam.required()
+                                            + ")");
                         }
                         if (!mcpParam.description().equals(toolParam.description())) {
-                            mismatches.add(tool.getSimpleName() + "." + m.getName() + "("
-                                + p.getName()
-                                + "): description differs between @McpToolParam and @ToolParam");
+                            mismatches.add(
+                                    tool.getSimpleName()
+                                            + "."
+                                            + m.getName()
+                                            + "("
+                                            + p.getName()
+                                            + "): description differs between @McpToolParam and @ToolParam");
                         }
                     }
                 }
             }
         }
-        assertThat(mismatches).as(
-            "parameters must match across @McpToolParam and @ToolParam in presence, required flag, and description")
-            .isEmpty();
+        assertThat(mismatches)
+                .as(
+                        "parameters must match across @McpToolParam and @ToolParam in presence, required flag, and description")
+                .isEmpty();
     }
 
     @Test
@@ -179,12 +222,20 @@ class McpToolCatalogueParityTest {
                     continue;
                 }
                 if (!mcp.name().equals(agentic.name())) {
-                    mismatches.add(tool.getSimpleName() + ": name '" + mcp.name() + "' vs '"
-                        + agentic.name() + "'");
+                    mismatches.add(
+                            tool.getSimpleName()
+                                    + ": name '"
+                                    + mcp.name()
+                                    + "' vs '"
+                                    + agentic.name()
+                                    + "'");
                 }
                 if (!mcp.description().equals(agentic.description())) {
-                    mismatches.add(tool.getSimpleName() + " (" + mcp.name()
-                        + "): descriptions differ between the two catalogues");
+                    mismatches.add(
+                            tool.getSimpleName()
+                                    + " ("
+                                    + mcp.name()
+                                    + "): descriptions differ between the two catalogues");
                 }
             }
         }

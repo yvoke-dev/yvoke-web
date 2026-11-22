@@ -40,8 +40,11 @@ public class ChatCancellationService {
 
     /** Test seam constructor for deterministic TTL and clock. */
     ChatCancellationService(Duration sentinelTtl, Clock clock) {
-        this(sentinelTtl, clock, CompletableFuture
-            .delayedExecutor(Math.max(1, sentinelTtl.toMillis()), TimeUnit.MILLISECONDS));
+        this(
+                sentinelTtl,
+                clock,
+                CompletableFuture.delayedExecutor(
+                        Math.max(1, sentinelTtl.toMillis()), TimeUnit.MILLISECONDS));
     }
 
     ChatCancellationService(Duration sentinelTtl, Clock clock, Executor delayedExecutor) {
@@ -59,13 +62,13 @@ public class ChatCancellationService {
         if (previous instanceof CancelledSentinel sentinel) {
             if (!isExpired(sentinel)) {
                 log.info(
-                    "Conversation {} was cancelled before registration. Interrupting thread immediately.",
-                    conversationId);
+                        "Conversation {} was cancelled before registration. Interrupting thread immediately.",
+                        conversationId);
                 thread.interrupt();
             } else {
                 log.info(
-                    "Stale cancellation sentinel for conversation {} has expired. Not interrupting thread.",
-                    conversationId);
+                        "Stale cancellation sentinel for conversation {} has expired. Not interrupting thread.",
+                        conversationId);
             }
         }
     }
@@ -88,20 +91,24 @@ public class ChatCancellationService {
      * scheduled for eviction after {@code sentinelTtl}.
      */
     public void stop(UUID conversationId) {
-        activeTasks.compute(conversationId, (key, current) -> {
-            if (current instanceof Thread thread) {
-                log.info("Interrupting active generation thread for conversation: {}",
-                    conversationId);
-                thread.interrupt();
-                return current; // keep the thread reference
-            } else {
-                log.info("Marking conversation {} as cancelled (thread not yet registered)",
-                    conversationId);
-                CancelledSentinel sentinel = new CancelledSentinel(clock.instant());
-                scheduleEviction(conversationId, sentinel);
-                return sentinel;
-            }
-        });
+        activeTasks.compute(
+                conversationId,
+                (key, current) -> {
+                    if (current instanceof Thread thread) {
+                        log.info(
+                                "Interrupting active generation thread for conversation: {}",
+                                conversationId);
+                        thread.interrupt();
+                        return current; // keep the thread reference
+                    } else {
+                        log.info(
+                                "Marking conversation {} as cancelled (thread not yet registered)",
+                                conversationId);
+                        CancelledSentinel sentinel = new CancelledSentinel(clock.instant());
+                        scheduleEviction(conversationId, sentinel);
+                        return sentinel;
+                    }
+                });
     }
 
     /**
@@ -110,22 +117,26 @@ public class ChatCancellationService {
      * idle stops cannot abort the new generation.
      */
     public void reset(UUID conversationId) {
-        activeTasks.computeIfPresent(conversationId, (key, current) -> {
-            if (current instanceof CancelledSentinel) {
-                log.debug("Cleared cancellation sentinel on reset for conversation {}",
-                    conversationId);
-                return null;
-            }
-            return current;
-        });
+        activeTasks.computeIfPresent(
+                conversationId,
+                (key, current) -> {
+                    if (current instanceof CancelledSentinel) {
+                        log.debug(
+                                "Cleared cancellation sentinel on reset for conversation {}",
+                                conversationId);
+                        return null;
+                    }
+                    return current;
+                });
     }
 
     private void scheduleEviction(UUID conversationId, CancelledSentinel sentinel) {
         if (delayedExecutor != null) {
             delayedExecutor.execute(() -> {
                 if (activeTasks.remove(conversationId, sentinel)) {
-                    log.debug("Evicted expired cancellation sentinel for conversation {}",
-                        conversationId);
+                    log.debug(
+                            "Evicted expired cancellation sentinel for conversation {}",
+                            conversationId);
                 }
             });
         }

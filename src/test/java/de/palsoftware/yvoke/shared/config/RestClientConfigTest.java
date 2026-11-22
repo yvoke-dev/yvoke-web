@@ -62,20 +62,24 @@ public class RestClientConfigTest {
     public void confluenceClientDoesNotFollowRedirects() throws Exception {
         AtomicInteger targetHits = new AtomicInteger();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/start", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().add("Location", "/target");
-            exchange.sendResponseHeaders(302, -1);
-            exchange.close();
-        });
-        server.createContext("/target", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            targetHits.incrementAndGet();
-            byte[] body = "REACHED-TARGET".getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
+        server.createContext(
+                "/start",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.getResponseHeaders().add("Location", "/target");
+                    exchange.sendResponseHeaders(302, -1);
+                    exchange.close();
+                });
+        server.createContext(
+                "/target",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    targetHits.incrementAndGet();
+                    byte[] body = "REACHED-TARGET".getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                    exchange.close();
+                });
         server.start();
         try {
             String base = "http://127.0.0.1:" + server.getAddress().getPort();
@@ -83,23 +87,30 @@ public class RestClientConfigTest {
             // Production Confluence client ALSO blocks loopback at connect time (DNS rebinding
             // guard), so even a direct request to 127.0.0.1 is refused before opening a socket.
             RestClient ssrfGuardedClient = config().confluenceRestClientBuilder().build();
-            assertThatThrownBy(() -> ssrfGuardedClient.get().uri(base + "/start").retrieve()
-                .toEntity(String.class)).isInstanceOf(BlockedHostException.class);
+            assertThatThrownBy(() ->
+                            ssrfGuardedClient
+                                    .get()
+                                    .uri(base + "/start")
+                                    .retrieve()
+                                    .toEntity(String.class))
+                    .isInstanceOf(BlockedHostException.class);
             assertThat(targetHits.get()).isZero();
 
             // Redirect-disabled pool (without the loopback DNS block) surfaces 3xx as-is without
             // hitting /target.
             RestClient noRedirectClient =
-                RestClient.builder().requestFactory(config().pooledFactory(false, null)).build();
+                    RestClient.builder()
+                            .requestFactory(config().pooledFactory(false, null))
+                            .build();
             ResponseEntity<String> response =
-                noRedirectClient.get().uri(base + "/start").retrieve().toEntity(String.class);
+                    noRedirectClient.get().uri(base + "/start").retrieve().toEntity(String.class);
             assertThat(response.getStatusCode().is3xxRedirection()).isTrue();
             assertThat(targetHits.get()).isZero();
 
             // Sanity check: the DEFAULT client would have followed the redirect to /target.
             RestClient defaultClient = config().restClientBuilder().build();
             ResponseEntity<String> followed =
-                defaultClient.get().uri(base + "/start").retrieve().toEntity(String.class);
+                    defaultClient.get().uri(base + "/start").retrieve().toEntity(String.class);
             assertThat(followed.getStatusCode()).isEqualTo(HttpStatusCode.valueOf(200));
             assertThat(followed.getBody()).isEqualTo("REACHED-TARGET");
             assertThat(targetHits.get()).isEqualTo(1);

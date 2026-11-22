@@ -12,12 +12,10 @@ import org.springframework.stereotype.Component;
  * and returned when it finishes (success, error, or cancellation) — so it must be paired with a
  * guaranteed release.
  *
- * <p>
- * Backed by a CAS-bounded counter so extraneous or duplicate {@link #release()} calls can never
+ * <p>Backed by a CAS-bounded counter so extraneous or duplicate {@link #release()} calls can never
  * inflate available permits above {@code maxConcurrent}.
  *
- * <p>
- * Set {@code app.generation.max-concurrent} to 0 (or less) to disable the cap.
+ * <p>Set {@code app.generation.max-concurrent} to 0 (or less) to disable the cap.
  */
 @Component
 public class GenerationConcurrencyLimiter {
@@ -27,7 +25,7 @@ public class GenerationConcurrencyLimiter {
     private final AtomicInteger available;
 
     public GenerationConcurrencyLimiter(
-        @Value("${app.generation.max-concurrent}") int maxConcurrent) {
+            @Value("${app.generation.max-concurrent}") int maxConcurrent) {
         this.enabled = maxConcurrent > 0;
         this.maxConcurrent = Math.max(1, maxConcurrent);
         this.available = new AtomicInteger(this.maxConcurrent);
@@ -35,8 +33,7 @@ public class GenerationConcurrencyLimiter {
 
     /**
      * @return true if a generation slot was acquired (caller MUST later call {@link #release()}),
-     *         or false if the app is at capacity and the caller should reject the request (HTTP
-     *         429).
+     *     or false if the app is at capacity and the caller should reject the request (HTTP 429).
      */
     public boolean tryAcquire() {
         if (!enabled) {

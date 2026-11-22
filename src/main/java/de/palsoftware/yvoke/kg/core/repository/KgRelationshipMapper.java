@@ -30,7 +30,17 @@ public class KgRelationshipMapper implements RowMapper<KgRelationship> {
         List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
         String description = rs.getString("description");
         Map<String, Object> metadata = JdbcMappers.jsonbToMap(rs, "metadata", objectMapper);
-        return new KgRelationship(id, collectionId, collection, subject, predicate, object,
-            subjectId, objectId, tags, description, metadata);
+        return new KgRelationship(
+                id,
+                collectionId,
+                collection,
+                subject,
+                predicate,
+                object,
+                subjectId,
+                objectId,
+                tags,
+                description,
+                metadata);
     }
 }

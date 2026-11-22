@@ -8,8 +8,25 @@ import java.util.UUID;
  *
  * @param createdAt timestamp when the tool call trace record was extracted and persisted
  */
-public record ToolCallRecord(UUID id,UUID messageId,int seq,String toolCallId,String toolName,String arguments,String result,boolean isError,Instant createdAt){
+public record ToolCallRecord(
+        UUID id,
+        UUID messageId,
+        int seq,
+        String toolCallId,
+        String toolName,
+        String arguments,
+        String result,
+        boolean isError,
+        Instant createdAt) {
 
-public ToolCallRecord{toolCallId=sanitizeNullBytes(toolCallId);toolName=sanitizeNullBytes(toolName);arguments=sanitizeNullBytes(arguments);result=sanitizeNullBytes(result);}
+    public ToolCallRecord {
+        toolCallId = sanitizeNullBytes(toolCallId);
+        toolName = sanitizeNullBytes(toolName);
+        arguments = sanitizeNullBytes(arguments);
+        result = sanitizeNullBytes(result);
+    }
 
-public static String sanitizeNullBytes(String s){return s!=null?s.replace("\u0000",""):null;}}
+    public static String sanitizeNullBytes(String s) {
+        return s != null ? s.replace("\u0000", "") : null;
+    }
+}

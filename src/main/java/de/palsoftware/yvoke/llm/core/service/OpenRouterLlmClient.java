@@ -46,8 +46,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link LlmClient} backed by OpenRouter ({@code https://openrouter.ai/api/v1}) using
- * {@code com.openai:openai-java}.
+ * {@link LlmClient} backed by OpenRouter ({@code https://openrouter.ai/api/v1}) using {@code
+ * com.openai:openai-java}.
  */
 public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
 
@@ -59,13 +59,15 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     static final Duration HTTP_TIMEOUT = Duration.ofSeconds(300);
     static final Set<String> FATAL_FINISH_REASONS = Set.of("content_filter");
     static final Set<String> BENIGN_FINISH_REASONS =
-        Set.of("stop", "end_turn", "length", "tool_calls", "function_call");
+            Set.of("stop", "end_turn", "length", "tool_calls", "function_call");
     static final Pattern OPENAI_O_SERIES_PATTERN =
-        Pattern.compile("(?:^|/)o[1345](?:-[a-z0-9]+)*(?:$|:)", Pattern.CASE_INSENSITIVE);
-    static final Pattern REASONING_MODEL_PATTERN = Pattern.compile(
-        "(?:^|/)o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning|r1|deepseek-v4", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("(?:^|/)o[1345](?:-[a-z0-9]+)*(?:$|:)", Pattern.CASE_INSENSITIVE);
+    static final Pattern REASONING_MODEL_PATTERN =
+            Pattern.compile(
+                    "(?:^|/)o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning|r1|deepseek-v4",
+                    Pattern.CASE_INSENSITIVE);
     private static final List<String> VALID_THINKING_LEVELS =
-        List.of("low", "medium", "high", "max");
+            List.of("low", "medium", "high", "max");
 
     private final OpenAIClient client;
     private final ObjectMapper objectMapper;
@@ -75,8 +77,9 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     private volatile boolean closed;
 
     static String resolveBaseUrl(String baseUrl) {
-        if (baseUrl == null || baseUrl.isBlank()
-            || baseUrl.toLowerCase(Locale.ROOT).contains("placeholder")) {
+        if (baseUrl == null
+                || baseUrl.isBlank()
+                || baseUrl.toLowerCase(Locale.ROOT).contains("placeholder")) {
             return DEFAULT_BASE_URL;
         }
         String trimmed = baseUrl.trim();
@@ -90,14 +93,27 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         this(baseUrl, apiKey, objectMapper, true, "high", "");
     }
 
-    public OpenRouterLlmClient(String baseUrl, String apiKey, ObjectMapper objectMapper,
-        boolean enableThinking, String thinkingLevel, String reasoningModelsCsv) {
-        this(buildClient(baseUrl, apiKey), objectMapper, enableThinking, thinkingLevel,
-            reasoningModelsCsv);
+    public OpenRouterLlmClient(
+            String baseUrl,
+            String apiKey,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel,
+            String reasoningModelsCsv) {
+        this(
+                buildClient(baseUrl, apiKey),
+                objectMapper,
+                enableThinking,
+                thinkingLevel,
+                reasoningModelsCsv);
     }
 
-    OpenRouterLlmClient(OpenAIClient client, ObjectMapper objectMapper, boolean enableThinking,
-        String thinkingLevel, String reasoningModelsCsv) {
+    OpenRouterLlmClient(
+            OpenAIClient client,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel,
+            String reasoningModelsCsv) {
         this.client = client;
         this.objectMapper = objectMapper;
         this.enableThinking = enableThinking;
@@ -108,9 +124,14 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     private static OpenAIClient buildClient(String baseUrl, String apiKey) {
         String resolvedUrl = resolveBaseUrl(baseUrl);
         log.info("Initializing OpenRouterLlmClient with baseUrl: {}", resolvedUrl);
-        return OpenAIOkHttpClient.builder().baseUrl(resolvedUrl)
-            .apiKey(apiKey != null ? apiKey : "").putHeader("HTTP-Referer", APP_REFERER)
-            .putHeader("X-Title", APP_TITLE).maxRetries(0).timeout(HTTP_TIMEOUT).build();
+        return OpenAIOkHttpClient.builder()
+                .baseUrl(resolvedUrl)
+                .apiKey(apiKey != null ? apiKey : "")
+                .putHeader("HTTP-Referer", APP_REFERER)
+                .putHeader("X-Title", APP_TITLE)
+                .maxRetries(0)
+                .timeout(HTTP_TIMEOUT)
+                .build();
     }
 
     private static Set<String> parseReasoningModels(String csv) {
@@ -156,9 +177,10 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         if (!enableThinking) {
             return null;
         }
-        String requested = request.thinkingLevel() != null && !request.thinkingLevel().isBlank()
-            ? request.thinkingLevel()
-            : thinkingLevel;
+        String requested =
+                request.thinkingLevel() != null && !request.thinkingLevel().isBlank()
+                        ? request.thinkingLevel()
+                        : thinkingLevel;
         if (requested == null || requested.isBlank()) {
             return null;
         }
@@ -167,8 +189,10 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
             return "low";
         }
         if (!VALID_THINKING_LEVELS.contains(normalized)) {
-            log.warn("Invalid thinkingLevel '{}'; expected one of LOW/MEDIUM/HIGH/MAX. "
-                + "Leaving reasoning effort unset.", requested);
+            log.warn(
+                    "Invalid thinkingLevel '{}'; expected one of LOW/MEDIUM/HIGH/MAX. "
+                            + "Leaving reasoning effort unset.",
+                    requested);
             return null;
         }
         return normalized;
@@ -177,8 +201,8 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
     /**
      * Executes a non-streaming completion request.
      *
-     * @throws LlmCallFailedException if OpenRouter returns a fatal finish reason (e.g.
-     *         {@code content_filter}) or empty content
+     * @throws LlmCallFailedException if OpenRouter returns a fatal finish reason (e.g. {@code
+     *     content_filter}) or empty content
      */
     @Override
     public LlmResponse generate(LlmRequest request) {
@@ -187,36 +211,47 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         }
         log.info("Sending non-streaming request to OpenRouter: model={}", request.model());
         ChatCompletionCreateParams params = buildCreateParams(request, false);
-        return LlmRetry.withRetry("OpenRouter.generate", 3, () -> {
-            ChatCompletion completion = client.chat().completions().create(params);
-            String content = "";
-            String finishReason = null;
-            if (!completion.choices().isEmpty()) {
-                var choice = completion.choices().get(0);
-                var message = choice.message();
-                content = message.content().orElse("");
-                if (message.refusal().isPresent() && !message.refusal().get().isEmpty()) {
-                    content = content.isEmpty() ? message.refusal().get()
-                        : content + message.refusal().get();
-                }
-                if (choice.finishReason() != null) {
-                    finishReason = choice.finishReason().asString();
-                }
-            }
-            LlmUsage usage = parseUsage(completion.usage().orElse(null));
+        return LlmRetry.withRetry(
+                "OpenRouter.generate",
+                3,
+                () -> {
+                    ChatCompletion completion = client.chat().completions().create(params);
+                    String content = "";
+                    String finishReason = null;
+                    if (!completion.choices().isEmpty()) {
+                        var choice = completion.choices().get(0);
+                        var message = choice.message();
+                        content = message.content().orElse("");
+                        if (message.refusal().isPresent() && !message.refusal().get().isEmpty()) {
+                            content =
+                                    content.isEmpty()
+                                            ? message.refusal().get()
+                                            : content + message.refusal().get();
+                        }
+                        if (choice.finishReason() != null) {
+                            finishReason = choice.finishReason().asString();
+                        }
+                    }
+                    LlmUsage usage = parseUsage(completion.usage().orElse(null));
 
-            if (finishReason != null
-                && FATAL_FINISH_REASONS.contains(finishReason.toLowerCase(Locale.ROOT))) {
-                throw new LlmCallFailedException(
-                    "OpenRouter call failed: finish_reason=" + finishReason, null, usage);
-            }
-            if (content.isEmpty()) {
-                throw new LlmCallFailedException(
-                    "OpenRouter returned empty content (finishReason=" + finishReason + ")", null,
-                    usage);
-            }
-            return new LlmResponse(content, usage);
-        });
+                    if (finishReason != null
+                            && FATAL_FINISH_REASONS.contains(
+                                    finishReason.toLowerCase(Locale.ROOT))) {
+                        throw new LlmCallFailedException(
+                                "OpenRouter call failed: finish_reason=" + finishReason,
+                                null,
+                                usage);
+                    }
+                    if (content.isEmpty()) {
+                        throw new LlmCallFailedException(
+                                "OpenRouter returned empty content (finishReason="
+                                        + finishReason
+                                        + ")",
+                                null,
+                                usage);
+                    }
+                    return new LlmResponse(content, usage);
+                });
     }
 
     @Override
@@ -227,47 +262,60 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         log.info("Sending streaming request to OpenRouter: model={}", request.model());
         ChatCompletionCreateParams params = buildCreateParams(request, true);
 
-        EmptyTurnRetry.run("OpenRouter", request.model(), attempt -> {
-            StreamOutcome outcome = new StreamOutcome();
+        EmptyTurnRetry.run(
+                "OpenRouter",
+                request.model(),
+                attempt -> {
+                    StreamOutcome outcome = new StreamOutcome();
 
-            StreamResponse<ChatCompletionChunk> established =
-                LlmRetry.withRetry("OpenRouter.generateStream", 3,
-                    () -> client.chat().completions().createStreaming(params));
+                    StreamResponse<ChatCompletionChunk> established =
+                            LlmRetry.withRetry(
+                                    "OpenRouter.generateStream",
+                                    3,
+                                    () -> client.chat().completions().createStreaming(params));
 
-            try (StreamResponse<ChatCompletionChunk> stream = established) {
-                stream.stream().forEach(chunk -> {
-                    if (Thread.currentThread().isInterrupted()) {
-                        throw new CancellationException("OpenRouter stream interrupted");
+                    try (StreamResponse<ChatCompletionChunk> stream = established) {
+                        stream.stream()
+                                .forEach(chunk -> {
+                                    if (Thread.currentThread().isInterrupted()) {
+                                        throw new CancellationException(
+                                                "OpenRouter stream interrupted");
+                                    }
+                                    parseChunk(chunk, outcome, onChunk);
+                                });
+                    } catch (RuntimeException e) {
+                        if (Thread.currentThread().isInterrupted()
+                                || e instanceof CancellationException
+                                || e.getCause() instanceof InterruptedException
+                                || e.getCause() instanceof CancellationException) {
+                            log.info("OpenRouter stream cancelled/interrupted");
+                            throw new CancellationException("OpenRouter stream interrupted");
+                        }
+                        log.error("OpenRouter streaming call failed", e);
+                        throw e;
                     }
-                    parseChunk(chunk, outcome, onChunk);
+
+                    // Closes this HTTP call for accounting BEFORE evaluating verdict
+                    onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
+
+                    if (outcome.fatalFinishReason != null) {
+                        throw new LlmCallFailedException(
+                                "OpenRouter stream failed with finish_reason="
+                                        + outcome.fatalFinishReason,
+                                null,
+                                outcome.usage);
+                    }
+
+                    return new EmptyTurnRetry.Turn(
+                            !outcome.isEmpty(),
+                            outcome.cleanlyCompleted(),
+                            outcome.usage,
+                            outcome.describe());
                 });
-            } catch (RuntimeException e) {
-                if (Thread.currentThread().isInterrupted() || e instanceof CancellationException
-                    || e.getCause() instanceof InterruptedException
-                    || e.getCause() instanceof CancellationException) {
-                    log.info("OpenRouter stream cancelled/interrupted");
-                    throw new CancellationException("OpenRouter stream interrupted");
-                }
-                log.error("OpenRouter streaming call failed", e);
-                throw e;
-            }
-
-            // Closes this HTTP call for accounting BEFORE evaluating verdict
-            onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
-
-            if (outcome.fatalFinishReason != null) {
-                throw new LlmCallFailedException(
-                    "OpenRouter stream failed with finish_reason=" + outcome.fatalFinishReason,
-                    null, outcome.usage);
-            }
-
-            return new EmptyTurnRetry.Turn(!outcome.isEmpty(), outcome.cleanlyCompleted(),
-                outcome.usage, outcome.describe());
-        });
     }
 
-    private void parseChunk(ChatCompletionChunk chunk, StreamOutcome outcome,
-        Consumer<LlmResponseChunk> onChunk) {
+    private void parseChunk(
+            ChatCompletionChunk chunk, StreamOutcome outcome, Consumer<LlmResponseChunk> onChunk) {
         outcome.events++;
         String content = null;
         String reasoning = null;
@@ -334,13 +382,14 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
                 if (rawReason != null) {
                     String normalized = rawReason.trim().toLowerCase(Locale.ROOT);
                     if (FATAL_FINISH_REASONS.contains(normalized)) {
-                        log.warn("OpenRouter stream finished abnormally: finishReason={}",
-                            rawReason);
+                        log.warn(
+                                "OpenRouter stream finished abnormally: finishReason={}",
+                                rawReason);
                         outcome.fatalFinishReason = rawReason;
                     } else if (!BENIGN_FINISH_REASONS.contains(normalized)) {
                         log.warn(
-                            "OpenRouter reported an unrecognised finishReason: {}. Delivering the answer — an unknown reason is not evidence of a failure.",
-                            rawReason);
+                                "OpenRouter reported an unrecognised finishReason: {}. Delivering the answer — an unknown reason is not evidence of a failure.",
+                                rawReason);
                     }
                 }
             }
@@ -358,7 +407,7 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
 
     private ChatCompletionCreateParams buildCreateParams(LlmRequest request, boolean stream) {
         ChatCompletionCreateParams.Builder builder =
-            ChatCompletionCreateParams.builder().model(request.model());
+                ChatCompletionCreateParams.builder().model(request.model());
 
         if (request.maxTokens() > 0) {
             builder.maxCompletionTokens(request.maxTokens());
@@ -376,30 +425,46 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         // Messages
         for (LlmMessage msg : request.messages()) {
             if ("system".equalsIgnoreCase(msg.role())) {
-                builder.addMessage(ChatCompletionMessageParam.ofSystem(
-                    ChatCompletionSystemMessageParam.builder().content(msg.content()).build()));
+                builder.addMessage(
+                        ChatCompletionMessageParam.ofSystem(
+                                ChatCompletionSystemMessageParam.builder()
+                                        .content(msg.content())
+                                        .build()));
             } else if ("user".equalsIgnoreCase(msg.role())) {
-                builder.addMessage(ChatCompletionMessageParam.ofUser(
-                    ChatCompletionUserMessageParam.builder().content(msg.content()).build()));
+                builder.addMessage(
+                        ChatCompletionMessageParam.ofUser(
+                                ChatCompletionUserMessageParam.builder()
+                                        .content(msg.content())
+                                        .build()));
             } else if ("assistant".equalsIgnoreCase(msg.role())) {
                 ChatCompletionAssistantMessageParam.Builder assistantMsgBuilder =
-                    ChatCompletionAssistantMessageParam.builder().content(msg.content());
+                        ChatCompletionAssistantMessageParam.builder().content(msg.content());
 
                 if (msg.toolCalls() != null && !msg.toolCalls().isEmpty()) {
                     for (LlmToolCall tc : msg.toolCalls()) {
-                        assistantMsgBuilder.addToolCall(ChatCompletionMessageToolCall
-                            .ofFunction(ChatCompletionMessageFunctionToolCall.builder().id(tc.id())
-                                .function(ChatCompletionMessageFunctionToolCall.Function.builder()
-                                    .name(tc.name()).arguments(tc.arguments()).build())
-                                .build()));
+                        assistantMsgBuilder.addToolCall(
+                                ChatCompletionMessageToolCall.ofFunction(
+                                        ChatCompletionMessageFunctionToolCall.builder()
+                                                .id(tc.id())
+                                                .function(
+                                                        ChatCompletionMessageFunctionToolCall
+                                                                .Function.builder()
+                                                                .name(tc.name())
+                                                                .arguments(tc.arguments())
+                                                                .build())
+                                                .build()));
                     }
                 }
 
                 builder.addMessage(
-                    ChatCompletionMessageParam.ofAssistant(assistantMsgBuilder.build()));
+                        ChatCompletionMessageParam.ofAssistant(assistantMsgBuilder.build()));
             } else if ("tool".equalsIgnoreCase(msg.role())) {
-                builder.addMessage(ChatCompletionMessageParam.ofTool(ChatCompletionToolMessageParam
-                    .builder().toolCallId(msg.toolCallId()).content(msg.content()).build()));
+                builder.addMessage(
+                        ChatCompletionMessageParam.ofTool(
+                                ChatCompletionToolMessageParam.builder()
+                                        .toolCallId(msg.toolCallId())
+                                        .content(msg.content())
+                                        .build()));
             }
         }
 
@@ -409,12 +474,16 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
                 FunctionParameters.Builder paramsBuilder = FunctionParameters.builder();
                 if (tool.inputSchema() != null) {
                     for (Map.Entry<String, Object> entry : tool.inputSchema().entrySet()) {
-                        paramsBuilder.putAdditionalProperty(entry.getKey(),
-                            JsonValue.from(entry.getValue()));
+                        paramsBuilder.putAdditionalProperty(
+                                entry.getKey(), JsonValue.from(entry.getValue()));
                     }
                 }
-                builder.addFunctionTool(FunctionDefinition.builder().name(tool.name())
-                    .description(tool.description()).parameters(paramsBuilder.build()).build());
+                builder.addFunctionTool(
+                        FunctionDefinition.builder()
+                                .name(tool.name())
+                                .description(tool.description())
+                                .parameters(paramsBuilder.build())
+                                .build());
             }
         }
 
@@ -426,8 +495,8 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
             builder.putAdditionalBodyProperty("include_reasoning", JsonValue.from(true));
             String effort = resolveReasoningEffort(request);
             if (effort != null) {
-                builder.putAdditionalBodyProperty("reasoning",
-                    JsonValue.from(Map.of("effort", effort)));
+                builder.putAdditionalBodyProperty(
+                        "reasoning", JsonValue.from(Map.of("effort", effort)));
             }
         }
 
@@ -438,11 +507,11 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         return builder.build();
     }
 
-    private void applyResponseFormat(LlmRequest request,
-        ChatCompletionCreateParams.Builder builder) {
+    private void applyResponseFormat(
+            LlmRequest request, ChatCompletionCreateParams.Builder builder) {
         boolean hasSchema = request.responseSchema() != null && !request.responseSchema().isEmpty();
         boolean wantsJson =
-            request.responseMimeType() != null && !request.responseMimeType().isBlank();
+                request.responseMimeType() != null && !request.responseMimeType().isBlank();
         if (!hasSchema && !wantsJson) {
             return;
         }
@@ -452,16 +521,20 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         }
         if (hasSchema) {
             ResponseFormatJsonSchema.JsonSchema.Schema.Builder schemaBuilder =
-                ResponseFormatJsonSchema.JsonSchema.Schema.builder();
+                    ResponseFormatJsonSchema.JsonSchema.Schema.builder();
             for (Map.Entry<String, Object> entry : request.responseSchema().entrySet()) {
-                schemaBuilder.putAdditionalProperty(entry.getKey(),
-                    JsonValue.from(entry.getValue()));
+                schemaBuilder.putAdditionalProperty(
+                        entry.getKey(), JsonValue.from(entry.getValue()));
             }
             ResponseFormatJsonSchema jsonSchema =
-                ResponseFormatJsonSchema
-                    .builder().jsonSchema(ResponseFormatJsonSchema.JsonSchema.builder()
-                        .name("response").schema(schemaBuilder.build()).strict(false).build())
-                    .build();
+                    ResponseFormatJsonSchema.builder()
+                            .jsonSchema(
+                                    ResponseFormatJsonSchema.JsonSchema.builder()
+                                            .name("response")
+                                            .schema(schemaBuilder.build())
+                                            .strict(false)
+                                            .build())
+                            .build();
             builder.responseFormat(jsonSchema);
             return;
         }
@@ -504,8 +577,8 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
         } catch (Exception e) {
             log.debug("Failed to parse usage details", e);
         }
-        return new LlmUsage(promptTokens, completionTokens, totalTokens, cachedTokens,
-            thoughtTokens);
+        return new LlmUsage(
+                promptTokens, completionTokens, totalTokens, cachedTokens, thoughtTokens);
     }
 
     private static final class StreamOutcome {
@@ -533,12 +606,15 @@ public class OpenRouterLlmClient implements LlmClient, AutoCloseable {
             out.append("finishReason=").append(finishReason == null ? "none" : finishReason);
             out.append(", events=").append(events);
             if (usage != null) {
-                out.append(", completionTokens=").append(usage.completionTokens())
-                    .append(" of which reasoning=").append(usage.thoughtTokens());
+                out.append(", completionTokens=")
+                        .append(usage.completionTokens())
+                        .append(" of which reasoning=")
+                        .append(usage.thoughtTokens());
             }
             if (finishReason == null) {
-                out.append(" — the stream ended without a finish reason, which means it was cut "
-                    + "short rather than completed");
+                out.append(
+                        " — the stream ended without a finish reason, which means it was cut "
+                                + "short rather than completed");
             }
             return out.toString();
         }

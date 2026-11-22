@@ -34,8 +34,8 @@ public class JobProgressBroker {
      * calls and guarantees no terminal transition occurring between the DB read and subscription is
      * lost.
      */
-    public SseEmitter subscribeWithInitial(UUID jobId,
-        Supplier<Optional<ProgressEvent>> snapshotLoader) {
+    public SseEmitter subscribeWithInitial(
+            UUID jobId, Supplier<Optional<ProgressEvent>> snapshotLoader) {
         Subscriber sub = registerSubscriber(jobId);
         Optional<ProgressEvent> initial = snapshotLoader.get();
         if (initial.isPresent()) {
@@ -50,11 +50,13 @@ public class JobProgressBroker {
     private Subscriber registerSubscriber(UUID jobId) {
         SseEmitter emitter = createEmitter();
         Subscriber sub = new Subscriber(emitter);
-        subscribers.compute(jobId, (k, list) -> {
-            List<Subscriber> target = (list != null) ? list : new CopyOnWriteArrayList<>();
-            target.add(sub);
-            return target;
-        });
+        subscribers.compute(
+                jobId,
+                (k, list) -> {
+                    List<Subscriber> target = (list != null) ? list : new CopyOnWriteArrayList<>();
+                    target.add(sub);
+                    return target;
+                });
         emitter.onCompletion(() -> {
             sub.markClosed();
             remove(jobId, sub);
@@ -88,10 +90,12 @@ public class JobProgressBroker {
     }
 
     private void remove(UUID jobId, Subscriber sub) {
-        subscribers.computeIfPresent(jobId, (k, list) -> {
-            list.remove(sub);
-            return list.isEmpty() ? null : list;
-        });
+        subscribers.computeIfPresent(
+                jobId,
+                (k, list) -> {
+                    list.remove(sub);
+                    return list.isEmpty() ? null : list;
+                });
     }
 
     private static final class Subscriber {

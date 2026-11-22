@@ -20,10 +20,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 /**
  * Shared authority constants, claim parsing, and area-scoped authorization helpers.
  *
- * <p>
- * This utility operates exclusively on standard Spring Security abstractions and strings. It
+ * <p>This utility operates exclusively on standard Spring Security abstractions and strings. It
  * contains zero imports from domain packages, strictly obeying architectural boundaries.
- * </p>
  */
 public final class AreaAccessContext {
 
@@ -58,11 +56,9 @@ public final class AreaAccessContext {
         return area.trim().toUpperCase(Locale.ROOT);
     }
 
-    /**
-     * Maps raw Entra role claims to their derived Spring Security and area authorities.
-     */
-    public static Set<GrantedAuthority> mapRoleClaimsToAuthorities(Collection<?> rawClaims,
-        String adminClaim, String userClaim) {
+    /** Maps raw Entra role claims to their derived Spring Security and area authorities. */
+    public static Set<GrantedAuthority> mapRoleClaimsToAuthorities(
+            Collection<?> rawClaims, String adminClaim, String userClaim) {
         if (rawClaims == null || rawClaims.isEmpty()) {
             return Collections.emptySet();
         }
@@ -182,9 +178,8 @@ public final class AreaAccessContext {
      * Authorizes user-level read access to {@code area}, intersecting any active turn-level scope
      * bound via {@link TurnAreaScopeHolder} with the caller's Spring Security authorities.
      *
-     * <p>
-     * Fail-closed: unassigned ({@code null}/blank) areas are permitted only to callers/turns with
-     * unrestricted area access ({@code *}). On background async/orchestrator threads where no
+     * <p>Fail-closed: unassigned ({@code null}/blank) areas are permitted only to callers/turns
+     * with unrestricted area access ({@code *}). On background async/orchestrator threads where no
      * {@code SecurityContext} is bound, the turn scope (already validated against the caller's
      * areas on the request thread) is authoritative.
      */
@@ -192,8 +187,11 @@ public final class AreaAccessContext {
         Set<String> turnAreas = TurnAreaScopeHolder.get();
         Authentication auth = getAuthentication();
         if (turnAreas != null) {
-            boolean allowedByTurn = turnAreas.contains("*") || (area != null && !area.isBlank()
-                && turnAreas.contains(area.trim().toLowerCase(Locale.ROOT)));
+            boolean allowedByTurn =
+                    turnAreas.contains("*")
+                            || (area != null
+                                    && !area.isBlank()
+                                    && turnAreas.contains(area.trim().toLowerCase(Locale.ROOT)));
             if (!allowedByTurn) {
                 return false;
             }
@@ -328,8 +326,8 @@ public final class AreaAccessContext {
         return allowedIngestAreasLower(getAuthentication());
     }
 
-    public static <T> List<T> filterByUserArea(Authentication auth, Collection<T> items,
-        Function<T, String> areaExtractor) {
+    public static <T> List<T> filterByUserArea(
+            Authentication auth, Collection<T> items, Function<T, String> areaExtractor) {
         if (items == null || items.isEmpty()) {
             return Collections.emptyList();
         }
@@ -341,22 +339,25 @@ public final class AreaAccessContext {
         if (allowedSet.isEmpty()) {
             return Collections.emptyList();
         }
-        return items.stream().filter(item -> {
-            if (item == null) {
-                return false;
-            }
-            String area = areaExtractor.apply(item);
-            return area != null && allowedSet.contains(area.trim().toLowerCase(Locale.ROOT));
-        }).toList();
+        return items.stream()
+                .filter(item -> {
+                    if (item == null) {
+                        return false;
+                    }
+                    String area = areaExtractor.apply(item);
+                    return area != null
+                            && allowedSet.contains(area.trim().toLowerCase(Locale.ROOT));
+                })
+                .toList();
     }
 
-    public static <T> List<T> filterByUserArea(Collection<T> items,
-        Function<T, String> areaExtractor) {
+    public static <T> List<T> filterByUserArea(
+            Collection<T> items, Function<T, String> areaExtractor) {
         return filterByUserArea(getAuthentication(), items, areaExtractor);
     }
 
-    public static <T> List<T> filterByAdminArea(Authentication auth, Collection<T> items,
-        Function<T, String> areaExtractor) {
+    public static <T> List<T> filterByAdminArea(
+            Authentication auth, Collection<T> items, Function<T, String> areaExtractor) {
         if (items == null || items.isEmpty()) {
             return Collections.emptyList();
         }
@@ -368,17 +369,20 @@ public final class AreaAccessContext {
         if (allowedSet.isEmpty()) {
             return Collections.emptyList();
         }
-        return items.stream().filter(item -> {
-            if (item == null) {
-                return false;
-            }
-            String area = areaExtractor.apply(item);
-            return area != null && allowedSet.contains(area.trim().toLowerCase(Locale.ROOT));
-        }).toList();
+        return items.stream()
+                .filter(item -> {
+                    if (item == null) {
+                        return false;
+                    }
+                    String area = areaExtractor.apply(item);
+                    return area != null
+                            && allowedSet.contains(area.trim().toLowerCase(Locale.ROOT));
+                })
+                .toList();
     }
 
-    public static <T> List<T> filterByAdminArea(Collection<T> items,
-        Function<T, String> areaExtractor) {
+    public static <T> List<T> filterByAdminArea(
+            Collection<T> items, Function<T, String> areaExtractor) {
         return filterByAdminArea(getAuthentication(), items, areaExtractor);
     }
 

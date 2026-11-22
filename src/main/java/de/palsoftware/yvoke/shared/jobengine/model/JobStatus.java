@@ -1,8 +1,11 @@
 package de.palsoftware.yvoke.shared.jobengine.model;
 
 public enum JobStatus {
-    QUEUED("queued"), RUNNING("running"), COMPLETED("completed"), FAILED("failed"), CANCELLED(
-        "cancelled");
+    QUEUED("queued"),
+    RUNNING("running"),
+    COMPLETED("completed"),
+    FAILED("failed"),
+    CANCELLED("cancelled");
 
     private final String dbValue;
 

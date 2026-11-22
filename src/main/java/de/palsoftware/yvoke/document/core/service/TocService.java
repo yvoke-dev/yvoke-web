@@ -32,8 +32,10 @@ public class TocService {
     private final DocumentRepository documentRepository;
     private final JdbcClient jdbcClient;
 
-    public TocService(ChunkRepository chunkRepository, DocumentRepository documentRepository,
-        JdbcClient jdbcClient) {
+    public TocService(
+            ChunkRepository chunkRepository,
+            DocumentRepository documentRepository,
+            JdbcClient jdbcClient) {
         this.chunkRepository = chunkRepository;
         this.documentRepository = documentRepository;
         this.jdbcClient = jdbcClient;
@@ -43,8 +45,8 @@ public class TocService {
         return getToc(manualSubstring, collection, null);
     }
 
-    public List<TocNode> getToc(String manualSubstring, String collection,
-        @Nullable List<String> tags) {
+    public List<TocNode> getToc(
+            String manualSubstring, String collection, @Nullable List<String> tags) {
         if (collection == null || collection.isBlank()) {
             throw new IllegalArgumentException("Collection name cannot be null or empty.");
         }
@@ -53,11 +55,19 @@ public class TocService {
         }
 
         // 1. Resolve document ID
-        DocumentRow doc = ((tags == null || tags.isEmpty())
-            ? documentRepository.findByManual(manualSubstring, collection)
-            : documentRepository.findByManual(manualSubstring, collection, tags))
-            .orElseThrow(() -> new NoSuchElementException("(no manual matching '" + manualSubstring
-                + "'" + " in collection " + collection + ")"));
+        DocumentRow doc =
+                ((tags == null || tags.isEmpty())
+                                ? documentRepository.findByManual(manualSubstring, collection)
+                                : documentRepository.findByManual(
+                                        manualSubstring, collection, tags))
+                        .orElseThrow(() ->
+                                new NoSuchElementException(
+                                        "(no manual matching '"
+                                                + manualSubstring
+                                                + "'"
+                                                + " in collection "
+                                                + collection
+                                                + ")"));
         return getTocForDocument(doc, null);
     }
 
@@ -69,8 +79,7 @@ public class TocService {
      * The table of contents for the two levels below {@code scope}, or for the top two levels of
      * the document when {@code scope} is null or empty.
      *
-     * <p>
-     * Without a scope the depth cap is absolute, so a section at depth 3 is simply invisible and
+     * <p>Without a scope the depth cap is absolute, so a section at depth 3 is simply invisible and
      * the only way to see inside a depth-2 section is to read the whole thing. Scoping moves the
      * two-level window down the tree instead, which is what lets an agent navigate to the passage
      * it wants rather than paying for the chapter that contains it.
@@ -79,8 +88,12 @@ public class TocService {
         if (docId == null) {
             throw new IllegalArgumentException("Document ID cannot be null.");
         }
-        DocumentRow doc = documentRepository.findById(docId).orElseThrow(
-            () -> new NoSuchElementException("(no document found for id '" + docId + "')"));
+        DocumentRow doc =
+                documentRepository
+                        .findById(docId)
+                        .orElseThrow(() ->
+                                new NoSuchElementException(
+                                        "(no document found for id '" + docId + "')"));
         return getTocForDocument(doc, scope);
     }
 
@@ -94,8 +107,10 @@ public class TocService {
         // levels, scoped it is the two levels below the given path. Segments are compared with
         // HierarchyUtils.normalizeSegment, the same comparator SectionService resolves a
         // heading_path with, so a path copied out of one tool resolves in the other.
-        List<String> scopeNormalized = (scope == null) ? List.of()
-            : scope.stream().map(HierarchyUtils::normalizeSegment).toList();
+        List<String> scopeNormalized =
+                (scope == null)
+                        ? List.of()
+                        : scope.stream().map(HierarchyUtils::normalizeSegment).toList();
         int base = scopeNormalized.size();
 
         // 3. Build TOC tree of nodes
@@ -130,7 +145,7 @@ public class TocService {
                 List<String> displayPath = new ArrayList<>(fullDisplay.subList(0, i));
 
                 TocNodeBuilder builder =
-                    nodes.computeIfAbsent(key, k -> new TocNodeBuilder(displayPath, so));
+                        nodes.computeIfAbsent(key, k -> new TocNodeBuilder(displayPath, so));
                 builder.minSortOrder = Math.min(builder.minSortOrder, so);
                 builder.subtreeChunkCount++;
                 builder.subtreeCharCount += chunk.textLength();
@@ -141,9 +156,12 @@ public class TocService {
             // Naming the scope matters: an agent that mistyped a heading_path must not be able to
             // read this as "the document is empty", and must never be handed the whole-document
             // TOC as a consolation, which would answer a question it did not ask.
-            throw new NoSuchElementException(base == 0 ? "(no sections found for this manual)"
-                : "(no sections found under '" + String.join(" > ", scope)
-                    + "' — check the path against the parent table of contents)");
+            throw new NoSuchElementException(
+                    base == 0
+                            ? "(no sections found for this manual)"
+                            : "(no sections found under '"
+                                    + String.join(" > ", scope)
+                                    + "' — check the path against the parent table of contents)");
         }
 
         // 4. Sort selected nodes by minSortOrder ascending
@@ -153,19 +171,24 @@ public class TocService {
         // 5.5 Fetch section summaries
         Map<List<String>, String> summaryByNormalizedPath = new HashMap<>();
         try {
-            jdbcClient.sql(
-                "SELECT heading_path, summary FROM section_summaries WHERE document_id = :docId")
-                .param("docId", docId).query((rs, rowNum) -> {
-                    Array arr = rs.getArray("heading_path");
-                    if (arr != null) {
-                        String[] pathArray = (String[]) arr.getArray();
-                        List<String> path = Arrays.asList(pathArray);
-                        List<String> normPath = path.stream().map(HierarchyUtils::normalizeSegment)
-                            .collect(Collectors.toList());
-                        summaryByNormalizedPath.put(normPath, rs.getString("summary"));
-                    }
-                    return null;
-                }).list();
+            jdbcClient
+                    .sql(
+                            "SELECT heading_path, summary FROM section_summaries WHERE document_id = :docId")
+                    .param("docId", docId)
+                    .query((rs, rowNum) -> {
+                        Array arr = rs.getArray("heading_path");
+                        if (arr != null) {
+                            String[] pathArray = (String[]) arr.getArray();
+                            List<String> path = Arrays.asList(pathArray);
+                            List<String> normPath =
+                                    path.stream()
+                                            .map(HierarchyUtils::normalizeSegment)
+                                            .collect(Collectors.toList());
+                            summaryByNormalizedPath.put(normPath, rs.getString("summary"));
+                        }
+                        return null;
+                    })
+                    .list();
         } catch (Exception e) {
             // Log fallback without failing the entire TOC retrieval
             log.warn("Failed to fetch section summaries for document {}", docId, e);
@@ -175,10 +198,17 @@ public class TocService {
         List<TocNode> result = new ArrayList<>();
         for (TocNodeBuilder nd : selected) {
             List<String> nodeNorm =
-                nd.path.stream().map(HierarchyUtils::normalizeSegment).collect(Collectors.toList());
+                    nd.path.stream()
+                            .map(HierarchyUtils::normalizeSegment)
+                            .collect(Collectors.toList());
             String summary = summaryByNormalizedPath.get(nodeNorm);
-            result.add(new TocNode(nd.path, nd.minSortOrder, nd.subtreeChunkCount,
-                nd.subtreeCharCount, summary));
+            result.add(
+                    new TocNode(
+                            nd.path,
+                            nd.minSortOrder,
+                            nd.subtreeChunkCount,
+                            nd.subtreeCharCount,
+                            summary));
         }
         return result;
     }

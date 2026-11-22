@@ -32,25 +32,30 @@ public class RagServiceTest {
         llmClient = mock(LlmClient.class);
         citationVerifier = mock(CitationVerifier.class);
 
-        ragService = new RagService(hybridSearch, llmClient, citationVerifier, new ObjectMapper(),
-            15, 4096, 0);
+        ragService =
+                new RagService(
+                        hybridSearch, llmClient, citationVerifier, new ObjectMapper(), 15, 4096, 0);
     }
 
     @Test
     public void testRagDisabledThrowsException() {
         ReflectionTestUtils.setField(ragService, "chatEnabled", false);
 
-        Assertions.assertThrows(IllegalStateException.class, () -> {
-            ragService.generateAgenticAnswer(
-                AgenticRequest.builder().query("query").modelOverride("model").build(), token -> {
+        Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> {
+                    ragService.generateAgenticAnswer(
+                            AgenticRequest.builder().query("query").modelOverride("model").build(),
+                            token -> {});
                 });
-        });
     }
 
     @Test
     void hasExactlyOneAutowiredConstructorAndAlwaysRegistersWebSearchInToolRegistry() {
-        List<Constructor<?>> autowired = Arrays.stream(RagService.class.getDeclaredConstructors())
-            .filter(c -> c.isAnnotationPresent(Autowired.class)).toList();
+        List<Constructor<?>> autowired =
+                Arrays.stream(RagService.class.getDeclaredConstructors())
+                        .filter(c -> c.isAnnotationPresent(Autowired.class))
+                        .toList();
 
         assertThat(autowired).hasSize(1);
         assertThat(ragService.getToolRegistry()).containsKey("WebSearch");
@@ -59,31 +64,60 @@ public class RagServiceTest {
     @Test
     void guardToolExecutionFailsClosedWhenContextOrRepositoriesMissingForAreaRestrictedCall() {
         LlmToolCall searchCall =
-            new LlmToolCall("call-1", "function", "search_corpus", "{\"collection\":\"OIM\"}");
-        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
-            searchCall, null))
-            .isEqualTo("Error: Tool execution requires an authorized area context.");
+                new LlmToolCall("call-1", "function", "search_corpus", "{\"collection\":\"OIM\"}");
+        assertThat(
+                        (String)
+                                ReflectionTestUtils.invokeMethod(
+                                        ragService, "guardToolExecution", searchCall, null))
+                .isEqualTo("Error: Tool execution requires an authorized area context.");
 
         AgenticChatContext restrictedCtx = new AgenticChatContext(Set.of("oim"));
-        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
-            searchCall, restrictedCtx))
-            .isEqualTo("Error: Tool execution blocked: area verification unavailable.");
+        assertThat(
+                        (String)
+                                ReflectionTestUtils.invokeMethod(
+                                        ragService,
+                                        "guardToolExecution",
+                                        searchCall,
+                                        restrictedCtx))
+                .isEqualTo("Error: Tool execution blocked: area verification unavailable.");
 
-        LlmToolCall tocCall = new LlmToolCall("call-2", "function", "get_toc",
-            "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
-        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
-            tocCall, restrictedCtx))
-            .isEqualTo("Error: Document with ID '11111111-1111-1111-1111-111111111111' not found.");
+        LlmToolCall tocCall =
+                new LlmToolCall(
+                        "call-2",
+                        "function",
+                        "get_toc",
+                        "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
+        assertThat(
+                        (String)
+                                ReflectionTestUtils.invokeMethod(
+                                        ragService, "guardToolExecution", tocCall, restrictedCtx))
+                .isEqualTo(
+                        "Error: Document with ID '11111111-1111-1111-1111-111111111111' not found.");
 
-        LlmToolCall sectionDocCall = new LlmToolCall("call-3", "function", "get_section",
-            "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
-        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
-            sectionDocCall, restrictedCtx))
-            .isEqualTo("Error: Document not found: 11111111-1111-1111-1111-111111111111");
+        LlmToolCall sectionDocCall =
+                new LlmToolCall(
+                        "call-3",
+                        "function",
+                        "get_section",
+                        "{\"document_id\":\"11111111-1111-1111-1111-111111111111\"}");
+        assertThat(
+                        (String)
+                                ReflectionTestUtils.invokeMethod(
+                                        ragService,
+                                        "guardToolExecution",
+                                        sectionDocCall,
+                                        restrictedCtx))
+                .isEqualTo("Error: Document not found: 11111111-1111-1111-1111-111111111111");
 
         LlmToolCall sectionChunkCall =
-            new LlmToolCall("call-4", "function", "get_section", "{\"chunk_id\":\"a1b2c3d4\"}");
-        assertThat((String) ReflectionTestUtils.invokeMethod(ragService, "guardToolExecution",
-            sectionChunkCall, restrictedCtx)).isEqualTo("Error: Chunk not found: a1b2c3d4");
+                new LlmToolCall("call-4", "function", "get_section", "{\"chunk_id\":\"a1b2c3d4\"}");
+        assertThat(
+                        (String)
+                                ReflectionTestUtils.invokeMethod(
+                                        ragService,
+                                        "guardToolExecution",
+                                        sectionChunkCall,
+                                        restrictedCtx))
+                .isEqualTo("Error: Chunk not found: a1b2c3d4");
     }
 }

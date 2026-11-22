@@ -50,8 +50,10 @@ public class SafeZipExtractor {
                 }
                 entryCount++;
                 if (entryCount > properties.maxEntries()) {
-                    throw new IOException("ZIP archive exceeds maximum allowed entry count ("
-                        + properties.maxEntries() + ")");
+                    throw new IOException(
+                            "ZIP archive exceeds maximum allowed entry count ("
+                                    + properties.maxEntries()
+                                    + ")");
                 }
 
                 if (entry.isDirectory()) {
@@ -61,27 +63,35 @@ public class SafeZipExtractor {
                     long compressedSize = entry.getCompressedSize();
                     long entryBytes = 0;
                     try (InputStream is = zip.getInputStream(entry);
-                        OutputStream os = Files.newOutputStream(entryPath)) {
+                            OutputStream os = Files.newOutputStream(entryPath)) {
                         int read;
                         while ((read = is.read(buffer)) != -1) {
                             entryBytes += read;
                             totalBytes += read;
                             if (entryBytes > properties.maxEntryBytes()) {
                                 throw new IOException(
-                                    "ZIP entry '" + name + "' exceeds maximum uncompressed size ("
-                                        + properties.maxEntryBytes() + " bytes)");
+                                        "ZIP entry '"
+                                                + name
+                                                + "' exceeds maximum uncompressed size ("
+                                                + properties.maxEntryBytes()
+                                                + " bytes)");
                             }
                             if (totalBytes > properties.maxTotalBytes()) {
                                 throw new IOException(
-                                    "ZIP archive exceeds maximum total uncompressed size ("
-                                        + properties.maxTotalBytes() + " bytes)");
+                                        "ZIP archive exceeds maximum total uncompressed size ("
+                                                + properties.maxTotalBytes()
+                                                + " bytes)");
                             }
-                            if (compressedSize > 0 && entryBytes >= RATIO_CHECK_MIN_BYTES
-                                && (entryBytes / compressedSize) > properties
-                                    .maxCompressionRatio()) {
+                            if (compressedSize > 0
+                                    && entryBytes >= RATIO_CHECK_MIN_BYTES
+                                    && (entryBytes / compressedSize)
+                                            > properties.maxCompressionRatio()) {
                                 throw new IOException(
-                                    "ZIP entry '" + name + "' exceeds maximum compression ratio ("
-                                        + properties.maxCompressionRatio() + ":1)");
+                                        "ZIP entry '"
+                                                + name
+                                                + "' exceeds maximum compression ratio ("
+                                                + properties.maxCompressionRatio()
+                                                + ":1)");
                             }
                             os.write(buffer, 0, read);
                         }

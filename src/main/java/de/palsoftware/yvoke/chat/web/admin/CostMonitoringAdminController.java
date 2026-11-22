@@ -28,17 +28,17 @@ public class CostMonitoringAdminController {
 
     @GetMapping
     public String getCostMonitoringPage(
-        @RequestParam(required = false, defaultValue = "this_month") String timePreset,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-        @RequestParam(required = false) List<String> selectedModels,
-        @RequestParam(required = false) List<UUID> selectedUserIds,
-        @RequestParam(required = false) List<String> selectedSources,
-        @RequestParam(required = false) List<String> selectedPlaybooks,
-        @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
-        Model model) {
+            @RequestParam(required = false, defaultValue = "this_month") String timePreset,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate endDate,
+            @RequestParam(required = false) List<String> selectedModels,
+            @RequestParam(required = false) List<UUID> selectedUserIds,
+            @RequestParam(required = false) List<String> selectedSources,
+            @RequestParam(required = false) List<String> selectedPlaybooks,
+            @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
+            Model model) {
         log.info("Accessing Cost Monitoring view");
         model.addAttribute("activeTab", "costs");
 
@@ -53,9 +53,16 @@ public class CostMonitoringAdminController {
             selectedPlaybooks = Collections.emptyList();
         }
 
-        model.addAttribute("explorerReport",
-            costCalculationService.getFilteredExplorerReport(viewLevel, startDate, endDate,
-                selectedModels, selectedUserIds, selectedSources, selectedPlaybooks));
+        model.addAttribute(
+                "explorerReport",
+                costCalculationService.getFilteredExplorerReport(
+                        viewLevel,
+                        startDate,
+                        endDate,
+                        selectedModels,
+                        selectedUserIds,
+                        selectedSources,
+                        selectedPlaybooks));
         model.addAttribute("availableModels", costCalculationService.getAvailableModels());
         model.addAttribute("availableUsers", costCalculationService.getAvailableUsers());
         model.addAttribute("availableSources", costCalculationService.getAvailableSources());
@@ -63,14 +70,18 @@ public class CostMonitoringAdminController {
         model.addAttribute("timePreset", timePreset);
         model.addAttribute("startDate", startDate);
         model.addAttribute("endDate", endDate);
-        model.addAttribute("selectedModels",
-            selectedModels != null ? selectedModels : Collections.emptyList());
-        model.addAttribute("selectedUserIds",
-            selectedUserIds != null ? selectedUserIds : Collections.emptyList());
-        model.addAttribute("selectedSources",
-            selectedSources != null ? selectedSources : Collections.emptyList());
-        model.addAttribute("selectedPlaybooks",
-            selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
+        model.addAttribute(
+                "selectedModels",
+                selectedModels != null ? selectedModels : Collections.emptyList());
+        model.addAttribute(
+                "selectedUserIds",
+                selectedUserIds != null ? selectedUserIds : Collections.emptyList());
+        model.addAttribute(
+                "selectedSources",
+                selectedSources != null ? selectedSources : Collections.emptyList());
+        model.addAttribute(
+                "selectedPlaybooks",
+                selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
         model.addAttribute("viewLevel", viewLevel);
         model.addAttribute("subTab", "explorer");
         return "chat/admin/cost-monitoring";
@@ -78,17 +89,18 @@ public class CostMonitoringAdminController {
 
     @GetMapping("/fragment/explorer")
     public String getExplorerFragment(
-        @RequestParam(required = false, defaultValue = "this_month") String timePreset,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-        @RequestParam(required = false) List<String> selectedModels,
-        @RequestParam(required = false) List<UUID> selectedUserIds,
-        @RequestParam(required = false) List<String> selectedSources,
-        @RequestParam(required = false) List<String> selectedPlaybooks,
-        @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
-        @RequestParam(required = false) String cursor, Model model) {
+            @RequestParam(required = false, defaultValue = "this_month") String timePreset,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate endDate,
+            @RequestParam(required = false) List<String> selectedModels,
+            @RequestParam(required = false) List<UUID> selectedUserIds,
+            @RequestParam(required = false) List<String> selectedSources,
+            @RequestParam(required = false) List<String> selectedPlaybooks,
+            @RequestParam(required = false, defaultValue = "CONVERSATION") String viewLevel,
+            @RequestParam(required = false) String cursor,
+            Model model) {
 
         LocalDate[] dates = resolveDatePreset(timePreset, startDate, endDate);
         startDate = dates[0];
@@ -101,9 +113,17 @@ public class CostMonitoringAdminController {
             selectedPlaybooks = Collections.emptyList();
         }
 
-        model.addAttribute("explorerReport",
-            costCalculationService.getFilteredExplorerReport(viewLevel, startDate, endDate,
-                selectedModels, selectedUserIds, selectedSources, selectedPlaybooks, cursor));
+        model.addAttribute(
+                "explorerReport",
+                costCalculationService.getFilteredExplorerReport(
+                        viewLevel,
+                        startDate,
+                        endDate,
+                        selectedModels,
+                        selectedUserIds,
+                        selectedSources,
+                        selectedPlaybooks,
+                        cursor));
         model.addAttribute("availableModels", costCalculationService.getAvailableModels());
         model.addAttribute("availableUsers", costCalculationService.getAvailableUsers());
         model.addAttribute("availableSources", costCalculationService.getAvailableSources());
@@ -111,28 +131,33 @@ public class CostMonitoringAdminController {
         model.addAttribute("timePreset", timePreset);
         model.addAttribute("startDate", startDate);
         model.addAttribute("endDate", endDate);
-        model.addAttribute("selectedModels",
-            selectedModels != null ? selectedModels : Collections.emptyList());
-        model.addAttribute("selectedUserIds",
-            selectedUserIds != null ? selectedUserIds : Collections.emptyList());
-        model.addAttribute("selectedSources",
-            selectedSources != null ? selectedSources : Collections.emptyList());
-        model.addAttribute("selectedPlaybooks",
-            selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
+        model.addAttribute(
+                "selectedModels",
+                selectedModels != null ? selectedModels : Collections.emptyList());
+        model.addAttribute(
+                "selectedUserIds",
+                selectedUserIds != null ? selectedUserIds : Collections.emptyList());
+        model.addAttribute(
+                "selectedSources",
+                selectedSources != null ? selectedSources : Collections.emptyList());
+        model.addAttribute(
+                "selectedPlaybooks",
+                selectedPlaybooks != null ? selectedPlaybooks : Collections.emptyList());
         model.addAttribute("viewLevel", viewLevel);
         model.addAttribute("subTab", "explorer");
         return "chat/admin/cost-monitoring :: cost-fragment";
     }
 
-    private LocalDate[] resolveDatePreset(String timePreset, LocalDate startDate,
-        LocalDate endDate) {
+    private LocalDate[] resolveDatePreset(
+            String timePreset, LocalDate startDate, LocalDate endDate) {
         if ("this_month".equalsIgnoreCase(timePreset)) {
             LocalDate now = LocalDate.now();
             return new LocalDate[] {now.withDayOfMonth(1), now.withDayOfMonth(now.lengthOfMonth())};
         } else if ("last_month".equalsIgnoreCase(timePreset)) {
             LocalDate lastMonth = LocalDate.now().minusMonths(1);
-            return new LocalDate[] {lastMonth.withDayOfMonth(1),
-                lastMonth.withDayOfMonth(lastMonth.lengthOfMonth())};
+            return new LocalDate[] {
+                lastMonth.withDayOfMonth(1), lastMonth.withDayOfMonth(lastMonth.lengthOfMonth())
+            };
         } else if ("all".equalsIgnoreCase(timePreset)) {
             return new LocalDate[] {null, null};
         }

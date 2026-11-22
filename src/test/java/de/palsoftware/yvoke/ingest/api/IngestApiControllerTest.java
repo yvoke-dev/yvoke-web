@@ -45,10 +45,10 @@ public class IngestApiControllerTest {
         UUID jobId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
         when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null, null))
-            .thenReturn(EnqueueResult.created(jobId));
+                .thenReturn(EnqueueResult.created(jobId));
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
+                controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
@@ -56,20 +56,20 @@ public class IngestApiControllerTest {
     }
 
     /**
-     * Duplicate work is a <strong>409</strong> carrying the in-flight job's id, exactly as
-     * {@code POST /api/jobs/v1} reports it. Returning 202 for an adopted job told the caller their
-     * request had been accepted when nothing was created — and the adopted job runs with the
-     * settings it was enqueued with, not the ones this call asked for.
+     * Duplicate work is a <strong>409</strong> carrying the in-flight job's id, exactly as {@code
+     * POST /api/jobs/v1} reports it. Returning 202 for an adopted job told the caller their request
+     * had been accepted when nothing was created — and the adopted job runs with the settings it
+     * was enqueued with, not the ones this call asked for.
      */
     @Test
     public void processDocumentKgReports409WhenItAdoptedAnInFlightJob() {
         UUID activeJobId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
         when(ingestService.processKg(docId, null, null, null, "OIM", "v1", null, null))
-            .thenReturn(EnqueueResult.adopted(activeJobId));
+                .thenReturn(EnqueueResult.adopted(activeJobId));
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
+                controller.processDocumentKg(docId, null, null, null, "OIM", "v1", null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).containsEntry("id", activeJobId);
@@ -79,12 +79,26 @@ public class IngestApiControllerTest {
     public void enqueueCustomDelegatesAndWraps202() {
         UUID jobId = UUID.randomUUID();
         MockMultipartFile file =
-            new MockMultipartFile("file", "c.zip", "application/zip", "z".getBytes());
-        when(ingestService.enqueueCustom(file, "OIM", "v1", "**/*.md", "graph/entities.jsonl",
-            "graph/relationships.jsonl", null)).thenReturn(jobId);
+                new MockMultipartFile("file", "c.zip", "application/zip", "z".getBytes());
+        when(ingestService.enqueueCustom(
+                        file,
+                        "OIM",
+                        "v1",
+                        "**/*.md",
+                        "graph/entities.jsonl",
+                        "graph/relationships.jsonl",
+                        null))
+                .thenReturn(jobId);
 
-        ResponseEntity<Map<String, UUID>> response = controller.enqueueCustom(file, "OIM", "v1",
-            "**/*.md", "graph/entities.jsonl", "graph/relationships.jsonl", null);
+        ResponseEntity<Map<String, UUID>> response =
+                controller.enqueueCustom(
+                        file,
+                        "OIM",
+                        "v1",
+                        "**/*.md",
+                        "graph/entities.jsonl",
+                        "graph/relationships.jsonl",
+                        null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
@@ -95,12 +109,12 @@ public class IngestApiControllerTest {
         authenticateWith("ROLE_USER");
         UUID jobId = UUID.randomUUID();
         MockMultipartFile file =
-            new MockMultipartFile("file", "d.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "d.md", "text/markdown", "d".getBytes());
         when(ingestService.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null, null))
-            .thenReturn(jobId);
+                .thenReturn(jobId);
 
         ResponseEntity<Map<String, UUID>> response =
-            controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null, null);
+                controller.uploadAndEnqueue(file, "OIM", "v1", "standard", null, null, null, null);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsEntry("id", jobId);
@@ -120,8 +134,11 @@ public class IngestApiControllerTest {
 
     private static void authenticateWith(String... roles) {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
-                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "principal",
+                                "n/a",
+                                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     private static MockMultipartFile tinyFile() {
@@ -133,11 +150,20 @@ public class IngestApiControllerTest {
         authenticateWith("ROLE_USER");
         MockMultipartFile file = tinyFile();
 
-        assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-import", null, null, null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() ->
+                        controller.uploadAndEnqueue(
+                                file,
+                                "anything",
+                                null,
+                                "confluence-import",
+                                null,
+                                null,
+                                null,
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
 
         verifyNoInteractions(ingestService);
     }
@@ -147,11 +173,20 @@ public class IngestApiControllerTest {
         authenticateWith("ROLE_INGEST");
         MockMultipartFile file = tinyFile();
 
-        assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-page-import:oim", null, null, null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() ->
+                        controller.uploadAndEnqueue(
+                                file,
+                                "anything",
+                                null,
+                                "confluence-page-import:oim",
+                                null,
+                                null,
+                                null,
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
 
         verifyNoInteractions(ingestService);
     }
@@ -161,11 +196,20 @@ public class IngestApiControllerTest {
         SecurityContextHolder.clearContext();
         MockMultipartFile file = tinyFile();
 
-        assertThatThrownBy(() -> controller.uploadAndEnqueue(file, "anything", null,
-            "confluence-import", null, null, null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() ->
+                        controller.uploadAndEnqueue(
+                                file,
+                                "anything",
+                                null,
+                                "confluence-import",
+                                null,
+                                null,
+                                null,
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
 
         verifyNoInteractions(ingestService);
     }

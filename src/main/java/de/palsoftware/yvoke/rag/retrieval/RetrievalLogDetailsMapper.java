@@ -30,8 +30,19 @@ public class RetrievalLogDetailsMapper implements RowMapper<RetrievalLogDetails>
 
         List<UUID> retrievedChunkIds = JdbcMappers.arrayToUuidList(rs, "retrieved_chunk_ids");
 
-        return new RetrievalLogDetails(id, messageId, collectionId, collectionName, tag, pools,
-            finalVal, rerank, createdAt, messageContent, feedbackRating, feedbackComment,
-            retrievedChunkIds);
+        return new RetrievalLogDetails(
+                id,
+                messageId,
+                collectionId,
+                collectionName,
+                tag,
+                pools,
+                finalVal,
+                rerank,
+                createdAt,
+                messageContent,
+                feedbackRating,
+                feedbackComment,
+                retrievedChunkIds);
     }
 }

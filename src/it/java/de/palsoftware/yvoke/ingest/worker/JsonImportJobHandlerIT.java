@@ -23,34 +23,36 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=true",
-    "app.worker.concurrency=1", "app.worker.poll-interval=200ms",
-    "app.upload-dir=${java.io.tmpdir}"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration",
+            "app.worker.enabled=true",
+            "app.worker.concurrency=1",
+            "app.worker.poll-interval=200ms",
+            "app.upload-dir=${java.io.tmpdir}"
+        })
 @DirtiesContext
 public class JsonImportJobHandlerIT {
 
     private static final String COLLECTION = "OIM-JSON-HANDLER-TEST";
     private static final String VERSION = "1.0";
 
-    private static final String JSON_ARRAY = """
-        [
-          {"name": "Alice", "role": "admin"},
-          {"name": "Bob", "role": "user"}
-        ]
-        """;
+    private static final String JSON_ARRAY =
+            """
+            [
+              {"name": "Alice", "role": "admin"},
+              {"name": "Bob", "role": "user"}
+            ]
+            """;
 
-    @Autowired
-    private JobService jobService;
+    @Autowired private JobService jobService;
 
-    @Autowired
-    private JobRepository jobRepository;
+    @Autowired private JobRepository jobRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     private Path jsonPath;
 
@@ -59,8 +61,11 @@ public class JsonImportJobHandlerIT {
         cleanup();
         UUID collId = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name, description, tags) VALUES (?, ?, ?, ?)", collId,
-            COLLECTION, "Test collection", new String[] {VERSION});
+                "INSERT INTO collections (id, name, description, tags) VALUES (?, ?, ?, ?)",
+                collId,
+                COLLECTION,
+                "Test collection",
+                new String[] {VERSION});
 
         jsonPath = tempDir.resolve("users.json");
         Files.writeString(jsonPath, JSON_ARRAY, StandardCharsets.UTF_8);
@@ -79,21 +84,32 @@ public class JsonImportJobHandlerIT {
 
     @Test
     public void jsonImportRunsToCompletion() {
-        UUID id = jobService.enqueue(new EnqueueRequest(IngestJobKind.JSON_IMPORT.getValue(),
-            jsonPath.toString(), VERSION, COLLECTION)).jobId();
+        UUID id =
+                jobService
+                        .enqueue(
+                                new EnqueueRequest(
+                                        IngestJobKind.JSON_IMPORT.getValue(),
+                                        jsonPath.toString(),
+                                        VERSION,
+                                        COLLECTION))
+                        .jobId();
 
-        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-            IngestionJob job = jobRepository.findById(id).orElseThrow();
-            if (job.status() == JobStatus.FAILED) {
-                System.err.println("!!! JOB FAILED WITH ERROR: " + job.error());
-            }
-            assertThat(job.status()).isEqualTo(JobStatus.COMPLETED);
-            assertThat(job.progress()).isEqualTo(100);
-        });
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> {
+                    IngestionJob job = jobRepository.findById(id).orElseThrow();
+                    if (job.status() == JobStatus.FAILED) {
+                        System.err.println("!!! JOB FAILED WITH ERROR: " + job.error());
+                    }
+                    assertThat(job.status()).isEqualTo(JobStatus.COMPLETED);
+                    assertThat(job.progress()).isEqualTo(100);
+                });
 
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM json_objects j JOIN collections c ON j.collection_id = c.id WHERE c.name = ?",
-            Integer.class, COLLECTION);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        "SELECT count(*) FROM json_objects j JOIN collections c ON j.collection_id = c.id WHERE c.name = ?",
+                        Integer.class,
+                        COLLECTION);
 
         assertThat(count).isEqualTo(2);
     }

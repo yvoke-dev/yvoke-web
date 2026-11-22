@@ -17,17 +17,26 @@ class SlugNamesTest {
 
     @ParameterizedTest
     @ValueSource(
-        strings = {"", "   ", "x\"><img src=x onerror=alert(1)>", "<script>alert(1)</script>",
-            "../escape", "bad/slash", "bad\\backslash", "semi;colon", "-leading-dash"})
+            strings = {
+                "",
+                "   ",
+                "x\"><img src=x onerror=alert(1)>",
+                "<script>alert(1)</script>",
+                "../escape",
+                "bad/slash",
+                "bad\\backslash",
+                "semi;colon",
+                "-leading-dash"
+            })
     void rejectsUnsafeOrEmptyNames(String bad) {
         assertThatThrownBy(() -> SlugNames.requireValidName(bad, "Prompt"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsOverlongName() {
         String tooLong = "a".repeat(129);
         assertThatThrownBy(() -> SlugNames.requireValidName(tooLong, "Playbook"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

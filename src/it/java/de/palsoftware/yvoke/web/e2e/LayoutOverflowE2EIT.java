@@ -16,78 +16,92 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Horizontal-overflow invariants for the admin console: wide content must scroll inside its own
  * container, never drag the whole page sideways.
  *
- * <p>
- * No screenshots. The app ships no {@code @font-face}, so macOS resolves San Francisco and CI
+ * <p>No screenshots. The app ships no {@code @font-face}, so macOS resolves San Francisco and CI
  * resolves DejaVu; text wraps differently and image dimensions differ, which makes pixel baselines
  * unfixable rather than merely noisy. Every assertion here is a <em>relation</em> between two
  * measured values, which is stable on both platforms.
  *
- * <p>
- * Two things make these tests non-vacuous, and both are load-bearing:
+ * <p>Two things make these tests non-vacuous, and both are load-bearing:
  *
  * <ul>
- * <li>A fresh Testcontainers database renders every admin page empty, and an empty table cannot
- * overflow. Deliberately wide content is seeded first — unbroken strings, which is the case CSS
- * cannot wrap its way out of.
- * <li>{@code body} declares {@code overflow-x: hidden} ({@code index.css:53}), which propagates to
- * the viewport and could mask overflow from a naive probe.
- * {@link #theOverflowProbeDetectsRealOverflow()} injects a deliberately oversized element and
- * asserts the probe fires, so the sweeps below cannot pass by being blind.
+ *   <li>A fresh Testcontainers database renders every admin page empty, and an empty table cannot
+ *       overflow. Deliberately wide content is seeded first — unbroken strings, which is the case
+ *       CSS cannot wrap its way out of.
+ *   <li>{@code body} declares {@code overflow-x: hidden} ({@code index.css:53}), which propagates
+ *       to the viewport and could mask overflow from a naive probe. {@link
+ *       #theOverflowProbeDetectsRealOverflow()} injects a deliberately oversized element and
+ *       asserts the probe fires, so the sweeps below cannot pass by being blind.
  * </ul>
  */
 class LayoutOverflowE2EIT extends AbstractE2E {
 
     private static final String COLLECTION = "E2E-LAYOUT-OVERFLOW";
+
     /** Unbroken, so no wrapping strategy can save the layout — the honest worst case. */
     private static final String WIDE_TITLE = "OIM".repeat(140);
 
-    private static final List<String> ADMIN_PAGES = List.of("/admin", "/admin/jobs", "/admin/audit",
-        "/admin/collections", "/admin/documents", "/admin/kg", "/admin/json-objects",
-        "/admin/ingest", "/admin/connectors", "/admin/search", "/admin/logs", "/admin/playbooks",
-        "/admin/prompts", "/admin/conversations", "/admin/feedback", "/admin/agent-runs",
-        "/admin/costs", "/admin/pricing", "/admin/orchestrators");
+    private static final List<String> ADMIN_PAGES =
+            List.of(
+                    "/admin",
+                    "/admin/jobs",
+                    "/admin/audit",
+                    "/admin/collections",
+                    "/admin/documents",
+                    "/admin/kg",
+                    "/admin/json-objects",
+                    "/admin/ingest",
+                    "/admin/connectors",
+                    "/admin/search",
+                    "/admin/logs",
+                    "/admin/playbooks",
+                    "/admin/prompts",
+                    "/admin/conversations",
+                    "/admin/feedback",
+                    "/admin/agent-runs",
+                    "/admin/costs",
+                    "/admin/pricing",
+                    "/admin/orchestrators");
 
     /**
-     * True when the page itself scrolls sideways. Uses {@code documentElement} rather than
-     * {@code window.innerWidth} so the measurement excludes the scrollbar, which is 0px wide on
-     * macOS overlay scrollbars and ~15px on CI.
+     * True when the page itself scrolls sideways. Uses {@code documentElement} rather than {@code
+     * window.innerWidth} so the measurement excludes the scrollbar, which is 0px wide on macOS
+     * overlay scrollbars and ~15px on CI.
      */
     private static final String PAGE_OVERFLOWS_JS =
-        "() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1";
+            "() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1";
 
     /**
      * Any element sticking out past the viewport that is not inside a legitimate scroll container.
      * This is the probe that survives {@code overflow-x: hidden} on an ancestor, because it reads
      * geometry per element instead of relying on the document reporting a scrollable width.
      */
-    private static final String ESCAPING_ELEMENTS_JS = """
-        () => {
-          const limit = document.documentElement.clientWidth + 1;
-          const inScroller = (el) => {
-            for (let p = el.parentElement; p; p = p.parentElement) {
-              const ox = getComputedStyle(p).overflowX;
-              if (ox === 'auto' || ox === 'scroll') return true;
+    private static final String ESCAPING_ELEMENTS_JS =
+            """
+            () => {
+              const limit = document.documentElement.clientWidth + 1;
+              const inScroller = (el) => {
+                for (let p = el.parentElement; p; p = p.parentElement) {
+                  const ox = getComputedStyle(p).overflowX;
+                  if (ox === 'auto' || ox === 'scroll') return true;
+                }
+                return false;
+              };
+              return Array.from(document.body.querySelectorAll('*'))
+                .filter(el => {
+                  const r = el.getBoundingClientRect();
+                  return r.width > 0 && r.right > limit && !inScroller(el);
+                })
+                .slice(0, 5)
+                .map(el => el.tagName.toLowerCase()
+                  + (el.id ? '#' + el.id : '')
+                  + (el.className && typeof el.className === 'string'
+                      ? '.' + el.className.trim().split(/\\s+/).join('.') : '')
+                  + ' right=' + Math.round(el.getBoundingClientRect().right));
             }
-            return false;
-          };
-          return Array.from(document.body.querySelectorAll('*'))
-            .filter(el => {
-              const r = el.getBoundingClientRect();
-              return r.width > 0 && r.right > limit && !inScroller(el);
-            })
-            .slice(0, 5)
-            .map(el => el.tagName.toLowerCase()
-              + (el.id ? '#' + el.id : '')
-              + (el.className && typeof el.className === 'string'
-                  ? '.' + el.className.trim().split(/\\s+/).join('.') : '')
-              + ' right=' + Math.round(el.getBoundingClientRect().right));
-        }
-        """;
+            """;
 
-    @Autowired
-    private DocumentRepository documentRepository;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private DocumentRepository documentRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private UUID collectionId;
 
@@ -95,14 +109,22 @@ class LayoutOverflowE2EIT extends AbstractE2E {
     void seedWideContent() {
         cleanup();
         collectionId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3'])",
-            collectionId, COLLECTION);
-        documentRepository.upsertManualDocument(COLLECTION, "9.3",
-            "e2e_layout_" + "very_long_source_file_name_".repeat(8) + ".md", "manual", WIDE_TITLE);
         jdbcTemplate.update(
-            "INSERT INTO ingestion_jobs (id, kind, source_ref, tags, collection_id, status, progress) "
-                + "VALUES (?, 'kg-extract', ?, ARRAY['9.3'], ?, 'succeeded', 100)",
-            UUID.randomUUID(), "confluence/" + "SPACEKEY".repeat(40), collectionId);
+                "INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3'])",
+                collectionId,
+                COLLECTION);
+        documentRepository.upsertManualDocument(
+                COLLECTION,
+                "9.3",
+                "e2e_layout_" + "very_long_source_file_name_".repeat(8) + ".md",
+                "manual",
+                WIDE_TITLE);
+        jdbcTemplate.update(
+                "INSERT INTO ingestion_jobs (id, kind, source_ref, tags, collection_id, status, progress) "
+                        + "VALUES (?, 'kg-extract', ?, ARRAY['9.3'], ?, 'succeeded', 100)",
+                UUID.randomUUID(),
+                "confluence/" + "SPACEKEY".repeat(40),
+                collectionId);
     }
 
     @AfterEach
@@ -115,8 +137,10 @@ class LayoutOverflowE2EIT extends AbstractE2E {
      * offset.
      */
     private void freezeAnimations() {
-        page.addStyleTag(new Page.AddStyleTagOptions().setContent(
-            "*,*::before,*::after{animation:none!important;transition:none!important}"));
+        page.addStyleTag(
+                new Page.AddStyleTagOptions()
+                        .setContent(
+                                "*,*::before,*::after{animation:none!important;transition:none!important}"));
     }
 
     private boolean pageOverflows() {
@@ -137,12 +161,14 @@ class LayoutOverflowE2EIT extends AbstractE2E {
 
         Assertions.assertThat(pageOverflows()).as("clean page should not overflow").isFalse();
 
-        page.evaluate("() => { const d = document.createElement('div'); d.id = 'overflow-control';"
-            + " d.style.width = '3000px'; d.style.height = '1px';"
-            + " document.body.appendChild(d); }");
-        Assertions.assertThat(pageOverflows()).as(
-            "a 3000px element must be detected, otherwise this probe cannot see overflow at all")
-            .isTrue();
+        page.evaluate(
+                "() => { const d = document.createElement('div'); d.id = 'overflow-control';"
+                        + " d.style.width = '3000px'; d.style.height = '1px';"
+                        + " document.body.appendChild(d); }");
+        Assertions.assertThat(pageOverflows())
+                .as(
+                        "a 3000px element must be detected, otherwise this probe cannot see overflow at all")
+                .isTrue();
 
         page.evaluate("() => document.getElementById('overflow-control').remove()");
         Assertions.assertThat(pageOverflows()).as("probe should recover after removal").isFalse();
@@ -165,29 +191,40 @@ class LayoutOverflowE2EIT extends AbstractE2E {
 
     private void sweep() {
         for (String path : ADMIN_PAGES) {
-            page.navigate(url(path + (path.equals("/admin/documents") || path.equals("/admin/jobs")
-                ? "?collection=" + COLLECTION
-                : "")));
+            page.navigate(
+                    url(
+                            path
+                                    + (path.equals("/admin/documents") || path.equals("/admin/jobs")
+                                            ? "?collection=" + COLLECTION
+                                            : "")));
             page.waitForLoadState(LoadState.NETWORKIDLE);
             freezeAnimations();
             Assertions.assertThat(pageOverflows())
-                .as("%s scrolls horizontally — wide content must scroll inside its container", path)
-                .isFalse();
+                    .as(
+                            "%s scrolls horizontally — wide content must scroll inside its container",
+                            path)
+                    .isFalse();
         }
     }
 
     /**
      * The structural rule behind the sweep above: wide content is allowed, but only inside
-     * something that scrolls. This is what stops the next admin page from omitting the
-     * {@code .table-container} wrapper and quietly breaking the whole layout.
+     * something that scrolls. This is what stops the next admin page from omitting the {@code
+     * .table-container} wrapper and quietly breaking the whole layout.
      */
     @Test
     void nothingEscapesTheViewportExceptInsideAScrollContainer() {
         loginAs("admin");
         page.setViewportSize(1280, 800);
 
-        for (String path : List.of("/admin/documents?collection=" + COLLECTION, "/admin/jobs",
-            "/admin/audit", "/admin/conversations", "/admin/feedback", "/admin/agent-runs")) {
+        for (String path :
+                List.of(
+                        "/admin/documents?collection=" + COLLECTION,
+                        "/admin/jobs",
+                        "/admin/audit",
+                        "/admin/conversations",
+                        "/admin/feedback",
+                        "/admin/agent-runs")) {
             page.navigate(url(path));
             page.waitForLoadState(LoadState.NETWORKIDLE);
             freezeAnimations();
@@ -195,8 +232,10 @@ class LayoutOverflowE2EIT extends AbstractE2E {
             @SuppressWarnings("unchecked")
             List<String> escaping = (List<String>) page.evaluate(ESCAPING_ELEMENTS_JS);
             Assertions.assertThat(escaping)
-                .as("%s has element(s) past the viewport edge outside any scroll container", path)
-                .isEmpty();
+                    .as(
+                            "%s has element(s) past the viewport edge outside any scroll container",
+                            path)
+                    .isEmpty();
         }
     }
 }

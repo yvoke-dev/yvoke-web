@@ -76,7 +76,7 @@ class RagAdminControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         hybridSearch = mock(HybridSearch.class);
         retrievalLogRepository = mock(RetrievalLogRepository.class);
@@ -89,10 +89,21 @@ class RagAdminControllerTest {
 
         telemetryService = mock(RetrievalTelemetryService.class);
 
-        controller = new RagAdminController(hybridSearch, retrievalLogRepository,
-            ragAdminViewService, collectionService, playbookService, systemPromptService,
-            ragService, objectMapper, telemetryService, 100, MAX_LIMIT,
-            TestAreas.withAreas("OIM", "Finance"), mock(AdminAuditLogger.class));
+        controller =
+                new RagAdminController(
+                        hybridSearch,
+                        retrievalLogRepository,
+                        ragAdminViewService,
+                        collectionService,
+                        playbookService,
+                        systemPromptService,
+                        ragService,
+                        objectMapper,
+                        telemetryService,
+                        100,
+                        MAX_LIMIT,
+                        TestAreas.withAreas("OIM", "Finance"),
+                        mock(AdminAuditLogger.class));
 
         model = mock(Model.class);
     }
@@ -104,10 +115,12 @@ class RagAdminControllerTest {
 
     @Test
     void testSearchDefaultsToFirstCollectionWhenNoneSpecified() {
-        Collection col1 = new Collection(UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"),
-            OffsetDateTime.now());
-        Collection col2 = new Collection(UUID.randomUUID(), "Col2", "Desc2", List.of("2.0"),
-            OffsetDateTime.now());
+        Collection col1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"), OffsetDateTime.now());
+        Collection col2 =
+                new Collection(
+                        UUID.randomUUID(), "Col2", "Desc2", List.of("2.0"), OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(col1, col2));
         when(collectionService.getCollection("Col1")).thenReturn(Optional.of(col1));
 
@@ -121,15 +134,16 @@ class RagAdminControllerTest {
 
     /**
      * The Top-K input's {@code max} is bound from {@code app.retrieval.max-limit} rather than
-     * hardcoded in the template. A form that accepts a Top-K above the ceiling
-     * {@link de.palsoftware.yvoke.rag.retrieval.HybridSearch} applies returns a clamped page with
-     * nothing on screen explaining the shortfall — and a second hardcoded ceiling in the template
-     * is one only a human keeps in sync with config.
+     * hardcoded in the template. A form that accepts a Top-K above the ceiling {@link
+     * de.palsoftware.yvoke.rag.retrieval.HybridSearch} applies returns a clamped page with nothing
+     * on screen explaining the shortfall — and a second hardcoded ceiling in the template is one
+     * only a human keeps in sync with config.
      */
     @Test
     void theSearchFormsTopKCeilingComesFromConfig() {
-        Collection col1 = new Collection(UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"),
-            OffsetDateTime.now());
+        Collection col1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"), OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(col1));
         when(collectionService.getCollection("Col1")).thenReturn(Optional.of(col1));
 
@@ -140,8 +154,9 @@ class RagAdminControllerTest {
 
     @Test
     void testSearchFallsBackToFirstCollectionWhenInvalidSpecified() {
-        Collection col1 = new Collection(UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"),
-            OffsetDateTime.now());
+        Collection col1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"), OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(col1));
         when(collectionService.getCollection("Col1")).thenReturn(Optional.of(col1));
 
@@ -152,8 +167,10 @@ class RagAdminControllerTest {
 
     @Test
     void testSearch_whenCollectionsEmpty_activeCollectionIsNullAndSearchNotExecuted() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         when(collectionService.listForAdminUser()).thenReturn(Collections.emptyList());
 
         String view = controller.testSearch("secret query", null, null, 8, true, true, model);
@@ -165,16 +182,25 @@ class RagAdminControllerTest {
 
     @Test
     void testSearch_crossAreaCollectionSpecified_throwsNotFound() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
-        Collection oimCol = new Collection(UUID.randomUUID(), "OimCol", "Desc", List.of(),
-            OffsetDateTime.now(), "OIM");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OimCol",
+                        "Desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.getCollection("OimCol")).thenReturn(Optional.of(oimCol));
 
         assertThatThrownBy(() -> controller.testSearch(null, "OimCol", null, 8, true, true, model))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex ->
+                        assertThat(((ResponseStatusException) ex).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -194,8 +220,7 @@ class RagAdminControllerTest {
      * waits for that write to land, and the read is by {@code searchId} — the row belonging to the
      * search THIS request just ran.
      *
-     * <p>
-     * Drop the barrier and the read usually loses the race and finds nothing, so the telemetry
+     * <p>Drop the barrier and the read usually loses the race and finds nothing, so the telemetry
      * panel renders empty beside a result list that is full — which an operator reads as "this
      * search produced no lane data" and goes hunting for a retrieval bug that does not exist. Read
      * "the newest row for this collection" instead and it is worse than empty: the panel shows the
@@ -204,21 +229,21 @@ class RagAdminControllerTest {
      * console exists to diagnose retrieval; a console that can attribute one search's telemetry to
      * another is actively misleading, and nothing on the page would ever say so.
      *
-     * <p>
-     * No existing controller test issues a query at all — they all pass {@code query == null} and
-     * return before the search block — so neither the barrier nor the id-scoped read is covered
+     * <p>No existing controller test issues a query at all — they all pass {@code query == null}
+     * and return before the search block — so neither the barrier nor the id-scoped read is covered
      * anywhere, and the ordering between them is covered nowhere at all.
      */
     @Test
     void theSearchConsoleFlushesThenReadsTheTelemetryRowOfTheSearchItJustRan() {
-        Collection col1 = new Collection(UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"),
-            OffsetDateTime.now());
+        Collection col1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "Desc1", List.of("1.0"), OffsetDateTime.now());
         when(collectionService.listCollections()).thenReturn(List.of(col1));
         when(collectionService.getCollection("Col1")).thenReturn(Optional.of(col1));
 
         UUID searchId = UUID.randomUUID();
         when(hybridSearch.searchWithId(eq("person"), any(SearchOptions.class)))
-            .thenReturn(new SearchWithId(Collections.emptyList(), searchId));
+                .thenReturn(new SearchWithId(Collections.emptyList(), searchId));
         when(retrievalLogRepository.findTelemetryById(searchId)).thenReturn(Optional.empty());
 
         controller.testSearch("person", "Col1", null, 8, true, true, model);
@@ -232,16 +257,25 @@ class RagAdminControllerTest {
     @Test
     void testExportPrompt() {
         when(systemPromptService.getPrompt("test-prompt"))
-            .thenReturn(Optional.of(new SystemPrompt("test-prompt", SystemPromptType.KG, "Hello",
-                "desc", Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "test-prompt",
+                                        SystemPromptType.KG,
+                                        "Hello",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
         when(systemPromptService.exportPromptToMarkdown("test-prompt"))
-            .thenReturn("---\nname: test-prompt\n---\nHello");
+                .thenReturn("---\nname: test-prompt\n---\nHello");
 
         var response = controller.exportPrompt("test-prompt");
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getHeaders().getFirst("Content-Disposition"))
-            .contains("filename=\"test-prompt.md\"");
+                .contains("filename=\"test-prompt.md\"");
     }
 
     /**
@@ -252,42 +286,77 @@ class RagAdminControllerTest {
     void thePostedAreaReachesTheSavedPlaybookAndPrompt() throws Exception {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
-            .param("templateText", "text").param("area", "PingID"))
-            .andExpect(status().is3xxRedirection());
-        verify(playbookService).savePlaybook(eq("pb"), eq("PB"), any(), eq("text"), any(),
-            anyBoolean(), any(), anyBoolean(), eq("PingID"), eq(1));
+        mvc.perform(
+                        post("/admin/playbooks")
+                                .param("name", "pb")
+                                .param("title", "PB")
+                                .param("templateText", "text")
+                                .param("area", "PingID"))
+                .andExpect(status().is3xxRedirection());
+        verify(playbookService)
+                .savePlaybook(
+                        eq("pb"),
+                        eq("PB"),
+                        any(),
+                        eq("text"),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        eq("PingID"),
+                        eq(1));
 
-        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "KG")
-            .param("systemPrompt", "text").param("area", "PingID"))
-            .andExpect(status().is3xxRedirection());
-        verify(systemPromptService).savePrompt(eq("p"), eq(SystemPromptType.KG), eq("text"), any(),
-            eq("PingID"));
+        mvc.perform(
+                        post("/admin/prompts")
+                                .param("name", "p")
+                                .param("type", "KG")
+                                .param("systemPrompt", "text")
+                                .param("area", "PingID"))
+                .andExpect(status().is3xxRedirection());
+        verify(systemPromptService)
+                .savePrompt(eq("p"), eq(SystemPromptType.KG), eq("text"), any(), eq("PingID"));
     }
 
     @Test
     void theImportFormsPassTheirAreaAsTheFallback() throws Exception {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
-        when(playbookService.importPlaybookFromMarkdown(any(), any(), any())).thenReturn(
-            new Playbook("pb", "PB", "", "text", List.of(), false, null, false, null, null));
+        when(playbookService.importPlaybookFromMarkdown(any(), any(), any()))
+                .thenReturn(
+                        new Playbook(
+                                "pb", "PB", "", "text", List.of(), false, null, false, null, null));
         when(systemPromptService.importPromptFromMarkdown(any(), any(), any()))
-            .thenReturn(new SystemPrompt("p", SystemPromptType.KG, "text", ""));
+                .thenReturn(new SystemPrompt("p", SystemPromptType.KG, "text", ""));
 
-        mvc.perform(multipart("/admin/playbooks/import")
-            .file(new MockMultipartFile("file", "pb.md", "text/markdown", "text".getBytes()))
-            .param("area", "PingID")).andExpect(status().is3xxRedirection());
+        mvc.perform(
+                        multipart("/admin/playbooks/import")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "pb.md",
+                                                "text/markdown",
+                                                "text".getBytes()))
+                                .param("area", "PingID"))
+                .andExpect(status().is3xxRedirection());
         verify(playbookService).importPlaybookFromMarkdown("text", "pb", "PingID");
 
-        String promptMd = """
-            ---
-            name: p
-            type: KG
-            ---
-            text
-            """;
-        mvc.perform(multipart("/admin/prompts/import").file(new MockMultipartFile("file", "p.md",
-            "text/markdown", promptMd.getBytes(StandardCharsets.UTF_8))).param("area", "PingID"))
-            .andExpect(status().is3xxRedirection());
+        String promptMd =
+                """
+                ---
+                name: p
+                type: KG
+                ---
+                text
+                """;
+        mvc.perform(
+                        multipart("/admin/prompts/import")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "p.md",
+                                                "text/markdown",
+                                                promptMd.getBytes(StandardCharsets.UTF_8)))
+                                .param("area", "PingID"))
+                .andExpect(status().is3xxRedirection());
         verify(systemPromptService).importPromptFromMarkdown(promptMd, "p", "PingID");
     }
 
@@ -295,45 +364,101 @@ class RagAdminControllerTest {
     void testExportPrompt_escapesFilenameAgainstHeaderInjection() {
         String unsafeName = "malicious\"; dummy=\"";
         when(systemPromptService.getPrompt(unsafeName))
-            .thenReturn(Optional.of(new SystemPrompt(unsafeName, SystemPromptType.KG, "Hello",
-                "desc", Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        unsafeName,
+                                        SystemPromptType.KG,
+                                        "Hello",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
         when(systemPromptService.exportPromptToMarkdown(unsafeName))
-            .thenReturn("---\nname: malicious\n---\nHello");
+                .thenReturn("---\nname: malicious\n---\nHello");
 
         var response = controller.exportPrompt(unsafeName);
 
         String disposition = response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
         assertThat(disposition).doesNotContain("filename=\"malicious\"; dummy=\"");
-        assertThat(disposition).isEqualTo(ContentDisposition.attachment()
-            .filename(unsafeName + ".md", StandardCharsets.UTF_8).build().toString());
+        assertThat(disposition)
+                .isEqualTo(
+                        ContentDisposition.attachment()
+                                .filename(unsafeName + ".md", StandardCharsets.UTF_8)
+                                .build()
+                                .toString());
     }
 
     @Test
     void testExportPlaybook_escapesFilenameAgainstHeaderInjection() {
         String unsafeName = "malicious\"; dummy=\"";
         when(playbookService.getPlaybook(unsafeName))
-            .thenReturn(Optional.of(new Playbook(unsafeName, "title", "desc", "text", List.of(),
-                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        unsafeName,
+                                        "title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
         when(playbookService.exportPlaybookToMarkdown(unsafeName))
-            .thenReturn("---\nname: malicious\n---\nHello");
+                .thenReturn("---\nname: malicious\n---\nHello");
 
         var response = controller.exportPlaybook(unsafeName);
 
         String disposition = response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
         assertThat(disposition).doesNotContain("filename=\"malicious\"; dummy=\"");
-        assertThat(disposition).isEqualTo(ContentDisposition.attachment()
-            .filename(unsafeName + ".md", StandardCharsets.UTF_8).build().toString());
+        assertThat(disposition)
+                .isEqualTo(
+                        ContentDisposition.attachment()
+                                .filename(unsafeName + ".md", StandardCharsets.UTF_8)
+                                .build()
+                                .toString());
     }
 
     @Test
     void viewPlaybooks_filtersPlaybooksAndAreasToAdministeredArea() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        Playbook finPb = new Playbook("fin-pb", "Finance PB", "desc", "template", List.of(), false,
-            "specialist", false, Instant.now(), Instant.now(), false, "Finance");
-        Playbook oimPb = new Playbook("oim-pb", "OIM PB", "desc", "template", List.of(), false,
-            "specialist", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook finPb =
+                new Playbook(
+                        "fin-pb",
+                        "Finance PB",
+                        "desc",
+                        "template",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "Finance");
+        Playbook oimPb =
+                new Playbook(
+                        "oim-pb",
+                        "OIM PB",
+                        "desc",
+                        "template",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(playbookService.listAllPlaybooks()).thenReturn(List.of(finPb, oimPb));
 
         String view = controller.viewPlaybooks(model);
@@ -345,113 +470,224 @@ class RagAdminControllerTest {
 
     @Test
     void createPlaybook_unauthorizedArea_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
-            .param("templateText", "text").param("area", "OIM")).andExpect(status().isForbidden());
+        mvc.perform(
+                        post("/admin/playbooks")
+                                .param("name", "pb")
+                                .param("title", "PB")
+                                .param("templateText", "text")
+                                .param("area", "OIM"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void createPlaybook_crossAreaNameHijack_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(playbookService.getPlaybook("existing-oim-pb")).thenReturn(
-            Optional.of(new Playbook("existing-oim-pb", "Title", "desc", "text", List.of(), false,
-                "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+        when(playbookService.getPlaybook("existing-oim-pb"))
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "existing-oim-pb",
+                                        "Title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
-        mvc.perform(post("/admin/playbooks").param("name", "existing-oim-pb").param("title", "PB")
-            .param("templateText", "text").param("area", "Finance"))
-            .andExpect(status().isForbidden());
+        mvc.perform(
+                        post("/admin/playbooks")
+                                .param("name", "existing-oim-pb")
+                                .param("title", "PB")
+                                .param("templateText", "text")
+                                .param("area", "Finance"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void createPlaybook_changeArea_redirectsWithError() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(playbookService.getPlaybook("pb"))
-            .thenReturn(Optional.of(new Playbook("pb", "Title", "desc", "text", List.of(), false,
-                "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "pb",
+                                        "Title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
-        mvc.perform(post("/admin/playbooks").param("name", "pb").param("title", "PB")
-            .param("templateText", "text").param("area", "Finance"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/playbooks"));
+        mvc.perform(
+                        post("/admin/playbooks")
+                                .param("name", "pb")
+                                .param("title", "PB")
+                                .param("templateText", "text")
+                                .param("area", "Finance"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/playbooks"));
     }
 
     @Test
     void exportPlaybook_unauthorizedArea_notFound() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(playbookService.getPlaybook("oim-pb"))
-            .thenReturn(Optional.of(new Playbook("oim-pb", "Title", "desc", "text", List.of(),
-                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "oim-pb",
+                                        "Title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         mvc.perform(get("/admin/playbooks/export").param("name", "oim-pb"))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void deletePlaybook_unauthorizedArea_notFound() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(playbookService.getPlaybook("oim-pb"))
-            .thenReturn(Optional.of(new Playbook("oim-pb", "Title", "desc", "text", List.of(),
-                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "oim-pb",
+                                        "Title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         mvc.perform(post("/admin/playbooks/delete").param("name", "oim-pb"))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void importPlaybook_unauthorizedArea_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         String md = "---\nname: imported-pb\narea: OIM\n---\nBody";
-        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
-            md.getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file", "test.md", "text/markdown", md.getBytes(StandardCharsets.UTF_8));
 
         mvc.perform(multipart("/admin/playbooks/import").file(file).param("area", "Finance"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void importPlaybook_crossAreaNameHijack_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(playbookService.getPlaybook("existing-oim-pb")).thenReturn(
-            Optional.of(new Playbook("existing-oim-pb", "Title", "desc", "text", List.of(), false,
-                "specialist", false, Instant.now(), Instant.now(), false, "OIM")));
+        when(playbookService.getPlaybook("existing-oim-pb"))
+                .thenReturn(
+                        Optional.of(
+                                new Playbook(
+                                        "existing-oim-pb",
+                                        "Title",
+                                        "desc",
+                                        "text",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         String md = "---\nname: existing-oim-pb\narea: Finance\n---\nBody";
-        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
-            md.getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file", "test.md", "text/markdown", md.getBytes(StandardCharsets.UTF_8));
 
         mvc.perform(multipart("/admin/playbooks/import").file(file).param("area", "Finance"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void viewPrompts_filtersPromptsToAdministeredArea() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        SystemPrompt finPrompt = new SystemPrompt("fin-prompt", SystemPromptType.KG, "body", "desc",
-            Instant.now(), Instant.now(), false, "Finance");
-        SystemPrompt oimPrompt = new SystemPrompt("oim-prompt", SystemPromptType.KG, "body", "desc",
-            Instant.now(), Instant.now(), false, "OIM");
+        SystemPrompt finPrompt =
+                new SystemPrompt(
+                        "fin-prompt",
+                        SystemPromptType.KG,
+                        "body",
+                        "desc",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "Finance");
+        SystemPrompt oimPrompt =
+                new SystemPrompt(
+                        "oim-prompt",
+                        SystemPromptType.KG,
+                        "body",
+                        "desc",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(systemPromptService.listAllPrompts()).thenReturn(List.of(finPrompt, oimPrompt));
 
         String view = controller.viewPrompts(model);
@@ -463,127 +699,231 @@ class RagAdminControllerTest {
 
     @Test
     void getKgPromptOptions_filtersToAdministeredAreaAndReturnsJsonData() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
 
-        SystemPrompt finKg = new SystemPrompt("fin-kg", SystemPromptType.KG, "body",
-            "Fin <script>KG</script>", Instant.now(), Instant.now(), false, "Finance");
-        SystemPrompt oimKg = new SystemPrompt("oim-kg", SystemPromptType.KG, "body", "OIM KG",
-            Instant.now(), Instant.now(), false, "OIM");
+        SystemPrompt finKg =
+                new SystemPrompt(
+                        "fin-kg",
+                        SystemPromptType.KG,
+                        "body",
+                        "Fin <script>KG</script>",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "Finance");
+        SystemPrompt oimKg =
+                new SystemPrompt(
+                        "oim-kg",
+                        SystemPromptType.KG,
+                        "body",
+                        "OIM KG",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(systemPromptService.listPromptsByType(SystemPromptType.KG))
-            .thenReturn(List.of(finKg, oimKg));
+                .thenReturn(List.of(finKg, oimKg));
 
         List<RagAdminController.KgPromptOption> options = controller.getKgPromptOptions();
 
-        assertThat(options).containsExactly(
-            new RagAdminController.KgPromptOption("fin-kg", "Fin <script>KG</script>"));
+        assertThat(options)
+                .containsExactly(
+                        new RagAdminController.KgPromptOption("fin-kg", "Fin <script>KG</script>"));
     }
 
     @Test
     void createPrompt_unauthorizedArea_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        mvc.perform(post("/admin/prompts").param("name", "new-p").param("type", "KG")
-            .param("systemPrompt", "text").param("area", "OIM")).andExpect(status().isForbidden());
+        mvc.perform(
+                        post("/admin/prompts")
+                                .param("name", "new-p")
+                                .param("type", "KG")
+                                .param("systemPrompt", "text")
+                                .param("area", "OIM"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void createPrompt_crossAreaKeyHijack_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("existing-oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.KG, "text",
-                "desc", Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "existing-oim-p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
-        mvc.perform(post("/admin/prompts").param("name", "existing-oim-p").param("type", "KG")
-            .param("systemPrompt", "text").param("area", "Finance"))
-            .andExpect(status().isForbidden());
+        mvc.perform(
+                        post("/admin/prompts")
+                                .param("name", "existing-oim-p")
+                                .param("type", "KG")
+                                .param("systemPrompt", "text")
+                                .param("area", "Finance"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void createPrompt_changeArea_redirectsWithError() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(systemPromptService.getPrompt("p")).thenReturn(Optional.of(new SystemPrompt("p",
-            SystemPromptType.KG, "text", "desc", Instant.now(), Instant.now(), false, "OIM")));
+        when(systemPromptService.getPrompt("p"))
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
-        mvc.perform(post("/admin/prompts").param("name", "p").param("type", "KG")
-            .param("systemPrompt", "text").param("area", "Finance"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/prompts"));
+        mvc.perform(
+                        post("/admin/prompts")
+                                .param("name", "p")
+                                .param("type", "KG")
+                                .param("systemPrompt", "text")
+                                .param("area", "Finance"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/prompts"));
     }
 
     @Test
     void exportPrompt_unauthorizedArea_notFound() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.KG, "text", "desc",
-                Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "oim-p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         mvc.perform(get("/admin/prompts/export").param("name", "oim-p"))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void deletePrompt_unauthorizedArea_notFound() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("oim-p", SystemPromptType.KG, "text", "desc",
-                Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "oim-p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         mvc.perform(post("/admin/prompts/delete").param("name", "oim-p"))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void importPrompt_unauthorizedArea_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         String md = "---\nname: imported-p\ntype: KG\narea: OIM\n---\nBody";
-        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
-            md.getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file", "test.md", "text/markdown", md.getBytes(StandardCharsets.UTF_8));
 
         mvc.perform(multipart("/admin/prompts/import").file(file).param("area", "Finance"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void importPrompt_crossAreaKeyHijack_forbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         when(systemPromptService.getPrompt("existing-oim-p"))
-            .thenReturn(Optional.of(new SystemPrompt("existing-oim-p", SystemPromptType.KG, "text",
-                "desc", Instant.now(), Instant.now(), false, "OIM")));
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "existing-oim-p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "desc",
+                                        Instant.now(),
+                                        Instant.now(),
+                                        false,
+                                        "OIM")));
 
         String md = "---\nname: existing-oim-p\ntype: KG\narea: Finance\n---\nBody";
-        MockMultipartFile file = new MockMultipartFile("file", "test.md", "text/markdown",
-            md.getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file", "test.md", "text/markdown", md.getBytes(StandardCharsets.UTF_8));
 
         mvc.perform(multipart("/admin/prompts/import").file(file).param("area", "Finance"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void constructorRejectsNullAuditLogger() {
-        assertThatThrownBy(
-            () -> new RagAdminController(hybridSearch, retrievalLogRepository, ragAdminViewService,
-                collectionService, playbookService, systemPromptService, ragService, objectMapper,
-                telemetryService, 100, MAX_LIMIT, TestAreas.withAreas("OIM", "Finance"), null))
-            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() ->
+                        new RagAdminController(
+                                hybridSearch,
+                                retrievalLogRepository,
+                                ragAdminViewService,
+                                collectionService,
+                                playbookService,
+                                systemPromptService,
+                                ragService,
+                                objectMapper,
+                                telemetryService,
+                                100,
+                                MAX_LIMIT,
+                                TestAreas.withAreas("OIM", "Finance"),
+                                null))
+                .isInstanceOf(NullPointerException.class);
     }
 }

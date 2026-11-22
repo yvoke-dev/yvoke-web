@@ -24,24 +24,32 @@ public class RetrievalTelemetryService {
     // FIFO keeps inserts and subsequent message-id links ordered so updateMessageId always runs
     // after saveTelemetry has inserted the row; a bounded queue prevents unbounded heap growth if
     // Postgres stalls.
-    private final ExecutorService telemetryExecutor = new ThreadPoolExecutor(1, 1, 0L,
-        TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(MAX_QUEUE_CAPACITY),
-        Thread.ofVirtual().name("retrieval-telemetry").factory(), (task, executor) -> {
-            if (!executor.isShutdown()) {
-                log.warn(
-                    "Retrieval telemetry queue full ({} entries); dropping oldest telemetry event",
-                    MAX_QUEUE_CAPACITY);
-                executor.getQueue().poll();
-                executor.execute(task);
-            }
-        });
+    private final ExecutorService telemetryExecutor =
+            new ThreadPoolExecutor(
+                    1,
+                    1,
+                    0L,
+                    TimeUnit.MILLISECONDS,
+                    new ArrayBlockingQueue<>(MAX_QUEUE_CAPACITY),
+                    Thread.ofVirtual().name("retrieval-telemetry").factory(),
+                    (task, executor) -> {
+                        if (!executor.isShutdown()) {
+                            log.warn(
+                                    "Retrieval telemetry queue full ({} entries); dropping oldest telemetry event",
+                                    MAX_QUEUE_CAPACITY);
+                            executor.getQueue().poll();
+                            executor.execute(task);
+                        }
+                    });
 
     private final RetrievalLogRepository retrievalLogRepository;
     private final CollectionRepository collectionRepository;
     private final ObjectMapper objectMapper;
 
-    public RetrievalTelemetryService(RetrievalLogRepository retrievalLogRepository,
-        CollectionRepository collectionRepository, ObjectMapper objectMapper) {
+    public RetrievalTelemetryService(
+            RetrievalLogRepository retrievalLogRepository,
+            CollectionRepository collectionRepository,
+            ObjectMapper objectMapper) {
         this.retrievalLogRepository = retrievalLogRepository;
         this.collectionRepository = collectionRepository;
         this.objectMapper = objectMapper;
@@ -77,23 +85,29 @@ public class RetrievalTelemetryService {
      * Blocks until all telemetry submitted so far has been persisted. The executor is
      * single-threaded FIFO, so awaiting a no-op task implies every earlier write completed.
      *
-     * <p>
-     * Used by tests that assert on retrieval_logs right after a search, and by the admin search
+     * <p>Used by tests that assert on retrieval_logs right after a search, and by the admin search
      * console, which reads the row back by {@code searchId} to render its telemetry panel — without
      * the barrier that read usually loses the race and finds nothing.
      */
     public void flush() {
         try {
-            telemetryExecutor.submit(() -> {
-            }).get();
+            telemetryExecutor.submit(() -> {}).get();
         } catch (Exception e) {
             throw new IllegalStateException("Interrupted while flushing retrieval telemetry", e);
         }
     }
 
-    public void logAndPersistTelemetry(UUID searchId, String query, SearchOptions opts,
-        Integer semPool, Integer ftPool, List<HybridSearchResult> finalResults, boolean hybrid,
-        List<UUID> initialChunkIds, List<UUID> fusedChunkIds, List<UUID> rerankedChunkIds) {
+    public void logAndPersistTelemetry(
+            UUID searchId,
+            String query,
+            SearchOptions opts,
+            Integer semPool,
+            Integer ftPool,
+            List<HybridSearchResult> finalResults,
+            boolean hybrid,
+            List<UUID> initialChunkIds,
+            List<UUID> fusedChunkIds,
+            List<UUID> rerankedChunkIds) {
 
         int n = finalResults.size();
         int both = 0;
@@ -191,16 +205,29 @@ public class RetrievalTelemetryService {
                 // telemetry row instead — losing a log line is strictly better than corrupting the
                 // corpus, and the cause belongs upstream where the bad name came from.
                 UUID collectionId =
-                    collectionRepository.findByName(finalColName).map(Collection::id).orElse(null);
+                        collectionRepository
+                                .findByName(finalColName)
+                                .map(Collection::id)
+                                .orElse(null);
                 if (collectionId == null) {
-                    log.warn("Skipping retrieval telemetry: collection '{}' does not exist",
-                        finalColName);
+                    log.warn(
+                            "Skipping retrieval telemetry: collection '{}' does not exist",
+                            finalColName);
                     return;
                 }
 
-                retrievalLogRepository.saveTelemetry(searchId, query, collectionId, opts.tag(),
-                    poolsJson, finalJson, rerankJson, retrievedChunkIds, initialChunkIds,
-                    fusedChunkIds, rerankedChunkIds);
+                retrievalLogRepository.saveTelemetry(
+                        searchId,
+                        query,
+                        collectionId,
+                        opts.tag(),
+                        poolsJson,
+                        finalJson,
+                        rerankJson,
+                        retrievedChunkIds,
+                        initialChunkIds,
+                        fusedChunkIds,
+                        rerankedChunkIds);
             } catch (Exception e) {
                 log.warn("Failed to write retrieval telemetry logs", e);
             }

@@ -22,8 +22,9 @@ public class CitationVerifier {
     // "decade", "deadbeef" and any 6-digit number are all valid hex — which classified them as
     // chunk ids and let isFabricated() delete them from the stream. Mirrors thread.js:930 on the
     // client.
-    private static final Pattern UUID_PATTERN = Pattern
-        .compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile(
+                    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     private static final Pattern UUID_NO_HYPHENS_PATTERN = Pattern.compile("^[0-9a-fA-F]{32}$");
     // A shortened id, i.e. what ChunkRepository/DocumentRepository.findByIdPrefix resolve (>= 8 hex
     // chars) and what citation-render.js links. Only reachable behind an explicit chunk_id= /
@@ -36,7 +37,7 @@ public class CitationVerifier {
         }
         String clean = value.trim();
         return UUID_PATTERN.matcher(clean).matches()
-            || UUID_NO_HYPHENS_PATTERN.matcher(clean).matches();
+                || UUID_NO_HYPHENS_PATTERN.matcher(clean).matches();
     }
 
     /**
@@ -59,8 +60,15 @@ public class CitationVerifier {
         String clean = value.trim().toLowerCase();
         if (UUID_NO_HYPHENS_PATTERN.matcher(clean).matches()) {
             clean =
-                clean.substring(0, 8) + "-" + clean.substring(8, 12) + "-" + clean.substring(12, 16)
-                    + "-" + clean.substring(16, 20) + "-" + clean.substring(20);
+                    clean.substring(0, 8)
+                            + "-"
+                            + clean.substring(8, 12)
+                            + "-"
+                            + clean.substring(12, 16)
+                            + "-"
+                            + clean.substring(16, 20)
+                            + "-"
+                            + clean.substring(20);
         }
         return UUID.fromString(clean);
     }
@@ -71,6 +79,7 @@ public class CitationVerifier {
      * table it refers to. Resolved against both.
      */
     private static final String KIND_BARE_ID = "id";
+
     private static final String KIND_GROUP = "group";
 
     private record ResolvedIds(Set<UUID> existingChunks, Set<UUID> existingDocuments) {
@@ -90,8 +99,8 @@ public class CitationVerifier {
         return resolveIds(parsed, null);
     }
 
-    private ResolvedIds resolveIds(List<ParsedCitation> parsed,
-        @Nullable Set<String> allowedAreasLower) {
+    private ResolvedIds resolveIds(
+            List<ParsedCitation> parsed, @Nullable Set<String> allowedAreasLower) {
         Set<UUID> chunkIds = new HashSet<>();
         Set<UUID> documentIds = new HashSet<>();
         for (ParsedCitation p : parsed) {
@@ -105,11 +114,13 @@ public class CitationVerifier {
         }
         boolean unrestricted = allowedAreasLower == null || allowedAreasLower.contains("*");
         Set<UUID> existingChunks =
-            !unrestricted ? chunkRepository.findExistingIds(chunkIds, allowedAreasLower)
-                : chunkRepository.findExistingIds(chunkIds);
+                !unrestricted
+                        ? chunkRepository.findExistingIds(chunkIds, allowedAreasLower)
+                        : chunkRepository.findExistingIds(chunkIds);
         Set<UUID> existingDocs =
-            !unrestricted ? documentRepository.findExistingIds(documentIds, allowedAreasLower)
-                : documentRepository.findExistingIds(documentIds);
+                !unrestricted
+                        ? documentRepository.findExistingIds(documentIds, allowedAreasLower)
+                        : documentRepository.findExistingIds(documentIds);
         return new ResolvedIds(existingChunks, existingDocs);
     }
 
@@ -126,14 +137,16 @@ public class CitationVerifier {
     }
 
     public enum CitationStatus {
-        REAL, REAL_AMBIG,
+        REAL,
+        REAL_AMBIG,
         /**
          * The citation could not be checked in the form given — it is neither confirmed nor
          * refuted. Reserved for a truncated id: the UI resolves those by prefix, the existence
          * query needs the full id, and reporting them FABRICATED told the reviewer to strip
          * citations that are almost certainly real.
          */
-        UNVERIFIED, FABRICATED
+        UNVERIFIED,
+        FABRICATED
     }
 
     public static class ParsedCitation {
@@ -163,8 +176,8 @@ public class CitationVerifier {
         // Default constructor for Jackson deserialization
         public CitationCheckResult() {}
 
-        public CitationCheckResult(String citation, String kind, CitationStatus status,
-            String detail) {
+        public CitationCheckResult(
+                String citation, String kind, CitationStatus status, String detail) {
             this.citation = citation;
             this.kind = kind;
             this.status = status;
@@ -204,8 +217,8 @@ public class CitationVerifier {
         }
     }
 
-    public CitationVerifier(ChunkRepository chunkRepository,
-        DocumentRepository documentRepository) {
+    public CitationVerifier(
+            ChunkRepository chunkRepository, DocumentRepository documentRepository) {
         this.chunkRepository = chunkRepository;
         this.documentRepository = documentRepository;
     }
@@ -213,10 +226,9 @@ public class CitationVerifier {
     /**
      * The corpus ids a piece of text cites, held as dash-free lower-case prefixes.
      *
-     * <p>
-     * Deliberately not a {@code Set<UUID>}. A set of uuids invites {@code contains}, and equality
-     * is the wrong comparison here: a draft may cite {@code [chunk_id=8f7c1a2b]}, which every other
-     * part of this system resolves — {@code findByIdPrefix} needs only 8 hex chars,
+     * <p>Deliberately not a {@code Set<UUID>}. A set of uuids invites {@code contains}, and
+     * equality is the wrong comparison here: a draft may cite {@code [chunk_id=8f7c1a2b]}, which
+     * every other part of this system resolves — {@code findByIdPrefix} needs only 8 hex chars,
      * {@code citation-render.js} links exactly that form, and this class already refuses to call it
      * fabricated. {@link #covers} is the only way to ask the question, so the mistake cannot be
      * expressed.
@@ -301,7 +313,7 @@ public class CitationVerifier {
                 items.add(parseSingleCitation(trimmed, trimmed));
             }
             boolean allNumref =
-                !items.isEmpty() && items.stream().allMatch(i -> "numref".equals(i.kind));
+                    !items.isEmpty() && items.stream().allMatch(i -> "numref".equals(i.kind));
             if (allNumref) {
                 return new ParsedCitation(raw, "numref", s, items);
             }
@@ -349,14 +361,14 @@ public class CitationVerifier {
         return checkCitations(citations, null);
     }
 
-    public List<CitationCheckResult> checkCitations(List<String> citations,
-        @Nullable Set<String> allowedAreasLower) {
+    public List<CitationCheckResult> checkCitations(
+            List<String> citations, @Nullable Set<String> allowedAreasLower) {
         if (citations == null || citations.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<ParsedCitation> parsedList =
-            citations.stream().map(CitationVerifier::parseCitation).toList();
+                citations.stream().map(CitationVerifier::parseCitation).toList();
         ResolvedIds resolved = resolveIds(parsedList, allowedAreasLower);
 
         List<CitationCheckResult> results = new ArrayList<>();
@@ -370,12 +382,11 @@ public class CitationVerifier {
     /**
      * The single classifier. Every path — the reported table, the streaming filter and the text
      * cleaner — derives its verdict from here, so they cannot drift apart. It reports what the
-     * citation IS; whether that verdict is strong enough to delete text is decided by
-     * {@link #shouldStrip}.
+     * citation IS; whether that verdict is strong enough to delete text is decided by {@link
+     * #shouldStrip}.
      *
-     * <p>
-     * Note what this cannot see: existence is resolved by id, chunk text is never loaded, so a REAL
-     * verdict says the cited row exists and nothing about whether it supports the claim.
+     * <p>Note what this cannot see: existence is resolved by id, chunk text is never loaded, so a
+     * REAL verdict says the cited row exists and nothing about whether it supports the claim.
      */
     private CitationCheckResult classify(ParsedCitation parsed, ResolvedIds resolved) {
         String raw = parsed.raw;
@@ -385,82 +396,98 @@ public class CitationVerifier {
                 itemResults.add(classify(item, resolved));
             }
             if (itemResults.stream().allMatch(r -> r.getStatus() == CitationStatus.REAL)) {
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
-                    itemResults.size() + " citation(s)");
+                return new CitationCheckResult(
+                        raw, parsed.kind, CitationStatus.REAL, itemResults.size() + " citation(s)");
             }
             if (itemResults.stream().anyMatch(r -> r.getStatus() == CitationStatus.FABRICATED)) {
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                    "contains fabricated citation(s)");
+                return new CitationCheckResult(
+                        raw,
+                        parsed.kind,
+                        CitationStatus.FABRICATED,
+                        "contains fabricated citation(s)");
             }
             if (itemResults.stream().anyMatch(r -> r.getStatus() == CitationStatus.UNVERIFIED)) {
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.UNVERIFIED,
-                    "contains unverified citation(s)");
+                return new CitationCheckResult(
+                        raw,
+                        parsed.kind,
+                        CitationStatus.UNVERIFIED,
+                        "contains unverified citation(s)");
             }
-            return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                "unrecognized citation format");
+            return new CitationCheckResult(
+                    raw, parsed.kind, CitationStatus.FABRICATED, "unrecognized citation format");
         }
         if (KIND_BARE_ID.equals(parsed.kind)) {
             // Either table resolving is enough: the id is real, only its table was unstated.
             if (isValidUuid(parsed.value)) {
                 if (resolved.chunkExists(parsed.value)) {
-                    return new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
-                        "1 chunk(s)");
+                    return new CitationCheckResult(
+                            raw, parsed.kind, CitationStatus.REAL, "1 chunk(s)");
                 }
                 if (resolved.documentExists(parsed.value)) {
-                    return new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
-                        "1 document(s)");
+                    return new CitationCheckResult(
+                            raw, parsed.kind, CitationStatus.REAL, "1 document(s)");
                 }
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                    "0 chunk(s), 0 document(s)");
+                return new CitationCheckResult(
+                        raw, parsed.kind, CitationStatus.FABRICATED, "0 chunk(s), 0 document(s)");
             }
-            return new CitationCheckResult(raw, parsed.kind, CitationStatus.UNVERIFIED,
-                "truncated id — send the full id to have it checked");
+            return new CitationCheckResult(
+                    raw,
+                    parsed.kind,
+                    CitationStatus.UNVERIFIED,
+                    "truncated id — send the full id to have it checked");
         }
         if ("chunk".equals(parsed.kind)) {
             if (isValidUuid(parsed.value)) {
                 return resolved.chunkExists(parsed.value)
-                    ? new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL, "1 chunk(s)")
-                    : new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                        "0 chunk(s)");
+                        ? new CitationCheckResult(
+                                raw, parsed.kind, CitationStatus.REAL, "1 chunk(s)")
+                        : new CitationCheckResult(
+                                raw, parsed.kind, CitationStatus.FABRICATED, "0 chunk(s)");
             }
             if (isIdPrefix(parsed.value)) {
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.UNVERIFIED,
-                    "truncated chunk id — send the full id to have it checked");
+                return new CitationCheckResult(
+                        raw,
+                        parsed.kind,
+                        CitationStatus.UNVERIFIED,
+                        "truncated chunk id — send the full id to have it checked");
             }
-            return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                "invalid chunk ID format");
+            return new CitationCheckResult(
+                    raw, parsed.kind, CitationStatus.FABRICATED, "invalid chunk ID format");
         }
         if ("document".equals(parsed.kind)) {
             if (isValidUuid(parsed.value)) {
                 return resolved.documentExists(parsed.value)
-                    ? new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
-                        "1 document(s)")
-                    : new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                        "0 document(s)");
+                        ? new CitationCheckResult(
+                                raw, parsed.kind, CitationStatus.REAL, "1 document(s)")
+                        : new CitationCheckResult(
+                                raw, parsed.kind, CitationStatus.FABRICATED, "0 document(s)");
             }
             if (isIdPrefix(parsed.value)) {
-                return new CitationCheckResult(raw, parsed.kind, CitationStatus.UNVERIFIED,
-                    "truncated document id — send the full id to have it checked");
+                return new CitationCheckResult(
+                        raw,
+                        parsed.kind,
+                        CitationStatus.UNVERIFIED,
+                        "truncated document id — send the full id to have it checked");
             }
-            return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-                "invalid document ID format");
+            return new CitationCheckResult(
+                    raw, parsed.kind, CitationStatus.FABRICATED, "invalid document ID format");
         }
         if ("numref".equals(parsed.kind)) {
             // [1]/[2] are the output format every playbook mandates — pointers into the answer's
             // own ## References section, not source ids. Reporting them FABRICATED told the MAS
             // reviewer to strip correct citations.
-            return new CitationCheckResult(raw, parsed.kind, CitationStatus.REAL,
-                "numbered reference marker");
+            return new CitationCheckResult(
+                    raw, parsed.kind, CitationStatus.REAL, "numbered reference marker");
         }
-        return new CitationCheckResult(raw, parsed.kind, CitationStatus.FABRICATED,
-            "unrecognized citation format");
+        return new CitationCheckResult(
+                raw, parsed.kind, CitationStatus.FABRICATED, "unrecognized citation format");
     }
 
     /**
-     * The single deletion rule, shared by the streaming filter and
-     * {@link #cleanFabricatedCitations}. Reporting may be thorough; deletion must be conservative,
-     * so only a citation that names a corpus row AND is provably bad is removed. Everything else —
-     * ordinary bracketed prose, a markdown link label, a mermaid node name, a numbered reference, a
+     * The single deletion rule, shared by the streaming filter and {@link
+     * #cleanFabricatedCitations}. Reporting may be thorough; deletion must be conservative, so only
+     * a citation that names a corpus row AND is provably bad is removed. Everything else — ordinary
+     * bracketed prose, a markdown link label, a mermaid node name, a numbered reference, a
      * truncated id — is text the user wrote or can still resolve, and stays.
      */
     private boolean shouldStrip(ParsedCitation parsed, ResolvedIds resolved) {
@@ -470,10 +497,10 @@ public class CitationVerifier {
                 return false;
             }
             return parsed.items.stream()
-                .allMatch(i -> classify(i, resolved).getStatus() == CitationStatus.FABRICATED);
+                    .allMatch(i -> classify(i, resolved).getStatus() == CitationStatus.FABRICATED);
         }
         return isIdKind(parsed.kind)
-            && classify(parsed, resolved).getStatus() == CitationStatus.FABRICATED;
+                && classify(parsed, resolved).getStatus() == CitationStatus.FABRICATED;
     }
 
     public String cleanFabricatedCitations(String text) {
@@ -530,8 +557,8 @@ public class CitationVerifier {
 
     /** Appended to every report, so the scope of the verdict travels with the verdict. */
     public static final String SCOPE_NOTE =
-        "_Scope: this checks that each cited id exists in the corpus. It does not read the cited "
-            + "text, so it does NOT confirm that the source supports the claim it is attached to._";
+            "_Scope: this checks that each cited id exists in the corpus. It does not read the cited "
+                    + "text, so it does NOT confirm that the source supports the claim it is attached to._";
 
     public static String formatReport(List<CitationCheckResult> checkResults) {
         int nFab = 0;
@@ -539,12 +566,13 @@ public class CitationVerifier {
         List<Map<String, String>> rows = new ArrayList<>();
         if (checkResults != null) {
             for (CitationCheckResult res : checkResults) {
-                String statusStr = switch (res.getStatus()) {
-                    case REAL -> "REAL";
-                    case REAL_AMBIG -> "REAL(ambig)";
-                    case UNVERIFIED -> "UNVERIFIED";
-                    case FABRICATED -> "FABRICATED";
-                };
+                String statusStr =
+                        switch (res.getStatus()) {
+                            case REAL -> "REAL";
+                            case REAL_AMBIG -> "REAL(ambig)";
+                            case UNVERIFIED -> "UNVERIFIED";
+                            case FABRICATED -> "FABRICATED";
+                        };
                 if (res.getStatus() == CitationStatus.FABRICATED) {
                     nFab++;
                 } else if (res.getStatus() == CitationStatus.UNVERIFIED) {
@@ -558,8 +586,9 @@ public class CitationVerifier {
                 rows.add(row);
             }
         }
-        String table = MarkdownTableFormatter.formatTableRows(rows,
-            List.of("citation", "kind", "status", "detail"));
+        String table =
+                MarkdownTableFormatter.formatTableRows(
+                        rows, List.of("citation", "kind", "status", "detail"));
 
         int count = checkResults != null ? checkResults.size() : 0;
         List<String> out = new ArrayList<>();
@@ -572,11 +601,11 @@ public class CitationVerifier {
 
         if (nFab > 0) {
             out.add(
-                "\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
+                    "\n**Remove or correct every FABRICATED citation before answering.** A fabricated citation is worse than no citation — either find the real source or drop the claim.");
         }
         if (nUnverified > 0) {
             out.add(
-                "\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
+                    "\n**UNVERIFIED means not checked, not wrong.** A chunk or document id is only checked in its full form (36-character uuid, or 32 hex characters); re-send the full id if you need a verdict. Do not drop the citation on the strength of this status.");
         }
         if (nFab == 0 && nUnverified == 0) {
             out.add("\nEvery cited id exists in the corpus. ✅");

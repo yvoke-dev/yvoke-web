@@ -35,27 +35,33 @@ class AreaServiceTest {
 
     private static void setAuth(String... authorities) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "n/a",
-            Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
+        context.setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "test-user",
+                        "n/a",
+                        Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
         SecurityContextHolder.setContext(context);
     }
 
     @Test
     void listAccessibleForCurrentUser_returnsAllForGlobalUserOrSuperadmin() {
         setAuth(AreaAccessContext.ROLE_ADMIN);
-        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
-            .containsExactlyInAnyOrder("OIM", "PingID");
+        assertThat(service.listAccessibleForCurrentUser())
+                .extracting(Area::name)
+                .containsExactlyInAnyOrder("OIM", "PingID");
 
         setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
-        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
-            .containsExactlyInAnyOrder("OIM", "PingID");
+        assertThat(service.listAccessibleForCurrentUser())
+                .extracting(Area::name)
+                .containsExactlyInAnyOrder("OIM", "PingID");
     }
 
     @Test
     void listAccessibleForCurrentUser_filtersByAreaUserAuthority() {
         setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_PREFIX + "OIM");
-        assertThat(service.listAccessibleForCurrentUser()).extracting(Area::name)
-            .containsExactly("OIM");
+        assertThat(service.listAccessibleForCurrentUser())
+                .extracting(Area::name)
+                .containsExactly("OIM");
 
         setAuth(AreaAccessContext.ROLE_USER);
         assertThat(service.listAccessibleForCurrentUser()).isEmpty();
@@ -64,12 +70,14 @@ class AreaServiceTest {
     @Test
     void listAdministeredForCurrentUser_returnsAllForSuperadminAndFilteredForAreaAdmin() {
         setAuth(AreaAccessContext.ROLE_ADMIN);
-        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
-            .containsExactlyInAnyOrder("OIM", "PingID");
+        assertThat(service.listAdministeredForCurrentUser())
+                .extracting(Area::name)
+                .containsExactlyInAnyOrder("OIM", "PingID");
 
         setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
-        assertThat(service.listAdministeredForCurrentUser()).extracting(Area::name)
-            .containsExactly("OIM");
+        assertThat(service.listAdministeredForCurrentUser())
+                .extracting(Area::name)
+                .containsExactly("OIM");
 
         setAuth(AreaAccessContext.ROLE_USER, AreaAccessContext.AREA_USER_ALL);
         assertThat(service.listAdministeredForCurrentUser()).isEmpty();
@@ -97,15 +105,18 @@ class AreaServiceTest {
     @Test
     void requireAreaRefusesAMissingArea() {
         assertThatThrownBy(() -> service.requireArea(null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("An area is required.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("An area is required.");
         assertThatThrownBy(() -> service.requireArea("  "))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("An area is required.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("An area is required.");
     }
 
     @Test
     void requireAreaRefusesAnUnknownAreaByName() {
         assertThatThrownBy(() -> service.requireArea(" SAP "))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("Area 'SAP' does not exist.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Area 'SAP' does not exist.");
     }
 
     @Test
@@ -124,16 +135,39 @@ class AreaServiceTest {
         return repository;
     }
 
-    private static final AreaMembers OIM_MEMBERS = new AreaMembers(List.of("oim-chat"),
-        List.of("OIM - Docs"), List.of("oim-full"), List.of("OIM"));
+    private static final AreaMembers OIM_MEMBERS =
+            new AreaMembers(
+                    List.of("oim-chat"),
+                    List.of("OIM - Docs"),
+                    List.of("oim-full"),
+                    List.of("OIM"));
 
     /** A default the client cannot pick (not a member, or not pickable) is reported as none. */
     @Test
     void anAreasDefaultsCountOnlyWhenTheyAreMembers() {
-        AreaService areas = new AreaService(repoWith(
-            List.of(new Area("OIM", "OIM", null, false, "oim-full", "OIM", null, null),
-                new Area("Ping", "Ping", null, false, "oim-full", "OIM", null, null)),
-            Map.of("OIM", OIM_MEMBERS)));
+        AreaService areas =
+                new AreaService(
+                        repoWith(
+                                List.of(
+                                        new Area(
+                                                "OIM",
+                                                "OIM",
+                                                null,
+                                                false,
+                                                "oim-full",
+                                                "OIM",
+                                                null,
+                                                null),
+                                        new Area(
+                                                "Ping",
+                                                "Ping",
+                                                null,
+                                                false,
+                                                "oim-full",
+                                                "OIM",
+                                                null,
+                                                null)),
+                                Map.of("OIM", OIM_MEMBERS)));
 
         AreaWithMembers oim = areas.listAreasWithMembers().get(0);
         AreaWithMembers ping = areas.listAreasWithMembers().get(1);
@@ -144,8 +178,10 @@ class AreaServiceTest {
         assertThat(ping.members()).isEqualTo(AreaMembers.NONE);
         assertThat(ping.defaultPlaybook()).isNull();
         assertThat(ping.defaultProfile()).isNull();
-        assertThat(areas.findAreaWithMembers(" oim ")).get().extracting(a -> a.area().name())
-            .isEqualTo("OIM");
+        assertThat(areas.findAreaWithMembers(" oim "))
+                .get()
+                .extracting(a -> a.area().name())
+                .isEqualTo("OIM");
     }
 
     @Test
@@ -154,7 +190,7 @@ class AreaServiceTest {
         new AreaService(repository).saveArea(null, " PingID ", " ", " Ping docs ", true, null, " ");
 
         verify(repository)
-            .upsert(new Area("PingID", "PingID", "Ping docs", true, null, null, null, null));
+                .upsert(new Area("PingID", "PingID", "Ping docs", true, null, null, null, null));
     }
 
     /**
@@ -165,64 +201,69 @@ class AreaServiceTest {
     void creatingAnAreaUnderAnExistingNameIsRefused() {
         AreaRepository repository = repoWith(List.of(TestAreas.area("OIM")), Map.of());
 
-        assertThatThrownBy(
-            () -> new AreaService(repository).saveArea(null, "oim", "x", null, false, null, null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("Area 'OIM' already exists.");
+        assertThatThrownBy(() ->
+                        new AreaService(repository)
+                                .saveArea(null, "oim", "x", null, false, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Area 'OIM' already exists.");
         verify(repository, never()).upsert(any());
     }
 
     @Test
     void aBlankNameIsRefused() {
         AreaRepository repository = repoWith(List.of(), Map.of());
-        assertThatThrownBy(
-            () -> new AreaService(repository).saveArea(null, " ", "x", null, false, null, null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessage("An area name is required.");
+        assertThatThrownBy(() ->
+                        new AreaService(repository)
+                                .saveArea(null, " ", "x", null, false, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("An area name is required.");
     }
 
     @Test
     void aDefaultMustBeAMemberOfTheArea() {
         AreaRepository repository =
-            repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
+                repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
         AreaService areas = new AreaService(repository);
 
-        assertThatThrownBy(
-            () -> areas.saveArea("OIM", "OIM", "OIM", null, false, "oim-orchestrator", null))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Playbook 'oim-orchestrator' is not a pickable playbook of area 'OIM'.");
+        assertThatThrownBy(() ->
+                        areas.saveArea("OIM", "OIM", "OIM", null, false, "oim-orchestrator", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Playbook 'oim-orchestrator' is not a pickable playbook of area 'OIM'.");
         assertThatThrownBy(() -> areas.saveArea("OIM", "OIM", "OIM", null, false, null, "x"))
-            .hasMessage("Profile 'x' is not a profile of area 'OIM'.");
+                .hasMessage("Profile 'x' is not a profile of area 'OIM'.");
 
         areas.saveArea("OIM", "OIM", "Oracle", null, false, "oim-full", "OIM");
         verify(repository)
-            .upsert(new Area("OIM", "Oracle", null, false, "oim-full", "OIM", null, null));
+                .upsert(new Area("OIM", "Oracle", null, false, "oim-full", "OIM", null, null));
     }
 
     /** A rename goes through the database's ON UPDATE CASCADE, so members follow it. */
     @Test
     void renamingAnAreaRenamesThenSaves() {
         AreaRepository repository =
-            repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
+                repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
 
-        new AreaService(repository).saveArea("OIM", "Oracle-IAM", "Oracle IAM", null, false, null,
-            null);
+        new AreaService(repository)
+                .saveArea("OIM", "Oracle-IAM", "Oracle IAM", null, false, null, null);
 
         InOrder order = inOrder(repository);
         order.verify(repository).rename("OIM", "Oracle-IAM");
         order.verify(repository)
-            .upsert(new Area("Oracle-IAM", "Oracle IAM", null, false, null, null, null, null));
+                .upsert(new Area("Oracle-IAM", "Oracle IAM", null, false, null, null, null, null));
     }
 
     @Test
     void areaAdminCannotRenameOrRecaseAreaInService() {
         setAuth(AreaAccessContext.ROLE_AREA_ADMIN, AreaAccessContext.AREA_ADMIN_PREFIX + "OIM");
         AreaRepository repository =
-            repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
+                repoWith(List.of(TestAreas.area("OIM")), Map.of("OIM", OIM_MEMBERS));
         AreaService areas = new AreaService(repository);
 
         assertThatThrownBy(
-            () -> areas.saveArea("OIM", "oim", "Oracle IAM", null, false, null, null))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Area admins cannot rename areas.");
+                        () -> areas.saveArea("OIM", "oim", "Oracle IAM", null, false, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Area admins cannot rename areas.");
         verify(repository, never()).rename(any(), any());
         verify(repository, never()).upsert(any());
     }
@@ -234,9 +275,10 @@ class AreaServiceTest {
 
         for (String invalid : List.of("Ping ID", "OIM.v2", "*", "OIM*", "straße")) {
             assertThatThrownBy(
-                () -> areas.saveArea(null, invalid, "Title", null, false, null, null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
-                    "is invalid: area names must not contain spaces, dots, or '*'");
+                            () -> areas.saveArea(null, invalid, "Title", null, false, null, null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining(
+                            "is invalid: area names must not contain spaces, dots, or '*'");
         }
         verify(repository, never()).upsert(any());
     }
@@ -244,18 +286,22 @@ class AreaServiceTest {
     @Test
     void renamingOntoAnotherAreasNameIsRefused() {
         AreaRepository repository =
-            repoWith(List.of(TestAreas.area("OIM"), TestAreas.area("PingID")), Map.of());
+                repoWith(List.of(TestAreas.area("OIM"), TestAreas.area("PingID")), Map.of());
 
-        assertThatThrownBy(() -> new AreaService(repository).saveArea("OIM", "pingid", "x", null,
-            false, null, null)).hasMessage("Area 'PingID' already exists.");
+        assertThatThrownBy(() ->
+                        new AreaService(repository)
+                                .saveArea("OIM", "pingid", "x", null, false, null, null))
+                .hasMessage("Area 'PingID' already exists.");
         verify(repository, never()).rename(any(), any());
     }
 
     @Test
     void savingAnAreaThatNoLongerExistsIsRefused() {
         AreaRepository repository = repoWith(List.of(), Map.of());
-        assertThatThrownBy(() -> new AreaService(repository).saveArea("Gone", "Gone", "x", null,
-            false, null, null)).hasMessage("Area 'Gone' does not exist.");
+        assertThatThrownBy(() ->
+                        new AreaService(repository)
+                                .saveArea("Gone", "Gone", "x", null, false, null, null))
+                .hasMessage("Area 'Gone' does not exist.");
     }
 
     @Test
@@ -264,9 +310,10 @@ class AreaServiceTest {
         doThrow(new DataIntegrityViolationException("fk")).when(repository).delete("OIM");
 
         assertThatThrownBy(() -> new AreaService(repository).deleteArea("oim"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Area 'OIM' still has system prompts, collections, playbooks or "
-                + "profiles. Move or delete them first.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Area 'OIM' still has system prompts, collections, playbooks or "
+                                + "profiles. Move or delete them first.");
     }
 
     @Test

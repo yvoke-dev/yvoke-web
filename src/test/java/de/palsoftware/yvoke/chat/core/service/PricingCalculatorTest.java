@@ -16,10 +16,10 @@ import org.junit.jupiter.api.Test;
  */
 class PricingCalculatorTest {
 
-    private static ModelPricing pricing(String prompt, String completion, String cached,
-        String thought) {
-        return new ModelPricing(null, "m", bd(prompt), bd(completion), bd(cached), bd(thought),
-            null);
+    private static ModelPricing pricing(
+            String prompt, String completion, String cached, String thought) {
+        return new ModelPricing(
+                null, "m", bd(prompt), bd(completion), bd(cached), bd(thought), null);
     }
 
     private static BigDecimal bd(String v) {
@@ -30,7 +30,7 @@ class PricingCalculatorTest {
     void completionOnlyPerMillion() {
         // 1,000,000 completion tokens @ $3.00/M = $3.000000
         assertThat(PricingCalculator.cost(0, 1_000_000, 0, 0, null, bd("3.00"), null, null))
-            .isEqualByComparingTo("3.000000");
+                .isEqualByComparingTo("3.000000");
     }
 
     @Test
@@ -45,7 +45,7 @@ class PricingCalculatorTest {
     void uncachedPromptFlooredAtZeroWhenPromptBelowCached() {
         // prompt 100 < cached 500 -> uncached 0; only cached billed: 500 @ $0.50/M = 0.000250
         assertThat(PricingCalculator.cost(100, 0, 500, 0, bd("2.00"), null, bd("0.50"), null))
-            .isEqualByComparingTo("0.000250");
+                .isEqualByComparingTo("0.000250");
     }
 
     @Test
@@ -69,7 +69,7 @@ class PricingCalculatorTest {
         // completion 100 < thought 500 -> unthought 0; only thought billed: 500 @ $5.00/M =
         // 0.002500
         assertThat(PricingCalculator.cost(0, 100, 0, 500, null, bd("3.00"), null, bd("5.00")))
-            .isEqualByComparingTo("0.002500");
+                .isEqualByComparingTo("0.002500");
     }
 
     @Test
@@ -79,27 +79,28 @@ class PricingCalculatorTest {
         // (0.00000250), so the sum is 0.00000500 and the scale-6 final result is 0.000005.
         // (Under the old scale-6 intermediate this rounded each bucket up to 0.000003 -> 0.000006.)
         assertThat(PricingCalculator.cost(1, 1, 0, 0, bd("2.50"), bd("2.50"), null, null))
-            .isEqualByComparingTo("0.000005");
+                .isEqualByComparingTo("0.000005");
     }
 
     @Test
     void nullPriceFieldTreatedAsZero() {
         // prompt priced, completion price null -> completion contributes nothing
         BigDecimal c =
-            PricingCalculator.cost(1_000_000, 1_000_000, 0, 0, pricing("1.00", null, null, null));
+                PricingCalculator.cost(
+                        1_000_000, 1_000_000, 0, 0, pricing("1.00", null, null, null));
         assertThat(c).isEqualByComparingTo("1.000000");
     }
 
     @Test
     void nullPricingRowIsZero() {
         assertThat(PricingCalculator.cost(1000, 1000, 0, 0, (ModelPricing) null))
-            .isEqualByComparingTo("0");
+                .isEqualByComparingTo("0");
     }
 
     @Test
     void unknownModelInMapIsZero() {
         assertThat(PricingCalculator.cost("no-such-model", 1000, 1000, 0, 0, Map.of()))
-            .isEqualByComparingTo("0");
+                .isEqualByComparingTo("0");
     }
 
     @Test
@@ -109,8 +110,9 @@ class PricingCalculatorTest {
 
         BigDecimal viaMap = PricingCalculator.cost("m", 2000, 3000, 500, 100, map);
         BigDecimal viaRow = PricingCalculator.cost(2000, 3000, 500, 100, p);
-        BigDecimal viaFields = PricingCalculator.cost(2000, 3000, 500, 100, bd("1.50"), bd("3.00"),
-            bd("0.25"), bd("5.00"));
+        BigDecimal viaFields =
+                PricingCalculator.cost(
+                        2000, 3000, 500, 100, bd("1.50"), bd("3.00"), bd("0.25"), bd("5.00"));
 
         assertThat(viaMap).isEqualByComparingTo(viaRow);
         assertThat(viaRow).isEqualByComparingTo(viaFields);
@@ -119,7 +121,7 @@ class PricingCalculatorTest {
     @Test
     void resultIsAlwaysScaleSix() {
         assertThat(PricingCalculator.cost(0, 1_000_000, 0, 0, null, bd("3.00"), null, null).scale())
-            .isEqualTo(6);
+                .isEqualTo(6);
         assertThat(PricingCalculator.cost("x", 1, 1, 1, 1, Map.of()).scale()).isEqualTo(6);
     }
 }

@@ -36,26 +36,76 @@ class PlaybookToolsTest {
     private PlaybookRepository playbookRepository;
     private PlaybookTools tools;
 
-    private static final Set<String> META_KEYS = Set.of("name", "title", "description", "tools",
-        "codeExecution", "targetAgent", "prototype", "area", "version");
+    private static final Set<String> META_KEYS =
+            Set.of(
+                    "name",
+                    "title",
+                    "description",
+                    "tools",
+                    "codeExecution",
+                    "targetAgent",
+                    "prototype",
+                    "area",
+                    "version");
 
-    private static final Playbook FULL = new Playbook("oim-full", "OIM full", "Everything OIM",
-        "You are the OIM assistant.", List.of("search_corpus", "get_section"), true, "specialist",
-        true, null, null, false, "OIM", 2);
-    private static final Playbook BARE = new Playbook("bare", "Bare", null, "Bare text", null,
-        false, null, false, null, null, false, "PingID");
-    private static final Playbook ORCHESTRATOR = new Playbook("oim-orchestrator", "Lead", "Leads",
-        "You lead.", List.of(), false, "orchestrator", false, null, null);
+    private static final Playbook FULL =
+            new Playbook(
+                    "oim-full",
+                    "OIM full",
+                    "Everything OIM",
+                    "You are the OIM assistant.",
+                    List.of("search_corpus", "get_section"),
+                    true,
+                    "specialist",
+                    true,
+                    null,
+                    null,
+                    false,
+                    "OIM",
+                    2);
+    private static final Playbook BARE =
+            new Playbook(
+                    "bare",
+                    "Bare",
+                    null,
+                    "Bare text",
+                    null,
+                    false,
+                    null,
+                    false,
+                    null,
+                    null,
+                    false,
+                    "PingID");
+    private static final Playbook ORCHESTRATOR =
+            new Playbook(
+                    "oim-orchestrator",
+                    "Lead",
+                    "Leads",
+                    "You lead.",
+                    List.of(),
+                    false,
+                    "orchestrator",
+                    false,
+                    null,
+                    null);
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         playbookService = mock(PlaybookService.class);
         playbookRepository = mock(PlaybookRepository.class);
-        tools = new PlaybookTools(playbookService, playbookRepository,
-            TestAreas.withAreas("OIM", "PingID"), json);
+        tools =
+                new PlaybookTools(
+                        playbookService,
+                        playbookRepository,
+                        TestAreas.withAreas("OIM", "PingID"),
+                        json);
     }
 
     @AfterEach
@@ -78,7 +128,7 @@ class PlaybookToolsTest {
         assertThat(full.get("title").asText()).isEqualTo("OIM full");
         assertThat(full.get("description").asText()).isEqualTo("Everything OIM");
         assertThat(json.convertValue(full.get("tools"), List.class))
-            .containsExactly("search_corpus", "get_section");
+                .containsExactly("search_corpus", "get_section");
         assertThat(full.get("codeExecution").asBoolean()).isTrue();
         assertThat(full.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(full.get("prototype").asBoolean()).isTrue();
@@ -118,8 +168,8 @@ class PlaybookToolsTest {
         assertThat(pb.get("title").asText()).isEqualTo("OIM full");
         assertThat(pb.get("description").asText()).isEqualTo("Everything OIM");
         assertThat(pb.get("text").asText()).isEqualTo("You are the OIM assistant.");
-        assertThat(json.convertValue(pb.get("tools"), List.class)).containsExactly("search_corpus",
-            "get_section");
+        assertThat(json.convertValue(pb.get("tools"), List.class))
+                .containsExactly("search_corpus", "get_section");
         assertThat(pb.get("codeExecution").asBoolean()).isTrue();
         assertThat(pb.get("targetAgent").asText()).isEqualTo("specialist");
         assertThat(pb.get("prototype").asBoolean()).isTrue();
@@ -129,11 +179,11 @@ class PlaybookToolsTest {
 
     @Test
     void getReadsTheTableOnEveryCallSoADeletedPlaybookIsGoneAtOnce() throws Exception {
-        when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL),
-            Optional.empty());
+        when(playbookRepository.findByName("oim-full"))
+                .thenReturn(Optional.of(FULL), Optional.empty());
 
         assertThat(json.readTree(tools.getPlaybook("oim-full")).get("name").asText())
-            .isEqualTo("oim-full");
+                .isEqualTo("oim-full");
         assertThat(tools.getPlaybook("oim-full")).startsWith("ERROR:").contains("not found");
         verify(playbookRepository, times(2)).findByName("oim-full");
         // Not the cached PlaybookService.getPlaybook, which would keep a deleted playbook for 60s.
@@ -145,13 +195,25 @@ class PlaybookToolsTest {
         when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL));
 
         assertThat(json.readTree(tools.getPlaybook("  oim-full ")).get("name").asText())
-            .isEqualTo("oim-full");
+                .isEqualTo("oim-full");
     }
 
     @Test
     void anyPlaybookCanBeFetchedByNameNotOnlyListedOnes() throws Exception {
-        Playbook orch = new Playbook("oim-orchestrator", "Lead", "Leads", "You lead.", List.of(),
-            false, "orchestrator", false, null, null, false, "OIM");
+        Playbook orch =
+                new Playbook(
+                        "oim-orchestrator",
+                        "Lead",
+                        "Leads",
+                        "You lead.",
+                        List.of(),
+                        false,
+                        "orchestrator",
+                        false,
+                        null,
+                        null,
+                        false,
+                        "OIM");
         when(playbookRepository.findByName("oim-orchestrator")).thenReturn(Optional.of(orch));
 
         JsonNode tree = json.readTree(tools.getPlaybook("oim-orchestrator"));
@@ -162,8 +224,10 @@ class PlaybookToolsTest {
     void anUnknownNameIsAnErrorBodyNamingIt() {
         when(playbookRepository.findByName("nope")).thenReturn(Optional.empty());
 
-        assertThat(tools.getPlaybook("nope")).startsWith("ERROR:").contains("'nope'")
-            .contains("not found");
+        assertThat(tools.getPlaybook("nope"))
+                .startsWith("ERROR:")
+                .contains("'nope'")
+                .contains("not found");
     }
 
     @Test
@@ -176,13 +240,14 @@ class PlaybookToolsTest {
     @Test
     void anInfrastructureFailureIsAGenericErrorWithNoExceptionDetail() {
         when(playbookService.listSpecializedPlaybooks())
-            .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
+                .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
         when(playbookRepository.findByName("oim-full"))
-            .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
+                .thenThrow(new IllegalStateException("jdbc:postgresql://secret-host"));
 
         assertThat(tools.listPlaybooks(null)).startsWith("ERROR:").doesNotContain("secret-host");
-        assertThat(tools.getPlaybook("oim-full")).startsWith("ERROR:")
-            .doesNotContain("secret-host");
+        assertThat(tools.getPlaybook("oim-full"))
+                .startsWith("ERROR:")
+                .doesNotContain("secret-host");
     }
 
     /** The area is matched leniently, then compared with the stored name each playbook holds. */
@@ -213,8 +278,11 @@ class PlaybookToolsTest {
     @Test
     void listPlaybooksFiltersByAllowedUserAreas() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
         when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(FULL, BARE));
 
         JsonNode list = json.readTree(tools.listPlaybooks(null));
@@ -225,8 +293,11 @@ class PlaybookToolsTest {
     @Test
     void getPlaybookUnauthorizedAreaYieldsError() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_OTHER"))));
         when(playbookRepository.findByName("oim-full")).thenReturn(Optional.of(FULL));
 
         String res = tools.getPlaybook("oim-full");

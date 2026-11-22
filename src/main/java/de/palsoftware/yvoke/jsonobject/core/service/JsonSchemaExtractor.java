@@ -22,8 +22,7 @@ public class JsonSchemaExtractor {
     }
 
     public void mergeSchema(Map<String, Object> existingSchema, Map<String, Object> newSchema) {
-        if (existingSchema == null || newSchema == null)
-            return;
+        if (existingSchema == null || newSchema == null) return;
 
         // An incoming JSON null carries no type information; keep whatever we already know.
         if ("null".equals(typeName(newSchema))) {

@@ -100,39 +100,60 @@ public class Milestone4Challenger1AdversarialTest {
         void setUp() {
             collectionService = mock(CollectionService.class);
             tagService = mock(TagService.class);
-            controller = new CollectionAdminController(collectionService, tagService,
-                TestAreas.withAreas("AreaA", "AreaB"), mock(AdminAuditLogger.class));
+            controller =
+                    new CollectionAdminController(
+                            collectionService,
+                            tagService,
+                            TestAreas.withAreas("AreaA", "AreaB"),
+                            mock(AdminAuditLogger.class));
         }
 
         @Test
-        @DisplayName("Attempt to create collection in Area A with name existing in Area B is rejected and does not hijack existing collection")
+        @DisplayName(
+                "Attempt to create collection in Area A with name existing in Area B is rejected and does not hijack existing collection")
         void createCollectionWithExistingNameInDifferentAreaIsRejected() {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "areaAdminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "areaAdminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
-            Collection existingInB = new Collection(UUID.randomUUID(), "SharedName", "desc",
-                List.of(), OffsetDateTime.now(), "AreaB");
+            Collection existingInB =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "SharedName",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaB");
             when(collectionService.findByName("SharedName")).thenReturn(Optional.of(existingInB));
 
             MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-            assertThrows(Exception.class, () -> mvc.perform(
-                post("/admin/collections").param("name", "SharedName").param("area", "AreaA")));
+            assertThrows(
+                    Exception.class,
+                    () ->
+                            mvc.perform(
+                                    post("/admin/collections")
+                                            .param("name", "SharedName")
+                                            .param("area", "AreaA")));
 
-            verify(collectionService, never()).createCollection(eq("SharedName"), any(),
-                eq("AreaA"));
+            verify(collectionService, never())
+                    .createCollection(eq("SharedName"), any(), eq("AreaA"));
         }
 
         @Test
-        @DisplayName("Attempt to create collection in an area caller is not authorized to administer is forbidden")
+        @DisplayName(
+                "Attempt to create collection in an area caller is not authorized to administer is forbidden")
         void createCollectionInUnauthorizedAreaIsForbidden() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "areaAdminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "areaAdminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
             mvc.perform(post("/admin/collections").param("name", "NewColl").param("area", "AreaB"))
-                .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden());
 
             verify(collectionService, never()).createCollection(any(), any(), any());
         }
@@ -153,66 +174,110 @@ public class Milestone4Challenger1AdversarialTest {
         void setUp() {
             collectionService = mock(CollectionService.class);
             tagService = mock(TagService.class);
-            controller = new CollectionAdminController(collectionService, tagService,
-                TestAreas.withAreas("AreaA", "AreaB"), mock(AdminAuditLogger.class));
+            controller =
+                    new CollectionAdminController(
+                            collectionService,
+                            tagService,
+                            TestAreas.withAreas("AreaA", "AreaB"),
+                            mock(AdminAuditLogger.class));
         }
 
         @Test
-        @DisplayName("Caller with only Area_A.Admin attempting to move collection from Area A to Area B is rejected with 403 Forbidden")
+        @DisplayName(
+                "Caller with only Area_A.Admin attempting to move collection from Area A to Area B is rejected with 403 Forbidden")
         void moveFromAreaAToAreaB_whenOnlyAdminOfSource_failsWithForbidden() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
-            Collection colA = new Collection(UUID.randomUUID(), "CollA", "desc", List.of(),
-                OffsetDateTime.now(), "AreaA");
+            Collection colA =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollA",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaA");
             when(collectionService.findByName("CollA")).thenReturn(Optional.of(colA));
 
             MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
             mvc.perform(
-                post("/admin/collections/area").param("name", "CollA").param("area", "AreaB"))
-                .andExpect(status().isForbidden());
+                            post("/admin/collections/area")
+                                    .param("name", "CollA")
+                                    .param("area", "AreaB"))
+                    .andExpect(status().isForbidden());
 
             verify(collectionService, never()).moveCollection(any(), any());
         }
 
         @Test
-        @DisplayName("Caller with only Area_B.Admin attempting to move collection from Area A to Area B is rejected with 403 Forbidden")
+        @DisplayName(
+                "Caller with only Area_B.Admin attempting to move collection from Area A to Area B is rejected with 403 Forbidden")
         void moveFromAreaAToAreaB_whenOnlyAdminOfTarget_failsWithForbidden() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminB", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAB"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminB", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAB"));
 
-            Collection colA = new Collection(UUID.randomUUID(), "CollA", "desc", List.of(),
-                OffsetDateTime.now(), "AreaA");
+            Collection colA =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollA",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaA");
             when(collectionService.findByName("CollA")).thenReturn(Optional.of(colA));
 
             MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
             mvc.perform(
-                post("/admin/collections/area").param("name", "CollA").param("area", "AreaB"))
-                .andExpect(status().isForbidden());
+                            post("/admin/collections/area")
+                                    .param("name", "CollA")
+                                    .param("area", "AreaB"))
+                    .andExpect(status().isForbidden());
 
             verify(collectionService, never()).moveCollection(any(), any());
         }
 
         @Test
-        @DisplayName("Caller with both Area_A.Admin and Area_B.Admin attempting to move collection from Area A to Area B is allowed")
+        @DisplayName(
+                "Caller with both Area_A.Admin and Area_B.Admin attempting to move collection from Area A to Area B is allowed")
         void moveFromAreaAToAreaB_whenAdminOfBothAreas_succeeds() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "dualAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA", "AREA_ADMIN_AREAB"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "dualAdmin",
+                                    "pass",
+                                    "ROLE_AREA_ADMIN",
+                                    "AREA_ADMIN_AREAA",
+                                    "AREA_ADMIN_AREAB"));
 
-            Collection colA = new Collection(UUID.randomUUID(), "CollA", "desc", List.of(),
-                OffsetDateTime.now(), "AreaA");
+            Collection colA =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollA",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaA");
             when(collectionService.findByName("CollA")).thenReturn(Optional.of(colA));
             when(collectionService.moveCollection("CollA", "AreaB")).thenReturn("AreaB");
 
             MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
             mvc.perform(
-                post("/admin/collections/area").param("name", "CollA").param("area", "AreaB"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/admin/collections")).andExpect(
-                    flash().attribute("success", "Collection 'CollA' moved to area 'AreaB'."));
+                            post("/admin/collections/area")
+                                    .param("name", "CollA")
+                                    .param("area", "AreaB"))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/admin/collections"))
+                    .andExpect(
+                            flash().attribute(
+                                            "success",
+                                            "Collection 'CollA' moved to area 'AreaB'."));
 
             verify(collectionService).moveCollection("CollA", "AreaB");
         }
@@ -237,72 +302,94 @@ public class Milestone4Challenger1AdversarialTest {
         }
 
         @Test
-        @DisplayName("Caller with Area_A.Admin attempting POST /admin/areas to create a new area is rejected with 403 Forbidden")
+        @DisplayName(
+                "Caller with Area_A.Admin attempting POST /admin/areas to create a new area is rejected with 403 Forbidden")
         void areaAdminCannotCreateArea() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             mvc.perform(post("/admin/areas").param("name", "NewArea"))
-                .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden());
 
-            verify(areaService, never()).saveArea(any(), any(), any(), any(), any(Boolean.class),
-                any(), any());
+            verify(areaService, never())
+                    .saveArea(any(), any(), any(), any(), any(Boolean.class), any(), any());
         }
 
         @Test
-        @DisplayName("Caller with Area_A.Admin attempting POST /admin/areas to rename Area A is rejected with 400 Bad Request")
+        @DisplayName(
+                "Caller with Area_A.Admin attempting POST /admin/areas to rename Area A is rejected with 400 Bad Request")
         void areaAdminCannotRenameArea() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             mvc.perform(
-                post("/admin/areas").param("originalName", "AreaA").param("name", "RenamedAreaA"))
-                .andExpect(status().isBadRequest());
+                            post("/admin/areas")
+                                    .param("originalName", "AreaA")
+                                    .param("name", "RenamedAreaA"))
+                    .andExpect(status().isBadRequest());
 
-            verify(areaService, never()).saveArea(any(), any(), any(), any(), any(Boolean.class),
-                any(), any());
+            verify(areaService, never())
+                    .saveArea(any(), any(), any(), any(), any(Boolean.class), any(), any());
         }
 
         @Test
-        @DisplayName("Caller with Area_A.Admin attempting POST /admin/areas/delete is rejected with 403 Forbidden")
+        @DisplayName(
+                "Caller with Area_A.Admin attempting POST /admin/areas/delete is rejected with 403 Forbidden")
         void areaAdminCannotDeleteArea() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             mvc.perform(post("/admin/areas/delete").param("name", "AreaA"))
-                .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden());
 
             verify(areaService, never()).deleteArea(any());
         }
 
         @Test
-        @DisplayName("Caller with Area_A.Admin updating settings for Area A without renaming succeeds")
+        @DisplayName(
+                "Caller with Area_A.Admin updating settings for Area A without renaming succeeds")
         void areaAdminUpdatingSettingsSucceeds() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
-            mvc.perform(post("/admin/areas").param("originalName", "AreaA").param("name", "AreaA")
-                .param("title", "New Title").param("description", "Updated desc"))
-                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin/areas"))
-                .andExpect(flash().attribute("success", "Area 'AreaA' saved."));
+            mvc.perform(
+                            post("/admin/areas")
+                                    .param("originalName", "AreaA")
+                                    .param("name", "AreaA")
+                                    .param("title", "New Title")
+                                    .param("description", "Updated desc"))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/admin/areas"))
+                    .andExpect(flash().attribute("success", "Area 'AreaA' saved."));
 
-            verify(areaService).saveArea("AreaA", "AreaA", "New Title", "Updated desc", false, null,
-                null);
+            verify(areaService)
+                    .saveArea("AreaA", "AreaA", "New Title", "Updated desc", false, null, null);
         }
 
         @Test
         @DisplayName("Superadmin can create and rename areas successfully")
         void superAdminCanCreateAndRenameArea() throws Exception {
-            SecurityContextHolder.getContext().setAuthentication(
-                new TestingAuthenticationToken("superAdmin", "pass", "ROLE_ADMIN"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken("superAdmin", "pass", "ROLE_ADMIN"));
 
             mvc.perform(post("/admin/areas").param("name", "BrandNewArea"))
-                .andExpect(status().is3xxRedirection());
+                    .andExpect(status().is3xxRedirection());
             verify(areaService).saveArea(null, "BrandNewArea", null, null, false, null, null);
 
             mvc.perform(
-                post("/admin/areas").param("originalName", "OldName").param("name", "NewName"))
-                .andExpect(status().is3xxRedirection());
+                            post("/admin/areas")
+                                    .param("originalName", "OldName")
+                                    .param("name", "NewName"))
+                    .andExpect(status().is3xxRedirection());
             verify(areaService).saveArea("OldName", "NewName", null, null, false, null, null);
         }
     }
@@ -315,99 +402,179 @@ public class Milestone4Challenger1AdversarialTest {
     class Challenge4CrossAreaRefusals {
 
         @Test
-        @DisplayName("Area Admin for Area A attempting GET /admin/documents/{id} for document in Area B receives 404 NOT FOUND")
+        @DisplayName(
+                "Area Admin for Area A attempting GET /admin/documents/{id} for document in Area B receives 404 NOT FOUND")
         void getDocumentDetails_crossArea_throws404() {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             DocumentAdminViewService docViewService = mock(DocumentAdminViewService.class);
             CollectionService colService = mock(CollectionService.class);
-            DocumentAdminController controller = new DocumentAdminController(
-                mock(DocumentRepository.class), docViewService, colService, mock(TagService.class),
-                mock(JobService.class), mock(AuditLogRepository.class), mock(UserService.class));
+            DocumentAdminController controller =
+                    new DocumentAdminController(
+                            mock(DocumentRepository.class),
+                            docViewService,
+                            colService,
+                            mock(TagService.class),
+                            mock(JobService.class),
+                            mock(AuditLogRepository.class),
+                            mock(UserService.class));
 
             UUID docId = UUID.randomUUID();
-            DocumentDetail detail = new DocumentDetail(docId, "Secret Doc", "CollB", "standard",
-                List.of(), "completed", Instant.now(), "{}");
+            DocumentDetail detail =
+                    new DocumentDetail(
+                            docId,
+                            "Secret Doc",
+                            "CollB",
+                            "standard",
+                            List.of(),
+                            "completed",
+                            Instant.now(),
+                            "{}");
             DocumentDetailPage page = new DocumentDetailPage(detail, 1, List.of(), List.of());
             when(docViewService.documentDetailPage(docId)).thenReturn(Optional.of(page));
 
-            Collection colB = new Collection(UUID.randomUUID(), "CollB", "desc", List.of(),
-                OffsetDateTime.now(), "AreaB");
+            Collection colB =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollB",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaB");
             when(colService.getCollection("CollB")).thenReturn(Optional.of(colB));
 
             Model model = new ConcurrentModel();
-            assertThrows(ResponseStatusException.class,
-                () -> controller.getDocumentDetails(docId, model));
+            assertThrows(
+                    ResponseStatusException.class,
+                    () -> controller.getDocumentDetails(docId, model));
         }
 
         @Test
-        @DisplayName("Area Admin for Area A attempting GET /admin/chunks/{id} for chunk in Area B receives 404 NOT FOUND")
+        @DisplayName(
+                "Area Admin for Area A attempting GET /admin/chunks/{id} for chunk in Area B receives 404 NOT FOUND")
         void getChunkDetails_crossArea_throws404() {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             DocumentAdminViewService docViewService = mock(DocumentAdminViewService.class);
             CollectionService colService = mock(CollectionService.class);
-            DocumentAdminController controller = new DocumentAdminController(
-                mock(DocumentRepository.class), docViewService, colService, mock(TagService.class),
-                mock(JobService.class), mock(AuditLogRepository.class), mock(UserService.class));
+            DocumentAdminController controller =
+                    new DocumentAdminController(
+                            mock(DocumentRepository.class),
+                            docViewService,
+                            colService,
+                            mock(TagService.class),
+                            mock(JobService.class),
+                            mock(AuditLogRepository.class),
+                            mock(UserService.class));
 
             UUID chunkId = UUID.randomUUID();
-            ChunkDetail detail = new ChunkDetail(chunkId, UUID.randomUUID(), "CollB", "v1",
-                "standard", "h1", 0, 1, List.of(), "secret chunk text", "{}");
+            ChunkDetail detail =
+                    new ChunkDetail(
+                            chunkId,
+                            UUID.randomUUID(),
+                            "CollB",
+                            "v1",
+                            "standard",
+                            "h1",
+                            0,
+                            1,
+                            List.of(),
+                            "secret chunk text",
+                            "{}");
             ChunkDetailPage page = new ChunkDetailPage(detail, true, List.of());
             when(docViewService.chunkDetailPage(chunkId.toString())).thenReturn(Optional.of(page));
 
-            Collection colB = new Collection(UUID.randomUUID(), "CollB", "desc", List.of(),
-                OffsetDateTime.now(), "AreaB");
+            Collection colB =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollB",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaB");
             when(colService.getCollection("CollB")).thenReturn(Optional.of(colB));
 
             Model model = new ConcurrentModel();
-            assertThrows(ResponseStatusException.class,
-                () -> controller.getChunkDetails(chunkId, model));
+            assertThrows(
+                    ResponseStatusException.class,
+                    () -> controller.getChunkDetails(chunkId, model));
         }
 
         @Test
-        @DisplayName("Area Admin for Area A attempting GET /admin/json-objects specifying collection in Area B receives 404 NOT FOUND")
+        @DisplayName(
+                "Area Admin for Area A attempting GET /admin/json-objects specifying collection in Area B receives 404 NOT FOUND")
         void getJsonObjects_crossArea_throws404() {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             CollectionService colService = mock(CollectionService.class);
             JsonObjectService jsonObjectService = mock(JsonObjectService.class);
-            JsonObjectAdminController controller = new JsonObjectAdminController(jsonObjectService,
-                colService, new ObjectMapper(), mock(AdminAuditLogger.class));
+            JsonObjectAdminController controller =
+                    new JsonObjectAdminController(
+                            jsonObjectService,
+                            colService,
+                            new ObjectMapper(),
+                            mock(AdminAuditLogger.class));
 
-            Collection colB = new Collection(UUID.randomUUID(), "CollB", "desc", List.of(),
-                OffsetDateTime.now(), "AreaB");
+            Collection colB =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollB",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaB");
             when(colService.getCollection("CollB")).thenReturn(Optional.of(colB));
 
             Model model = new ConcurrentModel();
-            assertThrows(ResponseStatusException.class,
-                () -> controller.listObjects("CollB", null, null, null, null, 0, 20, model));
+            assertThrows(
+                    ResponseStatusException.class,
+                    () -> controller.listObjects("CollB", null, null, null, null, 0, 20, model));
         }
 
         @Test
-        @DisplayName("Area Admin for Area A attempting GET /admin/kg/view specifying collection in Area B receives 404 NOT FOUND")
+        @DisplayName(
+                "Area Admin for Area A attempting GET /admin/kg/view specifying collection in Area B receives 404 NOT FOUND")
         void getKgView_crossArea_throws404() {
-            SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-                "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
+            SecurityContextHolder.getContext()
+                    .setAuthentication(
+                            new TestingAuthenticationToken(
+                                    "adminA", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_AREAA"));
 
             CollectionService colService = mock(CollectionService.class);
             KgAdminViewService kgAdminViewService = mock(KgAdminViewService.class);
             KgAdminController controller =
-                new KgAdminController(kgAdminViewService, mock(KgGraphReadRepository.class),
-                    mock(KgWriteRepository.class), mock(KgConsolidator.class),
-                    mock(AuditLogRepository.class), mock(UserService.class), colService);
+                    new KgAdminController(
+                            kgAdminViewService,
+                            mock(KgGraphReadRepository.class),
+                            mock(KgWriteRepository.class),
+                            mock(KgConsolidator.class),
+                            mock(AuditLogRepository.class),
+                            mock(UserService.class),
+                            colService);
 
-            Collection colB = new Collection(UUID.randomUUID(), "CollB", "desc", List.of(),
-                OffsetDateTime.now(), "AreaB");
+            Collection colB =
+                    new Collection(
+                            UUID.randomUUID(),
+                            "CollB",
+                            "desc",
+                            List.of(),
+                            OffsetDateTime.now(),
+                            "AreaB");
             when(colService.getCollection("CollB")).thenReturn(Optional.of(colB));
 
             Model model = new ConcurrentModel();
-            assertThrows(ResponseStatusException.class,
-                () -> controller.viewKg("CollB", null, null, null, null, 2, 0, model));
+            assertThrows(
+                    ResponseStatusException.class,
+                    () -> controller.viewKg("CollB", null, null, null, null, 2, 0, model));
         }
     }
 
@@ -470,10 +637,12 @@ public class Milestone4Challenger1AdversarialTest {
             env.setProperty("app.security.roles.user-claim", "User");
             env.setProperty("app.security.mcp.allowed-audience", "api://test-aud");
             env.setProperty("app.security.mcp.required-scope", "api://test-aud/scope");
-            env.setProperty("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
-                "https://example/keys");
-            env.setProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri",
-                "https://example/issuer");
+            env.setProperty(
+                    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                    "https://example/keys");
+            env.setProperty(
+                    "spring.security.oauth2.resourceserver.jwt.issuer-uri",
+                    "https://example/issuer");
             env.setProperty("app.security.mcp.resource-url", "http://localhost:8080/mcp");
             env.setProperty("app.rate-limit.enabled", "true");
             env.setProperty("app.rate-limit.mcp-capacity", "120");
@@ -498,20 +667,20 @@ public class Milestone4Challenger1AdversarialTest {
 
         @ParameterizedTest
         @ValueSource(
-            strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
+                strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
         @DisplayName("Area Admin is rejected with 403 Forbidden from superadmin-only endpoints")
         void superadminEndpoints_forbidAreaAdmin(String path) throws Exception {
             mockMvc.perform(get(path).with(user("areaAdminA").roles("AREA_ADMIN", "USER")))
-                .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden());
         }
 
         @ParameterizedTest
         @ValueSource(
-            strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
+                strings = {"/admin/costs", "/admin/pricing", "/admin/audit", "/admin/areas/delete"})
         @DisplayName("Superadmin with ROLE_ADMIN is allowed on superadmin endpoints")
         void superadminEndpoints_permitSuperAdmin(String path) throws Exception {
             mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN", "USER")))
-                .andExpect(status().isOk());
+                    .andExpect(status().isOk());
         }
     }
 }

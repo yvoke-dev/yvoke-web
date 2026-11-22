@@ -70,7 +70,7 @@ class ChatCancellationServiceTest {
     void aStopWithNothingRunningDoesNotInterruptSubsequentGenerationAfterTtl() {
         MutableTestClock clock = new MutableTestClock(Instant.now());
         ChatCancellationService timedService =
-            new ChatCancellationService(Duration.ofSeconds(10), clock);
+                new ChatCancellationService(Duration.ofSeconds(10), clock);
 
         UUID id = UUID.randomUUID();
         TestThread finished = new TestThread();
@@ -89,8 +89,9 @@ class ChatCancellationServiceTest {
         TestThread next = new TestThread();
         timedService.register(id, next);
 
-        assertFalse(next.isInterrupted(),
-            "The subsequent generation must NOT be interrupted by an expired cancellation sentinel");
+        assertFalse(
+                next.isInterrupted(),
+                "The subsequent generation must NOT be interrupted by an expired cancellation sentinel");
     }
 
     @Test
@@ -102,7 +103,7 @@ class ChatCancellationServiceTest {
     void sentinelWithDefaultTtlSurvivesFiftySecondsAndExpiresAfterSixty() {
         MutableTestClock clock = new MutableTestClock(Instant.now());
         ChatCancellationService timedService =
-            new ChatCancellationService(ChatCancellationService.DEFAULT_SENTINEL_TTL, clock);
+                new ChatCancellationService(ChatCancellationService.DEFAULT_SENTINEL_TTL, clock);
 
         UUID id = UUID.randomUUID();
         timedService.stop(id);
@@ -121,14 +122,14 @@ class ChatCancellationServiceTest {
         clock.advance(Duration.ofSeconds(61));
         TestThread threadAfterTtl = new TestThread();
         timedService.register(id, threadAfterTtl);
-        assertFalse(threadAfterTtl.isInterrupted(),
-            "Registration after 60s must NOT be interrupted");
+        assertFalse(
+                threadAfterTtl.isInterrupted(), "Registration after 60s must NOT be interrupted");
     }
 
     @Test
     void testOrphanedSentinelIsEvictedAfterTtl() throws InterruptedException {
         ChatCancellationService timedService =
-            new ChatCancellationService(Duration.ofMillis(50), Clock.systemUTC());
+                new ChatCancellationService(Duration.ofMillis(50), Clock.systemUTC());
         UUID id = UUID.randomUUID();
 
         timedService.stop(id);
@@ -137,8 +138,9 @@ class ChatCancellationServiceTest {
         // Wait for delayed eviction
         Thread.sleep(120);
 
-        assertFalse(timedService.hasActiveTask(id),
-            "Orphaned sentinel must be evicted from activeTasks after TTL to prevent memory leak");
+        assertFalse(
+                timedService.hasActiveTask(id),
+                "Orphaned sentinel must be evicted from activeTasks after TTL to prevent memory leak");
     }
 
     @Test
@@ -164,8 +166,9 @@ class ChatCancellationServiceTest {
         service.reset(id);
 
         service.stop(id);
-        assertTrue(thread.isInterrupted(),
-            "Active running thread must remain registered and stoppable");
+        assertTrue(
+                thread.isInterrupted(),
+                "Active running thread must remain registered and stoppable");
         service.deregister(id, thread);
     }
 

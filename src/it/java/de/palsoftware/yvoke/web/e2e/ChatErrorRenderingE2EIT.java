@@ -15,13 +15,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * eternal spinner over a dead composer, so the two properties that matter are that an error is
  * <em>shown</em> and that the composer is <em>usable again</em> afterwards.
  *
- * <p>
- * Errors are injected with {@code page.route} rather than by provoking the server, which makes each
- * test synchronous and independent of any real failure being reachable.
+ * <p>Errors are injected with {@code page.route} rather than by provoking the server, which makes
+ * each test synchronous and independent of any real failure being reachable.
  *
- * <p>
- * The two transports had drifted apart: the streaming branch ({@code thread.js:1820-1827}) maps 403
- * and 404 to readable sentences while the async branch ({@code :1765}) — which is the
+ * <p>The two transports had drifted apart: the streaming branch ({@code thread.js:1820-1827}) maps
+ * 403 and 404 to readable sentences while the async branch ({@code :1765}) — which is the
  * <em>default</em> transport — had no status mapping at all and showed "Request failed (403)."
  * These tests pin both to the same wording.
  */
@@ -31,10 +29,8 @@ class ChatErrorRenderingE2EIT extends AbstractE2E {
     private static final String FORBIDDEN_TEXT = "You do not have access to this conversation.";
     private static final String GONE_TEXT = "This conversation no longer exists.";
 
-    @Autowired
-    private PlaybookService playbookService;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private PlaybookService playbookService;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void removePlaybook() {
@@ -42,8 +38,17 @@ class ChatErrorRenderingE2EIT extends AbstractE2E {
     }
 
     private void openConversation() {
-        playbookService.savePlaybook(PLAYBOOK, "E2E Error Render", "d", "Answer.", List.of(), false,
-            "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                PLAYBOOK,
+                "E2E Error Render",
+                "d",
+                "Answer.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         loginAs("user");
         newConversation();
         selectPlaybookChip(PLAYBOOK);
@@ -51,8 +56,14 @@ class ChatErrorRenderingE2EIT extends AbstractE2E {
 
     /** Fails the given send endpoint with a status and body, then sends one message. */
     private void sendWithFailure(String urlGlob, int status, String body) {
-        page.route(urlGlob, route -> route.fulfill(new Route.FulfillOptions().setStatus(status)
-            .setContentType("text/plain").setBody(body)));
+        page.route(
+                urlGlob,
+                route ->
+                        route.fulfill(
+                                new Route.FulfillOptions()
+                                        .setStatus(status)
+                                        .setContentType("text/plain")
+                                        .setBody(body)));
         page.fill("#chat-input", "What is OIM?");
         page.click("#send-stop-button");
     }
@@ -119,10 +130,15 @@ class ChatErrorRenderingE2EIT extends AbstractE2E {
     @Test
     void aJsonErrorBodyIsShownToTheUser() {
         openConversation();
-        page.route("**/send-async",
-            route -> route.fulfill(
-                new Route.FulfillOptions().setStatus(400).setContentType("application/json")
-                    .setBody("{\"error\":\"Playbook 'nope' is not registered.\"}")));
+        page.route(
+                "**/send-async",
+                route ->
+                        route.fulfill(
+                                new Route.FulfillOptions()
+                                        .setStatus(400)
+                                        .setContentType("application/json")
+                                        .setBody(
+                                                "{\"error\":\"Playbook 'nope' is not registered.\"}")));
 
         page.fill("#chat-input", "What is OIM?");
         page.click("#send-stop-button");

@@ -16,9 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Read-side view service for the RAG admin pages (ARC-01 / Wave 3.3). Maps raw
- * {@link HybridSearchResult}/{@link RetrievalLogDetails} rows to the per-view DTOs in
- * {@code RagAdminViews}, so the controller and templates never touch retrieval-shaped records.
+ * Read-side view service for the RAG admin pages (ARC-01 / Wave 3.3). Maps raw {@link
+ * HybridSearchResult}/{@link RetrievalLogDetails} rows to the per-view DTOs in {@code
+ * RagAdminViews}, so the controller and templates never touch retrieval-shaped records.
  */
 @Service
 public class RagAdminViewService {
@@ -39,10 +39,11 @@ public class RagAdminViewService {
     }
 
     @Transactional(readOnly = true)
-    public List<RetrievalLogView> listLogs(int limit, int offset,
-        @Nullable Set<String> allowedAreasLower) {
+    public List<RetrievalLogView> listLogs(
+            int limit, int offset, @Nullable Set<String> allowedAreasLower) {
         return retrievalLogRepository.listLogs(limit, offset, allowedAreasLower).stream()
-            .map(RagAdminViewService::toLogView).toList();
+                .map(RagAdminViewService::toLogView)
+                .toList();
     }
 
     public long countLogs() {
@@ -59,8 +60,7 @@ public class RagAdminViewService {
      * in rank order followed by the BM25 ids in rank order, undeduped, so slicing it at the
      * recorded pool sizes recovers each lane's rank for every candidate.
      *
-     * <p>
-     * Returns {@link LaneTrace#empty()} rather than a partial trace when the row cannot support
+     * <p>Returns {@link LaneTrace#empty()} rather than a partial trace when the row cannot support
      * one: single-lane searches persist a NULL {@code fused_chunk_ids}, and a length mismatch
      * against {@code sem + ft} means the slice assumption does not hold for this row. A trace that
      * silently mis-attributes ranks would be worse than none.
@@ -102,8 +102,9 @@ public class RagAdminViewService {
         List<LaneTraceRow> returnedOrder = new ArrayList<>(returned.size());
         for (int i = 0; i < returned.size(); i++) {
             UUID id = returned.get(i);
-            returnedOrder.add(new LaneTraceRow(i + 1, fusedRank.getOrDefault(id, 0),
-                semRank.get(id), ftRank.get(id)));
+            returnedOrder.add(
+                    new LaneTraceRow(
+                            i + 1, fusedRank.getOrDefault(id, 0), semRank.get(id), ftRank.get(id)));
         }
 
         return new LaneTrace(fusionOrder, returnedOrder, fused.size(), shown);
@@ -111,15 +112,34 @@ public class RagAdminViewService {
 
     private static SearchResultView toSearchResultView(HybridSearchResult h) {
         TelemetryInfo t = h.telemetry();
-        SearchTelemetryView telemetry = t != null ? new SearchTelemetryView(t.inSem(), t.inFt())
-            : new SearchTelemetryView(false, false);
-        return new SearchResultView(h.id(), h.text(), h.headingPath(), h.heading(),
-            h.documentTitle(), h.kind(), h.score(), telemetry);
+        SearchTelemetryView telemetry =
+                t != null
+                        ? new SearchTelemetryView(t.inSem(), t.inFt())
+                        : new SearchTelemetryView(false, false);
+        return new SearchResultView(
+                h.id(),
+                h.text(),
+                h.headingPath(),
+                h.heading(),
+                h.documentTitle(),
+                h.kind(),
+                h.score(),
+                telemetry);
     }
 
     private static RetrievalLogView toLogView(RetrievalLogDetails r) {
-        return new RetrievalLogView(r.id(), r.messageId(), r.collection(), r.tag(), r.pools(),
-            r.finalVal(), r.rerank(), r.createdAt(), r.messageContent(), r.feedbackRating(),
-            r.feedbackComment(), r.retrievedChunkIds());
+        return new RetrievalLogView(
+                r.id(),
+                r.messageId(),
+                r.collection(),
+                r.tag(),
+                r.pools(),
+                r.finalVal(),
+                r.rerank(),
+                r.createdAt(),
+                r.messageContent(),
+                r.feedbackRating(),
+                r.feedbackComment(),
+                r.retrievedChunkIds());
     }
 }

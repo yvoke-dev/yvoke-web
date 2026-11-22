@@ -30,14 +30,15 @@ class LlmRetryTest {
     void testIsTransientWithApiException() {
         // Test various HTTP response codes
         assertTrue(LlmRetry.isTransient(new ApiException(408, "TIMEOUT", "Request timed out")));
-        assertTrue(LlmRetry
-            .isTransient(new ApiException(429, "RESOURCE_EXHAUSTED", "Rate limit exceeded")));
+        assertTrue(
+                LlmRetry.isTransient(
+                        new ApiException(429, "RESOURCE_EXHAUSTED", "Rate limit exceeded")));
         assertTrue(LlmRetry.isTransient(new ApiException(500, "INTERNAL", "Internal error")));
         assertTrue(LlmRetry.isTransient(new ApiException(502, "BAD_GATEWAY", "Bad Gateway")));
         assertTrue(
-            LlmRetry.isTransient(new ApiException(503, "UNAVAILABLE", "Service Unavailable")));
+                LlmRetry.isTransient(new ApiException(503, "UNAVAILABLE", "Service Unavailable")));
         assertTrue(
-            LlmRetry.isTransient(new ApiException(504, "GATEWAY_TIMEOUT", "Gateway Timeout")));
+                LlmRetry.isTransient(new ApiException(504, "GATEWAY_TIMEOUT", "Gateway Timeout")));
 
         // Test non-transient HTTP codes
         assertFalse(LlmRetry.isTransient(new ApiException(400, "INVALID_ARGUMENT", "Bad Request")));
@@ -132,10 +133,15 @@ class LlmRetryTest {
     void interruptedThreadIsReportedAsCancellationNotAsTheProviderFailure() {
         Thread.currentThread().interrupt();
         try {
-            assertThrows(CancellationException.class,
-                () -> LlmRetry.withRetry("Gemini.generate", 3, () -> {
-                    throw new IllegalStateException("provider blew up");
-                }));
+            assertThrows(
+                    CancellationException.class,
+                    () ->
+                            LlmRetry.withRetry(
+                                    "Gemini.generate",
+                                    3,
+                                    () -> {
+                                        throw new IllegalStateException("provider blew up");
+                                    }));
         } finally {
             Thread.interrupted(); // clear, so the flag cannot leak into sibling tests
         }
@@ -147,39 +153,52 @@ class LlmRetryTest {
         AtomicBoolean flagStillSet = new AtomicBoolean();
         CountDownLatch inAction = new CountDownLatch(1);
 
-        Thread worker = new Thread(() -> {
-            try {
-                // A transient failure sends the loop into Thread.sleep(backoff); the interrupt
-                // below lands there rather than at the loop top.
-                LlmRetry.withRetry("Gemini.generate", 3, () -> {
-                    inAction.countDown();
-                    throw new UncheckedIOException(new IOException("timeout"));
+        Thread worker =
+                new Thread(() -> {
+                    try {
+                        // A transient failure sends the loop into Thread.sleep(backoff); the
+                        // interrupt
+                        // below lands there rather than at the loop top.
+                        LlmRetry.withRetry(
+                                "Gemini.generate",
+                                3,
+                                () -> {
+                                    inAction.countDown();
+                                    throw new UncheckedIOException(new IOException("timeout"));
+                                });
+                    } catch (Throwable t) {
+                        thrown.set(t);
+                        flagStillSet.set(Thread.currentThread().isInterrupted());
+                    }
                 });
-            } catch (Throwable t) {
-                thrown.set(t);
-                flagStillSet.set(Thread.currentThread().isInterrupted());
-            }
-        });
         worker.start();
         assertTrue(inAction.await(5, TimeUnit.SECONDS));
         Thread.sleep(50); // let it enter the backoff sleep
         worker.interrupt();
         worker.join(5000);
 
-        assertTrue(thrown.get() instanceof CancellationException,
-            "a Stop during backoff must surface as cancellation, got: " + thrown.get());
-        assertTrue(flagStillSet.get(),
-            "the interrupt flag must be restored so callers up the stack still see the cancellation");
+        assertTrue(
+                thrown.get() instanceof CancellationException,
+                "a Stop during backoff must surface as cancellation, got: " + thrown.get());
+        assertTrue(
+                flagStillSet.get(),
+                "the interrupt flag must be restored so callers up the stack still see the cancellation");
     }
 
     @Test
     void retryExhaustion_attachesTheAttemptCountToTheFailure() {
         IOException boom = new IOException("connection reset");
 
-        UncheckedIOException thrown = assertThrows(UncheckedIOException.class,
-            () -> LlmRetry.withRetry("Gemini.generateStream", 3, () -> {
-                throw new UncheckedIOException(boom);
-            }));
+        UncheckedIOException thrown =
+                assertThrows(
+                        UncheckedIOException.class,
+                        () ->
+                                LlmRetry.withRetry(
+                                        "Gemini.generateStream",
+                                        3,
+                                        () -> {
+                                            throw new UncheckedIOException(boom);
+                                        }));
 
         LlmRetryExhausted marker = markerOf(thrown);
         assertNotNull(marker, "the exhausted failure must carry its attempt count");
@@ -189,10 +208,16 @@ class LlmRetryTest {
 
     @Test
     void nonTransientFailure_recordsThatItWasNeverRetried() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-            () -> LlmRetry.withRetry("Gemini.generate", 3, () -> {
-                throw new IllegalArgumentException("invalid argument");
-            }));
+        IllegalArgumentException thrown =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                LlmRetry.withRetry(
+                                        "Gemini.generate",
+                                        3,
+                                        () -> {
+                                            throw new IllegalArgumentException("invalid argument");
+                                        }));
 
         LlmRetryExhausted marker = markerOf(thrown);
         assertNotNull(marker);
@@ -242,39 +267,57 @@ class LlmRetryTest {
     void anOpenAiRateLimitGetsTheQuotaScaleBackoff() {
         long openAiBackoff = LlmRetry.backoffMs(1, openAiError(429));
 
-        assertTrue(openAiBackoff >= 10_000L,
-            "429 backoff must be quota-scale, was " + openAiBackoff + "ms");
-        assertEquals(LlmRetry.backoffMs(1, new ApiException(429, "", "")), openAiBackoff,
-            "the provider must not change how long a rate limit is waited out");
-        assertTrue(LlmRetry.backoffMs(1, openAiError(503)) <= 1_000L,
-            "a 503 is an ordinary blip and must not be waited out for a quota window");
+        assertTrue(
+                openAiBackoff >= 10_000L,
+                "429 backoff must be quota-scale, was " + openAiBackoff + "ms");
+        assertEquals(
+                LlmRetry.backoffMs(1, new ApiException(429, "", "")),
+                openAiBackoff,
+                "the provider must not change how long a rate limit is waited out");
+        assertTrue(
+                LlmRetry.backoffMs(1, openAiError(503)) <= 1_000L,
+                "a 503 is an ordinary blip and must not be waited out for a quota window");
     }
 
     @Test
     void aRetryAfterHeaderBeatsTheGuessedBackoff() {
-        assertEquals(42_000L, LlmRetry.backoffMs(1, openAiError(429, "42")),
-            "the server's own interval must win over the quota-scale guess");
-        assertEquals(42_000L, LlmRetry.backoffMs(3, openAiError(429, "42")),
-            "and it does not compound with the attempt number");
+        assertEquals(
+                42_000L,
+                LlmRetry.backoffMs(1, openAiError(429, "42")),
+                "the server's own interval must win over the quota-scale guess");
+        assertEquals(
+                42_000L,
+                LlmRetry.backoffMs(3, openAiError(429, "42")),
+                "and it does not compound with the attempt number");
     }
 
     @Test
     void anAbsurdOrUnparseableRetryAfterFallsBackToTheSchedule() {
-        assertEquals(ProviderRateLimit.MAX_RETRY_AFTER_SECONDS * 1000L,
-            LlmRetry.backoffMs(1, openAiError(429, "3600")), "clamped, not obeyed");
-        assertEquals(15_000L,
-            LlmRetry.backoffMs(1, openAiError(429, "Wed, 21 Oct 2026 07:28:00 GMT")),
-            "an HTTP-date Retry-After is not honoured; the quota schedule applies");
-        assertEquals(15_000L, LlmRetry.backoffMs(1, openAiError(429, (String) null)),
-            "no header at all keeps the existing quota-scale backoff");
-        assertEquals(500L, LlmRetry.backoffMs(1, openAiError(503, "42")),
-            "Retry-After only governs rate limits; an ordinary blip keeps the fast schedule");
+        assertEquals(
+                ProviderRateLimit.MAX_RETRY_AFTER_SECONDS * 1000L,
+                LlmRetry.backoffMs(1, openAiError(429, "3600")),
+                "clamped, not obeyed");
+        assertEquals(
+                15_000L,
+                LlmRetry.backoffMs(1, openAiError(429, "Wed, 21 Oct 2026 07:28:00 GMT")),
+                "an HTTP-date Retry-After is not honoured; the quota schedule applies");
+        assertEquals(
+                15_000L,
+                LlmRetry.backoffMs(1, openAiError(429, (String) null)),
+                "no header at all keeps the existing quota-scale backoff");
+        assertEquals(
+                500L,
+                LlmRetry.backoffMs(1, openAiError(503, "42")),
+                "Retry-After only governs rate limits; an ordinary blip keeps the fast schedule");
     }
 
     @Test
     void aHeaderIsFoundWhateverCaseTheProviderSentItIn() {
-        Headers mixedCase = Headers.builder().put("Retry-After", "9")
-            .put("X-RateLimit-Remaining-Tokens", "0").build();
+        Headers mixedCase =
+                Headers.builder()
+                        .put("Retry-After", "9")
+                        .put("X-RateLimit-Remaining-Tokens", "0")
+                        .build();
         OpenAIServiceException failure = openAiError(429, mixedCase);
 
         ProviderRateLimit info = ProviderRateLimit.from(failure);
@@ -294,15 +337,20 @@ class LlmRetryTest {
         assertEquals("req-abc-123", info.requestId());
         assertTrue(info.describe().contains("retry-after=17s"), info.describe());
         assertTrue(info.describe().contains("remaining-tokens=0"), info.describe());
-        assertTrue(ProviderRateLimit.from(openAiError(429, (String) null)).isEmpty()
-            || ProviderRateLimit.from(openAiError(429, (String) null)).retryAfterSeconds() == null);
+        assertTrue(
+                ProviderRateLimit.from(openAiError(429, (String) null)).isEmpty()
+                        || ProviderRateLimit.from(openAiError(429, (String) null))
+                                        .retryAfterSeconds()
+                                == null);
     }
 
     private static OpenAIServiceException openAiError(int statusCode, String retryAfter) {
         Headers.Builder hb = Headers.builder();
         if (retryAfter != null) {
-            hb.put("retry-after", retryAfter).put("x-ratelimit-remaining-tokens", "0")
-                .put("x-ratelimit-remaining-requests", "249").put("apim-request-id", "req-abc-123");
+            hb.put("retry-after", retryAfter)
+                    .put("x-ratelimit-remaining-tokens", "0")
+                    .put("x-ratelimit-remaining-requests", "249")
+                    .put("apim-request-id", "req-abc-123");
         }
         return openAiError(statusCode, hb.build());
     }
@@ -344,10 +392,9 @@ class LlmRetryTest {
     /**
      * A typed provider status anywhere in the chain outranks any wrapper's prose.
      *
-     * <p>
-     * The old classifier interleaved the two: it examined message text at each depth BEFORE looking
-     * for a typed signal deeper down, so an outer wrapper whose message happened to contain a
-     * needle decided the answer first. Here the wrapper says "service unavailable" while the
+     * <p>The old classifier interleaved the two: it examined message text at each depth BEFORE
+     * looking for a typed signal deeper down, so an outer wrapper whose message happened to contain
+     * a needle decided the answer first. Here the wrapper says "service unavailable" while the
      * provider actually returned 400 — a permanent, unretryable rejection. Classifying it transient
      * re-sends a rejected prompt three times, with the quota-scale backoff, for a request that can
      * never succeed. Splitting the passes makes the typed rule authoritative and leaves the
@@ -355,11 +402,14 @@ class LlmRetryTest {
      */
     @Test
     void aTypedProviderStatusOutranksAWrapperMessageThatLooksTransient() {
-        Throwable wrapped = new IllegalStateException("service unavailable, giving up",
-            new ApiException(400, "INVALID_ARGUMENT", "Bad Request"));
+        Throwable wrapped =
+                new IllegalStateException(
+                        "service unavailable, giving up",
+                        new ApiException(400, "INVALID_ARGUMENT", "Bad Request"));
 
-        assertFalse(LlmRetry.isTransient(wrapped),
-            "a provider 400 is permanent no matter what an outer wrapper's message says");
+        assertFalse(
+                LlmRetry.isTransient(wrapped),
+                "a provider 400 is permanent no matter what an outer wrapper's message says");
     }
 
     /**
@@ -372,14 +422,15 @@ class LlmRetryTest {
     @Test
     @Timeout(value = 5, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void aSelfReferencingCauseTerminates() {
-        Throwable loop = new IllegalStateException("round and round") {
-            private static final long serialVersionUID = 1L;
+        Throwable loop =
+                new IllegalStateException("round and round") {
+                    private static final long serialVersionUID = 1L;
 
-            @Override
-            public synchronized Throwable getCause() {
-                return this;
-            }
-        };
+                    @Override
+                    public synchronized Throwable getCause() {
+                        return this;
+                    }
+                };
 
         assertFalse(LlmRetry.isTransient(loop), "no needle, no typed signal — and it must return");
     }
@@ -391,7 +442,8 @@ class LlmRetryTest {
      */
     @Test
     void aBareTimeoutExceptionIsRetryable() {
-        assertTrue(LlmRetry.isTransient(new TimeoutException("gave up")),
-            "a reactive timeout is a transient failure, not a permanent one");
+        assertTrue(
+                LlmRetry.isTransient(new TimeoutException("gave up")),
+                "a reactive timeout is a transient failure, not a permanent one");
     }
 }

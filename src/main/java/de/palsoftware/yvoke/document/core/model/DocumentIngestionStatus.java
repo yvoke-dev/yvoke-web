@@ -1,7 +1,10 @@
 package de.palsoftware.yvoke.document.core.model;
 
 public enum DocumentIngestionStatus {
-    PENDING("pending"), PROCESSING("processing"), COMPLETED("completed"), FAILED("failed");
+    PENDING("pending"),
+    PROCESSING("processing"),
+    COMPLETED("completed"),
+    FAILED("failed");
 
     private final String value;
 

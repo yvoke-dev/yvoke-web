@@ -32,16 +32,21 @@ public class JobService {
     private final Path uploadRoot;
 
     @Autowired
-    public JobService(JobRepository jobRepository, JobProgressBroker progressBroker,
-        List<JobHandler> handlers, List<EnqueueValidator> enqueueValidators,
-        @Value("${app.upload-dir}") String uploadDir) {
+    public JobService(
+            JobRepository jobRepository,
+            JobProgressBroker progressBroker,
+            List<JobHandler> handlers,
+            List<EnqueueValidator> enqueueValidators,
+            @Value("${app.upload-dir}") String uploadDir) {
         this.jobRepository = jobRepository;
         this.progressBroker = progressBroker;
         this.handlersByKind =
-            handlers.stream().collect(Collectors.toMap(JobHandler::kind, Function.identity()));
+                handlers.stream().collect(Collectors.toMap(JobHandler::kind, Function.identity()));
         this.enqueueValidators = enqueueValidators;
-        this.uploadRoot = (uploadDir == null || uploadDir.isBlank()) ? null
-            : Path.of(uploadDir).toAbsolutePath().normalize();
+        this.uploadRoot =
+                (uploadDir == null || uploadDir.isBlank())
+                        ? null
+                        : Path.of(uploadDir).toAbsolutePath().normalize();
     }
 
     /**
@@ -64,11 +69,18 @@ public class JobService {
 
         EnqueueResult result = jobRepository.enqueue(finalReq);
         if (result.created()) {
-            log.info("Enqueued job {} (kind={}, tag={})", result.jobId(), finalReq.kind(),
-                finalReq.tag());
+            log.info(
+                    "Enqueued job {} (kind={}, tag={})",
+                    result.jobId(),
+                    finalReq.kind(),
+                    finalReq.tag());
         } else {
-            log.info("Job {} is already active for kind={} sourceRef={} tag={}; adopting it",
-                result.jobId(), finalReq.kind(), finalReq.sourceRef(), finalReq.tag());
+            log.info(
+                    "Job {} is already active for kind={} sourceRef={} tag={}; adopting it",
+                    result.jobId(),
+                    finalReq.kind(),
+                    finalReq.sourceRef(),
+                    finalReq.tag());
         }
         return result;
     }
@@ -139,8 +151,10 @@ public class JobService {
      * (e.g. Confluence URLs or document UUIDs) and paths outside {@code uploadRoot} are ignored.
      */
     void cleanupStagedUpload(IngestionJob job) {
-        if (uploadRoot == null || job == null || job.sourceRef() == null
-            || job.sourceRef().isBlank()) {
+        if (uploadRoot == null
+                || job == null
+                || job.sourceRef() == null
+                || job.sourceRef().isBlank()) {
             return;
         }
         Path candidate;
@@ -149,8 +163,10 @@ public class JobService {
         } catch (InvalidPathException e) {
             return;
         }
-        if (candidate.equals(uploadRoot) || !candidate.startsWith(uploadRoot)
-            || !Files.isRegularFile(candidate) || !isStagedUploadFile(candidate, uploadRoot)) {
+        if (candidate.equals(uploadRoot)
+                || !candidate.startsWith(uploadRoot)
+                || !Files.isRegularFile(candidate)
+                || !isStagedUploadFile(candidate, uploadRoot)) {
             return;
         }
         try {
@@ -159,9 +175,11 @@ public class JobService {
             }
             Files.deleteIfExists(candidate);
             Path parent = candidate.getParent();
-            if (parent != null && !parent.equals(uploadRoot) && parent.getParent() != null
-                && parent.getParent().equals(uploadRoot)
-                && parent.getFileName().toString().startsWith("custom_")) {
+            if (parent != null
+                    && !parent.equals(uploadRoot)
+                    && parent.getParent() != null
+                    && parent.getParent().equals(uploadRoot)
+                    && parent.getFileName().toString().startsWith("custom_")) {
                 Files.deleteIfExists(parent);
             }
         } catch (IOException | RuntimeException e) {
@@ -170,9 +188,9 @@ public class JobService {
     }
 
     /**
-     * Only deletes files that Yvoke itself staged ({@code <uploadRoot>/<uuid>_*} or
-     * {@code <uploadRoot>/custom_<uuid>/*}), leaving caller-managed files placed under
-     * {@code app.upload-dir} untouched.
+     * Only deletes files that Yvoke itself staged ({@code <uploadRoot>/<uuid>_*} or {@code
+     * <uploadRoot>/custom_<uuid>/*}), leaving caller-managed files placed under {@code
+     * app.upload-dir} untouched.
      */
     private static boolean isStagedUploadFile(Path candidate, Path uploadRoot) {
         Path parent = candidate.getParent();
@@ -192,8 +210,9 @@ public class JobService {
             return false;
         }
         Path grandParent = parent.getParent();
-        return grandParent != null && grandParent.equals(uploadRoot)
-            && parent.getFileName().toString().startsWith("custom_");
+        return grandParent != null
+                && grandParent.equals(uploadRoot)
+                && parent.getFileName().toString().startsWith("custom_");
     }
 
     private String validateCounts(JobHandler handler, IngestionJob job, JobCounts counts) {
@@ -260,8 +279,15 @@ public class JobService {
             // of re-SELECTing the full row on every progress tick (the running job's
             // status/error/counts
             // are unchanged between claim and terminal state).
-            progressBroker.publish(new ProgressEvent(job.id(), job.status().dbValue(),
-                step == null ? null : step.dbValue(), clamped, job.error(), job.counts(), message));
+            progressBroker.publish(
+                    new ProgressEvent(
+                            job.id(),
+                            job.status().dbValue(),
+                            step == null ? null : step.dbValue(),
+                            clamped,
+                            job.error(),
+                            job.counts(),
+                            message));
         }
     }
 }

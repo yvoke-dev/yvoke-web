@@ -45,46 +45,44 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     /**
      * The one place the HTTP timeouts for this client family are decided.
      *
-     * <p>
-     * The shape matters more than the numbers. A <b>read</b> timeout in OkHttp is the socket
+     * <p>The shape matters more than the numbers. A <b>read</b> timeout in OkHttp is the socket
      * {@code SO_TIMEOUT}: it bounds each individual read, which covers both the wait for the
      * response headers and every later gap between SSE tokens. That is exactly the pair of bounds
      * an LLM call needs — "the service never answered" and "the stream went silent" — and it is
      * expressible here in one setting because, unlike azure-core's read timeout, OkHttp's applies
      * before the body exists.
      *
-     * <p>
-     * A <b>call</b> timeout is the one bound that must NOT be set. It spans the entire call
+     * <p>A <b>call</b> timeout is the one bound that must NOT be set. It spans the entire call
      * including draining the body, so for SSE it is a hard wall-clock cap on how long an answer may
-     * take: a perfectly healthy generation emitting a token every second died at 300s with
-     * {@code InterruptedIOException: timeout}, and since {@code RagService} does not catch there,
-     * the whole agentic run died with it and every prior turn's tool results were discarded. It is
-     * left at zero deliberately — the liveness question is "has anything arrived recently?", never
-     * "has this taken too long?".
+     * take: a perfectly healthy generation emitting a token every second died at 300s with {@code
+     * InterruptedIOException: timeout}, and since {@code RagService} does not catch there, the
+     * whole agentic run died with it and every prior turn's tool results were discarded. It is left
+     * at zero deliberately — the liveness question is "has anything arrived recently?", never "has
+     * this taken too long?".
      *
-     * <p>
-     * This is also why {@code HttpOptions.timeout()} is no longer set: the SDK turns that value
+     * <p>This is also why {@code HttpOptions.timeout()} is no longer set: the SDK turns that value
      * into precisely the {@code callTimeout} above, but only on the client it builds itself — so it
      * produced the wrong bound on the plain path and silently no bound at all on the Cloudflare
      * one, two different wrong answers from one setting. Supplying the client here makes both paths
      * take the same configuration by construction.
      */
     static OkHttpClient.Builder httpClientBuilder(int readTimeoutMs) {
-        return new OkHttpClient.Builder().connectTimeout(Duration.ofMillis(CONNECT_TIMEOUT_MS))
-            .readTimeout(Duration.ofMillis(readTimeoutMs)).writeTimeout(Duration.ZERO)
-            .callTimeout(Duration.ZERO);
+        return new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofMillis(CONNECT_TIMEOUT_MS))
+                .readTimeout(Duration.ofMillis(readTimeoutMs))
+                .writeTimeout(Duration.ZERO)
+                .callTimeout(Duration.ZERO);
     }
 
     /**
      * How many HTTP attempts the SDK itself may make per call.
      *
-     * <p>
-     * The SDK installs a {@code RetryInterceptor} on every client — the {@code addInterceptor} call
-     * in {@code ApiClient.createHttpClient} sits outside the custom-vs-default branch, so a custom
-     * {@link okhttp3.OkHttpClient} does not opt out of it — and its default of 5 attempts retries
-     * exactly the codes {@link de.palsoftware.yvoke.llm.core.LlmRetry} does. Left alone the two
-     * layers multiply: 3 {@code LlmRetry} attempts became up to 15 requests, each re-uploading a
-     * ~600k-token prompt into the quota that had just returned 429, so the window never reset.
+     * <p>The SDK installs a {@code RetryInterceptor} on every client — the {@code addInterceptor}
+     * call in {@code ApiClient.createHttpClient} sits outside the custom-vs-default branch, so a
+     * custom {@link okhttp3.OkHttpClient} does not opt out of it — and its default of 5 attempts
+     * retries exactly the codes {@link de.palsoftware.yvoke.llm.core.LlmRetry} does. Left alone the
+     * two layers multiply: 3 {@code LlmRetry} attempts became up to 15 requests, each re-uploading
+     * a ~600k-token prompt into the quota that had just returned 429, so the window never reset.
      * Pinning this to 1 leaves {@code LlmRetry} the single retry authority.
      */
     static final int SDK_HTTP_ATTEMPTS = 1;
@@ -92,8 +90,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     /**
      * Finish reasons that end a stream normally, held as RAW wire strings.
      *
-     * <p>
-     * Deliberately not {@code FinishReason.Known} constants. {@code FinishReason(String)} maps
+     * <p>Deliberately not {@code FinishReason.Known} constants. {@code FinishReason(String)} maps
      * every value it does not recognise onto {@code Known.FINISH_REASON_UNSPECIFIED}, which is
      * itself benign — so a comparison against the enum cannot distinguish "the model stopped for a
      * reason this SDK version has not learned" from "unspecified", and answers the question wrongly
@@ -101,7 +98,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
      * that is older than the service.
      */
     private static final Set<String> BENIGN_FINISH_REASONS =
-        Set.of("STOP", "MAX_TOKENS", "FINISH_REASON_UNSPECIFIED");
+            Set.of("STOP", "MAX_TOKENS", "FINISH_REASON_UNSPECIFIED");
 
     private final Client client;
     private final ObjectMapper objectMapper;
@@ -109,35 +106,56 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     private final String thinkingLevel;
     private volatile boolean closed = false;
 
-    public GeminiLlmClient(String apiKey, ObjectMapper objectMapper, boolean enableThinking,
-        String thinkingLevel) {
+    public GeminiLlmClient(
+            String apiKey,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel) {
         this(apiKey, objectMapper, enableThinking, thinkingLevel, null);
     }
 
-    public GeminiLlmClient(String apiKey, ObjectMapper objectMapper, boolean enableThinking,
-        String thinkingLevel, String baseUrl) {
+    public GeminiLlmClient(
+            String apiKey,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel,
+            String baseUrl) {
         this(apiKey, objectMapper, enableThinking, thinkingLevel, baseUrl, null);
     }
 
-    public GeminiLlmClient(String apiKey, ObjectMapper objectMapper, boolean enableThinking,
-        String thinkingLevel, String baseUrl, Map<String, String> headers) {
+    public GeminiLlmClient(
+            String apiKey,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel,
+            String baseUrl,
+            Map<String, String> headers) {
         this(apiKey, objectMapper, enableThinking, thinkingLevel, baseUrl, headers, null);
     }
 
-    public GeminiLlmClient(String apiKey, ObjectMapper objectMapper, boolean enableThinking,
-        String thinkingLevel, String baseUrl, Map<String, String> headers,
-        ClientOptions clientOptions) {
+    public GeminiLlmClient(
+            String apiKey,
+            ObjectMapper objectMapper,
+            boolean enableThinking,
+            String thinkingLevel,
+            String baseUrl,
+            Map<String, String> headers,
+            ClientOptions clientOptions) {
         this.enableThinking = enableThinking;
         this.thinkingLevel = thinkingLevel;
         log.info(
-            "Initializing GeminiLlmClient (Google AI Studio / Developer API) with thinkingLevel={}, baseUrl={}, headers={}",
-            thinkingLevel, baseUrl, headers != null ? headers.keySet() : "none");
+                "Initializing GeminiLlmClient (Google AI Studio / Developer API) with thinkingLevel={}, baseUrl={}, headers={}",
+                thinkingLevel,
+                baseUrl,
+                headers != null ? headers.keySet() : "none");
 
         // No timeout() here: see httpClientBuilder. The SDK would convert it into a callTimeout —
         // a cap on total generation — and only on a client it builds itself, so the same setting
         // meant two different wrong things on the two paths.
-        HttpOptions.Builder httpOptionsBuilder = HttpOptions.builder()
-            .retryOptions(HttpRetryOptions.builder().attempts(SDK_HTTP_ATTEMPTS).build());
+        HttpOptions.Builder httpOptionsBuilder =
+                HttpOptions.builder()
+                        .retryOptions(
+                                HttpRetryOptions.builder().attempts(SDK_HTTP_ATTEMPTS).build());
         if (baseUrl != null && !baseUrl.isBlank()) {
             httpOptionsBuilder.baseUrl(baseUrl);
         }
@@ -148,14 +166,24 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // A ClientOptions is ALWAYS supplied, so the SDK's own transport branch — the one that
         // applies a callTimeout — is never taken. Both this client and CloudflareGeminiLlmClient
         // therefore get their timeouts from httpClientBuilder and cannot diverge.
-        ClientOptions resolvedOptions = clientOptions != null ? clientOptions
-            : ClientOptions.builder().customHttpClient(httpClientBuilder(HTTP_TIMEOUT_MS).build())
-                .build();
-        this.client = Client.builder().apiKey(apiKey).httpOptions(httpOptionsBuilder.build())
-            .clientOptions(resolvedOptions).build();
+        ClientOptions resolvedOptions =
+                clientOptions != null
+                        ? clientOptions
+                        : ClientOptions.builder()
+                                .customHttpClient(httpClientBuilder(HTTP_TIMEOUT_MS).build())
+                                .build();
+        this.client =
+                Client.builder()
+                        .apiKey(apiKey)
+                        .httpOptions(httpOptionsBuilder.build())
+                        .clientOptions(resolvedOptions)
+                        .build();
 
-        this.objectMapper = objectMapper.copy().registerModule(new Jdk8Module())
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        this.objectMapper =
+                objectMapper
+                        .copy()
+                        .registerModule(new Jdk8Module())
+                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     /**
@@ -182,73 +210,85 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         List<Content> contents = buildContents(request);
         if (contents.isEmpty()) {
             throw new IllegalArgumentException(
-                "Cannot call Gemini with empty contents (request contained no user/assistant/tool "
-                    + "messages)");
+                    "Cannot call Gemini with empty contents (request contained no user/assistant/tool "
+                            + "messages)");
         }
         GenerateContentConfig config = buildConfig(request);
-        return LlmRetry.withRetry("Gemini.generate", 3, () -> {
-            GenerateContentResponse response =
-                client.models.generateContent(request.model(), contents, config);
+        return LlmRetry.withRetry(
+                "Gemini.generate",
+                3,
+                () -> {
+                    GenerateContentResponse response =
+                            client.models.generateContent(request.model(), contents, config);
 
-            String text = null;
-            Exception textError = null;
-            try {
-                text = response.text();
-            } catch (Exception e) {
-                // response.text() can throw on empty/blocked candidates; keep the cause for
-                // context.
-                textError = e;
-            }
-            int promptTokens = 0;
-            int completionTokens = 0;
-            int totalTokens = 0;
-            int cachedTokens = 0;
-            int thoughtTokens = 0;
+                    String text = null;
+                    Exception textError = null;
+                    try {
+                        text = response.text();
+                    } catch (Exception e) {
+                        // response.text() can throw on empty/blocked candidates; keep the cause for
+                        // context.
+                        textError = e;
+                    }
+                    int promptTokens = 0;
+                    int completionTokens = 0;
+                    int totalTokens = 0;
+                    int cachedTokens = 0;
+                    int thoughtTokens = 0;
 
-            if (response.usageMetadata().isPresent()) {
-                GenerateContentResponseUsageMetadata usageMetadata = response.usageMetadata().get();
-                promptTokens = promptTokensOf(usageMetadata);
-                completionTokens = usageMetadata.candidatesTokenCount().orElse(0);
-                totalTokens = usageMetadata.totalTokenCount().orElse(0);
-                cachedTokens = usageMetadata.cachedContentTokenCount().orElse(0);
-                thoughtTokens = usageMetadata.thoughtsTokenCount().orElse(0);
-            }
+                    if (response.usageMetadata().isPresent()) {
+                        GenerateContentResponseUsageMetadata usageMetadata =
+                                response.usageMetadata().get();
+                        promptTokens = promptTokensOf(usageMetadata);
+                        completionTokens = usageMetadata.candidatesTokenCount().orElse(0);
+                        totalTokens = usageMetadata.totalTokenCount().orElse(0);
+                        cachedTokens = usageMetadata.cachedContentTokenCount().orElse(0);
+                        thoughtTokens = usageMetadata.thoughtsTokenCount().orElse(0);
+                    }
 
-            LlmUsage usage = new LlmUsage(promptTokens, completionTokens, totalTokens, cachedTokens,
-                thoughtTokens);
+                    LlmUsage usage =
+                            new LlmUsage(
+                                    promptTokens,
+                                    completionTokens,
+                                    totalTokens,
+                                    cachedTokens,
+                                    thoughtTokens);
 
-            if (text == null) {
-                // Surface safety blocks / recitation / empty candidates instead of returning a
-                // silent null that NPEs downstream. Usage is read FIRST and carried on the
-                // exception: the provider billed for these tokens, and throwing before reading it
-                // left the call with no llm_call_logs row at all.
-                throw new LlmCallFailedException(
-                    "Gemini returned no text content (" + describeMissingText(response) + ")",
-                    textError, usage);
-            }
+                    if (text == null) {
+                        // Surface safety blocks / recitation / empty candidates instead of
+                        // returning a
+                        // silent null that NPEs downstream. Usage is read FIRST and carried on the
+                        // exception: the provider billed for these tokens, and throwing before
+                        // reading it
+                        // left the call with no llm_call_logs row at all.
+                        throw new LlmCallFailedException(
+                                "Gemini returned no text content ("
+                                        + describeMissingText(response)
+                                        + ")",
+                                textError,
+                                usage);
+                    }
 
-            return new LlmResponse(text, usage, gatewayInfo(response));
-        });
+                    return new LlmResponse(text, usage, gatewayInfo(response));
+                });
     }
 
     /**
      * Prompt tokens, INCLUDING what server-side tool results fed back into the model.
      *
-     * <p>
-     * {@code toolUsePromptTokenCount} is documented as "the number of tokens in the results from
+     * <p>{@code toolUsePromptTokenCount} is documented as "the number of tokens in the results from
      * tool executions, which are provided back to the model as input", and {@code totalTokenCount}
-     * as the sum of prompt + candidates + toolUse + thoughts — so it is disjoint from
-     * {@code promptTokenCount}, not contained in it. Dropping it left the four components unable to
-     * sum to the total, and since {@code CostCalculationService} re-derives the total from those
+     * as the sum of prompt + candidates + toolUse + thoughts — so it is disjoint from {@code
+     * promptTokenCount}, not contained in it. Dropping it left the four components unable to sum to
+     * the total, and since {@code CostCalculationService} re-derives the total from those
      * components at current rates, the difference was priced at zero on exactly the runs that use
      * it: code execution, where a result can run to thousands of tokens.
      *
-     * <p>
-     * Folded in here rather than carried as a sixth {@link LlmUsage} field because that is how the
-     * provider bills it — it is prompt input — so it needs no column, no migration and no pricing
-     * rule, and both the persisted ledger and the dashboard become correct in one place. Read by
-     * BOTH the blocking and streaming paths, which are otherwise two independent mappings of one
-     * contract.
+     * <p>Folded in here rather than carried as a sixth {@link LlmUsage} field because that is how
+     * the provider bills it — it is prompt input — so it needs no column, no migration and no
+     * pricing rule, and both the persisted ledger and the dashboard become correct in one place.
+     * Read by BOTH the blocking and streaming paths, which are otherwise two independent mappings
+     * of one contract.
      */
     private static int promptTokensOf(GenerateContentResponseUsageMetadata metadata) {
         return metadata.promptTokenCount().orElse(0) + metadata.toolUsePromptTokenCount().orElse(0);
@@ -257,12 +297,11 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     /**
      * Whether a streamed finish reason ends the turn normally.
      *
-     * <p>
-     * Reads {@link FinishReason#toString()}, which the SDK defines as the raw wire value, and never
-     * {@code knownEnum()}. This is the single place that decision is made, so the enum-vs-string
-     * mistake cannot be reintroduced at a second call site. Case-insensitive, matching the SDK's
-     * own {@code Ascii.equalsIgnoreCase} lookup. A blank value is treated as benign: an absent
-     * reason already means "still generating" and never reaches here.
+     * <p>Reads {@link FinishReason#toString()}, which the SDK defines as the raw wire value, and
+     * never {@code knownEnum()}. This is the single place that decision is made, so the
+     * enum-vs-string mistake cannot be reintroduced at a second call site. Case-insensitive,
+     * matching the SDK's own {@code Ascii.equalsIgnoreCase} lookup. A blank value is treated as
+     * benign: an absent reason already means "still generating" and never reaches here.
      */
     private static boolean isBenignFinishReason(FinishReason finishReason) {
         String raw = finishReason.toString();
@@ -276,7 +315,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     private static String describeMissingText(GenerateContentResponse response) {
         if (response.candidates().isEmpty() || response.candidates().get().isEmpty()) {
             return "no candidates; promptFeedback="
-                + response.promptFeedback().map(Object::toString).orElse("none");
+                    + response.promptFeedback().map(Object::toString).orElse("none");
         }
         Optional<FinishReason> finishReason = response.candidates().get().get(0).finishReason();
         return "finishReason=" + finishReason.map(FinishReason::toString).orElse("unknown");
@@ -287,8 +326,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         List<Content> contents = buildContents(request);
         if (contents.isEmpty()) {
             throw new IllegalArgumentException(
-                "Cannot call Gemini with empty contents (request contained no user/assistant/tool "
-                    + "messages)");
+                    "Cannot call Gemini with empty contents (request contained no user/assistant/tool "
+                            + "messages)");
         }
         GenerateContentConfig config = buildConfig(request);
 
@@ -303,63 +342,85 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // fact: both clients stream reasoning, both noted a retry replays it, and this one called
         // that disqualifying while the other called it an acceptable price. One of them had to be
         // wrong, and nothing made them answer together.
-        EmptyTurnRetry.run("Gemini", request.model(), attempt -> {
-            String streamId = UUID.randomUUID().toString().substring(0, 8);
-            log.info("Sending streaming request to Gemini: model={}, streamId={}, attempt={}",
-                request.model(), streamId, attempt);
+        EmptyTurnRetry.run(
+                "Gemini",
+                request.model(),
+                attempt -> {
+                    String streamId = UUID.randomUUID().toString().substring(0, 8);
+                    log.info(
+                            "Sending streaming request to Gemini: model={}, streamId={}, attempt={}",
+                            request.model(),
+                            streamId,
+                            attempt);
 
-            // Retry only the stream establishment; a transient failure here throws before any chunk
-            // is emitted, so retrying cannot duplicate already-streamed output. Mid-stream failures
-            // are intentionally NOT retried (they cannot be safely resumed). Blocks on the calling
-            // thread.
-            ResponseStream<GenerateContentResponse> stream =
-                LlmRetry.withRetry("Gemini.generateStream", 3,
-                    () -> client.models.generateContentStream(request.model(), contents, config));
-            StreamOutcome outcome = new StreamOutcome();
-            try {
-                for (GenerateContentResponse res : stream) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        log.info(
-                            "Gemini stream interrupted, stopping chunk processing (streamId={})",
-                            streamId);
-                        throw new CancellationException("Gemini stream interrupted");
+                    // Retry only the stream establishment; a transient failure here throws before
+                    // any chunk
+                    // is emitted, so retrying cannot duplicate already-streamed output. Mid-stream
+                    // failures
+                    // are intentionally NOT retried (they cannot be safely resumed). Blocks on the
+                    // calling
+                    // thread.
+                    ResponseStream<GenerateContentResponse> stream =
+                            LlmRetry.withRetry(
+                                    "Gemini.generateStream",
+                                    3,
+                                    () ->
+                                            client.models.generateContentStream(
+                                                    request.model(), contents, config));
+                    StreamOutcome outcome = new StreamOutcome();
+                    try {
+                        for (GenerateContentResponse res : stream) {
+                            if (Thread.currentThread().isInterrupted()) {
+                                log.info(
+                                        "Gemini stream interrupted, stopping chunk processing (streamId={})",
+                                        streamId);
+                                throw new CancellationException("Gemini stream interrupted");
+                            }
+                            onChunk.accept(parseChunk(res, streamId, outcome));
+                        }
+                    } catch (RuntimeException e) {
+                        if (Thread.currentThread().isInterrupted()
+                                || e instanceof CancellationException
+                                || e.getCause() instanceof InterruptedException
+                                || e.getCause() instanceof CancellationException) {
+                            log.info("Gemini stream cancelled/interrupted (streamId={})", streamId);
+                            throw new CancellationException("Gemini stream interrupted");
+                        }
+                        log.error(
+                                "Gemini stream error for model={}, streamId={}",
+                                request.model(),
+                                streamId,
+                                e);
+                        throw e;
+                    } finally {
+                        try {
+                            stream.close();
+                        } catch (Exception e) {
+                            log.warn("Failed to close response stream (streamId={})", streamId, e);
+                        }
                     }
-                    onChunk.accept(parseChunk(res, streamId, outcome));
-                }
-            } catch (RuntimeException e) {
-                if (Thread.currentThread().isInterrupted() || e instanceof CancellationException
-                    || e.getCause() instanceof InterruptedException
-                    || e.getCause() instanceof CancellationException) {
-                    log.info("Gemini stream cancelled/interrupted (streamId={})", streamId);
-                    throw new CancellationException("Gemini stream interrupted");
-                }
-                log.error("Gemini stream error for model={}, streamId={}", request.model(),
-                    streamId, e);
-                throw e;
-            } finally {
-                try {
-                    stream.close();
-                } catch (Exception e) {
-                    log.warn("Failed to close response stream (streamId={})", streamId, e);
-                }
-            }
 
-            // Closes this HTTP call for accounting BEFORE the verdict is taken: an abandoned
-            // attempt was billed just as the winning one was, and gets its own llm_call_logs row
-            // rather than being summed onto whichever attempt happened to succeed.
-            onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
+                    // Closes this HTTP call for accounting BEFORE the verdict is taken: an
+                    // abandoned
+                    // attempt was billed just as the winning one was, and gets its own
+                    // llm_call_logs row
+                    // rather than being summed onto whichever attempt happened to succeed.
+                    onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
 
-            return new EmptyTurnRetry.Turn(!outcome.isEmpty(), outcome.cleanlyCompleted(),
-                outcome.usage, outcome.describe());
-        });
+                    return new EmptyTurnRetry.Turn(
+                            !outcome.isEmpty(),
+                            outcome.cleanlyCompleted(),
+                            outcome.usage,
+                            outcome.describe());
+                });
         log.info("Gemini stream completed successfully for model={}", request.model());
     }
 
     /**
      * What a stream actually produced, so an empty one can say why instead of being reported as a
-     * success the caller then has to guess about. Mirrors
-     * {@code AzureOpenAiLlmClient.StreamOutcome} — the two clients answer the same question and
-     * must answer it the same way.
+     * success the caller then has to guess about. Mirrors {@code
+     * AzureOpenAiLlmClient.StreamOutcome} — the two clients answer the same question and must
+     * answer it the same way.
      */
     private static final class StreamOutcome {
         private boolean sawContent;
@@ -386,7 +447,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
          */
         boolean cleanlyCompleted() {
             return finishReason != null
-                && "STOP".equals(finishReason.trim().toUpperCase(Locale.ROOT));
+                    && "STOP".equals(finishReason.trim().toUpperCase(Locale.ROOT));
         }
 
         String describe() {
@@ -394,12 +455,15 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             out.append("finishReason=").append(finishReason == null ? "none" : finishReason);
             out.append(", events=").append(events);
             if (usage != null) {
-                out.append(", completionTokens=").append(usage.completionTokens())
-                    .append(" of which reasoning=").append(usage.thoughtTokens());
+                out.append(", completionTokens=")
+                        .append(usage.completionTokens())
+                        .append(" of which reasoning=")
+                        .append(usage.thoughtTokens());
             }
             if (finishReason == null) {
-                out.append(" — the stream ended without a finish reason, which means it was cut "
-                    + "short rather than completed");
+                out.append(
+                        " — the stream ended without a finish reason, which means it was cut "
+                                + "short rather than completed");
             }
             return out.toString();
         }
@@ -408,22 +472,23 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     /**
      * Reads the AI-gateway headers the SDK preserves on the response.
      *
-     * <p>
-     * {@code Models.processResponseForPrivateGenerateContent} attaches the HTTP headers to the
+     * <p>{@code Models.processResponseForPrivateGenerateContent} attaches the HTTP headers to the
      * parsed response, and the streaming path stamps them onto every chunk, so no interceptor or
-     * ThreadLocal is involved — the value travels with the response object itself. Returns
-     * {@code null} when no gateway header is present.
+     * ThreadLocal is involved — the value travels with the response object itself. Returns {@code
+     * null} when no gateway header is present.
      */
     private static LlmGatewayInfo gatewayInfo(GenerateContentResponse response) {
         if (response == null) {
             return null;
         }
-        return response.sdkHttpResponse().flatMap(HttpResponse::headers)
-            .map(LlmGatewayInfo::fromHeaders).orElse(null);
+        return response.sdkHttpResponse()
+                .flatMap(HttpResponse::headers)
+                .map(LlmGatewayInfo::fromHeaders)
+                .orElse(null);
     }
 
-    private LlmResponseChunk parseChunk(GenerateContentResponse res, String streamId,
-        StreamOutcome outcome) {
+    private LlmResponseChunk parseChunk(
+            GenerateContentResponse res, String streamId, StreamOutcome outcome) {
         outcome.events++;
         StringBuilder contentBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
@@ -440,10 +505,13 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // never a per-event delta, so the last one seen is the total for the call.
         if (res.usageMetadata().isPresent()) {
             GenerateContentResponseUsageMetadata metadata = res.usageMetadata().get();
-            usage = new LlmUsage(promptTokensOf(metadata),
-                metadata.candidatesTokenCount().orElse(0), metadata.totalTokenCount().orElse(0),
-                metadata.cachedContentTokenCount().orElse(0),
-                metadata.thoughtsTokenCount().orElse(0));
+            usage =
+                    new LlmUsage(
+                            promptTokensOf(metadata),
+                            metadata.candidatesTokenCount().orElse(0),
+                            metadata.totalTokenCount().orElse(0),
+                            metadata.cachedContentTokenCount().orElse(0),
+                            metadata.thoughtsTokenCount().orElse(0));
             outcome.usage = usage;
         }
 
@@ -453,9 +521,11 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // without it a safety block and a malformed function call are indistinguishable in the log.
         if (res.candidates().isEmpty() || res.candidates().get().isEmpty()) {
             res.promptFeedback()
-                .ifPresent(feedback -> log.warn(
-                    "Gemini returned no candidates for streamId={}; promptFeedback={}", streamId,
-                    feedback));
+                    .ifPresent(feedback ->
+                            log.warn(
+                                    "Gemini returned no candidates for streamId={}; promptFeedback={}",
+                                    streamId,
+                                    feedback));
         }
 
         if (res.candidates().isPresent() && !res.candidates().get().isEmpty()) {
@@ -470,7 +540,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
 
                     if (part.thoughtSignature().isPresent()) {
                         thoughtSig =
-                            Base64.getEncoder().encodeToString(part.thoughtSignature().get());
+                                Base64.getEncoder().encodeToString(part.thoughtSignature().get());
                     }
 
                     if (part.thought().orElse(false)) {
@@ -502,8 +572,11 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                                 log.error("Failed to serialize function call args to string", e);
                             }
                         }
-                        log.debug("Gemini returned function call: name={}, id={}, streamId={}",
-                            name, id, streamId);
+                        log.debug(
+                                "Gemini returned function call: name={}, id={}, streamId={}",
+                                name,
+                                id,
+                                streamId);
 
                         if (toolDeltas == null) {
                             toolDeltas = new ArrayList<>();
@@ -512,10 +585,17 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                         // complete so the consumer keys by call id and replaces (not appends) the
                         // final arguments — robust even if a call id is re-delivered. index is
                         // unused.
-                        toolDeltas
-                            .add(new LlmToolCallDelta(-1, id, name, argsStr, thoughtSig, true));
-                        toolCall = new LlmToolCall(id, "function", name, argsStr,
-                            thoughtSig != null ? Map.of("thoughtSignature", thoughtSig) : null);
+                        toolDeltas.add(
+                                new LlmToolCallDelta(-1, id, name, argsStr, thoughtSig, true));
+                        toolCall =
+                                new LlmToolCall(
+                                        id,
+                                        "function",
+                                        name,
+                                        argsStr,
+                                        thoughtSig != null
+                                                ? Map.of("thoughtSignature", thoughtSig)
+                                                : null);
                     }
 
                     // Built-in server-side code execution: surface the generated code and its
@@ -523,14 +603,18 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                     if (part.executableCode().isPresent()) {
                         type = "text";
                         String code = part.executableCode().get().code().orElse("");
-                        text = "\n\n<code-execution>\n```python\n" + code
-                            + "\n```\n</code-execution>\n\n";
+                        text =
+                                "\n\n<code-execution>\n```python\n"
+                                        + code
+                                        + "\n```\n</code-execution>\n\n";
                         contentBuilder.append(text);
                     } else if (part.codeExecutionResult().isPresent()) {
                         type = "text";
                         String output = part.codeExecutionResult().get().output().orElse("");
-                        text = "\n\n<code-execution>\n**Code execution result:**\n```\n" + output
-                            + "\n```\n</code-execution>\n\n";
+                        text =
+                                "\n\n<code-execution>\n**Code execution result:**\n```\n"
+                                        + output
+                                        + "\n```\n</code-execution>\n\n";
                         contentBuilder.append(text);
                     }
 
@@ -538,22 +622,33 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                 }
             }
 
-            candidate.finishReason().ifPresent(finishReason -> {
-                // Recorded before the abnormality check so an empty turn can name the reason that
-                // made it look like a success.
-                outcome.finishReason = finishReason.toString();
-                if (!isBenignFinishReason(finishReason)) {
-                    log.warn("Gemini stream finished abnormally: finishReason={}, streamId={}",
-                        finishReason, streamId);
-                    // LlmCallFailedException, not a bare RuntimeException: this turn was billed and
-                    // the usage read above is the only thing that can still report it. A bare
-                    // RuntimeException has nowhere to put the tokens, which is how the ordering
-                    // defect stayed invisible — the type made the loss unrepairable at the throw.
-                    throw new LlmCallFailedException(
-                        "Gemini stream finished abnormally: finishReason=" + finishReason, null,
-                        outcome.usage);
-                }
-            });
+            candidate
+                    .finishReason()
+                    .ifPresent(finishReason -> {
+                        // Recorded before the abnormality check so an empty turn can name the
+                        // reason that
+                        // made it look like a success.
+                        outcome.finishReason = finishReason.toString();
+                        if (!isBenignFinishReason(finishReason)) {
+                            log.warn(
+                                    "Gemini stream finished abnormally: finishReason={}, streamId={}",
+                                    finishReason,
+                                    streamId);
+                            // LlmCallFailedException, not a bare RuntimeException: this turn was
+                            // billed and
+                            // the usage read above is the only thing that can still report it. A
+                            // bare
+                            // RuntimeException has nowhere to put the tokens, which is how the
+                            // ordering
+                            // defect stayed invisible — the type made the loss unrepairable at the
+                            // throw.
+                            throw new LlmCallFailedException(
+                                    "Gemini stream finished abnormally: finishReason="
+                                            + finishReason,
+                                    null,
+                                    outcome.usage);
+                        }
+                    });
         }
 
         String content = contentBuilder.length() > 0 ? contentBuilder.toString() : null;
@@ -567,8 +662,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         if (toolDeltas != null && !toolDeltas.isEmpty()) {
             outcome.sawToolCall = true;
         }
-        return new LlmResponseChunk(content, reasoning, toolDeltas, usage, chunkParts,
-            gatewayInfo(res));
+        return new LlmResponseChunk(
+                content, reasoning, toolDeltas, usage, chunkParts, gatewayInfo(res));
     }
 
     @SuppressWarnings("unchecked")
@@ -603,21 +698,29 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                         if (tc != null) {
                             try {
                                 Map<String, Object> argsMap =
-                                    objectMapper.readValue(tc.arguments(), Map.class);
+                                        objectMapper.readValue(tc.arguments(), Map.class);
                                 FunctionCall fc =
-                                    FunctionCall.builder().name(tc.name()).args(argsMap).build();
+                                        FunctionCall.builder()
+                                                .name(tc.name())
+                                                .args(argsMap)
+                                                .build();
                                 partBuilder.functionCall(fc);
                             } catch (Exception e) {
-                                log.error("Failed to parse function call args for tool {}",
-                                    tc.name(), e);
+                                log.error(
+                                        "Failed to parse function call args for tool {}",
+                                        tc.name(),
+                                        e);
                             }
                         }
                     } else if ("function_response".equals(lp.type())) {
                         try {
                             Map<String, Object> responseMap =
-                                Map.of("output", lp.text() != null ? lp.text() : "");
-                            FunctionResponse fr = FunctionResponse.builder()
-                                .name(resolveFunctionName(msg)).response(responseMap).build();
+                                    Map.of("output", lp.text() != null ? lp.text() : "");
+                            FunctionResponse fr =
+                                    FunctionResponse.builder()
+                                            .name(resolveFunctionName(msg))
+                                            .response(responseMap)
+                                            .build();
                             partBuilder.functionResponse(fr);
                         } catch (Exception e) {
                             log.error("Failed to construct function response in parts", e);
@@ -635,8 +738,9 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                     parts.add(partBuilder.build());
                 }
             } else {
-                if (msg.content() != null && !msg.content().isEmpty()
-                    && !"tool".equalsIgnoreCase(msg.role())) {
+                if (msg.content() != null
+                        && !msg.content().isEmpty()
+                        && !"tool".equalsIgnoreCase(msg.role())) {
                     parts.add(Part.builder().text(msg.content()).build());
                 }
 
@@ -644,14 +748,14 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                     for (LlmToolCall tc : msg.toolCalls()) {
                         try {
                             Map<String, Object> argsMap =
-                                objectMapper.readValue(tc.arguments(), Map.class);
+                                    objectMapper.readValue(tc.arguments(), Map.class);
                             FunctionCall fc =
-                                FunctionCall.builder().name(tc.name()).args(argsMap).build();
+                                    FunctionCall.builder().name(tc.name()).args(argsMap).build();
                             Part.Builder partBuilder = Part.builder().functionCall(fc);
                             if (tc.extraContent() != null
-                                && tc.extraContent().containsKey("thoughtSignature")) {
+                                    && tc.extraContent().containsKey("thoughtSignature")) {
                                 String base64Sig =
-                                    (String) tc.extraContent().get("thoughtSignature");
+                                        (String) tc.extraContent().get("thoughtSignature");
                                 if (base64Sig != null && !base64Sig.isEmpty()) {
                                     byte[] sigBytes = Base64.getDecoder().decode(base64Sig);
                                     partBuilder.thoughtSignature(sigBytes);
@@ -659,8 +763,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                             }
                             parts.add(partBuilder.build());
                         } catch (Exception e) {
-                            log.error("Failed to parse function call args for tool {}", tc.name(),
-                                e);
+                            log.error(
+                                    "Failed to parse function call args for tool {}", tc.name(), e);
                         }
                     }
                 }
@@ -668,13 +772,18 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                 if ("tool".equalsIgnoreCase(msg.role())) {
                     try {
                         Map<String, Object> responseMap =
-                            Map.of("output", msg.content() != null ? msg.content() : "");
-                        FunctionResponse fr = FunctionResponse.builder()
-                            .name(resolveFunctionName(msg)).response(responseMap).build();
+                                Map.of("output", msg.content() != null ? msg.content() : "");
+                        FunctionResponse fr =
+                                FunctionResponse.builder()
+                                        .name(resolveFunctionName(msg))
+                                        .response(responseMap)
+                                        .build();
                         parts.add(Part.builder().functionResponse(fr).build());
                     } catch (Exception e) {
-                        log.error("Failed to construct function response for call {}",
-                            msg.toolCallId(), e);
+                        log.error(
+                                "Failed to construct function response for call {}",
+                                msg.toolCallId(),
+                                e);
                     }
                 }
             }
@@ -689,23 +798,22 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
     /**
      * Resolves the function name for a function-response turn.
      *
-     * <p>
-     * Gemini pairs a response to its call by NAME and ORDER. {@code FunctionCall.id} does exist in
-     * the SDK — an earlier version of this comment claimed it did not — but the SDK's own round
+     * <p>Gemini pairs a response to its call by NAME and ORDER. {@code FunctionCall.id} does exist
+     * in the SDK — an earlier version of this comment claimed it did not — but the SDK's own round
      * trip is name-based, its core never reads the field, and only the Live API requires the id. It
-     * is deliberately not propagated: {@code parseChunk} mints a synthetic
-     * {@code call_<name>_<uuid>} when the model supplies none, so forwarding it would assert a
-     * match to a call id the model never issued. The invariant this rests on is that
-     * {@code RagService.executeToolCalls} emits exactly one response per call, in order.
+     * is deliberately not propagated: {@code parseChunk} mints a synthetic {@code
+     * call_<name>_<uuid>} when the model supplies none, so forwarding it would assert a match to a
+     * call id the model never issued. The invariant this rests on is that {@code
+     * RagService.executeToolCalls} emits exactly one response per call, in order.
      */
     private String resolveFunctionName(LlmMessage msg) {
         if (msg.toolName() != null && !msg.toolName().isBlank()) {
             return msg.toolName();
         }
         log.warn(
-            "Function response is missing toolName; falling back to toolCallId={} which will NOT "
-                + "match a declared function and may confuse the model",
-            msg.toolCallId());
+                "Function response is missing toolName; falling back to toolCallId={} which will NOT "
+                        + "match a declared function and may confuse the model",
+                msg.toolCallId());
         return msg.toolCallId();
     }
 
@@ -732,11 +840,13 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // with
         // function calling, so it is only applied when no tools are supplied.
         boolean wantsStructuredOutput =
-            (request.responseMimeType() != null && !request.responseMimeType().isBlank())
-                || (request.responseSchema() != null && !request.responseSchema().isEmpty());
+                (request.responseMimeType() != null && !request.responseMimeType().isBlank())
+                        || (request.responseSchema() != null
+                                && !request.responseSchema().isEmpty());
         if (wantsStructuredOutput && hasTools) {
-            log.warn("Ignoring responseMimeType/responseSchema because tools are present "
-                + "(Gemini does not support structured output with function calling)");
+            log.warn(
+                    "Ignoring responseMimeType/responseSchema because tools are present "
+                            + "(Gemini does not support structured output with function calling)");
         } else if (wantsStructuredOutput) {
             if (request.responseMimeType() != null && !request.responseMimeType().isBlank()) {
                 builder.responseMimeType(request.responseMimeType());
@@ -760,13 +870,13 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             // summarize
             // or KG-extract call asking for `low` could end up reasoning harder, not less.
             ThinkingConfig.Builder thinkingBuilder =
-                ThinkingConfig.builder().includeThoughts(enableThinking);
+                    ThinkingConfig.builder().includeThoughts(enableThinking);
             if (enableThinking) {
                 // Prefer the per-request thinking level; fall back to the client-wide default.
                 String requestedLevel =
-                    (request.thinkingLevel() != null && !request.thinkingLevel().isBlank())
-                        ? request.thinkingLevel()
-                        : this.thinkingLevel;
+                        (request.thinkingLevel() != null && !request.thinkingLevel().isBlank())
+                                ? request.thinkingLevel()
+                                : this.thinkingLevel;
                 ThinkingLevel.Known level = parseThinkingLevel(requestedLevel);
                 if (level != null) {
                     thinkingBuilder.thinkingLevel(level);
@@ -787,8 +897,10 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         }
 
         if (systemPrompt != null && !systemPrompt.isEmpty()) {
-            builder.systemInstruction(Content.builder()
-                .parts(List.of(Part.builder().text(systemPrompt).build())).build());
+            builder.systemInstruction(
+                    Content.builder()
+                            .parts(List.of(Part.builder().text(systemPrompt).build()))
+                            .build());
         }
 
         // Add tools: custom function declarations and/or the built-in code-execution tool.
@@ -802,7 +914,9 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                 // dropped
                 // by a lossy Schema round-trip.
                 FunctionDeclaration.Builder fdBuilder =
-                    FunctionDeclaration.builder().name(tool.name()).description(tool.description());
+                        FunctionDeclaration.builder()
+                                .name(tool.name())
+                                .description(tool.description());
                 if (tool.inputSchema() != null && !tool.inputSchema().isEmpty()) {
                     fdBuilder.parametersJsonSchema(tool.inputSchema());
                 }
@@ -815,8 +929,8 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             toolsList.add(Tool.builder().functionDeclarations(functionDeclarations).build());
         }
         if (request.codeExecution()) {
-            toolsList
-                .add(Tool.builder().codeExecution(ToolCodeExecution.builder().build()).build());
+            toolsList.add(
+                    Tool.builder().codeExecution(ToolCodeExecution.builder().build()).build());
             log.debug("GeminiLlmClient enabled built-in code execution tool");
         }
 
@@ -827,14 +941,18 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             // present.
             if (request.codeExecution() && !functionDeclarations.isEmpty()) {
                 builder.toolConfig(
-                    ToolConfig.builder().includeServerSideToolInvocations(true).build());
+                        ToolConfig.builder().includeServerSideToolInvocations(true).build());
             }
         } else {
-            builder.toolConfig(ToolConfig.builder()
-                .functionCallingConfig(FunctionCallingConfig.builder()
-                    .mode(new FunctionCallingConfigMode(FunctionCallingConfigMode.Known.NONE))
-                    .build())
-                .build());
+            builder.toolConfig(
+                    ToolConfig.builder()
+                            .functionCallingConfig(
+                                    FunctionCallingConfig.builder()
+                                            .mode(
+                                                    new FunctionCallingConfigMode(
+                                                            FunctionCallingConfigMode.Known.NONE))
+                                            .build())
+                            .build());
         }
 
         return builder.build();
@@ -850,14 +968,16 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         }
         try {
             ThinkingLevel.Known known =
-                ThinkingLevel.Known.valueOf(value.trim().toUpperCase(Locale.ROOT));
+                    ThinkingLevel.Known.valueOf(value.trim().toUpperCase(Locale.ROOT));
             if (known == ThinkingLevel.Known.THINKING_LEVEL_UNSPECIFIED) {
                 return null;
             }
             return known;
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid thinkingLevel '{}'; expected one of MINIMAL/LOW/MEDIUM/HIGH. "
-                + "Leaving thinking level unset.", value);
+            log.warn(
+                    "Invalid thinkingLevel '{}'; expected one of MINIMAL/LOW/MEDIUM/HIGH. "
+                            + "Leaving thinking level unset.",
+                    value);
             return null;
         }
     }
@@ -879,8 +999,11 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
             return true;
         }
         boolean legacy =
-            m.contains("gemini-1.0") || m.contains("gemini-1.5") || m.contains("gemini-2.0")
-                || m.contains("gemini-pro-vision") || m.contains("embedding");
+                m.contains("gemini-1.0")
+                        || m.contains("gemini-1.5")
+                        || m.contains("gemini-2.0")
+                        || m.contains("gemini-pro-vision")
+                        || m.contains("embedding");
         return !legacy;
     }
 }

@@ -52,22 +52,45 @@ class DesktopOrchestratorRunServiceTest {
 
     private final UUID currentUserId = UUID.randomUUID();
     private final User currentUser =
-        new User(currentUserId, "entra-oid", "user@test.local", "Test User", Instant.now());
+            new User(currentUserId, "entra-oid", "user@test.local", "Test User", Instant.now());
 
     @BeforeEach
     void setUp() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         conversationRepository = mock(ConversationRepository.class);
         messageRepository = mock(MessageRepository.class);
         agentRunRepository = mock(AgentRunRepository.class);
         agentStepRepository = mock(AgentStepRepository.class);
         orchestratorProfileService = mock(OrchestratorProfileService.class);
         when(orchestratorProfileService.getProfile("oim-profile"))
-            .thenReturn(Optional.of(new OrchestratorProfile("oim-profile", 2, 8, "orch", "rev",
-                List.of(), null, null, null, null, null, null, false, null, null, "OIM")));
-        service = new DesktopOrchestratorRunService(conversationRepository, messageRepository,
-            agentRunRepository, agentStepRepository, orchestratorProfileService);
+                .thenReturn(
+                        Optional.of(
+                                new OrchestratorProfile(
+                                        "oim-profile",
+                                        2,
+                                        8,
+                                        "orch",
+                                        "rev",
+                                        List.of(),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null,
+                                        "OIM")));
+        service =
+                new DesktopOrchestratorRunService(
+                        conversationRepository,
+                        messageRepository,
+                        agentRunRepository,
+                        agentStepRepository,
+                        orchestratorProfileService);
     }
 
     @AfterEach
@@ -76,13 +99,31 @@ class DesktopOrchestratorRunServiceTest {
     }
 
     private void ownsConversation(UUID id) {
-        when(conversationRepository.findById(id)).thenReturn(Optional.of(new Conversation(id,
-            currentUserId, "Mine", Map.of(), Instant.now(), Instant.now(), List.of())));
+        when(conversationRepository.findById(id))
+                .thenReturn(
+                        Optional.of(
+                                new Conversation(
+                                        id,
+                                        currentUserId,
+                                        "Mine",
+                                        Map.of(),
+                                        Instant.now(),
+                                        Instant.now(),
+                                        List.of())));
     }
 
     private void foreignConversation(UUID id) {
-        when(conversationRepository.findById(id)).thenReturn(Optional.of(new Conversation(id,
-            UUID.randomUUID(), "Theirs", Map.of(), Instant.now(), Instant.now(), List.of())));
+        when(conversationRepository.findById(id))
+                .thenReturn(
+                        Optional.of(
+                                new Conversation(
+                                        id,
+                                        UUID.randomUUID(),
+                                        "Theirs",
+                                        Map.of(),
+                                        Instant.now(),
+                                        Instant.now(),
+                                        List.of())));
     }
 
     /**
@@ -90,8 +131,21 @@ class DesktopOrchestratorRunServiceTest {
      * null.
      */
     private static OrchestratorRunRequest requestFor(UUID conversationId, List<Step> steps) {
-        return new OrchestratorRunRequest(conversationId, null, "oim-profile", null, null, null,
-            null, null, null, null, null, null, null, steps);
+        return new OrchestratorRunRequest(
+                conversationId,
+                null,
+                "oim-profile",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                steps);
     }
 
     private static void assertStatus(Throwable t, HttpStatus status) {
@@ -104,7 +158,7 @@ class DesktopOrchestratorRunServiceTest {
     @Test
     void nullRequestIsRejected() {
         assertThatThrownBy(() -> service.record(currentUser, null))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(conversationRepository, agentRunRepository, agentStepRepository);
     }
 
@@ -113,17 +167,31 @@ class DesktopOrchestratorRunServiceTest {
         OrchestratorRunRequest req = requestFor(null, List.of());
 
         assertThatThrownBy(() -> service.record(currentUser, req))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(conversationRepository, agentRunRepository, agentStepRepository);
     }
 
     @Test
     void blankProfileNameIsRejected() {
-        OrchestratorRunRequest req = new OrchestratorRunRequest(UUID.randomUUID(), null, "  ", null,
-            null, null, null, null, null, null, null, null, null, List.of());
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        "  ",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> service.record(currentUser, req))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(conversationRepository, agentRunRepository, agentStepRepository);
     }
 
@@ -135,7 +203,7 @@ class DesktopOrchestratorRunServiceTest {
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
-            .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
+                .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -143,11 +211,29 @@ class DesktopOrchestratorRunServiceTest {
     void foreignConversationIsDeniedAndPersistsNothing() {
         UUID conversationId = UUID.randomUUID();
         foreignConversation(conversationId);
-        OrchestratorRunRequest req = requestFor(conversationId, List.of(new Step(0, "specialist", 0,
-            "pb", "m", "high", "in", "out", null, null, 1, 2, 3, 0, 0)));
+        OrchestratorRunRequest req =
+                requestFor(
+                        conversationId,
+                        List.of(
+                                new Step(
+                                        0,
+                                        "specialist",
+                                        0,
+                                        "pb",
+                                        "m",
+                                        "high",
+                                        "in",
+                                        "out",
+                                        null,
+                                        null,
+                                        1,
+                                        2,
+                                        3,
+                                        0,
+                                        0)));
 
         assertThatThrownBy(() -> service.record(currentUser, req))
-            .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -155,13 +241,25 @@ class DesktopOrchestratorRunServiceTest {
     void recordOnConversationWithUnauthorizedAreaYields404() {
         UUID conversationId = UUID.randomUUID();
         when(conversationRepository.findById(conversationId))
-            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Mine",
-                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "restricted-area")));
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OTHER"));
+                .thenReturn(
+                        Optional.of(
+                                new Conversation(
+                                        conversationId,
+                                        currentUserId,
+                                        "Mine",
+                                        Map.of(),
+                                        Instant.now(),
+                                        Instant.now(),
+                                        List.of(),
+                                        "desktop",
+                                        "restricted-area")));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OTHER"));
 
         assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
-            .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
+                .satisfies(t -> assertStatus(t, HttpStatus.NOT_FOUND));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -169,11 +267,13 @@ class DesktopOrchestratorRunServiceTest {
     void recordWithUnauthorizedProfileAreaYields400() {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_PINGID"));
 
         assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -181,11 +281,21 @@ class DesktopOrchestratorRunServiceTest {
     void recordWithMismatchedConversationAndProfileAreaYields400() {
         UUID conversationId = UUID.randomUUID();
         when(conversationRepository.findById(conversationId))
-            .thenReturn(Optional.of(new Conversation(conversationId, currentUserId, "Mine",
-                Map.of(), Instant.now(), Instant.now(), List.of(), "desktop", "PingID")));
+                .thenReturn(
+                        Optional.of(
+                                new Conversation(
+                                        conversationId,
+                                        currentUserId,
+                                        "Mine",
+                                        Map.of(),
+                                        Instant.now(),
+                                        Instant.now(),
+                                        List.of(),
+                                        "desktop",
+                                        "PingID")));
 
         assertThatThrownBy(() -> service.record(currentUser, requestFor(conversationId, List.of())))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -206,20 +316,60 @@ class DesktopOrchestratorRunServiceTest {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
         UUID messageId = UUID.randomUUID();
-        when(messageRepository.findById(messageId)).thenReturn(
-            Optional.of(new Message(messageId, conversationId, "assistant", "done", null, List.of(),
-                List.of(), Instant.now(), null, null, null, null, null, "done", null)));
-        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
-            "oim-profile", "done", Map.of("k", "v"), 2, Map.of("approved", true), 100, 50, 150, 10,
-            5, null, List.of());
+        when(messageRepository.findById(messageId))
+                .thenReturn(
+                        Optional.of(
+                                new Message(
+                                        messageId,
+                                        conversationId,
+                                        "assistant",
+                                        "done",
+                                        null,
+                                        List.of(),
+                                        List.of(),
+                                        Instant.now(),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "done",
+                                        null)));
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        conversationId,
+                        messageId,
+                        "oim-profile",
+                        "done",
+                        Map.of("k", "v"),
+                        2,
+                        Map.of("approved", true),
+                        100,
+                        50,
+                        150,
+                        10,
+                        5,
+                        null,
+                        List.of());
 
         UUID runId = service.record(currentUser, req);
 
         assertThat(runId).isNotNull();
-        verify(agentRunRepository).create(eq(runId), eq(conversationId), eq("oim-profile"),
-            eq(Map.of("k", "v")));
-        verify(agentRunRepository).finish(eq(runId), eq(messageId), eq("done"), eq(2),
-            eq(Map.of("approved", true)), eq(100), eq(50), eq(150), eq(10), eq(5), isNull());
+        verify(agentRunRepository)
+                .create(eq(runId), eq(conversationId), eq("oim-profile"), eq(Map.of("k", "v")));
+        verify(agentRunRepository)
+                .finish(
+                        eq(runId),
+                        eq(messageId),
+                        eq("done"),
+                        eq(2),
+                        eq(Map.of("approved", true)),
+                        eq(100),
+                        eq(50),
+                        eq(150),
+                        eq(10),
+                        eq(5),
+                        isNull());
         verifyNoInteractions(agentStepRepository);
     }
 
@@ -231,8 +381,19 @@ class DesktopOrchestratorRunServiceTest {
         // status null -> "done"; steps null -> no step inserts (no NPE on the null list).
         service.record(currentUser, requestFor(conversationId, null));
 
-        verify(agentRunRepository).finish(any(), any(), eq("done"), anyInt(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(agentRunRepository)
+                .finish(
+                        any(),
+                        any(),
+                        eq("done"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
         verifyNoInteractions(agentStepRepository);
     }
 
@@ -241,19 +402,57 @@ class DesktopOrchestratorRunServiceTest {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
         // Two steps with null seq/role/round -> autoSeq 0,1 ; role "specialist" ; round 0.
-        Step s0 = new Step(null, null, null, "pb0", "m", "high", "in0", "out0", null, null, null,
-            null, null, null, null);
-        Step s1 = new Step(null, null, null, "pb1", "m", "high", "in1", "out1", null, null, null,
-            null, null, null, null);
+        Step s0 =
+                new Step(
+                        null, null, null, "pb0", "m", "high", "in0", "out0", null, null, null, null,
+                        null, null, null);
+        Step s1 =
+                new Step(
+                        null, null, null, "pb1", "m", "high", "in1", "out1", null, null, null, null,
+                        null, null, null);
 
         UUID runId = service.record(currentUser, requestFor(conversationId, List.of(s0, s1)));
 
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(0), eq("specialist"),
-            eq(0), eq("pb0"), any(), any(), any(), eq("in0"), eq("out0"), any(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt());
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
-            eq(0), eq("pb1"), any(), any(), any(), eq("in1"), eq("out1"), any(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt());
+        verify(agentStepRepository)
+                .insert(
+                        any(UUID.class),
+                        eq(runId),
+                        eq(0),
+                        eq("specialist"),
+                        eq(0),
+                        eq("pb0"),
+                        any(),
+                        any(),
+                        any(),
+                        eq("in0"),
+                        eq("out0"),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
+        verify(agentStepRepository)
+                .insert(
+                        any(UUID.class),
+                        eq(runId),
+                        eq(1),
+                        eq("specialist"),
+                        eq(0),
+                        eq("pb1"),
+                        any(),
+                        any(),
+                        any(),
+                        eq("in1"),
+                        eq("out1"),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     @Test
@@ -263,11 +462,25 @@ class DesktopOrchestratorRunServiceTest {
         UUID messageId = UUID.randomUUID();
         when(messageRepository.findById(messageId)).thenReturn(Optional.empty());
 
-        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
-            "oim-profile", null, null, null, null, null, null, null, null, null, null, List.of());
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        conversationId,
+                        messageId,
+                        "oim-profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> service.record(currentUser, req))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
@@ -277,23 +490,55 @@ class DesktopOrchestratorRunServiceTest {
         ownsConversation(conversationId);
         UUID otherConversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
-        when(messageRepository.findById(messageId)).thenReturn(
-            Optional.of(new Message(messageId, otherConversationId, "assistant", "done", null,
-                List.of(), List.of(), Instant.now(), null, null, null, null, null, "done", null)));
+        when(messageRepository.findById(messageId))
+                .thenReturn(
+                        Optional.of(
+                                new Message(
+                                        messageId,
+                                        otherConversationId,
+                                        "assistant",
+                                        "done",
+                                        null,
+                                        List.of(),
+                                        List.of(),
+                                        Instant.now(),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "done",
+                                        null)));
 
-        OrchestratorRunRequest req = new OrchestratorRunRequest(conversationId, messageId,
-            "oim-profile", null, null, null, null, null, null, null, null, null, null, List.of());
+        OrchestratorRunRequest req =
+                new OrchestratorRunRequest(
+                        conversationId,
+                        messageId,
+                        "oim-profile",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> service.record(currentUser, req))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }
 
     @Test
     void recordMethodIsAnnotatedWithTransactional() throws NoSuchMethodException {
-        assertThat(DesktopOrchestratorRunService.class
-            .getMethod("record", User.class, OrchestratorRunRequest.class)
-            .isAnnotationPresent(Transactional.class)).isTrue();
+        assertThat(
+                        DesktopOrchestratorRunService.class
+                                .getMethod("record", User.class, OrchestratorRunRequest.class)
+                                .isAnnotationPresent(Transactional.class))
+                .isTrue();
     }
 
     @Test
@@ -301,24 +546,123 @@ class DesktopOrchestratorRunServiceTest {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
 
-        Step s0 = new Step(0, "orchestrator", 0, " oim-orchestrator ", 2, "m", "high", "in0",
-            "out0", null, null, 1, 2, 3, 0, 0);
-        Step s1 = new Step(1, "specialist", 0, null, 2, "m", "high", "in1", "out1", null, null, 1,
-            2, 3, 0, 0);
-        Step s2 = new Step(2, "reviewer", 0, "   ", 3, "m", "high", "in2", "out2", null, null, 1, 2,
-            3, 0, 0);
+        Step s0 =
+                new Step(
+                        0,
+                        "orchestrator",
+                        0,
+                        " oim-orchestrator ",
+                        2,
+                        "m",
+                        "high",
+                        "in0",
+                        "out0",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        Step s1 =
+                new Step(
+                        1,
+                        "specialist",
+                        0,
+                        null,
+                        2,
+                        "m",
+                        "high",
+                        "in1",
+                        "out1",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        Step s2 =
+                new Step(
+                        2,
+                        "reviewer",
+                        0,
+                        "   ",
+                        3,
+                        "m",
+                        "high",
+                        "in2",
+                        "out2",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
 
         UUID runId = service.record(currentUser, requestFor(conversationId, List.of(s0, s1, s2)));
 
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(0), eq("orchestrator"),
-            eq(0), eq("oim-orchestrator"), eq(2), eq("m"), eq("high"), eq("in0"), eq("out0"), any(),
-            any(), eq(1), eq(2), eq(3), eq(0), eq(0));
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(1), eq("specialist"),
-            eq(0), isNull(), isNull(), eq("m"), eq("high"), eq("in1"), eq("out1"), any(), any(),
-            eq(1), eq(2), eq(3), eq(0), eq(0));
-        verify(agentStepRepository).insert(any(UUID.class), eq(runId), eq(2), eq("reviewer"), eq(0),
-            isNull(), isNull(), eq("m"), eq("high"), eq("in2"), eq("out2"), any(), any(), eq(1),
-            eq(2), eq(3), eq(0), eq(0));
+        verify(agentStepRepository)
+                .insert(
+                        any(UUID.class),
+                        eq(runId),
+                        eq(0),
+                        eq("orchestrator"),
+                        eq(0),
+                        eq("oim-orchestrator"),
+                        eq(2),
+                        eq("m"),
+                        eq("high"),
+                        eq("in0"),
+                        eq("out0"),
+                        any(),
+                        any(),
+                        eq(1),
+                        eq(2),
+                        eq(3),
+                        eq(0),
+                        eq(0));
+        verify(agentStepRepository)
+                .insert(
+                        any(UUID.class),
+                        eq(runId),
+                        eq(1),
+                        eq("specialist"),
+                        eq(0),
+                        isNull(),
+                        isNull(),
+                        eq("m"),
+                        eq("high"),
+                        eq("in1"),
+                        eq("out1"),
+                        any(),
+                        any(),
+                        eq(1),
+                        eq(2),
+                        eq(3),
+                        eq(0),
+                        eq(0));
+        verify(agentStepRepository)
+                .insert(
+                        any(UUID.class),
+                        eq(runId),
+                        eq(2),
+                        eq("reviewer"),
+                        eq(0),
+                        isNull(),
+                        isNull(),
+                        eq("m"),
+                        eq("high"),
+                        eq("in2"),
+                        eq("out2"),
+                        any(),
+                        any(),
+                        eq(1),
+                        eq(2),
+                        eq(3),
+                        eq(0),
+                        eq(0));
     }
 
     @Test
@@ -326,29 +670,98 @@ class DesktopOrchestratorRunServiceTest {
         UUID conversationId = UUID.randomUUID();
         ownsConversation(conversationId);
 
-        Step badZero = new Step(0, "specialist", 0, "pb", 0, "m", "high", "in", "out", null, null,
-            1, 2, 3, 0, 0);
-        assertThatThrownBy(
-            () -> service.record(currentUser, requestFor(conversationId, List.of(badZero))))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        Step badZero =
+                new Step(
+                        0,
+                        "specialist",
+                        0,
+                        "pb",
+                        0,
+                        "m",
+                        "high",
+                        "in",
+                        "out",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        assertThatThrownBy(() ->
+                        service.record(currentUser, requestFor(conversationId, List.of(badZero))))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
-        Step badZeroNullPlaybook = new Step(0, "specialist", 0, null, 0, "m", "high", "in", "out",
-            null, null, 1, 2, 3, 0, 0);
-        assertThatThrownBy(() -> service.record(currentUser,
-            requestFor(conversationId, List.of(badZeroNullPlaybook))))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        Step badZeroNullPlaybook =
+                new Step(
+                        0,
+                        "specialist",
+                        0,
+                        null,
+                        0,
+                        "m",
+                        "high",
+                        "in",
+                        "out",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        assertThatThrownBy(() ->
+                        service.record(
+                                currentUser,
+                                requestFor(conversationId, List.of(badZeroNullPlaybook))))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
-        Step badZeroBlankPlaybook = new Step(0, "specialist", 0, "   ", 0, "m", "high", "in", "out",
-            null, null, 1, 2, 3, 0, 0);
-        assertThatThrownBy(() -> service.record(currentUser,
-            requestFor(conversationId, List.of(badZeroBlankPlaybook))))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        Step badZeroBlankPlaybook =
+                new Step(
+                        0,
+                        "specialist",
+                        0,
+                        "   ",
+                        0,
+                        "m",
+                        "high",
+                        "in",
+                        "out",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        assertThatThrownBy(() ->
+                        service.record(
+                                currentUser,
+                                requestFor(conversationId, List.of(badZeroBlankPlaybook))))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
-        Step badNegative = new Step(0, "specialist", 0, "pb", -2, "m", "high", "in", "out", null,
-            null, 1, 2, 3, 0, 0);
-        assertThatThrownBy(
-            () -> service.record(currentUser, requestFor(conversationId, List.of(badNegative))))
-            .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
+        Step badNegative =
+                new Step(
+                        0,
+                        "specialist",
+                        0,
+                        "pb",
+                        -2,
+                        "m",
+                        "high",
+                        "in",
+                        "out",
+                        null,
+                        null,
+                        1,
+                        2,
+                        3,
+                        0,
+                        0);
+        assertThatThrownBy(() ->
+                        service.record(
+                                currentUser, requestFor(conversationId, List.of(badNegative))))
+                .satisfies(t -> assertStatus(t, HttpStatus.BAD_REQUEST));
 
         verifyNoInteractions(agentRunRepository, agentStepRepository);
     }

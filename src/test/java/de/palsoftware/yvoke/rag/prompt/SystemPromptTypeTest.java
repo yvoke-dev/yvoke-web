@@ -7,16 +7,15 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The two halves of this enum decide what every stored prompt type MEANS, and they had drifted
- * apart: {@link SystemPromptType#fromString} accepts almost any spelling, while
- * {@link SystemPromptType#dbValue} produced exactly one — lower case — which
- * {@code SystemPromptRepository.findByType} then compared with a case-sensitive {@code =}. The
- * corpus importer writes upper case, so every imported prompt was invisible and the admin ingest
- * page reported "No system prompts of type SUMMARIZE are configured" with one plainly present.
+ * apart: {@link SystemPromptType#fromString} accepts almost any spelling, while {@link
+ * SystemPromptType#dbValue} produced exactly one — lower case — which {@code
+ * SystemPromptRepository.findByType} then compared with a case-sensitive {@code =}. The corpus
+ * importer writes upper case, so every imported prompt was invisible and the admin ingest page
+ * reported "No system prompts of type SUMMARIZE are configured" with one plainly present.
  *
- * <p>
- * Neither half had a unit test. {@code dbValue()} is now the canonical UPPER CASE spelling, and the
- * round trip below is what stops the two drifting again; {@code SystemPromptRepositoryIT} pins the
- * query itself against real PostgreSQL, which is the only place case sensitivity is observable.
+ * <p>Neither half had a unit test. {@code dbValue()} is now the canonical UPPER CASE spelling, and
+ * the round trip below is what stops the two drifting again; {@code SystemPromptRepositoryIT} pins
+ * the query itself against real PostgreSQL, which is the only place case sensitivity is observable.
  */
 public class SystemPromptTypeTest {
 
@@ -34,8 +33,9 @@ public class SystemPromptTypeTest {
     @Test
     public void everyTypeSurvivesAWriteReadRoundTrip() {
         for (SystemPromptType type : SystemPromptType.values()) {
-            assertThat(SystemPromptType.fromString(type.dbValue())).as("round trip for %s", type)
-                .isEqualTo(type);
+            assertThat(SystemPromptType.fromString(type.dbValue()))
+                    .as("round trip for %s", type)
+                    .isEqualTo(type);
         }
     }
 
@@ -63,23 +63,25 @@ public class SystemPromptTypeTest {
 
     @Test
     public void chatAndAgenticTypesAreRejected() {
-        for (String retired : new String[] {"CHAT", "chat", "AGENTIC", "agentic", "Chat",
-            "Agentic"}) {
+        for (String retired :
+                new String[] {"CHAT", "chat", "AGENTIC", "agentic", "Chat", "Agentic"}) {
             assertThatThrownBy(() -> SystemPromptType.fromString(retired))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(retired);
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining(retired);
         }
     }
 
     /**
      * An unknown type must THROW rather than default to one, so a typo cannot silently file a
-     * prompt under the wrong kind.
-     * {@code RagAdminWriteIT.anUnknownPromptTypeIsRejectedRatherThanStored} pins the resulting 4xx
-     * at the controller.
+     * prompt under the wrong kind. {@code
+     * RagAdminWriteIT.anUnknownPromptTypeIsRejectedRatherThanStored} pins the resulting 4xx at the
+     * controller.
      */
     @Test
     public void anUnknownTypeIsRejected() {
         assertThatThrownBy(() -> SystemPromptType.fromString("NOT_A_TYPE"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("NOT_A_TYPE");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("NOT_A_TYPE");
     }
 
     /** Null is the absence of a type, not an error — callers map it themselves. */

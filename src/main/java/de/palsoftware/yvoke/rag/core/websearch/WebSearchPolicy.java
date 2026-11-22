@@ -11,8 +11,7 @@ import java.util.Set;
 /**
  * Domain and path-prefix allow-list policy for the {@code WebSearch} tool.
  *
- * <p>
- * Enforces host and path-prefix scoping both when building the Google Search {@code site:} query
+ * <p>Enforces host and path-prefix scoping both when building the Google Search {@code site:} query
  * and when post-filtering grounding URLs returned by Gemini.
  */
 public final class WebSearchPolicy {
@@ -23,8 +22,8 @@ public final class WebSearchPolicy {
 
     /**
      * Normalized allow-list entry combining a lower-case DNS hostname and an optional lower-case
-     * segment-aligned path prefix (either {@code ""} for whole-domain scope or
-     * {@code "/segment..."} with no trailing slash).
+     * segment-aligned path prefix (either {@code ""} for whole-domain scope or {@code
+     * "/segment..."} with no trailing slash).
      */
     public record AllowEntry(String host, String path) {}
 
@@ -80,9 +79,9 @@ public final class WebSearchPolicy {
     }
 
     /**
-     * Parses a single allow-list entry (such as {@code "support.oneidentity.com"} or
-     * {@code "www.oneidentity.com/community/"}) into a normalized {@link AllowEntry}, or returns
-     * {@code null} when the entry is invalid.
+     * Parses a single allow-list entry (such as {@code "support.oneidentity.com"} or {@code
+     * "www.oneidentity.com/community/"}) into a normalized {@link AllowEntry}, or returns {@code
+     * null} when the entry is invalid.
      */
     public static AllowEntry parseAllowEntry(String entry) {
         if (entry == null) {
@@ -148,8 +147,10 @@ public final class WebSearchPolicy {
      * {@code allowedEntries}.
      */
     public static boolean isUrlDomainAllowed(String rawUrl, List<AllowEntry> allowedEntries) {
-        if (rawUrl == null || rawUrl.isBlank() || allowedEntries == null
-            || allowedEntries.isEmpty()) {
+        if (rawUrl == null
+                || rawUrl.isBlank()
+                || allowedEntries == null
+                || allowedEntries.isEmpty()) {
             return false;
         }
         String trimmed = rawUrl.trim();
@@ -166,7 +167,7 @@ public final class WebSearchPolicy {
 
         String scheme = uri.getScheme();
         if (scheme == null
-            || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+                || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
             return false;
         }
         if (uri.getRawUserInfo() != null) {
@@ -201,8 +202,8 @@ public final class WebSearchPolicy {
 
     /**
      * Builds a domain-scoped Google Search query by appending {@code (site:... OR site:...)}
-     * clauses for every entry in {@code allowedEntries}. Fails closed with
-     * {@link IllegalStateException} if {@code allowedEntries} is null or empty.
+     * clauses for every entry in {@code allowedEntries}. Fails closed with {@link
+     * IllegalStateException} if {@code allowedEntries} is null or empty.
      */
     public static String buildScopedQuery(String query, List<AllowEntry> allowedEntries) {
         if (query == null || query.isBlank()) {
@@ -211,7 +212,9 @@ public final class WebSearchPolicy {
         String trimmedQuery = query.trim();
         if (trimmedQuery.length() > MAX_QUERY_LENGTH) {
             throw new IllegalArgumentException(
-                "WebSearch query exceeds maximum length of " + MAX_QUERY_LENGTH + " characters");
+                    "WebSearch query exceeds maximum length of "
+                            + MAX_QUERY_LENGTH
+                            + " characters");
         }
         if (allowedEntries == null || allowedEntries.isEmpty()) {
             throw new IllegalStateException("WebSearch allowedEntries must not be empty");
@@ -230,7 +233,7 @@ public final class WebSearchPolicy {
         }
         if (clauses.isEmpty()) {
             throw new IllegalStateException(
-                "WebSearch allowedEntries must contain at least one valid entry");
+                    "WebSearch allowedEntries must contain at least one valid entry");
         }
         return trimmedQuery + " (" + String.join(" OR ", clauses) + ")";
     }
@@ -283,8 +286,10 @@ public final class WebSearchPolicy {
             return "/";
         }
         String lower = rawPath.toLowerCase(Locale.ROOT);
-        if (!lower.startsWith("/") || lower.contains("//") || lower.contains("\\")
-            || containsEncodedTraversalOrSlash(lower)) {
+        if (!lower.startsWith("/")
+                || lower.contains("//")
+                || lower.contains("\\")
+                || containsEncodedTraversalOrSlash(lower)) {
             return null;
         }
         String[] segments = lower.substring(1).split("/", -1);

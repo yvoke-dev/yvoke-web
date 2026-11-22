@@ -24,23 +24,24 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 public class LlmCallLoggingServiceTest {
 
-    @Mock
-    private LlmCallLogRepository llmCallLogRepository;
+    @Mock private LlmCallLogRepository llmCallLogRepository;
 
-    @Mock
-    private ModelPricingRepository modelPricingRepository;
+    @Mock private ModelPricingRepository modelPricingRepository;
 
-    @InjectMocks
-    private LlmCallLoggingService service;
+    @InjectMocks private LlmCallLoggingService service;
 
     @Test
     void onLlmCall_calculatesCostAtCallTimeAndInsertsLog() {
         String model = "gemini-3.6-flash";
-        ModelPricing pricing = new ModelPricing(UUID.randomUUID(), model, new BigDecimal("1.50"), // prompt
-            new BigDecimal("10.00"), // completion
-            new BigDecimal("0.20"), // cached
-            new BigDecimal("10.00"), // thought
-            Instant.now());
+        ModelPricing pricing =
+                new ModelPricing(
+                        UUID.randomUUID(),
+                        model,
+                        new BigDecimal("1.50"), // prompt
+                        new BigDecimal("10.00"), // completion
+                        new BigDecimal("0.20"), // cached
+                        new BigDecimal("10.00"), // thought
+                        Instant.now());
 
         when(modelPricingRepository.findByModelName(model)).thenReturn(Optional.of(pricing));
 
@@ -48,8 +49,21 @@ public class LlmCallLoggingServiceTest {
         UUID msgId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
 
-        LlmCallLoggedEvent event = new LlmCallLoggedEvent(convId, msgId, null, userId, "chat",
-            "assistant", model, 3_000_000, 500_000, 2_000_000, 0, 5_500_000, 450);
+        LlmCallLoggedEvent event =
+                new LlmCallLoggedEvent(
+                        convId,
+                        msgId,
+                        null,
+                        userId,
+                        "chat",
+                        "assistant",
+                        model,
+                        3_000_000,
+                        500_000,
+                        2_000_000,
+                        0,
+                        5_500_000,
+                        450);
 
         service.onLlmCall(event);
 
@@ -67,9 +81,14 @@ public class LlmCallLoggingServiceTest {
     }
 
     private ModelPricing pricingFor(String model) {
-        return new ModelPricing(UUID.randomUUID(), model, new BigDecimal("1.50"),
-            new BigDecimal("10.00"), new BigDecimal("0.20"), new BigDecimal("10.00"),
-            Instant.now());
+        return new ModelPricing(
+                UUID.randomUUID(),
+                model,
+                new BigDecimal("1.50"),
+                new BigDecimal("10.00"),
+                new BigDecimal("0.20"),
+                new BigDecimal("10.00"),
+                Instant.now());
     }
 
     private LlmCallLog logFor(LlmCallLoggedEvent event) {
@@ -88,11 +107,26 @@ public class LlmCallLoggingServiceTest {
     void onLlmCall_replayedByGateway_billsZeroAndRecordsAvoidedCost() {
         String model = "gemini-3.6-flash";
         when(modelPricingRepository.findByModelName(model))
-            .thenReturn(Optional.of(pricingFor(model)));
+                .thenReturn(Optional.of(pricingFor(model)));
 
-        LlmCallLog logged = logFor(
-            new LlmCallLoggedEvent(null, null, null, null, "kg_extraction", "kg_extractor", model,
-                1_000_000, 100_000, 0, 0, 1_100_000, 12, GatewayCacheStatus.REPLAYED, "01KZ6A5K"));
+        LlmCallLog logged =
+                logFor(
+                        new LlmCallLoggedEvent(
+                                null,
+                                null,
+                                null,
+                                null,
+                                "kg_extraction",
+                                "kg_extractor",
+                                model,
+                                1_000_000,
+                                100_000,
+                                0,
+                                0,
+                                1_100_000,
+                                12,
+                                GatewayCacheStatus.REPLAYED,
+                                "01KZ6A5K"));
 
         assertThat(logged.totalCost()).isEqualByComparingTo("0");
         assertThat(logged.costAvoided()).isEqualByComparingTo("2.50");
@@ -106,11 +140,26 @@ public class LlmCallLoggingServiceTest {
     void onLlmCall_forwardedByGateway_billsNormallyAndAvoidsNothing() {
         String model = "gemini-3.6-flash";
         when(modelPricingRepository.findByModelName(model))
-            .thenReturn(Optional.of(pricingFor(model)));
+                .thenReturn(Optional.of(pricingFor(model)));
 
-        LlmCallLog logged = logFor(
-            new LlmCallLoggedEvent(null, null, null, null, "kg_extraction", "kg_extractor", model,
-                1_000_000, 100_000, 0, 0, 1_100_000, 12, GatewayCacheStatus.FORWARDED, "01KZ6A5M"));
+        LlmCallLog logged =
+                logFor(
+                        new LlmCallLoggedEvent(
+                                null,
+                                null,
+                                null,
+                                null,
+                                "kg_extraction",
+                                "kg_extractor",
+                                model,
+                                1_000_000,
+                                100_000,
+                                0,
+                                0,
+                                1_100_000,
+                                12,
+                                GatewayCacheStatus.FORWARDED,
+                                "01KZ6A5M"));
 
         assertThat(logged.totalCost()).isEqualByComparingTo("2.50");
         assertThat(logged.costAvoided()).isEqualByComparingTo("0");
@@ -122,11 +171,26 @@ public class LlmCallLoggingServiceTest {
     void onLlmCall_unrecognizedGatewayStatus_billsInFull() {
         String model = "gemini-3.6-flash";
         when(modelPricingRepository.findByModelName(model))
-            .thenReturn(Optional.of(pricingFor(model)));
+                .thenReturn(Optional.of(pricingFor(model)));
 
         LlmCallLog logged =
-            logFor(new LlmCallLoggedEvent(null, null, null, null, "chat", "assistant", model,
-                1_000_000, 100_000, 0, 0, 1_100_000, 12, GatewayCacheStatus.UNRECOGNIZED, null));
+                logFor(
+                        new LlmCallLoggedEvent(
+                                null,
+                                null,
+                                null,
+                                null,
+                                "chat",
+                                "assistant",
+                                model,
+                                1_000_000,
+                                100_000,
+                                0,
+                                0,
+                                1_100_000,
+                                12,
+                                GatewayCacheStatus.UNRECOGNIZED,
+                                null));
 
         assertThat(logged.totalCost()).isEqualByComparingTo("2.50");
         assertThat(logged.costAvoided()).isEqualByComparingTo("0");
@@ -139,10 +203,24 @@ public class LlmCallLoggingServiceTest {
     void onLlmCall_withoutGateway_billsNormallyAndLeavesStatusNull() {
         String model = "gemini-3.6-flash";
         when(modelPricingRepository.findByModelName(model))
-            .thenReturn(Optional.of(pricingFor(model)));
+                .thenReturn(Optional.of(pricingFor(model)));
 
-        LlmCallLog logged = logFor(new LlmCallLoggedEvent(null, null, null, null, "chat",
-            "assistant", model, 1_000_000, 100_000, 0, 0, 1_100_000, 12));
+        LlmCallLog logged =
+                logFor(
+                        new LlmCallLoggedEvent(
+                                null,
+                                null,
+                                null,
+                                null,
+                                "chat",
+                                "assistant",
+                                model,
+                                1_000_000,
+                                100_000,
+                                0,
+                                0,
+                                1_100_000,
+                                12));
 
         assertThat(logged.totalCost()).isEqualByComparingTo("2.50");
         assertThat(logged.costAvoided()).isEqualByComparingTo("0");

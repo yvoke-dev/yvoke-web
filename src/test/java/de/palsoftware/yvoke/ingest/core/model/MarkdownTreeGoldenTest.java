@@ -32,24 +32,29 @@ class MarkdownTreeGoldenTest {
             Section actual = sections.get(i);
             JsonNode expected = goldenSections.get(i);
 
-            assertThat(actual.depth()).as("depth at index %d", i)
-                .isEqualTo(expected.get("depth").asInt());
-            assertThat(actual.title()).as("title at index %d", i)
-                .isEqualTo(expected.get("title").asText());
-            assertThat(actual.headingPath()).as("heading_path at index %d", i)
-                .isEqualTo(toList(expected.get("heading_path")));
-            assertThat(actual.toChunkText()).as("chunk_text at index %d", i)
-                .isEqualTo(expected.get("chunk_text").asText());
+            assertThat(actual.depth())
+                    .as("depth at index %d", i)
+                    .isEqualTo(expected.get("depth").asInt());
+            assertThat(actual.title())
+                    .as("title at index %d", i)
+                    .isEqualTo(expected.get("title").asText());
+            assertThat(actual.headingPath())
+                    .as("heading_path at index %d", i)
+                    .isEqualTo(toList(expected.get("heading_path")));
+            assertThat(actual.toChunkText())
+                    .as("chunk_text at index %d", i)
+                    .isEqualTo(expected.get("chunk_text").asText());
         }
     }
 
     @Test
     void everyChunkBodyStaysWithinTheCap() {
         List<Section> sections =
-            MarkdownTree.buildOrderedSections(readResource("/manuals/sample_manual.md"));
+                MarkdownTree.buildOrderedSections(readResource("/manuals/sample_manual.md"));
         for (Section s : sections) {
-            assertThat(s.body().length()).as("body length for %s", s.title())
-                .isLessThanOrEqualTo(MarkdownTree.CHUNK_BODY_MAX_CHARS);
+            assertThat(s.body().length())
+                    .as("body length for %s", s.title())
+                    .isLessThanOrEqualTo(MarkdownTree.CHUNK_BODY_MAX_CHARS);
         }
     }
 

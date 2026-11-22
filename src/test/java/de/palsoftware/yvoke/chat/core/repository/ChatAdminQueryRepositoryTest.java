@@ -76,9 +76,9 @@ class ChatAdminQueryRepositoryTest {
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 6, 1, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 6, 1, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 6, 11, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 6, 11, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.fromDate()).isEqualTo(from);
         assertThat(custom.toDate()).isEqualTo(to);
     }
@@ -90,9 +90,9 @@ class ChatAdminQueryRepositoryTest {
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 7, 15, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 7, 15, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 7, 16, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 7, 16, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.fromDate()).isEqualTo(day);
         assertThat(custom.toDate()).isEqualTo(day);
     }
@@ -105,9 +105,9 @@ class ChatAdminQueryRepositoryTest {
 
         assertThat(custom.preset()).isEqualTo("custom");
         assertThat(custom.fromCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 8, 10, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 8, 10, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.toCutoff())
-            .isEqualTo(OffsetDateTime.of(2026, 8, 21, 0, 0, 0, 0, ZoneOffset.UTC));
+                .isEqualTo(OffsetDateTime.of(2026, 8, 21, 0, 0, 0, 0, ZoneOffset.UTC));
         assertThat(custom.fromDate()).isEqualTo(to);
         assertThat(custom.toDate()).isEqualTo(from);
     }
@@ -115,14 +115,15 @@ class ChatAdminQueryRepositoryTest {
     @Test
     void testConversationOverviewStats_recordProperties() {
         UserConversationStats regUser1 =
-            new UserConversationStats(UUID.randomUUID(), "Alice", "alice@example.com", 5, 2, 0);
+                new UserConversationStats(UUID.randomUUID(), "Alice", "alice@example.com", 5, 2, 0);
         UserConversationStats regUser2 =
-            new UserConversationStats(UUID.randomUUID(), "Bob", "bob@example.com", 3, 1, 1);
+                new UserConversationStats(UUID.randomUUID(), "Bob", "bob@example.com", 3, 1, 1);
         UserConversationStats anonUser =
-            new UserConversationStats(null, "Anonymous / Deleted", null, 10, 3, 2);
+                new UserConversationStats(null, "Anonymous / Deleted", null, 10, 3, 2);
 
         ConversationOverviewStats stats =
-            new ConversationOverviewStats(18, 6, 3, 2, 3, List.of(regUser1, regUser2, anonUser));
+                new ConversationOverviewStats(
+                        18, 6, 3, 2, 3, List.of(regUser1, regUser2, anonUser));
 
         assertThat(stats.totalConversations()).isEqualTo(18);
         assertThat(stats.totalThumbsUp()).isEqualTo(6);
@@ -138,7 +139,7 @@ class ChatAdminQueryRepositoryTest {
         Map<String, Object> params = new HashMap<>();
 
         ConversationFilter empty =
-            new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL);
+                new ConversationFilter(Set.of(), false, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, empty);
 
         assertThat(sql.toString()).isEqualTo("SELECT COUNT(*) FROM conversations c WHERE 1=1");
@@ -152,7 +153,7 @@ class ChatAdminQueryRepositoryTest {
         UUID uid = UUID.randomUUID();
 
         ConversationFilter filter =
-            new ConversationFilter(Set.of(uid), false, TimeFilter.all(), FeedbackFilter.ALL);
+                new ConversationFilter(Set.of(uid), false, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND c.user_id IN (:userIds)");
@@ -166,7 +167,7 @@ class ChatAdminQueryRepositoryTest {
         Map<String, Object> params = new HashMap<>();
 
         ConversationFilter filter =
-            new ConversationFilter(Set.of(), true, TimeFilter.all(), FeedbackFilter.ALL);
+                new ConversationFilter(Set.of(), true, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND c.user_id IS NULL");
@@ -181,7 +182,7 @@ class ChatAdminQueryRepositoryTest {
         UUID uid = UUID.randomUUID();
 
         ConversationFilter filter =
-            new ConversationFilter(Set.of(uid), true, TimeFilter.all(), FeedbackFilter.ALL);
+                new ConversationFilter(Set.of(uid), true, TimeFilter.all(), FeedbackFilter.ALL);
         repository.appendConversationFilters(sql, params, filter);
 
         assertThat(sql.toString()).contains("AND (c.user_id IN (:userIds) OR c.user_id IS NULL)");
@@ -197,7 +198,7 @@ class ChatAdminQueryRepositoryTest {
         OffsetDateTime to = OffsetDateTime.of(2026, 1, 2, 0, 0, 0, 0, ZoneOffset.UTC);
         TimeFilter timeFilter = new TimeFilter("custom", from, to, null, null);
         ConversationFilter filter =
-            new ConversationFilter(Set.of(), false, timeFilter, FeedbackFilter.ALL);
+                new ConversationFilter(Set.of(), false, timeFilter, FeedbackFilter.ALL);
 
         repository.appendConversationFilters(sql, params, filter);
 
@@ -209,10 +210,16 @@ class ChatAdminQueryRepositoryTest {
 
     @Test
     void testAppendConversationFilters_feedbackFilters() {
-        for (FeedbackFilter fb : List.of(FeedbackFilter.POSITIVE, FeedbackFilter.NEGATIVE, FeedbackFilter.ANY, FeedbackFilter.NONE)) {
+        for (FeedbackFilter fb :
+                List.of(
+                        FeedbackFilter.POSITIVE,
+                        FeedbackFilter.NEGATIVE,
+                        FeedbackFilter.ANY,
+                        FeedbackFilter.NONE)) {
             StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM conversations c WHERE 1=1");
             Map<String, Object> params = new HashMap<>();
-            ConversationFilter filter = new ConversationFilter(Set.of(), false, TimeFilter.all(), fb);
+            ConversationFilter filter =
+                    new ConversationFilter(Set.of(), false, TimeFilter.all(), fb);
             repository.appendConversationFilters(sql, params, filter);
 
             switch (fb) {
@@ -243,41 +250,97 @@ class ChatAdminQueryRepositoryTest {
         UUID userId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        AdminConversation desktopPrefixed = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "desktop", now, now, 1, 0, "v1.3.1");
+        AdminConversation desktopPrefixed =
+                new AdminConversation(
+                        id,
+                        userId,
+                        "Alice",
+                        "alice@example.com",
+                        "Title",
+                        "desktop",
+                        now,
+                        now,
+                        1,
+                        0,
+                        "v1.3.1");
         assertThat(desktopPrefixed.source()).isEqualTo("desktop");
         assertThat(desktopPrefixed.clientVersion()).isEqualTo("v1.3.1");
         assertThat(desktopPrefixed.sourceBadge()).isEqualTo("desktop v1.3.1");
 
-        AdminConversation desktopBareSemver = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "desktop", now, now, 1, 0, "1.3.1");
+        AdminConversation desktopBareSemver =
+                new AdminConversation(
+                        id,
+                        userId,
+                        "Alice",
+                        "alice@example.com",
+                        "Title",
+                        "desktop",
+                        now,
+                        now,
+                        1,
+                        0,
+                        "1.3.1");
         assertThat(desktopBareSemver.clientVersion()).isEqualTo("1.3.1");
         assertThat(desktopBareSemver.sourceBadge()).isEqualTo("desktop 1.3.1");
 
-        AdminConversation pluginVersioned = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "claude-plugin", now, now, 0, 0, "0.4.2");
+        AdminConversation pluginVersioned =
+                new AdminConversation(
+                        id,
+                        userId,
+                        "Alice",
+                        "alice@example.com",
+                        "Title",
+                        "claude-plugin",
+                        now,
+                        now,
+                        0,
+                        0,
+                        "0.4.2");
         assertThat(pluginVersioned.clientVersion()).isEqualTo("0.4.2");
         assertThat(pluginVersioned.sourceBadge()).isEqualTo("claude-plugin 0.4.2");
 
         for (String blank : List.of("", "   ", "\t\u2003")) {
-            AdminConversation unversioned = new AdminConversation(id, userId, "Alice",
-                "alice@example.com", "Title", "desktop", now, now, 0, 0, blank);
+            AdminConversation unversioned =
+                    new AdminConversation(
+                            id,
+                            userId,
+                            "Alice",
+                            "alice@example.com",
+                            "Title",
+                            "desktop",
+                            now,
+                            now,
+                            0,
+                            0,
+                            blank);
             assertThat(unversioned.clientVersion()).isNull();
             assertThat(unversioned.sourceBadge()).isEqualTo("desktop");
         }
 
-        AdminConversation tenArg = new AdminConversation(id, userId, "Alice", "alice@example.com",
-            "Title", "desktop", now, now, 0, 0);
+        AdminConversation tenArg =
+                new AdminConversation(
+                        id,
+                        userId,
+                        "Alice",
+                        "alice@example.com",
+                        "Title",
+                        "desktop",
+                        now,
+                        now,
+                        0,
+                        0);
         assertThat(tenArg.clientVersion()).isNull();
         assertThat(tenArg.sourceBadge()).isEqualTo("desktop");
 
-        AdminConversation nullSource = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", null, now, now, 0, 0);
+        AdminConversation nullSource =
+                new AdminConversation(
+                        id, userId, "Alice", "alice@example.com", "Title", null, now, now, 0, 0);
         assertThat(nullSource.source()).isEqualTo("web");
         assertThat(nullSource.sourceBadge()).isEqualTo("web");
 
-        AdminConversation blankSource = new AdminConversation(id, userId, "Alice",
-            "alice@example.com", "Title", "   ", now, now, 0, 0);
+        AdminConversation blankSource =
+                new AdminConversation(
+                        id, userId, "Alice", "alice@example.com", "Title", "   ", now, now, 0, 0);
         assertThat(blankSource.source()).isEqualTo("web");
         assertThat(blankSource.sourceBadge()).isEqualTo("web");
     }
@@ -287,7 +350,8 @@ class ChatAdminQueryRepositoryTest {
     void testListFilteredConversations_projectsAndMapsClientVersion() throws Exception {
         JdbcClient.StatementSpec statementSpec = mock(JdbcClient.StatementSpec.class);
         JdbcClient.MappedQuerySpec<AdminConversation> querySpec =
-            (JdbcClient.MappedQuerySpec<AdminConversation>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<AdminConversation>)
+                        mock(JdbcClient.MappedQuerySpec.class);
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
         when(statementSpec.params(anyMap())).thenReturn(statementSpec);
         when(statementSpec.query(any(RowMapper.class))).thenReturn(querySpec);
@@ -297,17 +361,20 @@ class ChatAdminQueryRepositoryTest {
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient).sql(sqlCaptor.capture());
-        assertThat(sqlCaptor.getValue()).contains("COALESCE(c.source, 'web') AS source",
-            "WHEN c.source = 'desktop' THEN c.settings->>'desktopVersion'",
-            "WHEN c.source = 'claude-plugin' THEN c.settings->>'pluginVersion'",
-            "END AS client_version").doesNotContain("BTRIM", "jsonb_typeof", ":ws");
+        assertThat(sqlCaptor.getValue())
+                .contains(
+                        "COALESCE(c.source, 'web') AS source",
+                        "WHEN c.source = 'desktop' THEN c.settings->>'desktopVersion'",
+                        "WHEN c.source = 'claude-plugin' THEN c.settings->>'pluginVersion'",
+                        "END AS client_version")
+                .doesNotContain("BTRIM", "jsonb_typeof", ":ws");
 
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(statementSpec).params(paramsCaptor.capture());
         assertThat(paramsCaptor.getValue()).doesNotContainKey("ws");
 
         ArgumentCaptor<RowMapper<AdminConversation>> mapperCaptor =
-            ArgumentCaptor.forClass(RowMapper.class);
+                ArgumentCaptor.forClass(RowMapper.class);
         verify(statementSpec).query(mapperCaptor.capture());
 
         UUID convId = UUID.randomUUID();

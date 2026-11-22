@@ -22,23 +22,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * PRF-14: the cost-dashboard overview fragment used to render through four separate service calls
- * ({@code calculateGlobalCost} + the three top-N methods), each independently loading the
- * {@code chat_model_pricing} table — four identical reads per overview render.
- * {@code getOverviewReport} collapses those to <b>one</b> pricing snapshot shared across all four
- * reports. This test pins both halves of the change: (1) exactly one {@code findAll()} pricing read
- * (and one fetch per source), and (2) the composite's four pieces are byte-identical to calling the
- * four methods standalone.
+ * ({@code calculateGlobalCost} + the three top-N methods), each independently loading the {@code
+ * chat_model_pricing} table — four identical reads per overview render. {@code getOverviewReport}
+ * collapses those to <b>one</b> pricing snapshot shared across all four reports. This test pins
+ * both halves of the change: (1) exactly one {@code findAll()} pricing read (and one fetch per
+ * source), and (2) the composite's four pieces are byte-identical to calling the four methods
+ * standalone.
  */
 @ExtendWith(MockitoExtension.class)
 class CostOverviewReportTest {
 
     private static final String M1 = "M1-PRICED";
 
-    @Mock
-    private ModelPricingRepository pricingRepository;
+    @Mock private ModelPricingRepository pricingRepository;
 
-    @Mock
-    private CostQueryRepository costQueryRepository;
+    @Mock private CostQueryRepository costQueryRepository;
 
     private CostCalculationService service;
 
@@ -55,16 +53,56 @@ class CostOverviewReportTest {
         service = new CostCalculationService(pricingRepository, costQueryRepository, 1000);
 
         when(costQueryRepository.globalModelTokenRows(start, end))
-            .thenReturn(List.of(tokenRow(M1, 1000, 500, 200, 0, new BigDecimal("0.001170"))));
-        when(costQueryRepository.topUserTokenRows(start, end)).thenReturn(List.of(
-            userRow(user1, "User One", "u1@x", M1, 1000, 500, 200, 0, new BigDecimal("0.001170")),
-            userRow(user2, "User Two", "u2@x", M1, 100, 50, 0, 0, new BigDecimal("0.000125"))));
-        when(costQueryRepository.topConversationTokenRows(start, end)).thenReturn(List.of(
-            convRow(conv1, "Conv One", "User One", M1, 1000, 500, 200, 0,
-                new BigDecimal("0.001170")),
-            convRow(conv2, "Conv Two", "User Two", M1, 100, 50, 0, 0, new BigDecimal("0.000125"))));
+                .thenReturn(List.of(tokenRow(M1, 1000, 500, 200, 0, new BigDecimal("0.001170"))));
+        when(costQueryRepository.topUserTokenRows(start, end))
+                .thenReturn(
+                        List.of(
+                                userRow(
+                                        user1,
+                                        "User One",
+                                        "u1@x",
+                                        M1,
+                                        1000,
+                                        500,
+                                        200,
+                                        0,
+                                        new BigDecimal("0.001170")),
+                                userRow(
+                                        user2,
+                                        "User Two",
+                                        "u2@x",
+                                        M1,
+                                        100,
+                                        50,
+                                        0,
+                                        0,
+                                        new BigDecimal("0.000125"))));
+        when(costQueryRepository.topConversationTokenRows(start, end))
+                .thenReturn(
+                        List.of(
+                                convRow(
+                                        conv1,
+                                        "Conv One",
+                                        "User One",
+                                        M1,
+                                        1000,
+                                        500,
+                                        200,
+                                        0,
+                                        new BigDecimal("0.001170")),
+                                convRow(
+                                        conv2,
+                                        "Conv Two",
+                                        "User Two",
+                                        M1,
+                                        100,
+                                        50,
+                                        0,
+                                        0,
+                                        new BigDecimal("0.000125"))));
         when(costQueryRepository.masProfileTokenRows(start, end))
-            .thenReturn(List.of(profileRow("P1", M1, 2000, 0, 0, 0, new BigDecimal("0.001000"))));
+                .thenReturn(
+                        List.of(profileRow("P1", M1, 2000, 0, 0, 0, new BigDecimal("0.001000"))));
     }
 
     @Test
@@ -84,7 +122,7 @@ class CostOverviewReportTest {
         assertThat(overview.report()).isEqualTo(service.calculateGlobalCost(start, end));
         assertThat(overview.topUsers()).isEqualTo(service.getTopUsersByCost(start, end, 10));
         assertThat(overview.topConversations())
-            .isEqualTo(service.getTopConversationsByCost(start, end, 10));
+                .isEqualTo(service.getTopConversationsByCost(start, end, 10));
         assertThat(overview.masProfiles()).isEqualTo(service.getMasProfilesByCost(start, end));
     }
 
@@ -101,13 +139,13 @@ class CostOverviewReportTest {
         // MAS profile P1: 2000 uncached prompt = 0.001000.
         assertThat(overview.masProfiles()).hasSize(1);
         assertThat(overview.masProfiles().get(0).estimatedCostUsd())
-            .isEqualByComparingTo("0.001000");
+                .isEqualByComparingTo("0.001000");
     }
 
     // ---- token-row builders (keys match the SQL aliases the service reads) ----
 
-    private static Map<String, Object> tokenRow(String model, long p, long c, long ca, long t,
-        BigDecimal totalCost) {
+    private static Map<String, Object> tokenRow(
+            String model, long p, long c, long ca, long t, BigDecimal totalCost) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("model", model);
         row.put("p_tokens", p);
@@ -119,8 +157,16 @@ class CostOverviewReportTest {
         return row;
     }
 
-    private static Map<String, Object> userRow(UUID userId, String displayName, String email,
-        String model, long p, long c, long ca, long t, BigDecimal totalCost) {
+    private static Map<String, Object> userRow(
+            UUID userId,
+            String displayName,
+            String email,
+            String model,
+            long p,
+            long c,
+            long ca,
+            long t,
+            BigDecimal totalCost) {
         Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("user_id", userId);
         row.put("display_name", displayName);
@@ -128,8 +174,16 @@ class CostOverviewReportTest {
         return row;
     }
 
-    private static Map<String, Object> convRow(UUID convId, String title, String userName,
-        String model, long p, long c, long ca, long t, BigDecimal totalCost) {
+    private static Map<String, Object> convRow(
+            UUID convId,
+            String title,
+            String userName,
+            String model,
+            long p,
+            long c,
+            long ca,
+            long t,
+            BigDecimal totalCost) {
         Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("conv_id", convId);
         row.put("title", title);
@@ -137,8 +191,14 @@ class CostOverviewReportTest {
         return row;
     }
 
-    private static Map<String, Object> profileRow(String profileName, String model, long p, long c,
-        long ca, long t, BigDecimal totalCost) {
+    private static Map<String, Object> profileRow(
+            String profileName,
+            String model,
+            long p,
+            long c,
+            long ca,
+            long t,
+            BigDecimal totalCost) {
         Map<String, Object> row = tokenRow(model, p, c, ca, t, totalCost);
         row.put("profile_name", profileName);
         return row;

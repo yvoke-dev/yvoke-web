@@ -33,14 +33,18 @@ public class LifecycleAdminControllerTest {
         collectionService = mock(CollectionService.class);
         documentRepository = mock(DocumentRepository.class);
         controller =
-            new LifecycleAdminController(lifecycleService, collectionService, documentRepository);
+                new LifecycleAdminController(
+                        lifecycleService, collectionService, documentRepository);
         redirectAttributes = mock(RedirectAttributes.class);
     }
 
     @Test
     public void testDeleteCollectionCrud_authorized() {
-        when(collectionService.findByNameForAdmin("OIM")).thenReturn(
-            Optional.of(new Collection(UUID.randomUUID(), "OIM", null, List.of(), null, "OIM")));
+        when(collectionService.findByNameForAdmin("OIM"))
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        UUID.randomUUID(), "OIM", null, List.of(), null, "OIM")));
 
         String view = controller.deleteCollectionCrud("OIM", redirectAttributes);
         assertThat(view).isEqualTo("redirect:/admin/collections");
@@ -51,15 +55,19 @@ public class LifecycleAdminControllerTest {
     public void testDeleteCollectionCrud_unauthorized_throws404() {
         when(collectionService.findByNameForAdmin("Finance")).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.deleteCollectionCrud("Finance", redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.deleteCollectionCrud("Finance", redirectAttributes));
         verify(lifecycleService, never()).deleteCollection(anyString());
     }
 
     @Test
     public void testDeleteCollection_authorized() {
-        when(collectionService.findByNameForAdmin("OIM")).thenReturn(
-            Optional.of(new Collection(UUID.randomUUID(), "OIM", null, List.of(), null, "OIM")));
+        when(collectionService.findByNameForAdmin("OIM"))
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        UUID.randomUUID(), "OIM", null, List.of(), null, "OIM")));
 
         String view = controller.deleteCollection("OIM", redirectAttributes);
         assertThat(view).isEqualTo("redirect:/admin/documents");
@@ -70,8 +78,9 @@ public class LifecycleAdminControllerTest {
     public void testDeleteCollection_unauthorized_throws404() {
         when(collectionService.findByNameForAdmin("Finance")).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.deleteCollection("Finance", redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.deleteCollection("Finance", redirectAttributes));
         verify(lifecycleService, never()).deleteCollection(anyString());
     }
 
@@ -79,7 +88,7 @@ public class LifecycleAdminControllerTest {
     public void testDeleteCollectionById_authorized() {
         UUID id = UUID.randomUUID();
         when(collectionService.findByIdForAdmin(id))
-            .thenReturn(Optional.of(new Collection(id, "OIM", null, List.of(), null, "OIM")));
+                .thenReturn(Optional.of(new Collection(id, "OIM", null, List.of(), null, "OIM")));
 
         String view = controller.deleteCollectionById(id, redirectAttributes);
         assertThat(view).isEqualTo("redirect:/admin/collections");
@@ -91,8 +100,9 @@ public class LifecycleAdminControllerTest {
         UUID id = UUID.randomUUID();
         when(collectionService.findByIdForAdmin(id)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.deleteCollectionById(id, redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.deleteCollectionById(id, redirectAttributes));
         verify(lifecycleService, never()).deleteCollection(anyString());
     }
 
@@ -100,11 +110,21 @@ public class LifecycleAdminControllerTest {
     public void testDeleteDocument_authorized() {
         UUID docId = UUID.randomUUID();
         UUID colId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, colId, "OIM", "standard", "title", Map.of(),
-            "completed", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        colId,
+                        "OIM",
+                        "standard",
+                        "title",
+                        Map.of(),
+                        "completed",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
         when(collectionService.findByIdForAdmin(colId))
-            .thenReturn(Optional.of(new Collection(colId, "OIM", null, List.of(), null, "OIM")));
+                .thenReturn(
+                        Optional.of(new Collection(colId, "OIM", null, List.of(), null, "OIM")));
 
         String view = controller.deleteDocument(docId, redirectAttributes);
         assertThat(view).isEqualTo("redirect:/admin/documents");
@@ -115,13 +135,23 @@ public class LifecycleAdminControllerTest {
     public void testDeleteDocument_unauthorized_throws404() {
         UUID docId = UUID.randomUUID();
         UUID colId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, colId, "OIM", "standard", "title", Map.of(),
-            "completed", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        colId,
+                        "OIM",
+                        "standard",
+                        "title",
+                        Map.of(),
+                        "completed",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
         when(collectionService.findByIdForAdmin(colId)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.deleteDocument(docId, redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.deleteDocument(docId, redirectAttributes));
         verify(lifecycleService, never()).deleteDocument(any());
     }
 
@@ -129,7 +159,8 @@ public class LifecycleAdminControllerTest {
     public void testRemoveCollectionTag_authorized() {
         UUID colId = UUID.randomUUID();
         when(collectionService.findByIdForAdmin(colId))
-            .thenReturn(Optional.of(new Collection(colId, "OIM", null, List.of(), null, "OIM")));
+                .thenReturn(
+                        Optional.of(new Collection(colId, "OIM", null, List.of(), null, "OIM")));
 
         String view = controller.removeCollectionTag(colId, "v1", redirectAttributes);
         assertThat(view).isEqualTo("redirect:/admin/collections");
@@ -141,8 +172,9 @@ public class LifecycleAdminControllerTest {
         UUID colId = UUID.randomUUID();
         when(collectionService.findByIdForAdmin(colId)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.removeCollectionTag(colId, "v1", redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.removeCollectionTag(colId, "v1", redirectAttributes));
         verify(lifecycleService, never()).removeTagFromCollection(any(), anyString());
     }
 }

@@ -79,6 +79,7 @@ public class OrchestrationServiceTest {
 
     /** Verbatim text the stubbed orchestrator "emits", so a test can include a preamble. */
     private String orchestratorRawAnswer = null;
+
     /** What the orchestrator answers on a REVISING turn, when the first draft is not enough. */
     private String orchestratorRevisedAnswer = null;
 
@@ -91,23 +92,24 @@ public class OrchestrationServiceTest {
 
     /** When set, the reviewer turn throws this instead of returning a verdict. */
     private RuntimeException reviewerFailure = null;
+
     private boolean orchestratorClarifies = false;
     private String specialistClarifyingQuestion = null; // when set, the specialist asks the user
     private final AtomicInteger reviewCount = new AtomicInteger(0);
     private final List<String> specialistToolResults =
-        Collections.synchronizedList(new ArrayList<>());
+            Collections.synchronizedList(new ArrayList<>());
 
-    private final AtomicReference<LlmCallContextHolder.Context> contextInsideOrchestratorBeforeDelegation =
-        new AtomicReference<>();
-    private final AtomicReference<LlmCallContextHolder.Context> contextInsideOrchestratorAfterDelegation =
-        new AtomicReference<>();
+    private final AtomicReference<LlmCallContextHolder.Context>
+            contextInsideOrchestratorBeforeDelegation = new AtomicReference<>();
+    private final AtomicReference<LlmCallContextHolder.Context>
+            contextInsideOrchestratorAfterDelegation = new AtomicReference<>();
 
     /** The chunk the orchestrator's draft cites — so it must reach the reviewer as text. */
     private static final UUID CITED_CHUNK = UUID.fromString("8f7c1a2b-3d4e-4f50-8a1b-2c3d4e5f6071");
 
     /** Retrieved by the same specialist and cited by nobody — the manifest's whole purpose. */
     private static final UUID UNCITED_CHUNK =
-        UUID.fromString("2c3d4e5f-1122-4333-8444-666666666666");
+            UUID.fromString("2c3d4e5f-1122-4333-8444-666666666666");
 
     private static final String CITED_BODY = "The Person table holds identities.";
     private static final String UNCITED_BODY = "Install the kit before configuring anything.";
@@ -123,47 +125,75 @@ public class OrchestrationServiceTest {
         runRepository = mock(AgentRunRepository.class);
         stepRepository = mock(AgentStepRepository.class);
 
-        OrchestratorProperties props = new OrchestratorProperties(2, 8, 10, 50,
-            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
-                new RoleConfig("flash", "medium")),
-            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
-                List.of("spec-a", "spec-b"), null, null, null)));
+        OrchestratorProperties props =
+                new OrchestratorProperties(
+                        2,
+                        8,
+                        10,
+                        50,
+                        new RoleDefaults(
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("flash", "medium")),
+                        List.of(
+                                new Profile(
+                                        "OIM",
+                                        "oim-orchestrator",
+                                        "oim-orchestrator-reviewer",
+                                        List.of("spec-a", "spec-b"),
+                                        null,
+                                        null,
+                                        null)));
 
-        service = new OrchestrationService(ragService, playbookService, props, null, runRepository,
-            stepRepository, objectMapper, null);
+        service =
+                new OrchestrationService(
+                        ragService,
+                        playbookService,
+                        props,
+                        null,
+                        runRepository,
+                        stepRepository,
+                        objectMapper,
+                        null);
 
-        when(playbookService.getPlaybook(any())).thenAnswer(inv -> {
-            String name = inv.getArgument(0);
-            return Optional.of(playbook(name));
-        });
+        when(playbookService.getPlaybook(any()))
+                .thenAnswer(inv -> {
+                    String name = inv.getArgument(0);
+                    return Optional.of(playbook(name));
+                });
 
-        when(ragService.generateAgenticAnswer(any(), any())).thenAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            @SuppressWarnings("unchecked")
-            Consumer<String> sink = inv.getArgument(1);
-            return handleAgentCall(req, sink);
-        });
+        when(ragService.generateAgenticAnswer(any(), any()))
+                .thenAnswer(inv -> {
+                    AgenticRequest req = inv.getArgument(0);
+                    @SuppressWarnings("unchecked")
+                    Consumer<String> sink = inv.getArgument(1);
+                    return handleAgentCall(req, sink);
+                });
     }
 
     private RagResult handleAgentCall(AgenticRequest req, Consumer<String> sink) throws Exception {
-        String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-            : req.extraTools().get(0).getToolDefinition().name();
+        String extraName =
+                req.extraTools() == null || req.extraTools().isEmpty()
+                        ? ""
+                        : req.extraTools().get(0).getToolDefinition().name();
 
         if ("call_specialist".equals(extraName)) {
             // Orchestrator turn.
             if (orchestratorClarifies) {
                 sink.accept(
-                    "<clarifying-question>\n  <question>Which version?</question>\n</clarifying-question>");
+                        "<clarifying-question>\n  <question>Which version?</question>\n</clarifying-question>");
                 return result("", "Which version?", List.of("9.3.1", "10.0"));
             }
             // Delegate to one specialist, then synthesise.
             boolean revising =
-                req.query() != null && req.query().contains("Revise the answer you just gave");
+                    req.query() != null && req.query().contains("Revise the answer you just gave");
             contextInsideOrchestratorBeforeDelegation.set(LlmCallContextHolder.get());
-            for (ToolCallback tc : (specialistOnlyOnFirstTurn && revising) ? List.<ToolCallback>of()
-                : req.extraTools()) {
-                specialistToolResults
-                    .add(tc.call("{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}"));
+            for (ToolCallback tc :
+                    (specialistOnlyOnFirstTurn && revising)
+                            ? List.<ToolCallback>of()
+                            : req.extraTools()) {
+                specialistToolResults.add(
+                        tc.call("{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}"));
             }
             // The specialist frame has now returned. Whatever it did to the ThreadLocal must be
             // undone by the time the orchestrator resumes on this same thread.
@@ -174,8 +204,12 @@ public class OrchestrationServiceTest {
             if (revising && orchestratorRevisedAnswer != null) {
                 return result(orchestratorRevisedAnswer, null, null);
             }
-            return result(orchestratorRawAnswer != null ? orchestratorRawAnswer
-                : "final orchestrated answer [chunk_id=" + CITED_CHUNK + "]", null, null);
+            return result(
+                    orchestratorRawAnswer != null
+                            ? orchestratorRawAnswer
+                            : "final orchestrated answer [chunk_id=" + CITED_CHUNK + "]",
+                    null,
+                    null);
         }
 
         if ("submit_review".equals(extraName) && reviewerFailure != null) {
@@ -185,8 +219,12 @@ public class OrchestrationServiceTest {
         if ("submit_review".equals(extraName)) {
             boolean approve = reviewCount.getAndIncrement() >= rejectFirstNReviews;
             for (ToolCallback tc : req.extraTools()) {
-                tc.call("{\"approved\":" + approve + ",\"feedback\":\"needs work\""
-                    + rejectionExtras + "}");
+                tc.call(
+                        "{\"approved\":"
+                                + approve
+                                + ",\"feedback\":\"needs work\""
+                                + rejectionExtras
+                                + "}");
             }
             return result("review done", null, null);
         }
@@ -209,24 +247,65 @@ public class OrchestrationServiceTest {
     @Test
     public void specialistBudgetIsPerRunAndRefusalIsAReturnedStringNotAnException() {
         rejectFirstNReviews = 2; // forces three orchestrator rounds, i.e. three delegations
-        OrchestratorProperties oneCall = new OrchestratorProperties(2, 1, 10, 50,
-            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
-                new RoleConfig("flash", "medium")),
-            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
-                List.of("spec-a", "spec-b"), null, null, null)));
-        OrchestrationService budgeted = new OrchestrationService(ragService, playbookService,
-            oneCall, null, runRepository, stepRepository, objectMapper, null);
+        OrchestratorProperties oneCall =
+                new OrchestratorProperties(
+                        2,
+                        1,
+                        10,
+                        50,
+                        new RoleDefaults(
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("flash", "medium")),
+                        List.of(
+                                new Profile(
+                                        "OIM",
+                                        "oim-orchestrator",
+                                        "oim-orchestrator-reviewer",
+                                        List.of("spec-a", "spec-b"),
+                                        null,
+                                        null,
+                                        null)));
+        OrchestrationService budgeted =
+                new OrchestrationService(
+                        ragService,
+                        playbookService,
+                        oneCall,
+                        null,
+                        runRepository,
+                        stepRepository,
+                        objectMapper,
+                        null);
 
-        OrchestrationService.OrchestrationResult r = budgeted.runOrchestration(CONV, MSG,
-            "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                budgeted.runOrchestration(
+                        CONV, MSG, "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r).as("exhausting the budget must not abort the run").isNotNull();
-        assertThat(specialistToolResults).as("the model must be TOLD, not thrown at")
-            .anyMatch(s -> s != null && s.contains("budget exhausted"));
+        assertThat(specialistToolResults)
+                .as("the model must be TOLD, not thrown at")
+                .anyMatch(s -> s != null && s.contains("budget exhausted"));
         // Per-run: only the first delegation actually ran a specialist, across all three rounds.
-        verify(stepRepository, times(1)).insert(any(), eq(RUN), anyInt(), eq("specialist"),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+        verify(stepRepository, times(1))
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("specialist"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     /**
@@ -243,16 +322,23 @@ public class OrchestrationServiceTest {
     public void nestedSpecialistRestoresTheOrchestratorsCallContext() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         LlmCallContextHolder.Context before = contextInsideOrchestratorBeforeDelegation.get();
         LlmCallContextHolder.Context after = contextInsideOrchestratorAfterDelegation.get();
 
         assertThat(before).as("the orchestrator frame must have set its own context").isNotNull();
         assertThat(before.role()).isEqualTo("orchestrator");
-        assertThat(after).as("the specialist frame must not leave the orchestrator unattributed")
-            .isNotNull();
+        assertThat(after)
+                .as("the specialist frame must not leave the orchestrator unattributed")
+                .isNotNull();
         assertThat(after.role()).isEqualTo("orchestrator");
         assertThat(after.conversationId()).isEqualTo(CONV);
         assertThat(after.agentRunId()).isEqualTo(RUN);
@@ -275,32 +361,57 @@ public class OrchestrationServiceTest {
     public void theSpecialistReceivesItsPlaybookTemplateWhileTheTraceKeepsTheBareSubQuestion() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
         // The specialist is the only turn run without a per-run tool (call_specialist /
         // submit_review).
-        AgenticRequest specialist = requests.getAllValues().stream()
-            .filter(r -> r.extraTools() == null || r.extraTools().isEmpty()).findFirst()
-            .orElseThrow();
+        AgenticRequest specialist =
+                requests.getAllValues().stream()
+                        .filter(r -> r.extraTools() == null || r.extraTools().isEmpty())
+                        .findFirst()
+                        .orElseThrow();
 
         assertThat(specialist.query())
-            .as("the specialist is queried with the sub-question directly")
-            .isEqualTo("sub-question");
+                .as("the specialist is queried with the sub-question directly")
+                .isEqualTo("sub-question");
         assertThat(specialist.systemPromptOverride())
-            .as("the specialist receives its playbook template as its system prompt")
-            .isEqualTo("TEMPLATE for spec-a");
+                .as("the specialist receives its playbook template as its system prompt")
+                .isEqualTo("TEMPLATE for spec-a");
 
         ArgumentCaptor<String> traceInput = ArgumentCaptor.forClass(String.class);
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), anyInt(), any(),
-            any(), any(), any(), traceInput.capture(), any(), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("specialist"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        traceInput.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
 
         assertThat(traceInput.getValue())
-            .as("the timeline records what was delegated, not the boilerplate around it")
-            .isEqualTo("sub-question");
+                .as("the timeline records what was delegated, not the boilerplate around it")
+                .isEqualTo("sub-question");
     }
 
     /**
@@ -321,30 +432,62 @@ public class OrchestrationServiceTest {
     @Test
     public void theReviewerIsEvidenceBoundWithNoHistoryAndNoSearchTools() {
         rejectFirstNReviews = 0;
-        List<LlmMessage> history = List.of(new LlmMessage("user", "an earlier turn",
-            List.of(new LlmPart("text", "an earlier turn", null, null)), null, null, null));
+        List<LlmMessage> history =
+                List.of(
+                        new LlmMessage(
+                                "user",
+                                "an earlier turn",
+                                List.of(new LlmPart("text", "an earlier turn", null, null)),
+                                null,
+                                null,
+                                null));
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                history,
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
 
-        AgenticRequest orchestrator = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
-        AgenticRequest reviewer = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "submit_review".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest orchestrator =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
+        AgenticRequest reviewer =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "submit_review"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
 
         assertThat(orchestrator.history())
-            .as("history WAS available — the reviewer is denied it deliberately, not by accident")
-            .isEqualTo(history);
+                .as(
+                        "history WAS available — the reviewer is denied it deliberately, not by accident")
+                .isEqualTo(history);
         assertThat(reviewer.history())
-            .as("the reviewer judges the answer against the evidence, never against the chat")
-            .isNull();
+                .as("the reviewer judges the answer against the evidence, never against the chat")
+                .isNull();
         // get_section is deliberately absent, and its absence is the contract rather than an
         // economy. It resolves a chunk id to the whole enclosing SECTION, so a reviewer holding it
         // judges claims against sibling text no specialist retrieved — the evidence base silently
@@ -352,8 +495,8 @@ public class OrchestrationServiceTest {
         // full there is nothing it is entitled to fetch: a claim those sources do not support is a
         // citation defect for the review loop to correct, not something to go looking for.
         assertThat(reviewer.allowedTools())
-            .as("validate-only: no tool may widen the reviewer's evidence base")
-            .containsExactly("verify_citations");
+                .as("validate-only: no tool may widen the reviewer's evidence base")
+                .containsExactly("verify_citations");
     }
 
     /**
@@ -374,24 +517,40 @@ public class OrchestrationServiceTest {
     public void theOrchestratorSystemPromptCarriesTheSpecialistRoster() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
-        AgenticRequest orchestrator = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest orchestrator =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
 
         // The separator renderRoster writes is an EM DASH (U+2014), spelled below as a unicode
         // escape rather than pasted, so the expectation cannot be turned into a hyphen or an en
         // dash by an editor or an encoding-unaware copy without anyone seeing it.
         assertThat(orchestrator.systemPromptOverride())
-            .as("the playbook is the base of the prompt and the roster is appended to it")
-            .startsWith("TEMPLATE for oim-orchestrator").contains("\n\n## Available specialists\n")
-            .contains("- **spec-a** — spec-a title: spec-a description\n")
-            .contains("- **spec-b** — spec-b title: spec-b description\n");
+                .as("the playbook is the base of the prompt and the roster is appended to it")
+                .startsWith("TEMPLATE for oim-orchestrator")
+                .contains("\n\n## Available specialists\n")
+                .contains("- **spec-a** — spec-a title: spec-a description\n")
+                .contains("- **spec-b** — spec-b title: spec-b description\n");
     }
 
     /**
@@ -404,11 +563,10 @@ public class OrchestrationServiceTest {
      * and it then approves on its own knowledge, which is the failure dressed up as a passed
      * review. The literal turns the absence into a fact stated in the prompt.
      *
-     * <p>
-     * Nothing else in this suite reaches the branch at all: every other test's stubbed orchestrator
-     * delegates to {@code spec-a}, so {@code st.evidence} is never empty and the {@code if} is
-     * never taken. Deleting the marker leaves the run {@code done}, the status, the tokens and
-     * every repository write identical, and the whole file green.
+     * <p>Nothing else in this suite reaches the branch at all: every other test's stubbed
+     * orchestrator delegates to {@code spec-a}, so {@code st.evidence} is never empty and the
+     * {@code if} is never taken. Deleting the marker leaves the run {@code done}, the status, the
+     * tokens and every repository write identical, and the whole file green.
      */
     @Test
     public void aReviewWithNoHarvestedEvidenceSaysSoExplicitly() {
@@ -416,59 +574,150 @@ public class OrchestrationServiceTest {
         // harvested and the evidence list reaches the reviewer empty.
         // doAnswer(...).when(...) rather than when(...).thenAnswer(...): re-stubbing through when()
         // would first invoke the answer registered in setUp with null arguments.
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-                : req.extraTools().get(0).getToolDefinition().name();
-            if ("submit_review".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
-                }
-                return result("review done", null, null);
-            }
-            return result("an answer nobody was asked to ground", null, null);
-        }).when(ragService).generateAgenticAnswer(any(), any());
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            String extraName =
+                                    req.extraTools() == null || req.extraTools().isEmpty()
+                                            ? ""
+                                            : req.extraTools().get(0).getToolDefinition().name();
+                            if ("submit_review".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
+                                }
+                                return result("review done", null, null);
+                            }
+                            return result("an answer nobody was asked to ground", null, null);
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         // Orchestrator + reviewer only: the absence of a third call IS the "delegated to nobody".
         verify(ragService, times(2)).generateAgenticAnswer(requests.capture(), any());
-        AgenticRequest reviewer = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "submit_review".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest reviewer =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "submit_review"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
 
         assertThat(reviewer.query())
-            .as("an empty evidence section must be STATED, not left as a header over whitespace")
-            .contains("## Evidence gathered by the specialists (the ONLY basis for validation)\n"
-                + "(no evidence was captured)");
+                .as(
+                        "an empty evidence section must be STATED, not left as a header over whitespace")
+                .contains(
+                        "## Evidence gathered by the specialists (the ONLY basis for validation)\n"
+                                + "(no evidence was captured)");
     }
 
     @Test
     public void happyPath_approvedFirstTime() {
         rejectFirstNReviews = 0;
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
         assertThat(r.content()).contains("final orchestrated answer");
         assertThat(r.content()).doesNotContain("did not pass automated review");
 
         verify(runRepository).create(eq(RUN), eq(CONV), eq("OIM"), any());
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(0), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt(), any());
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("orchestrator"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(), any(),
-            any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(), anyInt(),
-            anyInt());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("done"),
+                        eq(0),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("orchestrator"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("specialist"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("reviewer"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     /**
@@ -479,24 +728,22 @@ public class OrchestrationServiceTest {
      * round becomes a cost the product pays and a guarantee it does not provide, and the failure is
      * invisible because an unreviewed answer looks exactly like a reviewed one.
      *
-     * <p>
-     * The second half is what the rejection is FOR. The orchestrator is re-run with its own draft
-     * and the feedback appended, and that appended text is the only difference between round 1 and
-     * round 2 — everything else (question, history, system prompt, tools) is identical. Lose the
-     * append and every round asks the model the byte-identical question, so it produces the
-     * byte-identical answer, so the reviewer rejects it again: a rejected run burns
-     * {@code maxReviewRounds + 1} full pro-model turns to deliver the same text it already had
-     * after the first one, flagged. The draft half of the append is pinned by
-     * {@link #aRevisionCarriesTheAnswerItIsAskedToRevise()}, which is where the reasoning for
-     * including it lives; this test pins the exact rendering the two halves produce together.
+     * <p>The second half is what the rejection is FOR. The orchestrator is re-run with its own
+     * draft and the feedback appended, and that appended text is the only difference between round
+     * 1 and round 2 — everything else (question, history, system prompt, tools) is identical. Lose
+     * the append and every round asks the model the byte-identical question, so it produces the
+     * byte-identical answer, so the reviewer rejects it again: a rejected run burns {@code
+     * maxReviewRounds + 1} full pro-model turns to deliver the same text it already had after the
+     * first one, flagged. The draft half of the append is pinned by {@link
+     * #aRevisionCarriesTheAnswerItIsAskedToRevise()}, which is where the reasoning for including it
+     * lives; this test pins the exact rendering the two halves produce together.
      *
-     * <p>
-     * Neither string appears anywhere in the test sources today. The stubbed reviewer in
-     * {@code setUp} ALWAYS calls {@code submit_review}, so the fallback is unreachable from every
-     * other test; and {@code evidenceAccumulatesAcrossReviewRounds…} captures only the REVIEWER
-     * requests, never round 2's orchestrator query. Both assertions here are on outputs a
-     * regression cannot fake: how many rounds actually ran, and the exact query the second
-     * orchestrator turn received.
+     * <p>Neither string appears anywhere in the test sources today. The stubbed reviewer in {@code
+     * setUp} ALWAYS calls {@code submit_review}, so the fallback is unreachable from every other
+     * test; and {@code evidenceAccumulatesAcrossReviewRounds…} captures only the REVIEWER requests,
+     * never round 2's orchestrator query. Both assertions here are on outputs a regression cannot
+     * fake: how many rounds actually ran, and the exact query the second orchestrator turn
+     * received.
      */
     @Test
     public void aReviewerThatSubmitsNoVerdictRejectsAndItsFeedbackReachesTheNextRound() {
@@ -504,49 +751,72 @@ public class OrchestrationServiceTest {
         // refusal, or a model that "reviewed" in text. doAnswer(...).when(...) rather than
         // when(...).thenAnswer(...): re-stubbing through when() would first invoke the answer
         // registered in setUp with null arguments.
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-                : req.extraTools().get(0).getToolDefinition().name();
-            if ("submit_review".equals(extraName)) {
-                return result("The answer looks fine to me.", null, null);
-            }
-            return result("candidate answer", null, null);
-        }).when(ragService).generateAgenticAnswer(any(), any());
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            String extraName =
+                                    req.extraTools() == null || req.extraTools().isEmpty()
+                                            ? ""
+                                            : req.extraTools().get(0).getToolDefinition().name();
+                            if ("submit_review".equals(extraName)) {
+                                return result("The answer looks fine to me.", null, null);
+                            }
+                            return result("candidate answer", null, null);
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         // maxReviewRounds=2, never approved: rounds 0, 1 and 2 each run an orchestrator and a
         // reviewer turn. An approving fallback breaks out of the loop after the first pair.
         verify(ragService, times(6)).generateAgenticAnswer(requests.capture(), any());
-        List<AgenticRequest> orchestratorTurns = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .toList();
+        List<AgenticRequest> orchestratorTurns =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .toList();
 
-        assertThat(orchestratorTurns).as("a missing verdict is a rejection, so the run revised")
-            .hasSize(3);
+        assertThat(orchestratorTurns)
+                .as("a missing verdict is a rejection, so the run revised")
+                .hasSize(3);
         assertThat(orchestratorTurns.get(0).query())
-            .as("round 1 is asked the bare question — the header only exists after a rejection")
-            .isEqualTo("cross-topic question");
+                .as("round 1 is asked the bare question — the header only exists after a rejection")
+                .isEqualTo("cross-topic question");
         // A synthesised rejection carries no structured lists at all, which is exactly the case
         // isCitationOnly() must answer FALSE for: with nothing itemised, "every objection is a
         // citation fix" is unknowable, and banning delegation on that basis would strand a run
         // that genuinely needs a search.
         assertThat(orchestratorTurns.get(1).query())
-            .as("a revision must be told WHAT to revise, or it reproduces the same answer")
-            .isEqualTo("## Reviewer feedback to address\nReviewer did not submit a verdict."
-                + "\n\nRevise the answer you just gave. Keep everything the reviewer did not "
-                + "object to. Delegate again only for material that is genuinely missing above.");
+                .as("a revision must be told WHAT to revise, or it reproduces the same answer")
+                .isEqualTo(
+                        "## Reviewer feedback to address\nReviewer did not submit a verdict."
+                                + "\n\nRevise the answer you just gave. Keep everything the reviewer did not "
+                                + "object to. Delegate again only for material that is genuinely missing above.");
         assertThat(orchestratorTurns.get(1).priorMessages())
-            .as("the question and the draft are in the conversation this turn continues")
-            .isNotNull();
+                .as("the question and the draft are in the conversation this turn continues")
+                .isNotNull();
 
         assertThat(r.status()).as("silence is not approval").isEqualTo("delivered_flagged");
-        assertThat(r.content()).as("and the user is told why, in the reviewer's own words")
-            .contains("Reviewer notes: Reviewer did not submit a verdict.");
+        assertThat(r.content())
+                .as("and the user is told why, in the reviewer's own words")
+                .contains("Reviewer notes: Reviewer did not submit a verdict.");
     }
 
     /**
@@ -556,51 +826,59 @@ public class OrchestrationServiceTest {
      * revise under those conditions; it can only research the question again from nothing, which is
      * exactly what it did.
      *
-     * <p>
-     * Measured on run {@code ec419a8a}, where the reviewer's sole objection was one mis-numbered
+     * <p>Measured on run {@code ec419a8a}, where the reviewer's sole objection was one mis-numbered
      * citation: round 2 re-ran the full specialist search at 216,667 prompt tokens to fix a
      * reference number it could have corrected by editing one character. The run spent 539,391
      * tokens, roughly double what it needed, and died on {@code HTTP 429} at the last reviewer turn
      * — a rate limit the duplicated research is what provoked. From the user's seat the visible
      * symptom is the answer restarting from the beginning instead of finishing.
      *
-     * <p>
-     * The orchestrator therefore keeps ONE conversation for the whole run: round 2 continues the
-     * transcript that produced the draft instead of opening a fresh call. That is what
-     * {@code priorMessages} is for — {@code history} cannot serve, because
-     * {@code RagService.buildInitialMessages} flattens it to user/assistant content strings and
-     * drops every {@code tool} message, which is precisely the material a revision needs. Asserting
-     * on the seed rather than on rendered prompt text is deliberate: the draft is carried
-     * structurally now, so a string assertion over {@code query()} would pass while proving
-     * nothing.
+     * <p>The orchestrator therefore keeps ONE conversation for the whole run: round 2 continues the
+     * transcript that produced the draft instead of opening a fresh call. That is what {@code
+     * priorMessages} is for — {@code history} cannot serve, because {@code
+     * RagService.buildInitialMessages} flattens it to user/assistant content strings and drops
+     * every {@code tool} message, which is precisely the material a revision needs. Asserting on
+     * the seed rather than on rendered prompt text is deliberate: the draft is carried structurally
+     * now, so a string assertion over {@code query()} would pass while proving nothing.
      */
     @Test
     public void aRevisionContinuesTheConversationThatProducedTheDraft() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).as("one rejection, so two orchestrator turns").hasSize(2);
 
         assertThat(orchestratorTurns.get(0).priorMessages())
-            .as("the first turn starts a conversation, so it seeds nothing").isNull();
+                .as("the first turn starts a conversation, so it seeds nothing")
+                .isNull();
         assertThat(orchestratorTurns.get(0).query()).isEqualTo("cross-topic question");
 
         List<LlmMessage> seed = orchestratorTurns.get(1).priorMessages();
-        assertThat(seed).as("the revision must continue the previous turn's conversation")
-            .isNotNull();
-        assertThat(seed).as("and that conversation ends with the draft under review")
-            .last(as(type(LlmMessage.class))).satisfies(m -> {
-                assertThat(m.role()).isEqualTo("assistant");
-                assertThat(m.content()).contains("final orchestrated answer");
-            });
+        assertThat(seed)
+                .as("the revision must continue the previous turn's conversation")
+                .isNotNull();
+        assertThat(seed)
+                .as("and that conversation ends with the draft under review")
+                .last(as(type(LlmMessage.class)))
+                .satisfies(m -> {
+                    assertThat(m.role()).isEqualTo("assistant");
+                    assertThat(m.content()).contains("final orchestrated answer");
+                });
         assertThat(orchestratorTurns.get(1).query())
-            .as("the new turn says only what is new — what to change").contains("needs work");
+                .as("the new turn says only what is new — what to change")
+                .contains("needs work");
         assertThat(orchestratorTurns.get(1).history())
-            .as("the chat history is already inside the seed; re-sending it would duplicate")
-            .isNull();
+                .as("the chat history is already inside the seed; re-sending it would duplicate")
+                .isNull();
     }
 
     /**
@@ -613,33 +891,46 @@ public class OrchestrationServiceTest {
     public void theReviewerNeverInheritsTheOrchestratorsConversation() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
-        assertThat(reviews).hasSize(2)
-            .allSatisfy(r -> assertThat(r.history())
-                .as("never any chat history — the reviewer judges an answer, not a conversation")
-                .isNull());
-        assertThat(reviews.get(0).priorMessages()).as("the first review starts the conversation")
-            .isNull();
+        assertThat(reviews)
+                .hasSize(2)
+                .allSatisfy(r ->
+                        assertThat(r.history())
+                                .as(
+                                        "never any chat history — the reviewer judges an answer, not a conversation")
+                                .isNull());
+        assertThat(reviews.get(0).priorMessages())
+                .as("the first review starts the conversation")
+                .isNull();
         // The discriminating check. The reviewer now DOES carry a transcript across rounds, so
         // "priorMessages is null" no longer expresses the property — whose transcript it is does.
         // The orchestrator's chain ends with its draft; the reviewer's ends with its own verdict
         // turn, and seeding the wrong one is exactly what this test exists to catch.
-        assertThat(reviews.get(1).priorMessages()).isNotNull().last(as(type(LlmMessage.class)))
-            .satisfies(m -> assertThat(m.content())
-                .as("the reviewer continues ITS OWN conversation, not the orchestrator's")
-                .isEqualTo("review done"));
+        assertThat(reviews.get(1).priorMessages())
+                .isNotNull()
+                .last(as(type(LlmMessage.class)))
+                .satisfies(m ->
+                        assertThat(m.content())
+                                .as(
+                                        "the reviewer continues ITS OWN conversation, not the orchestrator's")
+                                .isEqualTo("review done"));
     }
 
     /**
      * The reviewer keeps one conversation for the whole run, for the same reason the orchestrator
      * does — and for one more the orchestrator does not have.
      *
-     * <p>
-     * Measured on run {@code 049d7a97}: round 1 asked for the supervisor/approver distinction to be
-     * "anchored directly to [689234f4] and [ac0248a2]"; round 2, having no memory of saying so,
+     * <p>Measured on run {@code 049d7a97}: round 1 asked for the supervisor/approver distinction to
+     * be "anchored directly to [689234f4] and [ac0248a2]"; round 2, having no memory of saying so,
      * objected that [689234f4] must "not be used to support the exception-approver role
      * distinction". The orchestrator did exactly what it was told and was rejected for it, and the
      * run then ran out of rounds and delivered flagged. A reviewer that can read its own previous
@@ -649,49 +940,70 @@ public class OrchestrationServiceTest {
     public void theReviewerContinuesItsOwnConversationAcrossRounds() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
         assertThat(reviews).hasSize(2);
         assertThat(reviews.get(1).priorMessages())
-            .as("round 2 must continue the transcript that produced round 1's verdict").isNotNull()
-            .isNotEmpty();
+                .as("round 2 must continue the transcript that produced round 1's verdict")
+                .isNotNull()
+                .isNotEmpty();
         assertThat(reviews.get(1).query())
-            .as("and the new turn carries only what is new — the revised answer")
-            .contains("Revised candidate answer");
+                .as("and the new turn carries only what is new — the revised answer")
+                .contains("Revised candidate answer");
     }
 
     /**
      * The evidence a follow-up carries is a DELTA, and the citation set is what moves it.
      *
-     * <p>
-     * A revision may cite a source the first draft did not, and that body has never been sent — so
-     * withholding it would leave the reviewer judging a citation against text it cannot see, which
-     * is the failure cite-scoping exists to prevent. A source already sent must NOT be repeated: it
-     * is still in this conversation, and re-sending it is what makes the whole prompt uncacheable
-     * (measured: the reviewer cached at 8-16% where the append-only agentic roles reach 71%).
+     * <p>A revision may cite a source the first draft did not, and that body has never been sent —
+     * so withholding it would leave the reviewer judging a citation against text it cannot see,
+     * which is the failure cite-scoping exists to prevent. A source already sent must NOT be
+     * repeated: it is still in this conversation, and re-sending it is what makes the whole prompt
+     * uncacheable (measured: the reviewer cached at 8-16% where the append-only agentic roles reach
+     * 71%).
      */
     @Test
     public void aReviewerFollowUpSendsOnlyTheSourcesItHasNotSeenYet() {
         rejectFirstNReviews = 1;
         // The revision keeps its original citation and adds one the first draft never cited.
-        orchestratorRevisedAnswer = "revised answer [chunk_id=" + CITED_CHUNK + "] and now also "
-            + "[chunk_id=" + UNCITED_CHUNK + "]";
+        orchestratorRevisedAnswer =
+                "revised answer [chunk_id="
+                        + CITED_CHUNK
+                        + "] and now also "
+                        + "[chunk_id="
+                        + UNCITED_CHUNK
+                        + "]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> reviews = capturedTurns("submit_review");
-        assertThat(reviews.get(0).query()).as("round 1 shows the body of the source it cites")
-            .contains(CITED_BODY).doesNotContain(UNCITED_BODY);
+        assertThat(reviews.get(0).query())
+                .as("round 1 shows the body of the source it cites")
+                .contains(CITED_BODY)
+                .doesNotContain(UNCITED_BODY);
 
         String followUp = reviews.get(1).query();
-        assertThat(followUp).as("the newly cited source has never been sent, so it must travel now")
-            .contains(UNCITED_BODY);
         assertThat(followUp)
-            .as("the already-sent body is still in this conversation; repeating it is the cost")
-            .doesNotContain(CITED_BODY);
+                .as("the newly cited source has never been sent, so it must travel now")
+                .contains(UNCITED_BODY);
+        assertThat(followUp)
+                .as("the already-sent body is still in this conversation; repeating it is the cost")
+                .doesNotContain(CITED_BODY);
     }
 
     /**
@@ -708,14 +1020,37 @@ public class OrchestrationServiceTest {
     public void theTraceIsNumberedInTheOrderStepsStartedNotFinished() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<Integer> seqs = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> roles = ArgumentCaptor.forClass(String.class);
-        verify(stepRepository, atLeastOnce()).insert(any(), any(), seqs.capture(), roles.capture(),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+        verify(stepRepository, atLeastOnce())
+                .insert(
+                        any(),
+                        any(),
+                        seqs.capture(),
+                        roles.capture(),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
 
         // Sorted by seq, which is exactly how AgentStepRepository.findByRunId reads them back and
         // therefore how the admin trace renders. Insertion order is deliberately NOT what is
@@ -725,9 +1060,10 @@ public class OrchestrationServiceTest {
         for (int i = 0; i < seqs.getAllValues().size(); i++) {
             bySeq.put(seqs.getAllValues().get(i), roles.getAllValues().get(i));
         }
-        assertThat(bySeq).as("the orchestrator delegated, so it started before its specialist")
-            .containsExactly(entry(1, "orchestrator"), entry(2, "specialist"),
-                entry(3, "reviewer"));
+        assertThat(bySeq)
+                .as("the orchestrator delegated, so it started before its specialist")
+                .containsExactly(
+                        entry(1, "orchestrator"), entry(2, "specialist"), entry(3, "reviewer"));
     }
 
     /**
@@ -738,59 +1074,52 @@ public class OrchestrationServiceTest {
      * specialist call, 35,750 prompt tokens, to look up a chunk id that was already sitting in the
      * evidence the reviewer had been reading.
      *
-     * <p>
-     * It costs what the reviewer already pays for the same block (~25k prompt tokens on that run)
-     * and replaces a re-search an order of magnitude larger. The orchestrator keeps
-     * {@code call_specialist}, so feedback that genuinely demands new material can still be
-     * delegated — this only removes the need to delegate for material already in hand.
+     * <p>It costs what the reviewer already pays for the same block (~25k prompt tokens on that
+     * run) and replaces a re-search an order of magnitude larger. The orchestrator keeps {@code
+     * call_specialist}, so feedback that genuinely demands new material can still be delegated —
+     * this only removes the need to delegate for material already in hand.
      *
-     * <p>
-     * Note what the conversation seed does NOT contain: a specialist's raw tool output lives inside
-     * its own nested run, so the orchestrator only ever saw the specialist's synthesised answer.
-     * The evidence therefore still has to travel as text, and it is sent as a DELTA — anything sent
-     * in an earlier round is already in the transcript, so re-sending it would duplicate the
-     * largest block in the prompt once per round.
+     * <p>Note what the conversation seed does NOT contain: a specialist's raw tool output lives
+     * inside its own nested run, so the orchestrator only ever saw the specialist's synthesised
+     * answer. The evidence therefore still has to travel as text, and it is sent as a DELTA —
+     * anything sent in an earlier round is already in the transcript, so re-sending it would
+     * duplicate the largest block in the prompt once per round.
      */
     /**
      * The revision prompt must state that the whole response IS the answer.
      *
-     * <p>
-     * Without it the task reads as a request to a collaborator — "revise the answer you just gave"
-     * — and a collaborator replies like one before producing the artifact. Observed in 2 of 2 live
-     * orchestrated runs, as the FIRST characters the user received: <em>"Simple fix — the
+     * <p>Without it the task reads as a request to a collaborator — "revise the answer you just
+     * gave" — and a collaborator replies like one before producing the artifact. Observed in 2 of 2
+     * live orchestrated runs, as the FIRST characters the user received: <em>"Simple fix — the
      * visibility note belongs to chunk [9], not [8]. I'll add [9] to that sentence."</em> and
-     * <em>"Now I have the correct chunk_ids. Let me also verify…"</em>, each followed by
-     * {@code ---} and then the real answer. Nothing downstream removes it:
-     * {@code extractAnswerText} concatenates every text part of the final assistant message
-     * verbatim, and the {@code stripThinkAndTools} beside it runs only on the fallback path and
-     * only strips think/tool markup.
+     * <em>"Now I have the correct chunk_ids. Let me also verify…"</em>, each followed by {@code
+     * ---} and then the real answer. Nothing downstream removes it: {@code extractAnswerText}
+     * concatenates every text part of the final assistant message verbatim, and the {@code
+     * stripThinkAndTools} beside it runs only on the fallback path and only strips think/tool
+     * markup.
      *
-     * <p>
-     * The cost is not only cosmetic. One run was approved with a preamble in place while the other
-     * was rejected for it, and the rejected one then spent rounds 2 and 3 — orchestrator +
+     * <p>The cost is not only cosmetic. One run was approved with a preamble in place while the
+     * other was rejected for it, and the rejected one then spent rounds 2 and 3 — orchestrator +
      * reviewer, no specialist, ~120,000 tokens each — failing to converge because the reviewer
      * correctly refuses an answer carrying a leftover instruction and the orchestrator kept
      * re-emitting one.
      *
-     * <p>
-     * This is pinned in the PROMPT rather than fixed by stripping the preamble out of the answer.
-     * An answer may legitimately open with a sentence before its first heading, and CLAUDE.md § 6
-     * records three separate incidents here where a deletion heuristic destroyed real content
-     * ({@code CitationVerifier} removing ordinary words, {@code normalizeSpacing} shredding a
-     * table, {@code wrapToolCalls} hiding an answer). Deletion must be conservative.
+     * <p>This is pinned in the PROMPT rather than fixed by stripping the preamble out of the
+     * answer. An answer may legitimately open with a sentence before its first heading, and
+     * CLAUDE.md § 6 records three separate incidents here where a deletion heuristic destroyed real
+     * content ({@code CitationVerifier} removing ordinary words, {@code normalizeSpacing} shredding
+     * a table, {@code wrapToolCalls} hiding an answer). Deletion must be conservative.
      */
     /**
      * Re-calling a specialist continues its conversation instead of starting a new one.
      *
-     * <p>
-     * The specialist is the only agent that ever holds the retrieved chunk TEXT — its tool results
-     * live in its own nested run, and the orchestrator receives only its prose. Discarding that
-     * session after every call meant a follow-up ("which of your sources actually says X?") could
-     * only be answered by searching the corpus again from nothing, at the price of a fresh agentic
-     * loop, when the answer was already sitting in a transcript we threw away.
+     * <p>The specialist is the only agent that ever holds the retrieved chunk TEXT — its tool
+     * results live in its own nested run, and the orchestrator receives only its prose. Discarding
+     * that session after every call meant a follow-up ("which of your sources actually says X?")
+     * could only be answered by searching the corpus again from nothing, at the price of a fresh
+     * agentic loop, when the answer was already sitting in a transcript we threw away.
      *
-     * <p>
-     * Two things this must get right, both from § 6. The playbook is prepended to the QUERY on a
+     * <p>Two things this must get right, both from § 6. The playbook is prepended to the QUERY on a
      * first call, so a resumed call must send the sub-question alone or the playbook is duplicated
      * inside the conversation. And {@code priorMessages} is taken verbatim and is cumulative, so
      * the step trace stores only the delta ({@code messagesAddedBy}) or it grows quadratically.
@@ -798,44 +1127,48 @@ public class OrchestrationServiceTest {
     @Test
     public void reCallingASpecialistContinuesItsSessionRatherThanStartingOver() {
         rejectFirstNReviews = 1; // forces a second orchestrator turn, hence a second specialist
-                                 // call
+        // call
 
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        List<AgenticRequest> specialistTurns = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() == null || q.extraTools().isEmpty())
-            .filter(q -> q.query() != null && q.query().contains("sub-question")).toList();
+        List<AgenticRequest> specialistTurns =
+                requests.getAllValues().stream()
+                        .filter(q -> q.extraTools() == null || q.extraTools().isEmpty())
+                        .filter(q -> q.query() != null && q.query().contains("sub-question"))
+                        .toList();
 
-        assertThat(specialistTurns).as("the fixture calls spec-a on every orchestrator turn")
-            .hasSizeGreaterThan(1);
+        assertThat(specialistTurns)
+                .as("the fixture calls spec-a on every orchestrator turn")
+                .hasSizeGreaterThan(1);
         assertThat(specialistTurns.get(0).systemPromptOverride()).isEqualTo("TEMPLATE for spec-a");
         assertThat(specialistTurns.get(1).systemPromptOverride()).isEqualTo("TEMPLATE for spec-a");
         assertThat(specialistTurns.get(0).query()).isEqualTo("sub-question");
         assertThat(specialistTurns.get(0).priorMessages())
-            .as("the first call has no session to continue").isNull();
+                .as("the first call has no session to continue")
+                .isNull();
         assertThat(specialistTurns.get(1).priorMessages())
-            .as("the second call must continue the first, or the chunk text it retrieved is lost")
-            .isNotEmpty();
+                .as(
+                        "the second call must continue the first, or the chunk text it retrieved is lost")
+                .isNotEmpty();
         assertThat(specialistTurns.get(1).query())
-            .as("the sub-question is passed directly as query").isEqualTo("sub-question");
+                .as("the sub-question is passed directly as query")
+                .isEqualTo("sub-question");
     }
 
     /**
      * ...and only the sources the objection names.
      *
-     * <p>
-     * Scoping to everything the ANSWER cites was the first version, and it was too expensive to
+     * <p>Scoping to everything the ANSWER cites was the first version, and it was too expensive to
      * keep: 18 full chunk bodies went back on every empty-delta round, measured at 217,041 and
      * 134,984 prompt tokens for two orchestrator turns that had cost ~50,000 each before. The
      * reviewer names the handful of ids in dispute; those are the only ones the turn has to
      * re-read.
      *
-     * <p>
-     * The discriminator here is an id the answer does NOT cite: scoped-to-the-answer would withhold
-     * it, scoped-to-the-objection must include it.
+     * <p>The discriminator here is an id the answer does NOT cite: scoped-to-the-answer would
+     * withhold it, scoped-to-the-objection must include it.
      */
     @Test
     public void theRevisionCarriesOnlyTheSourcesTheObjectionNames() {
@@ -843,33 +1176,40 @@ public class OrchestrationServiceTest {
         specialistOnlyOnFirstTurn = true;
         rejectionExtras = ",\"citation_fixes\":[\"the claim should cite " + UNCITED_CHUNK + "\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        List<String> revisions = requests.getAllValues().stream().map(AgenticRequest::query)
-            .filter(q -> q != null && q.contains("Revise the answer you just gave")).toList();
+        List<String> revisions =
+                requests.getAllValues().stream()
+                        .map(AgenticRequest::query)
+                        .filter(q -> q != null && q.contains("Revise the answer you just gave"))
+                        .toList();
 
         assertThat(revisions.get(1))
-            .as("the objection names this id, so its text must travel with the objection")
-            .contains(UNCITED_BODY);
+                .as("the objection names this id, so its text must travel with the objection")
+                .contains(UNCITED_BODY);
     }
 
     /**
      * A later revision round must still be able to SEE the sources it is being asked to re-cite.
      *
-     * <p>
-     * Measured on a live run: round 1's prompt was 155,805 chars carrying 181 chunk blocks, while
-     * rounds 2 and 3 were 2,923 and 2,702 chars — the reviewer's complaint and nothing else.
+     * <p>Measured on a live run: round 1's prompt was 155,805 chars carrying 181 chunk blocks,
+     * while rounds 2 and 3 were 2,923 and 2,702 chars — the reviewer's complaint and nothing else.
      * Evidence travels as a delta (§ 6: the orchestrator's message list is cumulative, so
      * re-sending it would duplicate the largest block in the prompt every round), and by round 2
      * the delta is empty. So the orchestrator was asked "this id does not support that claim" with
      * the text ~150k tokens back in its transcript, and its mis-citation count went UP: 4 → 4 → 5.
      * It was guessing.
      *
-     * <p>
-     * The cited sources are therefore re-sent when the delta is empty — the same material the
+     * <p>The cited sources are therefore re-sent when the delta is empty — the same material the
      * reviewer judged, next to the objection about it. This does NOT cite-scope the reviser in
      * general, which § 6 rejects for a good reason: an unsupported claim needs text the draft does
      * not yet cite, and that arrives in the delta, which is left exactly as it was.
@@ -879,65 +1219,81 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 2;
         specialistOnlyOnFirstTurn = true;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        List<String> revisions = requests.getAllValues().stream().map(AgenticRequest::query)
-            .filter(q -> q != null && q.contains("Revise the answer you just gave")).toList();
+        List<String> revisions =
+                requests.getAllValues().stream()
+                        .map(AgenticRequest::query)
+                        .filter(q -> q != null && q.contains("Revise the answer you just gave"))
+                        .toList();
 
         assertThat(revisions).as("two rejections means two revisions").hasSize(2);
         assertThat(revisions.get(1))
-            .as("the second revision's evidence delta is empty, so without this it is asked to "
-                + "repair a citation with no source text in front of it")
-            .contains(CITED_BODY);
+                .as(
+                        "the second revision's evidence delta is empty, so without this it is asked to "
+                                + "repair a citation with no source text in front of it")
+                .contains(CITED_BODY);
     }
 
     /**
      * The orchestrator must be able to check its own ids before submitting.
      *
-     * <p>
-     * Measured: a run delivered `[6287477f-6821-4744-afe4-126b2691bf19]`, which resolves to zero
+     * <p>Measured: a run delivered `[6287477f-6821-4744-afe4-126b2691bf19]`, which resolves to zero
      * rows in {@code chunks}. The reviewer caught it — a full round later, at ~50k tokens — because
      * {@code verify_citations} was held only by the reviewer and the orchestrator had no way to
      * ask. A fabricated id is the one citation defect that is mechanically checkable, so paying a
      * review round to find it is the expensive way to learn it.
      *
-     * <p>
-     * Note what this does NOT fix: {@code verify_citations} loads no chunk text (§ 6), so it proves
-     * an id EXISTS and says nothing about whether it supports the claim it sits on.
+     * <p>Note what this does NOT fix: {@code verify_citations} loads no chunk text (§ 6), so it
+     * proves an id EXISTS and says nothing about whether it supports the claim it sits on.
      * Citation-to-claim mismatch stays the reviewer's job.
      */
     @Test
     public void theOrchestratorCanVerifyItsOwnCitationsBeforeSubmitting() {
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        AgenticRequest orchestratorTurn = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest orchestratorTurn =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
 
-        assertThat(orchestratorTurn.allowedTools()).as(
-            "without it a hallucinated id survives until the reviewer finds it, costing a round")
-            .contains("verify_citations");
+        assertThat(orchestratorTurn.allowedTools())
+                .as(
+                        "without it a hallucinated id survives until the reviewer finds it, costing a round")
+                .contains("verify_citations");
     }
 
     /**
      * A reviewer that FAILS must not destroy an answer that already exists.
      *
-     * <p>
-     * Seen live: {@code gpt-5.4-mini} returned four tokens and stopped without calling
-     * {@code submit_review} on the last round, so the run ended {@code status=error} and the user
-     * received <i>"[System Error: the assistant could not complete this response.]"</i> — while the
+     * <p>Seen live: {@code gpt-5.4-mini} returned four tokens and stopped without calling {@code
+     * submit_review} on the last round, so the run ended {@code status=error} and the user received
+     * <i>"[System Error: the assistant could not complete this response.]"</i> — while the
      * orchestrator's round-3 output held the finished answer in full. Nine of ten steps had
      * succeeded and 222,887 tokens had been spent.
      *
-     * <p>
-     * The asymmetry is the argument: a reviewer that REJECTS through the final round already
+     * <p>The asymmetry is the argument: a reviewer that REJECTS through the final round already
      * delivers the answer flagged, and a reviewer that errors is strictly <em>less</em> informative
      * than one that rejects — it has said nothing about the answer at all — yet was treated far
      * more harshly. The failure is still recorded on the run, so the admin trace does not lose it.
@@ -946,22 +1302,37 @@ public class OrchestrationServiceTest {
     public void aReviewerThatFailsStillDeliversTheAnswerItNeverJudged() {
         reviewerFailure = new IllegalStateException("Azure produced no content and no tool calls");
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
-        assertThat(r.content()).as("the answer existed; a broken check must not delete it")
-            .contains("final orchestrated answer");
         assertThat(r.content())
-            .as("and the user must be told it was never checked — weaker wording than a rejection "
-                + "would understate the risk, since nothing validated this at all")
-            .contains("could not be checked");
+                .as("the answer existed; a broken check must not delete it")
+                .contains("final orchestrated answer");
+        assertThat(r.content())
+                .as(
+                        "and the user must be told it was never checked — weaker wording than a rejection "
+                                + "would understate the risk, since nothing validated this at all")
+                .contains("could not be checked");
         assertThat(r.status()).isEqualTo("delivered_flagged");
 
         ArgumentCaptor<String> err = ArgumentCaptor.forClass(String.class);
-        verify(runRepository).finish(any(), any(), eq("delivered_flagged"), anyInt(), any(),
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), err.capture());
-        assertThat(err.getValue()).as("the trace must still show what broke, or this hides a fault")
-            .contains("Azure produced no content");
+        verify(runRepository)
+                .finish(
+                        any(),
+                        any(),
+                        eq("delivered_flagged"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        err.capture());
+        assertThat(err.getValue())
+                .as("the trace must still show what broke, or this hides a fault")
+                .contains("Azure produced no content");
     }
 
     /**
@@ -973,8 +1344,16 @@ public class OrchestrationServiceTest {
         reviewerFailure = new IllegalStateException("reviewer died");
         orchestratorRawAnswer = "";
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "q",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     /**
@@ -982,32 +1361,40 @@ public class OrchestrationServiceTest {
      * stated once in the system prompt every orchestrator turn receives — including the first
      * draft, which no code-side task string reaches (its query is the user's bare question).
      *
-     * <p>
-     * It is deliberately here rather than in the {@code oim-orchestrator} playbook. The extraction
-     * that consumes the marker lives in this class, and a playbook is a database row edited through
-     * the admin UI and imported from a separate repo: if the only thing asking for the marker were
-     * that row, editing it would silently disable the extraction — which fails OPEN, passing the
-     * preamble straight through, with nothing to notice. CLAUDE.md § 6 already records this
-     * reasoning for the reviewer instruction: the binding version of a rule the code depends on
-     * goes in the rendered text, where a test can pin it.
+     * <p>It is deliberately here rather than in the {@code oim-orchestrator} playbook. The
+     * extraction that consumes the marker lives in this class, and a playbook is a database row
+     * edited through the admin UI and imported from a separate repo: if the only thing asking for
+     * the marker were that row, editing it would silently disable the extraction — which fails
+     * OPEN, passing the preamble straight through, with nothing to notice. CLAUDE.md § 6 already
+     * records this reasoning for the reviewer instruction: the binding version of a rule the code
+     * depends on goes in the rendered text, where a test can pin it.
      */
     @Test
     public void everyOrchestratorTurnIncludingTheFirstDraftIsGivenTheMarkerContract() {
-        service.runOrchestration(CONV, MSG, "q", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        List<AgenticRequest> orchestratorTurns = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .toList();
+        List<AgenticRequest> orchestratorTurns =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .toList();
 
         assertThat(orchestratorTurns).isNotEmpty();
         assertThat(orchestratorTurns.get(0).systemPromptOverride())
-            .as("the FIRST draft must carry it too — an unrevised answer leaks otherwise, which is "
-                + "exactly the shape seen in production")
-            .contains(OrchestrationService.ANSWER_MARKER);
+                .as(
+                        "the FIRST draft must carry it too — an unrevised answer leaks otherwise, which is "
+                                + "exactly the shape seen in production")
+                .contains(OrchestrationService.ANSWER_MARKER);
     }
 
     /**
@@ -1019,17 +1406,27 @@ public class OrchestrationServiceTest {
     public void theMarkerContractIsNotRepeatedInTheRevisionTask() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        String revision = requests.getAllValues().stream().map(AgenticRequest::query)
-            .filter(q -> q != null && q.contains("Revise the answer you just gave")).findFirst()
-            .orElseThrow(() -> new AssertionError("no revision turn was issued"));
+        String revision =
+                requests.getAllValues().stream()
+                        .map(AgenticRequest::query)
+                        .filter(q -> q != null && q.contains("Revise the answer you just gave"))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no revision turn was issued"));
 
-        assertThat(revision).as("the role-level contract already covers this turn")
-            .doesNotContain(OrchestrationService.ANSWER_MARKER);
+        assertThat(revision)
+                .as("the role-level contract already covers this turn")
+                .doesNotContain(OrchestrationService.ANSWER_MARKER);
     }
 
     /**
@@ -1044,16 +1441,23 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void aPreambleBeforeTheAnswerMarkerNeverReachesTheUser() {
-        orchestratorRawAnswer = "I need to fix the unsupported claims. Let me re-check the "
-            + "evidence.\n\n" + OrchestrationService.ANSWER_MARKER
-            + "\n\n## The real answer [chunk_id=" + CITED_CHUNK + "]";
+        orchestratorRawAnswer =
+                "I need to fix the unsupported claims. Let me re-check the "
+                        + "evidence.\n\n"
+                        + OrchestrationService.ANSWER_MARKER
+                        + "\n\n## The real answer [chunk_id="
+                        + CITED_CHUNK
+                        + "]";
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
-        assertThat(r.content()).as("the model's own commentary must not be delivered as the answer")
-            .doesNotContain("I need to fix the unsupported claims")
-            .doesNotContain(OrchestrationService.ANSWER_MARKER).startsWith("## The real answer");
+        assertThat(r.content())
+                .as("the model's own commentary must not be delivered as the answer")
+                .doesNotContain("I need to fix the unsupported claims")
+                .doesNotContain(OrchestrationService.ANSWER_MARKER)
+                .startsWith("## The real answer");
     }
 
     /**
@@ -1067,14 +1471,17 @@ public class OrchestrationServiceTest {
     @Test
     public void withNoMarkerTheAnswerIsPassedThroughUntouched() {
         orchestratorRawAnswer =
-            "A legitimate opening sentence before any heading.\n\n## Body [chunk_id=" + CITED_CHUNK
-                + "]";
+                "A legitimate opening sentence before any heading.\n\n## Body [chunk_id="
+                        + CITED_CHUNK
+                        + "]";
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
-        assertThat(r.content()).as("no marker means no judgement call — nothing may be removed")
-            .startsWith("A legitimate opening sentence before any heading.");
+        assertThat(r.content())
+                .as("no marker means no judgement call — nothing may be removed")
+                .startsWith("A legitimate opening sentence before any heading.");
     }
 
     /**
@@ -1084,52 +1491,77 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void aTrailingMarkerFallsBackToTheWholeTextRatherThanDeliveringNothing() {
-        orchestratorRawAnswer = "## Everything worth saying [chunk_id=" + CITED_CHUNK + "]\n\n"
-            + OrchestrationService.ANSWER_MARKER + "\n  ";
+        orchestratorRawAnswer =
+                "## Everything worth saying [chunk_id="
+                        + CITED_CHUNK
+                        + "]\n\n"
+                        + OrchestrationService.ANSWER_MARKER
+                        + "\n  ";
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "q",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "q", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
-        assertThat(r.content()).as("an empty tail must never win over a real answer")
-            .contains("## Everything worth saying")
-            .doesNotContain(OrchestrationService.ANSWER_MARKER);
+        assertThat(r.content())
+                .as("an empty tail must never win over a real answer")
+                .contains("## Everything worth saying")
+                .doesNotContain(OrchestrationService.ANSWER_MARKER);
     }
 
     @Test
     public void aRevisionIsToldItsWholeResponseIsTheAnswerNotAReplyAboutIt() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
-        AgenticRequest revisionTurn = requests.getAllValues().stream()
-            .filter(q -> q.query() != null && q.query().contains("Revise the answer you just gave"))
-            .findFirst().orElseThrow(() -> new AssertionError("no revision turn was issued"));
+        AgenticRequest revisionTurn =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.query() != null
+                                        && q.query().contains("Revise the answer you just gave"))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no revision turn was issued"));
 
         assertThat(revisionTurn.systemPromptOverride())
-            .as("a REVISING turn must carry the contract too — it is the turn that leaked in "
-                + "every observed run, so excluding it would restore the bug")
-            .contains(OrchestrationService.ANSWER_MARKER);
+                .as(
+                        "a REVISING turn must carry the contract too — it is the turn that leaked in "
+                                + "every observed run, so excluding it would restore the bug")
+                .contains(OrchestrationService.ANSWER_MARKER);
     }
 
     @Test
     public void aRevisionCarriesTheEvidenceSoItNeedNotDelegateAgain() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).hasSize(2);
         assertThat(orchestratorTurns.get(0).query())
-            .as("the first turn gathers evidence, so it must not be handed any")
-            .doesNotContain("Source evidence");
-        assertThat(orchestratorTurns.get(1).query()).as(
-            "the revision must carry the specialists' output, attributed as the reviewer sees it")
-            .contains("Source evidence").contains("[spec-a · query_json_objects]")
-            .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
+                .as("the first turn gathers evidence, so it must not be handed any")
+                .doesNotContain("Source evidence");
+        assertThat(orchestratorTurns.get(1).query())
+                .as(
+                        "the revision must carry the specialists' output, attributed as the reviewer sees it")
+                .contains("Source evidence")
+                .contains("[spec-a · query_json_objects]")
+                .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
     }
 
     /** The turns captured on the mocked {@code ragService}, identified by their extra tool. */
@@ -1137,9 +1569,12 @@ public class OrchestrationServiceTest {
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, atLeastOnce()).generateAgenticAnswer(requests.capture(), any());
         return requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && extraToolName.equals(q.extraTools().get(0).getToolDefinition().name()))
-            .toList();
+                .filter(q ->
+                        q.extraTools() != null
+                                && !q.extraTools().isEmpty()
+                                && extraToolName.equals(
+                                        q.extraTools().get(0).getToolDefinition().name()))
+                .toList();
     }
 
     /**
@@ -1156,8 +1591,7 @@ public class OrchestrationServiceTest {
      * text at all — the existing rejection test checks only the status, the round count and the
      * number of reviewer steps, all of which stay exactly the same when the evidence is dropped.
      *
-     * <p>
-     * <b>Where round 1's evidence LIVES changed, and the invariant did not.</b> The reviewer now
+     * <p><b>Where round 1's evidence LIVES changed, and the invariant did not.</b> The reviewer now
      * resumes its own conversation instead of being rebuilt, so round 1's evidence reaches round 2
      * through the transcript rather than by being re-rendered into round 2's message. This test
      * therefore asserts the same property against the new mechanism — round 2 still has everything
@@ -1169,21 +1603,48 @@ public class OrchestrationServiceTest {
     public void evidenceAccumulatesAcrossReviewRoundsWithPerSpecialistAttribution() {
         rejectFirstNReviews = 1; // reject once, approve the revision
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(1), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt(), any());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("done"),
+                        eq(1),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(6)).generateAgenticAnswer(requests.capture(), any());
-        List<AgenticRequest> reviews = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "submit_review".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .toList();
-        assertThat(reviews).as("one reviewer turn per round, and the run took two rounds")
-            .hasSize(2);
+        List<AgenticRequest> reviews =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "submit_review"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .toList();
+        assertThat(reviews)
+                .as("one reviewer turn per round, and the run took two rounds")
+                .hasSize(2);
 
         // Exactly what collectEvidence writes: "[" + specialist + <space><MIDDLE DOT U+00B7><space>
         // + tool + "]" then a NEWLINE (not a space) before the tool output. The separator is
@@ -1191,16 +1652,18 @@ public class OrchestrationServiceTest {
         // as a unicode escape, not pasted, so it cannot be silently swapped for a bullet or an
         // interpunct lookalike by an editor or an encoding-unaware copy.
         String block =
-            "[spec-a · query_json_objects]\n" + "query_json_objects rows: [from 9.2.2 to 9.3]";
+                "[spec-a · query_json_objects]\n" + "query_json_objects rows: [from 9.2.2 to 9.3]";
 
         String round1 = reviews.get(0).query();
         assertThat(round1.split(Pattern.quote(block), -1).length - 1)
-            .as("round 1 harvested one attributed specialist tool result").isEqualTo(1);
+                .as("round 1 harvested one attributed specialist tool result")
+                .isEqualTo(1);
         // The two-space prefix is the chunk HEADER form. A bare "id=" would also match the draft's
         // own "[chunk_id=…]" citation, which the reviewer's prompt quotes back under "## Candidate
         // answer" — counting that as evidence would make this assertion pass for the wrong reason.
-        assertThat(count(round1, "  id=" + CITED_CHUNK)).as("with the cited chunk's header")
-            .isEqualTo(1);
+        assertThat(count(round1, "  id=" + CITED_CHUNK))
+                .as("with the cited chunk's header")
+                .isEqualTo(1);
         assertThat(count(round1, CITED_BODY)).as("and its text").isEqualTo(1);
 
         // Round 2 INHERITS round 1 rather than repeating it. The transcript is the carrier, so the
@@ -1208,12 +1671,15 @@ public class OrchestrationServiceTest {
         // cost this change removes, and asserting its absence is what stops it coming back.
         String round2 = reviews.get(1).query();
         assertThat(reviews.get(1).priorMessages())
-            .as("round 2 continues the conversation that already holds round 1's evidence")
-            .isNotNull().isNotEmpty();
+                .as("round 2 continues the conversation that already holds round 1's evidence")
+                .isNotNull()
+                .isNotEmpty();
         assertThat(round2.split(Pattern.quote(block), -1).length - 1)
-            .as("the json projection was already sent; re-sending it is pure duplication").isZero();
+                .as("the json projection was already sent; re-sending it is pure duplication")
+                .isZero();
         assertThat(count(round2, CITED_BODY))
-            .as("and so was this body — it is above, in the same conversation").isZero();
+                .as("and so was this body — it is above, in the same conversation")
+                .isZero();
     }
 
     private static int count(String haystack, String needle) {
@@ -1229,21 +1695,31 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theReviewerGetsTheCitedSourcesAndNothingElse() {
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         String review = capturedTurns("submit_review").get(0).query();
 
-        assertThat(review).as("the draft cites this chunk, so its text must be there")
-            .contains(CITED_BODY);
-        assertThat(review).as("nothing cites this one, so its text goes")
-            .doesNotContain(UNCITED_BODY);
         assertThat(review)
-            .as("...and so does its name — a title the reviewer cannot read is not evidence, "
-                + "it is an invitation to approve on the strength of a plausible label")
-            .doesNotContain(UNCITED_CHUNK.toString());
-        assertThat(review).as("evidence that is not chunk text can never be cited or recovered")
-            .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
+                .as("the draft cites this chunk, so its text must be there")
+                .contains(CITED_BODY);
+        assertThat(review)
+                .as("nothing cites this one, so its text goes")
+                .doesNotContain(UNCITED_BODY);
+        assertThat(review)
+                .as(
+                        "...and so does its name — a title the reviewer cannot read is not evidence, "
+                                + "it is an invitation to approve on the strength of a plausible label")
+                .doesNotContain(UNCITED_CHUNK.toString());
+        assertThat(review)
+                .as("evidence that is not chunk text can never be cited or recovered")
+                .contains("query_json_objects rows: [from 9.2.2 to 9.3]");
     }
 
     /**
@@ -1254,16 +1730,24 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theReviewerIsToldUncitedSourcesExistWithoutBeingShownThem() {
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         String review = capturedTurns("submit_review").get(0).query();
 
         assertThat(review).contains("Do NOT search for new information");
-        assertThat(review).as("it must know its evidence is scoped, not exhaustive")
-            .contains("those are not shown here");
-        assertThat(review).as("and be steered towards asking for a citation")
-            .contains("must cite what supports the claim");
+        assertThat(review)
+                .as("it must know its evidence is scoped, not exhaustive")
+                .contains("those are not shown here");
+        assertThat(review)
+                .as("and be steered towards asking for a citation")
+                .contains("must cite what supports the claim");
     }
 
     /**
@@ -1273,8 +1757,7 @@ public class OrchestrationServiceTest {
      * answered by running another specialist costing 347,969 prompt tokens. The whole run went 4×
      * over its baseline and still ended `delivered_flagged`.
      *
-     * <p>
-     * Prose could not carry that instruction reliably, so the verdict carries the distinction
+     * <p>Prose could not carry that instruction reliably, so the verdict carries the distinction
      * instead: a citation fix is applied from evidence already in hand, and the revision prompt has
      * to say so in a way the orchestrator cannot read as an invitation to research.
      */
@@ -1283,15 +1766,22 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 1;
         rejectionExtras = ",\"citation_fixes\":[\"swap [5] to [4] on the SAP HCM claim\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         String revision = capturedTurns("call_specialist").get(1).query();
 
         assertThat(revision).contains("swap [5] to [4] on the SAP HCM claim");
         assertThat(revision)
-            .as("the orchestrator must be told this needs no retrieval, in as many words")
-            .contains("already supplied").contains("do NOT call call_specialist");
+                .as("the orchestrator must be told this needs no retrieval, in as many words")
+                .contains("already supplied")
+                .contains("do NOT call call_specialist");
     }
 
     /**
@@ -1303,14 +1793,21 @@ public class OrchestrationServiceTest {
         rejectFirstNReviews = 1;
         rejectionExtras = ",\"unsupported_claims\":[\"SAP BW versions are not covered anywhere\"]";
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         String revision = capturedTurns("call_specialist").get(1).query();
 
         assertThat(revision).contains("SAP BW versions are not covered anywhere");
-        assertThat(revision).as("delegation is the correct remedy for genuinely missing material")
-            .contains("delegate");
+        assertThat(revision)
+                .as("delegation is the correct remedy for genuinely missing material")
+                .contains("delegate");
         assertThat(revision).doesNotContain("do NOT call call_specialist");
     }
 
@@ -1325,8 +1822,14 @@ public class OrchestrationServiceTest {
     public void theReviserIsNeverCiteScoped() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         List<AgenticRequest> orchestratorTurns = capturedTurns("call_specialist");
         assertThat(orchestratorTurns).hasSize(2);
@@ -1335,9 +1838,10 @@ public class OrchestrationServiceTest {
         assertThat(revision).contains("Reviewer feedback to address");
         assertThat(revision).as("the cited body is still there").contains(CITED_BODY);
         assertThat(revision)
-            .as("and so is the uncited one — re-citing it is the cheap fix for 'unsupported', "
-                + "and withholding it forces a fresh delegation instead")
-            .contains(UNCITED_BODY);
+                .as(
+                        "and so is the uncited one — re-citing it is the cheap fix for 'unsupported', "
+                                + "and withholding it forces a fresh delegation instead")
+                .contains(UNCITED_BODY);
     }
 
     /**
@@ -1350,16 +1854,23 @@ public class OrchestrationServiceTest {
     public void noReferenceInTheReviewersPromptPointsAtAMissingBody() {
         rejectFirstNReviews = 1;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         for (AgenticRequest review : capturedTurns("submit_review")) {
             String text = review.query();
             if (text.contains(ChunkBlocks.SHOWN_ABOVE)) {
                 assertThat(text)
-                    .as("a reference is only honest while the body is in the same "
-                        + "message — the reviewer has no history and cannot search")
-                    .contains(CITED_BODY);
+                        .as(
+                                "a reference is only honest while the body is in the same "
+                                        + "message — the reviewer has no history and cannot search")
+                        .contains(CITED_BODY);
             }
         }
     }
@@ -1375,113 +1886,160 @@ public class OrchestrationServiceTest {
      * CLARIFICATION" branch of {@code runSpecialist} reachable at all; stop offering it and that
      * branch, and the sibling test pinning it, describe a path production can no longer take.
      *
-     * <p>
-     * The other half of the rule is that the escape hatch is ADDED to the playbook's tools rather
-     * than replacing them — a specialist stripped of {@code search_corpus} answers from model
-     * weights alone while still looking like a retrieval agent in the trace. No existing test can
-     * see that half: they all use the {@code playbook(name)} helper, whose tool list is
-     * {@code List.of()}, and against an empty list "append" and "replace" produce the same list.
-     * Hence a playbook with real tools here, asserted in order.
+     * <p>The other half of the rule is that the escape hatch is ADDED to the playbook's tools
+     * rather than replacing them — a specialist stripped of {@code search_corpus} answers from
+     * model weights alone while still looking like a retrieval agent in the trace. No existing test
+     * can see that half: they all use the {@code playbook(name)} helper, whose tool list is {@code
+     * List.of()}, and against an empty list "append" and "replace" produce the same list. Hence a
+     * playbook with real tools here, asserted in order.
      */
     @Test
     public void aSpecialistAlwaysGetsAskClarifyingQuestionOnTopOfItsPlaybookTools() {
         rejectFirstNReviews = 0;
         // doAnswer(...).when(...) rather than when(...).thenAnswer(...): re-stubbing through when()
         // invokes the answer registered in setUp with null arguments before it can be replaced.
-        doAnswer(inv -> {
-            String name = inv.getArgument(0);
-            if ("spec-a".equals(name)) {
-                return Optional.of(new Playbook(name, name + " title", name + " description",
-                    "TEMPLATE for " + name, List.of("search_corpus", "get_section"), false,
-                    Instant.now(), Instant.now()));
-            }
-            return Optional.of(playbook(name));
-        }).when(playbookService).getPlaybook(any());
+        doAnswer(
+                        inv -> {
+                            String name = inv.getArgument(0);
+                            if ("spec-a".equals(name)) {
+                                return Optional.of(
+                                        new Playbook(
+                                                name,
+                                                name + " title",
+                                                name + " description",
+                                                "TEMPLATE for " + name,
+                                                List.of("search_corpus", "get_section"),
+                                                false,
+                                                Instant.now(),
+                                                Instant.now()));
+                            }
+                            return Optional.of(playbook(name));
+                        })
+                .when(playbookService)
+                .getPlaybook(any());
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
         // The specialist is the only turn run without a per-run tool (call_specialist /
         // submit_review).
-        AgenticRequest specialist = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() == null || q.extraTools().isEmpty()).findFirst()
-            .orElseThrow();
+        AgenticRequest specialist =
+                requests.getAllValues().stream()
+                        .filter(q -> q.extraTools() == null || q.extraTools().isEmpty())
+                        .findFirst()
+                        .orElseThrow();
 
         assertThat(specialist.allowedTools())
-            .as("the playbook's own tools survive and the escape hatch is appended to them")
-            .containsExactly("search_corpus", "get_section", "ask_clarifying_question");
+                .as("the playbook's own tools survive and the escape hatch is appended to them")
+                .containsExactly("search_corpus", "get_section", "ask_clarifying_question");
     }
 
     /**
      * S6.8, the two clauses the tool-union test cannot see: a specialist gets NO conversation
      * history, and its playbook's {@code codeExecution} flag is honoured.
      *
-     * <p>
-     * History is what makes a specialist a clean sub-agent. It is handed one sub-question and the
-     * tools to answer it from the corpus; give it the chat log as well and it can answer from the
-     * LOG instead — restating what was said three turns ago as though it had just retrieved it,
+     * <p>History is what makes a specialist a clean sub-agent. It is handed one sub-question and
+     * the tools to answer it from the corpus; give it the chat log as well and it can answer from
+     * the LOG instead — restating what was said three turns ago as though it had just retrieved it,
      * which the reviewer cannot catch because the claim is genuinely consistent with the evidence
      * it was shown. It also silently multiplies cost: the orchestrator already carries the history,
      * and every delegation would re-upload it, on a path where one turn can make a dozen specialist
      * calls. The orchestrator, by contrast, MUST carry it — a follow-up question is meaningless
      * without it — so this test asserts both sides of the asymmetry rather than just the null.
      *
-     * <p>
-     * {@code codeExecution} is a capability the playbook DECLARES. Drop it on the way through and
-     * the specialist runs without it: no error, no log line, just an agent that cannot do the
+     * <p>{@code codeExecution} is a capability the playbook DECLARES. Drop it on the way through
+     * and the specialist runs without it: no error, no log line, just an agent that cannot do the
      * arithmetic or table-manipulation its playbook was written around, answering worse for reasons
      * nothing in the trace explains. Note that the orchestrator's flag is hardcoded {@code false},
      * so "pass the playbook's flag" and "pass false" are indistinguishable everywhere else in this
      * suite: {@code playbook(name)} builds every fixture with {@code codeExecution=false}, and the
      * sibling {@code aSpecialistAlwaysGetsAskClarifyingQuestionOnTopOfItsPlaybookTools} — the only
-     * test that builds a richer playbook — also sets it {@code false} and asserts only on
-     * {@code allowedTools}. Hence a {@code true} here.
+     * test that builds a richer playbook — also sets it {@code false} and asserts only on {@code
+     * allowedTools}. Hence a {@code true} here.
      */
     @Test
     public void aSpecialistRunsWithNoHistoryAndWithItsPlaybooksCodeExecutionFlag() {
         rejectFirstNReviews = 0;
         // doAnswer(...).when(...) rather than when(...).thenAnswer(...): re-stubbing through when()
         // invokes the answer registered in setUp with null arguments before it can be replaced.
-        doAnswer(inv -> {
-            String name = inv.getArgument(0);
-            if ("spec-a".equals(name)) {
-                return Optional.of(new Playbook(name, name + " title", name + " description",
-                    "TEMPLATE for " + name, List.of("search_corpus"), true, Instant.now(),
-                    Instant.now()));
-            }
-            return Optional.of(playbook(name));
-        }).when(playbookService).getPlaybook(any());
+        doAnswer(
+                        inv -> {
+                            String name = inv.getArgument(0);
+                            if ("spec-a".equals(name)) {
+                                return Optional.of(
+                                        new Playbook(
+                                                name,
+                                                name + " title",
+                                                name + " description",
+                                                "TEMPLATE for " + name,
+                                                List.of("search_corpus"),
+                                                true,
+                                                Instant.now(),
+                                                Instant.now()));
+                            }
+                            return Optional.of(playbook(name));
+                        })
+                .when(playbookService)
+                .getPlaybook(any());
 
-        List<LlmMessage> history = List.of(new LlmMessage("user", "an earlier question"),
-            new LlmMessage("assistant", "an earlier answer"));
+        List<LlmMessage> history =
+                List.of(
+                        new LlmMessage("user", "an earlier question"),
+                        new LlmMessage("assistant", "an earlier answer"));
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", history, RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                history,
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<AgenticRequest> requests = ArgumentCaptor.forClass(AgenticRequest.class);
         verify(ragService, times(3)).generateAgenticAnswer(requests.capture(), any());
 
         // The specialist is the only turn run without a per-run tool (call_specialist /
         // submit_review).
-        AgenticRequest specialist = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() == null || q.extraTools().isEmpty()).findFirst()
-            .orElseThrow();
+        AgenticRequest specialist =
+                requests.getAllValues().stream()
+                        .filter(q -> q.extraTools() == null || q.extraTools().isEmpty())
+                        .findFirst()
+                        .orElseThrow();
         assertThat(specialist.history())
-            .as("a specialist answers from retrieval, never from the conversation log").isNull();
+                .as("a specialist answers from retrieval, never from the conversation log")
+                .isNull();
         assertThat(specialist.codeExecution())
-            .as("the capability the playbook declares must reach the run").isTrue();
+                .as("the capability the playbook declares must reach the run")
+                .isTrue();
 
-        AgenticRequest orchestrator = requests.getAllValues().stream()
-            .filter(q -> q.extraTools() != null && !q.extraTools().isEmpty()
-                && "call_specialist".equals(q.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest orchestrator =
+                requests.getAllValues().stream()
+                        .filter(q ->
+                                q.extraTools() != null
+                                        && !q.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        q.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(orchestrator.history())
-            .as("the orchestrator is the one agent that DOES carry the conversation")
-            .isEqualTo(history);
+                .as("the orchestrator is the one agent that DOES carry the conversation")
+                .isEqualTo(history);
         assertThat(orchestrator.codeExecution())
-            .as("...and it never gets code execution, whatever its specialists declare").isFalse();
+                .as("...and it never gets code execution, whatever its specialists declare")
+                .isFalse();
     }
 
     /**
@@ -1495,8 +2053,7 @@ public class OrchestrationServiceTest {
      * substitution converts silence into a statement the model can act on — re-delegate with a
      * narrower question, or tell the user it does not know.
      *
-     * <p>
-     * Dropping the {@code isBlank()} substitution ("just return the answer") changes nothing any
+     * <p>Dropping the {@code isBlank()} substitution ("just return the answer") changes nothing any
      * other test observes: the sibling clarification test asserts on a prefixed string, the budget
      * test looks only for the word "exhausted", and every other stubbed specialist here returns a
      * well-formed text part, so this branch is otherwise never executed.
@@ -1505,39 +2062,64 @@ public class OrchestrationServiceTest {
     public void aBlankSpecialistAnswerIsReportedAsSuchRatherThanAsAnEmptyToolResult() {
         // doAnswer(...).when(...) rather than when(...).thenAnswer(...): re-stubbing through when()
         // would first invoke the answer registered in setUp with null arguments.
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-                : req.extraTools().get(0).getToolDefinition().name();
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            String extraName =
+                                    req.extraTools() == null || req.extraTools().isEmpty()
+                                            ? ""
+                                            : req.extraTools().get(0).getToolDefinition().name();
 
-            if ("call_specialist".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    specialistToolResults.add(
-                        tc.call("{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}"));
-                }
-                return result("final orchestrated answer", null, null);
-            }
-            if ("submit_review".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
-                }
-                return result("review done", null, null);
-            }
+                            if ("call_specialist".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    specialistToolResults.add(
+                                            tc.call(
+                                                    "{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}"));
+                                }
+                                return result("final orchestrated answer", null, null);
+                            }
+                            if ("submit_review".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
+                                }
+                                return result("review done", null, null);
+                            }
 
-            // The specialist turn: no assistant text part and nothing streamed into the sink, so
-            // neither source of an answer has anything to give.
-            LlmMessage partless = new LlmMessage("assistant", null, List.of(), null, null, null);
-            return new RagResult(List.of(), List.of(partless), null, List.of(), 5, 10, 15, 0, 2,
-                null, null);
-        }).when(ragService).generateAgenticAnswer(any(), any());
+                            // The specialist turn: no assistant text part and nothing streamed into
+                            // the sink, so
+                            // neither source of an answer has anything to give.
+                            LlmMessage partless =
+                                    new LlmMessage("assistant", null, List.of(), null, null, null);
+                            return new RagResult(
+                                    List.of(),
+                                    List.of(partless),
+                                    null,
+                                    List.of(),
+                                    5,
+                                    10,
+                                    15,
+                                    0,
+                                    2,
+                                    null,
+                                    null);
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(specialistToolResults).as("exactly one delegation happened").hasSize(1);
         assertThat(specialistToolResults.get(0))
-            .as("the orchestrator must be able to tell an empty answer from a silent one")
-            .isEqualTo("(the specialist returned no answer)");
+                .as("the orchestrator must be able to tell an empty answer from a silent one")
+                .isEqualTo("(the specialist returned no answer)");
         assertThat(r.status()).as("a silent specialist is not a run failure").isEqualTo("done");
     }
 
@@ -1545,26 +2127,55 @@ public class OrchestrationServiceTest {
     public void rejectedTwice_deliversFlagged() {
         rejectFirstNReviews = 99; // always reject
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "question",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("delivered_flagged");
         assertThat(r.content()).contains("did not pass automated review");
         // 3 review attempts (round 0,1,2), review_rounds recorded == 2.
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("delivered_flagged"), eq(2), any(),
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
-        verify(stepRepository, times(3)).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("delivered_flagged"),
+                        eq(2),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
+        verify(stepRepository, times(3))
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("reviewer"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     /**
      * A specialist's clarifying question is addressed to its CALLER — the orchestrator — and must
-     * never leak out as the run's own clarification. Both travel the same channel
-     * ({@code RagResult.clarifyingQuestion}), but the orchestrator's is a user-facing escalation
-     * that finishes the run with status {@code clarify} and skips review entirely, while a
-     * specialist's is a mid-delegation stall the orchestrator is expected to resolve from context
-     * and re-delegate. Returned unprefixed it is indistinguishable from a specialist ANSWER: the
+     * never leak out as the run's own clarification. Both travel the same channel ({@code
+     * RagResult.clarifyingQuestion}), but the orchestrator's is a user-facing escalation that
+     * finishes the run with status {@code clarify} and skips review entirely, while a specialist's
+     * is a mid-delegation stall the orchestrator is expected to resolve from context and
+     * re-delegate. Returned unprefixed it is indistinguishable from a specialist ANSWER: the
      * orchestrator would synthesise the question into its final text and the user would be handed a
      * question dressed up as a reviewed answer. The prefix names the playbook that asked and the
      * trailing instruction says what to do about it — together they are the whole mechanism.
@@ -1574,34 +2185,56 @@ public class OrchestrationServiceTest {
      * only for the word "exhausted".
      */
     @Test
-    public void aSpecialistClarificationIsReturnedToTheOrchestratorAndNeverBecomesTheRunsClarifyOutcome() {
+    public void
+            aSpecialistClarificationIsReturnedToTheOrchestratorAndNeverBecomesTheRunsClarifyOutcome() {
         specialistClarifyingQuestion = "Which OneIM version do you mean?";
         rejectFirstNReviews = 0;
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(specialistToolResults).as("exactly one delegation happened").hasSize(1);
         assertThat(specialistToolResults.get(0))
-            .as("the orchestrator must be able to tell a stalled specialist from an answer")
-            .startsWith("SPECIALIST NEEDS CLARIFICATION (spec-a): Which OneIM version do you mean?")
-            .contains("re-call this specialist");
+                .as("the orchestrator must be able to tell a stalled specialist from an answer")
+                .startsWith(
+                        "SPECIALIST NEEDS CLARIFICATION (spec-a): Which OneIM version do you mean?")
+                .contains("re-call this specialist");
 
-        assertThat(r.status()).as("a specialist stall is not a user-facing clarification")
-            .isEqualTo("done");
-        assertThat(r.content()).as("the question must not reach the user as the answer")
-            .doesNotContain("Which OneIM version do you mean?");
-        verify(runRepository, never()).finish(any(), any(), eq("clarify"), anyInt(), any(),
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
+        assertThat(r.status())
+                .as("a specialist stall is not a user-facing clarification")
+                .isEqualTo("done");
+        assertThat(r.content())
+                .as("the question must not reach the user as the answer")
+                .doesNotContain("Which OneIM version do you mean?");
+        verify(runRepository, never())
+                .finish(
+                        any(),
+                        any(),
+                        eq("clarify"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
     }
 
     /**
-     * {@code seq} is the only total order agent_steps has — {@code findByRunId} is
-     * {@code ORDER BY seq ASC}, and the schema backs it with a plain, NON-unique index
-     * ({@code idx_agent_steps_run_seq}) — and the counter has two writers that must agree on one
-     * idiom: {@code runAgent}'s success path and {@code recordFailedStep}'s failure path. Changing
-     * only the success path to {@code getAndIncrement} looks like a no-op, because on a clean run
-     * the numbers stay distinct and ascending; it is not, because the two writers then hand out the
+     * {@code seq} is the only total order agent_steps has — {@code findByRunId} is {@code ORDER BY
+     * seq ASC}, and the schema backs it with a plain, NON-unique index ({@code
+     * idx_agent_steps_run_seq}) — and the counter has two writers that must agree on one idiom:
+     * {@code runAgent}'s success path and {@code recordFailedStep}'s failure path. Changing only
+     * the success path to {@code getAndIncrement} looks like a no-op, because on a clean run the
+     * numbers stay distinct and ascending; it is not, because the two writers then hand out the
      * SAME number as soon as a step fails and the run continues — which is the ordinary case, not
      * an exotic one: {@code RagService} catches a throwing tool and returns the model an error
      * string, so a dead specialist is recovered and the orchestrator still completes. Its step
@@ -1614,83 +2247,171 @@ public class OrchestrationServiceTest {
     public void stepSeqIsOnePerRunCounterStartingAtOneAcrossAllRoles() {
         rejectFirstNReviews = 0;
 
-        service.runOrchestration(CONV, MSG, "cross-topic question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV,
+                MSG,
+                "cross-topic question",
+                List.of(),
+                RUN,
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         ArgumentCaptor<Integer> seq = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> role = ArgumentCaptor.forClass(String.class);
-        verify(stepRepository, times(3)).insert(any(), eq(RUN), seq.capture(), role.capture(),
-            anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
+        verify(stepRepository, times(3))
+                .insert(
+                        any(),
+                        eq(RUN),
+                        seq.capture(),
+                        role.capture(),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
 
         assertThat(role.getAllValues())
-            .as("the nested specialist completes first, then the orchestrator, then the reviewer")
-            .containsExactly("specialist", "orchestrator", "reviewer");
+                .as(
+                        "the nested specialist completes first, then the orchestrator, then the reviewer")
+                .containsExactly("specialist", "orchestrator", "reviewer");
         assertThat(seq.getAllValues())
-            .as("one counter for the whole run: the first step is 1 and no two steps collide")
-            .containsExactlyInAnyOrder(1, 2, 3);
+                .as("one counter for the whole run: the first step is 1 and no two steps collide")
+                .containsExactlyInAnyOrder(1, 2, 3);
         // Rows are WRITTEN in completion order and NUMBERED in start order, so the specialist that
         // finished first carries the higher number — see
         // theTraceIsNumberedInTheOrderStepsStartedNotFinished, which owns that guarantee.
-        assertThat(seq.getAllValues().get(0)).as("the nested specialist started second")
-            .isEqualTo(2);
+        assertThat(seq.getAllValues().get(0))
+                .as("the nested specialist started second")
+                .isEqualTo(2);
     }
 
     /**
      * S6.6: {@code round} is a 0-based LOOP INDEX and {@code flagNote} is USER-FACING TEXT, so the
      * two cannot be the same number. The note is the only thing that tells a reader an answer was
      * delivered against the reviewer's judgement, and how hard the system tried before giving up;
-     * printing the index makes it under-report by one on every flagged run, and at
-     * {@code maxReviewRounds=0} — a perfectly reasonable production setting for "review once, never
+     * printing the index makes it under-report by one on every flagged run, and at {@code
+     * maxReviewRounds=0} — a perfectly reasonable production setting for "review once, never
      * revise" — it reads "after 0 attempt(s)" on an answer that was in fact reviewed, which is not
      * an off-by-one any more but a claim that no review happened.
      *
-     * <p>
-     * The two numbers are deliberately different and both are correct in their own place: the value
-     * persisted to {@code agent_runs.review_rounds} IS the 0-based counter (it records how many
-     * REVISIONS were made, and the existing rejection test pins it as 2), while the prose counts
-     * ATTEMPTS. That is exactly why "unify them" looks like a cleanup. No existing test can see the
-     * difference: {@code rejectedTwice_deliversFlagged} runs the same three-round scenario but
-     * asserts only that the phrase "did not pass automated review" is present.
+     * <p>The two numbers are deliberately different and both are correct in their own place: the
+     * value persisted to {@code agent_runs.review_rounds} IS the 0-based counter (it records how
+     * many REVISIONS were made, and the existing rejection test pins it as 2), while the prose
+     * counts ATTEMPTS. That is exactly why "unify them" looks like a cleanup. No existing test can
+     * see the difference: {@code rejectedTwice_deliversFlagged} runs the same three-round scenario
+     * but asserts only that the phrase "did not pass automated review" is present.
      */
     @Test
     public void theFlaggedAnswerNoteCountsAttemptsNotTheZeroBasedRoundIndex() {
         rejectFirstNReviews = 99; // never approved: with maxReviewRounds=2, rounds 0, 1 and 2 run
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG, "question",
-            List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV, MSG, "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("delivered_flagged");
         assertThat(r.content())
-            .as("three reviewer turns ran, so the user must be told three attempts were made")
-            .contains("did not pass automated review after 3 attempt(s)")
-            .doesNotContain("after 2 attempt(s)");
+                .as("three reviewer turns ran, so the user must be told three attempts were made")
+                .contains("did not pass automated review after 3 attempt(s)")
+                .doesNotContain("after 2 attempt(s)");
 
         // Three reviewer turns really did happen — the prose is not merely larger by one.
-        verify(stepRepository, times(3)).insert(any(), eq(RUN), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+        verify(stepRepository, times(3))
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("reviewer"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
         // ...while the PERSISTED counter stays the 0-based index it has always been: the two
         // numbers are different on purpose, which is what makes "unify them" tempting.
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("delivered_flagged"), eq(2), any(),
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("delivered_flagged"),
+                        eq(2),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
     }
 
     @Test
     public void specialistOrOrchestratorClarify_skipsReview() {
         orchestratorClarifies = true;
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "what's new", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "what's new",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("clarify");
         assertThat(r.content()).contains("clarifying-question");
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("clarify"), anyInt(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("clarify"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any());
         // No reviewer step when a clarification is surfaced.
-        verify(stepRepository, never()).insert(any(), any(), anyInt(), eq("reviewer"), anyInt(),
-            any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt(),
-            anyInt(), anyInt());
+        verify(stepRepository, never())
+                .insert(
+                        any(),
+                        any(),
+                        anyInt(),
+                        eq("reviewer"),
+                        anyInt(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     /**
@@ -1702,52 +2423,79 @@ public class OrchestrationServiceTest {
      * looks like — and at that point the buffer becomes the answer verbatim. Unstripped it is used
      * twice: it is handed to the REVIEWER as the candidate answer, so a whole pro-model review is
      * spent judging tool chatter against evidence it cannot match, and then it is delivered to the
-     * user with the model's private reasoning inside it, which is exactly what
-     * {@code show-thinking=false} promises can never happen. Nothing else in this suite executes
-     * the branch at all: every stubbed result carries a well-formed text part, so
-     * {@code stripThinkAndTools} could be deleted from the fallback with the suite still green.
+     * user with the model's private reasoning inside it, which is exactly what {@code
+     * show-thinking=false} promises can never happen. Nothing else in this suite executes the
+     * branch at all: every stubbed result carries a well-formed text part, so {@code
+     * stripThinkAndTools} could be deleted from the fallback with the suite still green.
      */
     @Test
     public void theAnswerFallbackStripsThinkBlocksAndToolBannersFromTheStreamedBuffer() {
         // doAnswer(...).when(...) rather than when(...).thenAnswer(...): re-stubbing through when()
         // would first invoke the answer registered in setUp with null arguments.
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            Consumer<String> sink = inv.getArgument(1);
-            String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-                : req.extraTools().get(0).getToolDefinition().name();
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            Consumer<String> sink = inv.getArgument(1);
+                            String extraName =
+                                    req.extraTools() == null || req.extraTools().isEmpty()
+                                            ? ""
+                                            : req.extraTools().get(0).getToolDefinition().name();
 
-            if ("call_specialist".equals(extraName)) {
-                sink.accept("<think>weighing two readings of the question</think>\n");
-                // The banner marker is the WRENCH (U+1F527) that stripThinkAndTools matches on,
-                // spelled as its surrogate-pair escape rather than pasted so the expectation cannot
-                // be mangled by an encoding-unaware edit without anyone seeing it.
-                sink.accept("🔧 *Calling tool:* search_corpus({})\n");
-                sink.accept("real answer");
-                // No text part anywhere: the streamed buffer is the only account of the answer.
-                LlmMessage partless =
-                    new LlmMessage("assistant", null, List.of(), null, null, null);
-                return new RagResult(List.of(), List.of(partless), null, List.of(), 10, 20, 30, 0,
-                    5, null, null);
-            }
+                            if ("call_specialist".equals(extraName)) {
+                                sink.accept(
+                                        "<think>weighing two readings of the question</think>\n");
+                                // The banner marker is the WRENCH (U+1F527) that stripThinkAndTools
+                                // matches on,
+                                // spelled as its surrogate-pair escape rather than pasted so the
+                                // expectation cannot
+                                // be mangled by an encoding-unaware edit without anyone seeing it.
+                                sink.accept("🔧 *Calling tool:* search_corpus({})\n");
+                                sink.accept("real answer");
+                                // No text part anywhere: the streamed buffer is the only account of
+                                // the answer.
+                                LlmMessage partless =
+                                        new LlmMessage(
+                                                "assistant", null, List.of(), null, null, null);
+                                return new RagResult(
+                                        List.of(),
+                                        List.of(partless),
+                                        null,
+                                        List.of(),
+                                        10,
+                                        20,
+                                        30,
+                                        0,
+                                        5,
+                                        null,
+                                        null);
+                            }
 
-            if ("submit_review".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
-                }
-                return result("review done", null, null);
-            }
+                            if ("submit_review".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
+                                }
+                                return result("review done", null, null);
+                            }
 
-            return specialistResult();
-        }).when(ragService).generateAgenticAnswer(any(), any());
+                            return specialistResult();
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
         assertThat(r.status()).isEqualTo("done");
         assertThat(r.content())
-            .as("neither the model's private reasoning nor its tool chatter may reach the user")
-            .isEqualTo("real answer");
+                .as("neither the model's private reasoning nor its tool chatter may reach the user")
+                .isEqualTo("real answer");
     }
 
     // --- Failure reporting -------------------------------------------------------------------
@@ -1759,19 +2507,41 @@ public class OrchestrationServiceTest {
 
     @Test
     public void providerFailure_recordsADiagnosisRatherThanTheBareSdkMessage() {
-        doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
-            any());
+        doThrow(new ClientException(429, "", ""))
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(ClientException.class);
 
         ArgumentCaptor<String> error = ArgumentCaptor.forClass(String.class);
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("error"), anyInt(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt(), error.capture());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("error"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        error.capture());
 
         assertThat(error.getValue()).isNotEqualTo("429 . ");
-        assertThat(error.getValue()).contains("ClientException").contains("429")
-            .contains("rate limit");
+        assertThat(error.getValue())
+                .contains("ClientException")
+                .contains("429")
+                .contains("rate limit");
         assertThat(error.getValue()).contains("role=orchestrator").contains("round=0");
     }
 
@@ -1782,41 +2552,93 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void cancellation_isRecordedAsCancelled_notAsAFailedRun() {
-        doThrow(new CancellationException("stopped")).when(ragService).generateAgenticAnswer(any(),
-            any());
+        doThrow(new CancellationException("stopped"))
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(CancellationException.class);
 
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("cancelled"), anyInt(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt(), isNull());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("cancelled"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        isNull());
     }
 
     @Test
     public void providerFailure_persistsTheStepThatDied() {
-        doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
-            any());
+        doThrow(new ClientException(429, "", ""))
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(ClientException.class);
 
         ArgumentCaptor<String> stepError = ArgumentCaptor.forClass(String.class);
-        verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), anyInt(),
-            eq("oim-orchestrator"), any(), any(), any(), any(), any(), stepError.capture());
+        verify(stepRepository)
+                .insertFailed(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("orchestrator"),
+                        anyInt(),
+                        eq("oim-orchestrator"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        stepError.capture());
         assertThat(stepError.getValue()).contains("429");
     }
 
     /** A user Stop is not a crash, so it must not litter the timeline with a failed step. */
     @Test
     public void cancellation_persistsNoFailedStep() {
-        doThrow(new CancellationException("stopped")).when(ragService).generateAgenticAnswer(any(),
-            any());
+        doThrow(new CancellationException("stopped"))
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(CancellationException.class);
 
-        verify(stepRepository, never()).insertFailed(any(), any(), anyInt(), any(), anyInt(), any(),
-            any(), any(), any(), any(), any(), any());
+        verify(stepRepository, never())
+                .insertFailed(
+                        any(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any(), any(),
+                        any(), any());
     }
 
     /**
@@ -1827,35 +2649,52 @@ public class OrchestrationServiceTest {
     public void failureBeforeTheRunStarts_stillLeavesAVisibleRun() {
         when(playbookService.getPlaybook(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(IllegalStateException.class);
 
         verify(runRepository).create(eq(RUN), eq(CONV), eq("OIM"), any());
         ArgumentCaptor<String> error = ArgumentCaptor.forClass(String.class);
-        verify(runRepository).finish(eq(RUN), any(), eq("error"), anyInt(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt(), error.capture());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        any(),
+                        eq("error"),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        error.capture());
         assertThat(error.getValue()).contains("playbook");
     }
 
     // ------------------------------------------------------------------------------------------
 
     /**
-     * S6 Data: the five token columns on {@code agent_runs} — and the five the
-     * {@code OrchestrationResult} hands to {@code ChatMessageService} for {@code messages} — are
-     * the SUM over every agent in the run: the orchestrator turn, every specialist delegation and
-     * every reviewer turn. The only thing that makes them a sum is {@code RunState.accumulate}'s
-     * {@code +=}; turn one of those into {@code =} (the natural "just record the result" edit) and
-     * the run reports the LAST agent's usage as the whole run's.
+     * S6 Data: the five token columns on {@code agent_runs} — and the five the {@code
+     * OrchestrationResult} hands to {@code ChatMessageService} for {@code messages} — are the SUM
+     * over every agent in the run: the orchestrator turn, every specialist delegation and every
+     * reviewer turn. The only thing that makes them a sum is {@code RunState.accumulate}'s {@code
+     * +=}; turn one of those into {@code =} (the natural "just record the result" edit) and the run
+     * reports the LAST agent's usage as the whole run's.
      *
-     * <p>
-     * A multi-agent turn is the most expensive thing the product does, so that under-reports MAS
+     * <p>A multi-agent turn is the most expensive thing the product does, so that under-reports MAS
      * spend by the entire delegation tree — and it does it invisibly, because every figure stays
      * internally consistent: {@code agent_runs}, the message row and the cost dashboard all agree
      * on a number that is simply far too small, nothing throws, and the per-step rows (which carry
      * each agent's own tokens) still look right next to a run total that no longer adds up to them.
      *
-     * <p>
-     * Every {@code runRepository.finish(...)} verification in this file matches all five token
+     * <p>Every {@code runRepository.finish(...)} verification in this file matches all five token
      * arguments with {@code anyInt()}, so no test has ever looked at a token total. The shared stub
      * in {@code setUp} also gives the orchestrator and the reviewer identical counts, which would
      * make "last agent wins" indistinguishable from a correct sum on several fields — hence the
@@ -1865,40 +2704,106 @@ public class OrchestrationServiceTest {
      */
     @Test
     public void theRunTotalsAreTheSumOverEveryAgentNotTheLastOneToFinish() {
-        LlmMessage orchestratorMsg = new LlmMessage("assistant", "final orchestrated answer",
-            List.of(new LlmPart("text", "final orchestrated answer", null, null)), null, null,
-            null);
-        LlmMessage reviewerMsg = new LlmMessage("assistant", "review done",
-            List.of(new LlmPart("text", "review done", null, null)), null, null, null);
-        LlmMessage specialistMsg = new LlmMessage("assistant", "specialist answer",
-            List.of(new LlmPart("text", "specialist answer", null, null)), null, null, null);
+        LlmMessage orchestratorMsg =
+                new LlmMessage(
+                        "assistant",
+                        "final orchestrated answer",
+                        List.of(new LlmPart("text", "final orchestrated answer", null, null)),
+                        null,
+                        null,
+                        null);
+        LlmMessage reviewerMsg =
+                new LlmMessage(
+                        "assistant",
+                        "review done",
+                        List.of(new LlmPart("text", "review done", null, null)),
+                        null,
+                        null,
+                        null);
+        LlmMessage specialistMsg =
+                new LlmMessage(
+                        "assistant",
+                        "specialist answer",
+                        List.of(new LlmPart("text", "specialist answer", null, null)),
+                        null,
+                        null,
+                        null);
 
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            String extraName = req.extraTools() == null || req.extraTools().isEmpty() ? ""
-                : req.extraTools().get(0).getToolDefinition().name();
-            if ("call_specialist".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    tc.call("{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}");
-                }
-                return new RagResult(List.of(), List.of(orchestratorMsg), null, List.of(), 100, 200,
-                    300, 400, 500);
-            }
-            if ("submit_review".equals(extraName)) {
-                for (ToolCallback tc : req.extraTools()) {
-                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
-                }
-                return new RagResult(List.of(), List.of(reviewerMsg), null, List.of(), 10, 20, 30,
-                    40, 50);
-            }
-            return new RagResult(List.of(), List.of(specialistMsg), null, List.of(), 1, 2, 3, 4, 5);
-        }).when(ragService).generateAgenticAnswer(any(), any());
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            String extraName =
+                                    req.extraTools() == null || req.extraTools().isEmpty()
+                                            ? ""
+                                            : req.extraTools().get(0).getToolDefinition().name();
+                            if ("call_specialist".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    tc.call(
+                                            "{\"playbook_name\":\"spec-a\",\"question\":\"sub-question\"}");
+                                }
+                                return new RagResult(
+                                        List.of(),
+                                        List.of(orchestratorMsg),
+                                        null,
+                                        List.of(),
+                                        100,
+                                        200,
+                                        300,
+                                        400,
+                                        500);
+                            }
+                            if ("submit_review".equals(extraName)) {
+                                for (ToolCallback tc : req.extraTools()) {
+                                    tc.call("{\"approved\":true,\"feedback\":\"\"}");
+                                }
+                                return new RagResult(
+                                        List.of(),
+                                        List.of(reviewerMsg),
+                                        null,
+                                        List.of(),
+                                        10,
+                                        20,
+                                        30,
+                                        40,
+                                        50);
+                            }
+                            return new RagResult(
+                                    List.of(),
+                                    List.of(specialistMsg),
+                                    null,
+                                    List.of(),
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    5);
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        OrchestrationService.OrchestrationResult r = service.runOrchestration(CONV, MSG,
-            "cross-topic question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
+        OrchestrationService.OrchestrationResult r =
+                service.runOrchestration(
+                        CONV,
+                        MSG,
+                        "cross-topic question",
+                        List.of(),
+                        RUN,
+                        "OIM",
+                        AgenticChatContext.ALL_AREAS);
 
-        verify(runRepository).finish(eq(RUN), eq(MSG), eq("done"), eq(0), any(), eq(111), eq(222),
-            eq(333), eq(444), eq(555), isNull());
+        verify(runRepository)
+                .finish(
+                        eq(RUN),
+                        eq(MSG),
+                        eq("done"),
+                        eq(0),
+                        any(),
+                        eq(111),
+                        eq(222),
+                        eq(333),
+                        eq(444),
+                        eq(555),
+                        isNull());
 
         assertThat(r.promptTokens()).isEqualTo(111);
         assertThat(r.completionTokens()).isEqualTo(222);
@@ -1908,45 +2813,64 @@ public class OrchestrationServiceTest {
     }
 
     private static Playbook playbook(String name) {
-        return new Playbook(name, name + " title", name + " description", "TEMPLATE for " + name,
-            List.of(), false, Instant.now(), Instant.now());
+        return new Playbook(
+                name,
+                name + " title",
+                name + " description",
+                "TEMPLATE for " + name,
+                List.of(),
+                false,
+                Instant.now(),
+                Instant.now());
     }
 
-    private static RagResult result(String answerText, String clarifyingQuestion,
-        List<String> options) {
-        LlmMessage assistant = new LlmMessage("assistant", answerText,
-            List.of(new LlmPart("text", answerText, null, null)), null, null, null);
-        return new RagResult(List.of(), List.of(assistant), null, List.of(), 10, 20, 30, 0, 5,
-            clarifyingQuestion, options);
+    private static RagResult result(
+            String answerText, String clarifyingQuestion, List<String> options) {
+        LlmMessage assistant =
+                new LlmMessage(
+                        "assistant",
+                        answerText,
+                        List.of(new LlmPart("text", answerText, null, null)),
+                        null,
+                        null,
+                        null);
+        return new RagResult(
+                List.of(),
+                List.of(assistant),
+                null,
+                List.of(),
+                10,
+                20,
+                30,
+                0,
+                5,
+                clarifyingQuestion,
+                options);
     }
 
     /**
      * S6.11, both halves at once: the outcome write is BEST-EFFORT and it runs OFF the interrupt.
      *
-     * <p>
-     * Cancellation reaches this service as a thread interrupt — {@code ChatCancellationService}
+     * <p>Cancellation reaches this service as a thread interrupt — {@code ChatCancellationService}
      * interrupts the generating thread, which is what the stub below reproduces — and a JDBC write
      * on an interrupted thread can be refused outright. {@code finishOffInterrupt} therefore clears
-     * the flag around {@code finish} and restores it afterwards. Replace
-     * {@code Thread.interrupted()} with the read-only {@code isInterrupted()} — the "why is this
-     * clearing a flag?" cleanup — and the {@code agent_runs} row for every stopped run is silently
-     * lost: the run is left open forever in the admin trace with no end time, no token totals and
-     * no status, while the chat shows a perfectly normal "[Generation stopped by user]". Restoring
-     * the flag matters just as much in the other direction: the caller ({@code ChatMessageService})
-     * is still unwinding a cancellation and does its own interrupt-sensitive write next.
+     * the flag around {@code finish} and restores it afterwards. Replace {@code
+     * Thread.interrupted()} with the read-only {@code isInterrupted()} — the "why is this clearing
+     * a flag?" cleanup — and the {@code agent_runs} row for every stopped run is silently lost: the
+     * run is left open forever in the admin trace with no end time, no token totals and no status,
+     * while the chat shows a perfectly normal "[Generation stopped by user]". Restoring the flag
+     * matters just as much in the other direction: the caller ({@code ChatMessageService}) is still
+     * unwinding a cancellation and does its own interrupt-sensitive write next.
      *
-     * <p>
-     * The best-effort half is the other assertion. A recording failure must never REPLACE the
-     * exception that ended the run: swallow the write failure and the user's Stop stays a
-     * {@code CancellationException}, which is the only thing that distinguishes a stop from a fault
-     * all the way up through {@code ChatMessageService} (status {@code cancelled} vs
-     * {@code error}). Let the JDBC exception escape instead and a stopped run is captioned as a
-     * system error, which is exactly the inversion the {@code cancelled} status was introduced to
-     * end.
+     * <p>The best-effort half is the other assertion. A recording failure must never REPLACE the
+     * exception that ended the run: swallow the write failure and the user's Stop stays a {@code
+     * CancellationException}, which is the only thing that distinguishes a stop from a fault all
+     * the way up through {@code ChatMessageService} (status {@code cancelled} vs {@code error}).
+     * Let the JDBC exception escape instead and a stopped run is captioned as a system error, which
+     * is exactly the inversion the {@code cancelled} status was introduced to end.
      *
-     * <p>
-     * Nothing in the suite reaches either path: no test makes {@code runRepository} or
-     * {@code stepRepository} throw, and the sibling {@code cancellation_isRecordedAsCancelled_
+     * <p>Nothing in the suite reaches either path: no test makes {@code runRepository} or {@code
+     * stepRepository} throw, and the sibling {@code cancellation_isRecordedAsCancelled_
      * notAsAFailedRun} cancels on a thread whose interrupt flag is never set, so the clear/restore
      * pair is dead code from its point of view.
      */
@@ -1954,27 +2878,44 @@ public class OrchestrationServiceTest {
     public void aCancelledRunRecordsItsOutcomeOffTheInterruptAndAFailedWriteKeepsTheCancellation() {
         AtomicBoolean interruptSetDuringWrite = new AtomicBoolean(true);
 
-        doAnswer(inv -> {
-            Thread.currentThread().interrupt();
-            throw new CancellationException("stopped");
-        }).when(ragService).generateAgenticAnswer(any(), any());
+        doAnswer(
+                        inv -> {
+                            Thread.currentThread().interrupt();
+                            throw new CancellationException("stopped");
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        doAnswer(inv -> {
-            interruptSetDuringWrite.set(Thread.currentThread().isInterrupted());
-            throw new RuntimeException("connection is closed");
-        }).when(runRepository).finish(any(), any(), any(), anyInt(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt(), any());
+        doAnswer(
+                        inv -> {
+                            interruptSetDuringWrite.set(Thread.currentThread().isInterrupted());
+                            throw new RuntimeException("connection is closed");
+                        })
+                .when(runRepository)
+                .finish(
+                        any(), any(), any(), anyInt(), any(), anyInt(), anyInt(), anyInt(),
+                        anyInt(), anyInt(), any());
 
         try {
-            assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-                "OIM", AgenticChatContext.ALL_AREAS))
-                .as("a failed trace write must never replace the exception that ended the run")
-                .isInstanceOf(CancellationException.class).hasMessage("stopped");
+            assertThatThrownBy(() ->
+                            service.runOrchestration(
+                                    CONV,
+                                    MSG,
+                                    "question",
+                                    List.of(),
+                                    RUN,
+                                    "OIM",
+                                    AgenticChatContext.ALL_AREAS))
+                    .as("a failed trace write must never replace the exception that ended the run")
+                    .isInstanceOf(CancellationException.class)
+                    .hasMessage("stopped");
 
             assertThat(interruptSetDuringWrite)
-                .as("the outcome write must run with the interrupt flag cleared").isFalse();
+                    .as("the outcome write must run with the interrupt flag cleared")
+                    .isFalse();
             assertThat(Thread.currentThread().isInterrupted())
-                .as("...and the flag must be handed back to the still-cancelling caller").isTrue();
+                    .as("...and the flag must be handed back to the still-cancelling caller")
+                    .isTrue();
         } finally {
             Thread.interrupted();
         }
@@ -1983,184 +2924,517 @@ public class OrchestrationServiceTest {
     /**
      * A specialist returns TWO kinds of tool output, and the pair is deliberate.
      *
-     * <p>
-     * The {@code query_json_objects} message is chunk-free, so it exercises the pass-through half
-     * of {@link EvidenceDigest} — it is what the older tests in this class assert on, and their
-     * assertions stay literally true because that entry is never reduced. The {@code search_corpus}
-     * message is real {@code ChunkBlocks.format} output carrying one cited and one uncited chunk,
-     * which is what production evidence actually looks like and what makes the cite-scoping
-     * assertions mean anything. With only the JSON entry the whole reviewer path would render
-     * byte-identically and every test here would pass while pinning nothing.
+     * <p>The {@code query_json_objects} message is chunk-free, so it exercises the pass-through
+     * half of {@link EvidenceDigest} — it is what the older tests in this class assert on, and
+     * their assertions stay literally true because that entry is never reduced. The {@code
+     * search_corpus} message is real {@code ChunkBlocks.format} output carrying one cited and one
+     * uncited chunk, which is what production evidence actually looks like and what makes the
+     * cite-scoping assertions mean anything. With only the JSON entry the whole reviewer path would
+     * render byte-identically and every test here would pass while pinning nothing.
      */
     private RagResult specialistResult() {
-        LlmMessage assistant = new LlmMessage("assistant", "specialist answer",
-            List.of(new LlmPart("text", "specialist answer", null, null)), null, null, null);
-        LlmMessage jsonMsg = new LlmMessage("tool", "query_json_objects rows: [from 9.2.2 to 9.3]",
-            null, null, "call-1", "query_json_objects");
-        LlmMessage searchMsg = new LlmMessage("tool",
-            ChunkBlocks.format(List.of(fixtureChunk(CITED_CHUNK, CITED_BODY, "Person"),
-                fixtureChunk(UNCITED_CHUNK, UNCITED_BODY, "install-kit.md")), SeenChunks.NONE),
-            null, null, "call-2", "search_corpus");
-        return new RagResult(List.of(UUID.randomUUID()), List.of(assistant, jsonMsg, searchMsg),
-            null, List.of(UUID.randomUUID()), 5, 10, 15, 0, 2, specialistClarifyingQuestion, null);
+        LlmMessage assistant =
+                new LlmMessage(
+                        "assistant",
+                        "specialist answer",
+                        List.of(new LlmPart("text", "specialist answer", null, null)),
+                        null,
+                        null,
+                        null);
+        LlmMessage jsonMsg =
+                new LlmMessage(
+                        "tool",
+                        "query_json_objects rows: [from 9.2.2 to 9.3]",
+                        null,
+                        null,
+                        "call-1",
+                        "query_json_objects");
+        LlmMessage searchMsg =
+                new LlmMessage(
+                        "tool",
+                        ChunkBlocks.format(
+                                List.of(
+                                        fixtureChunk(CITED_CHUNK, CITED_BODY, "Person"),
+                                        fixtureChunk(
+                                                UNCITED_CHUNK, UNCITED_BODY, "install-kit.md")),
+                                SeenChunks.NONE),
+                        null,
+                        null,
+                        "call-2",
+                        "search_corpus");
+        return new RagResult(
+                List.of(UUID.randomUUID()),
+                List.of(assistant, jsonMsg, searchMsg),
+                null,
+                List.of(UUID.randomUUID()),
+                5,
+                10,
+                15,
+                0,
+                2,
+                specialistClarifyingQuestion,
+                null);
     }
 
     private static HybridSearchResult fixtureChunk(UUID id, String body, String title) {
-        return new HybridSearchResult(id, UUID.randomUUID(), body, List.of("Columns"), "Columns", 2,
-            0, "10.0", title, "table", "OIM", Map.of(), 0.9,
-            new TelemetryInfo(true, false, 1, 0, 1));
+        return new HybridSearchResult(
+                id,
+                UUID.randomUUID(),
+                body,
+                List.of("Columns"),
+                "Columns",
+                2,
+                0,
+                "10.0",
+                title,
+                "table",
+                "OIM",
+                Map.of(),
+                0.9,
+                new TelemetryInfo(true, false, 1, 0, 1));
     }
 
     @Test
     void playbookTemplatesArePassedDirectlyAsSystemPromptsToAllRoles() {
-        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template",
-            List.of(), false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook orchPb =
+                new Playbook(
+                        "oim-orchestrator",
+                        "Orch",
+                        "desc",
+                        "Orchestrator template",
+                        List.of(),
+                        false,
+                        "orchestrator",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         Playbook revPb =
-            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
-                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM");
+                new Playbook(
+                        "oim-orchestrator-reviewer",
+                        "Rev",
+                        "desc",
+                        "Reviewer template",
+                        List.of(),
+                        false,
+                        "reviewer",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         Playbook specAPb =
-            new Playbook("spec-a", "Spec A", "desc", "Spec A template", List.of("search_corpus"),
-                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM");
+                new Playbook(
+                        "spec-a",
+                        "Spec A",
+                        "desc",
+                        "Spec A template",
+                        List.of("search_corpus"),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
 
         when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
         when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
-            .thenReturn(Optional.of(revPb));
+                .thenReturn(Optional.of(revPb));
         when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
 
-        OrchestratorProperties props = new OrchestratorProperties(2, 8, 10, 50,
-            new RoleDefaults(new RoleConfig("pro", "high"), new RoleConfig("pro", "high"),
-                new RoleConfig("flash", "medium")),
-            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
-                List.of("spec-a"), null, null, null)));
+        OrchestratorProperties props =
+                new OrchestratorProperties(
+                        2,
+                        8,
+                        10,
+                        50,
+                        new RoleDefaults(
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("pro", "high"),
+                                new RoleConfig("flash", "medium")),
+                        List.of(
+                                new Profile(
+                                        "OIM",
+                                        "oim-orchestrator",
+                                        "oim-orchestrator-reviewer",
+                                        List.of("spec-a"),
+                                        null,
+                                        null,
+                                        null)));
 
-        OrchestrationService promptService = new OrchestrationService(ragService, playbookService,
-            props, null, runRepository, stepRepository, objectMapper, null);
+        OrchestrationService promptService =
+                new OrchestrationService(
+                        ragService,
+                        playbookService,
+                        props,
+                        null,
+                        runRepository,
+                        stepRepository,
+                        objectMapper,
+                        null);
 
         List<AgenticRequest> requests = new ArrayList<>();
-        doAnswer(inv -> {
-            AgenticRequest req = inv.getArgument(0);
-            requests.add(req);
-            @SuppressWarnings("unchecked")
-            Consumer<String> sink = inv.getArgument(1);
-            return handleAgentCall(req, sink);
-        }).when(ragService).generateAgenticAnswer(any(), any());
+        doAnswer(
+                        inv -> {
+                            AgenticRequest req = inv.getArgument(0);
+                            requests.add(req);
+                            @SuppressWarnings("unchecked")
+                            Consumer<String> sink = inv.getArgument(1);
+                            return handleAgentCall(req, sink);
+                        })
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
 
-        promptService.runOrchestration(UUID.randomUUID(), UUID.randomUUID(), "Question", List.of(),
-            UUID.randomUUID(), "OIM", AgenticChatContext.ALL_AREAS);
+        promptService.runOrchestration(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "Question",
+                List.of(),
+                UUID.randomUUID(),
+                "OIM",
+                AgenticChatContext.ALL_AREAS);
 
         assertThat(requests).hasSize(3);
 
         // Specialist request receives templateText directly
-        AgenticRequest specReq = requests.stream()
-            .filter(r -> r.allowedTools().contains("search_corpus")).findFirst().orElseThrow();
+        AgenticRequest specReq =
+                requests.stream()
+                        .filter(r -> r.allowedTools().contains("search_corpus"))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(specReq.systemPromptOverride()).isEqualTo("Spec A template");
 
         // Orchestrator request uses its self-contained playbook template
-        AgenticRequest orchReq = requests.stream()
-            .filter(r -> r.extraTools() != null && !r.extraTools().isEmpty()
-                && "call_specialist".equals(r.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest orchReq =
+                requests.stream()
+                        .filter(r ->
+                                r.extraTools() != null
+                                        && !r.extraTools().isEmpty()
+                                        && "call_specialist"
+                                                .equals(
+                                                        r.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(orchReq.systemPromptOverride()).startsWith("Orchestrator template");
 
         // Reviewer request uses its self-contained playbook template
-        AgenticRequest revReq = requests.stream()
-            .filter(r -> r.extraTools() != null && !r.extraTools().isEmpty()
-                && "submit_review".equals(r.extraTools().get(0).getToolDefinition().name()))
-            .findFirst().orElseThrow();
+        AgenticRequest revReq =
+                requests.stream()
+                        .filter(r ->
+                                r.extraTools() != null
+                                        && !r.extraTools().isEmpty()
+                                        && "submit_review"
+                                                .equals(
+                                                        r.extraTools()
+                                                                .get(0)
+                                                                .getToolDefinition()
+                                                                .name()))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(revReq.systemPromptOverride()).startsWith("Reviewer template");
     }
 
     @Test
     void runOrchestration_whenOrchestratorPlaybookHasBlankTemplate_recordsSetupFailureAndThrows() {
-        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "   ", List.of(), false,
-            "orchestrator", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook orchPb =
+                new Playbook(
+                        "oim-orchestrator",
+                        "Orch",
+                        "desc",
+                        "   ",
+                        List.of(),
+                        false,
+                        "orchestrator",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
 
         UUID runId = UUID.randomUUID();
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), runId, "OIM",
-            AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class).hasMessage(
-                "Orchestrator orchestrator playbook 'oim-orchestrator' has empty template text.");
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "q",
+                                List.of(),
+                                runId,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "Orchestrator orchestrator playbook 'oim-orchestrator' has empty template text.");
 
-        verify(runRepository).finish(eq(runId), isNull(), eq("error"), eq(0), isNull(), eq(0),
-            eq(0), eq(0), eq(0), eq(0), contains(
-                "Orchestrator orchestrator playbook 'oim-orchestrator' has empty template text."));
+        verify(runRepository)
+                .finish(
+                        eq(runId),
+                        isNull(),
+                        eq("error"),
+                        eq(0),
+                        isNull(),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        contains(
+                                "Orchestrator orchestrator playbook 'oim-orchestrator' has empty template text."));
     }
 
     @Test
     void runOrchestration_whenReviewerPlaybookHasBlankTemplate_recordsSetupFailureAndThrows() {
-        Playbook revPb = new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "", List.of(),
-            false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook revPb =
+                new Playbook(
+                        "oim-orchestrator-reviewer",
+                        "Rev",
+                        "desc",
+                        "",
+                        List.of(),
+                        false,
+                        "reviewer",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
-            .thenReturn(Optional.of(revPb));
+                .thenReturn(Optional.of(revPb));
 
         UUID runId = UUID.randomUUID();
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), runId, "OIM",
-            AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class).hasMessage(
-                "Orchestrator reviewer playbook 'oim-orchestrator-reviewer' has empty template text.");
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "q",
+                                List.of(),
+                                runId,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "Orchestrator reviewer playbook 'oim-orchestrator-reviewer' has empty template text.");
 
-        verify(runRepository).finish(eq(runId), isNull(), eq("error"), eq(0), isNull(), eq(0),
-            eq(0), eq(0), eq(0), eq(0), contains(
-                "Orchestrator reviewer playbook 'oim-orchestrator-reviewer' has empty template text."));
+        verify(runRepository)
+                .finish(
+                        eq(runId),
+                        isNull(),
+                        eq("error"),
+                        eq(0),
+                        isNull(),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        contains(
+                                "Orchestrator reviewer playbook 'oim-orchestrator-reviewer' has empty template text."));
     }
 
     @Test
     void runOrchestration_whenSpecialistPlaybookHasBlankTemplate_recordsSetupFailureAndThrows() {
-        Playbook specPb = new Playbook("spec-a", "Spec A", "desc", "   ", List.of("search_corpus"),
-            false, "specialist", false, Instant.now(), Instant.now(), false, "OIM");
+        Playbook specPb =
+                new Playbook(
+                        "spec-a",
+                        "Spec A",
+                        "desc",
+                        "   ",
+                        List.of("search_corpus"),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM");
         when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specPb));
 
         UUID runId = UUID.randomUUID();
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "q", List.of(), runId, "OIM",
-            AgenticChatContext.ALL_AREAS)).isInstanceOf(IllegalStateException.class)
-            .hasMessage("Orchestrator specialist playbook 'spec-a' has empty template text.");
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "q",
+                                List.of(),
+                                runId,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Orchestrator specialist playbook 'spec-a' has empty template text.");
 
-        verify(runRepository).finish(eq(runId), isNull(), eq("error"), eq(0), isNull(), eq(0),
-            eq(0), eq(0), eq(0), eq(0),
-            contains("Orchestrator specialist playbook 'spec-a' has empty template text."));
+        verify(runRepository)
+                .finish(
+                        eq(runId),
+                        isNull(),
+                        eq("error"),
+                        eq(0),
+                        isNull(),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        eq(0),
+                        contains(
+                                "Orchestrator specialist playbook 'spec-a' has empty template text."));
     }
 
     @Test
     void runOrchestration_stampsPlaybookVersionOnSuccessAndFailedAgentSteps() {
-        Playbook orchPb = new Playbook("oim-orchestrator", "Orch", "desc", "Orchestrator template",
-            List.of(), false, "orchestrator", false, Instant.now(), Instant.now(), false, "OIM", 2);
+        Playbook orchPb =
+                new Playbook(
+                        "oim-orchestrator",
+                        "Orch",
+                        "desc",
+                        "Orchestrator template",
+                        List.of(),
+                        false,
+                        "orchestrator",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM",
+                        2);
         Playbook revPb =
-            new Playbook("oim-orchestrator-reviewer", "Rev", "desc", "Reviewer template", List.of(),
-                false, "reviewer", false, Instant.now(), Instant.now(), false, "OIM", 3);
+                new Playbook(
+                        "oim-orchestrator-reviewer",
+                        "Rev",
+                        "desc",
+                        "Reviewer template",
+                        List.of(),
+                        false,
+                        "reviewer",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM",
+                        3);
         Playbook specAPb =
-            new Playbook("spec-a", "Spec A", "desc", "Spec A template", List.of("search_corpus"),
-                false, "specialist", false, Instant.now(), Instant.now(), false, "OIM", 4);
+                new Playbook(
+                        "spec-a",
+                        "Spec A",
+                        "desc",
+                        "Spec A template",
+                        List.of("search_corpus"),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OIM",
+                        4);
 
         when(playbookService.getPlaybook("oim-orchestrator")).thenReturn(Optional.of(orchPb));
         when(playbookService.getPlaybook("oim-orchestrator-reviewer"))
-            .thenReturn(Optional.of(revPb));
+                .thenReturn(Optional.of(revPb));
         when(playbookService.getPlaybook("spec-a")).thenReturn(Optional.of(specAPb));
 
-        service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM",
-            AgenticChatContext.ALL_AREAS);
+        service.runOrchestration(
+                CONV, MSG, "question", List.of(), RUN, "OIM", AgenticChatContext.ALL_AREAS);
 
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
-            eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any(), any(), anyInt(),
-            anyInt(), anyInt(), anyInt(), anyInt());
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("specialist"), eq(0),
-            eq("spec-a"), eq(4), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(),
-            anyInt(), anyInt(), anyInt());
-        verify(stepRepository).insert(any(), eq(RUN), anyInt(), eq("reviewer"), eq(0),
-            eq("oim-orchestrator-reviewer"), eq(3), any(), any(), any(), any(), any(), any(),
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("orchestrator"),
+                        eq(0),
+                        eq("oim-orchestrator"),
+                        eq(2),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("specialist"),
+                        eq(0),
+                        eq("spec-a"),
+                        eq(4),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
+        verify(stepRepository)
+                .insert(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("reviewer"),
+                        eq(0),
+                        eq("oim-orchestrator-reviewer"),
+                        eq(3),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
 
-        doThrow(new ClientException(429, "", "")).when(ragService).generateAgenticAnswer(any(),
-            any());
-        assertThatThrownBy(() -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN,
-            "OIM", AgenticChatContext.ALL_AREAS)).isInstanceOf(ClientException.class);
-        verify(stepRepository).insertFailed(any(), eq(RUN), anyInt(), eq("orchestrator"), eq(0),
-            eq("oim-orchestrator"), eq(2), any(), any(), any(), any(), any());
+        doThrow(new ClientException(429, "", ""))
+                .when(ragService)
+                .generateAgenticAnswer(any(), any());
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV,
+                                MSG,
+                                "question",
+                                List.of(),
+                                RUN,
+                                "OIM",
+                                AgenticChatContext.ALL_AREAS))
+                .isInstanceOf(ClientException.class);
+        verify(stepRepository)
+                .insertFailed(
+                        any(),
+                        eq(RUN),
+                        anyInt(),
+                        eq("orchestrator"),
+                        eq(0),
+                        eq("oim-orchestrator"),
+                        eq(2),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
     }
 
     @Test
     void runOrchestration_rejectsNullAllowedAreasLower() {
-        assertThatThrownBy(
-            () -> service.runOrchestration(CONV, MSG, "question", List.of(), RUN, "OIM", null))
-            .isInstanceOf(NullPointerException.class)
-            .hasMessage("allowedAreasLower must not be null");
+        assertThatThrownBy(() ->
+                        service.runOrchestration(
+                                CONV, MSG, "question", List.of(), RUN, "OIM", null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("allowedAreasLower must not be null");
     }
 }

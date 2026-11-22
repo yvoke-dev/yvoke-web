@@ -23,8 +23,11 @@ public class KgConsolidator {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    public record ConsolidationStats(int groupsProcessed, int rowsDeleted,
-        int relationshipsRepointCount, int relationshipsCollapsedCount) {}
+    public record ConsolidationStats(
+            int groupsProcessed,
+            int rowsDeleted,
+            int relationshipsRepointCount,
+            int relationshipsCollapsedCount) {}
 
     public ConsolidationStats consolidate(String collection, String tag) {
         log.info("Starting KG consolidation for collection={}, tag={}", collection, tag);
@@ -43,27 +46,37 @@ public class KgConsolidator {
             // DocumentIngestService calls consolidate(collection, null) for any untagged
             // kg-extract job, which switches that filter off entirely — so the filter alone
             // cannot protect the split.
-            List<Map<String, Object>> groups = jdbcClient.sql("""
-                SELECT LOWER(TRIM(e.name)) AS name_lc,
-                       COALESCE(e.kind, '') AS kind_lc,
-                       ARRAY_AGG(e.id ORDER BY e.id) AS all_ids,
-                       ARRAY_AGG(e.name) AS all_names,
-                       COUNT(*) AS count
-                 FROM entities e
-                 JOIN collections c ON e.collection_id = c.id
-                WHERE c.name = :collection
-                  AND (:tag = ANY(e.tags) OR CAST(:tag AS text) IS NULL)
-                GROUP BY LOWER(TRIM(e.name)), COALESCE(e.kind, ''), kg_canonical_tags(e.tags)
-                HAVING COUNT(*) > 1
-                """).param("collection", collection).param("tag", tag).query().listOfRows();
+            List<Map<String, Object>> groups =
+                    jdbcClient
+                            .sql(
+                                    """
+                                    SELECT LOWER(TRIM(e.name)) AS name_lc,
+                                           COALESCE(e.kind, '') AS kind_lc,
+                                           ARRAY_AGG(e.id ORDER BY e.id) AS all_ids,
+                                           ARRAY_AGG(e.name) AS all_names,
+                                           COUNT(*) AS count
+                                     FROM entities e
+                                     JOIN collections c ON e.collection_id = c.id
+                                    WHERE c.name = :collection
+                                      AND (:tag = ANY(e.tags) OR CAST(:tag AS text) IS NULL)
+                                    GROUP BY LOWER(TRIM(e.name)), COALESCE(e.kind, ''), kg_canonical_tags(e.tags)
+                                    HAVING COUNT(*) > 1
+                                    """)
+                            .param("collection", collection)
+                            .param("tag", tag)
+                            .query()
+                            .listOfRows();
 
             if (groups.isEmpty()) {
                 log.info("No duplicate entity groups found for consolidation.");
                 return new ConsolidationStats(0, 0, 0, 0);
             }
 
-            log.info("Found {} duplicate entity name groups in collection={}, tag={}",
-                groups.size(), collection, tag);
+            log.info(
+                    "Found {} duplicate entity name groups in collection={}, tag={}",
+                    groups.size(),
+                    collection,
+                    tag);
 
             int rowsDeleted = 0;
             int relationshipsRepointCount = 0;
@@ -81,80 +94,106 @@ public class KgConsolidator {
 
                 // Find canonical name
                 String canonicalName =
-                    jdbcClient.sql("SELECT name FROM entities WHERE id = :canonicalId")
-                        .param("canonicalId", canonicalId).query(String.class).single();
+                        jdbcClient
+                                .sql("SELECT name FROM entities WHERE id = :canonicalId")
+                                .param("canonicalId", canonicalId)
+                                .query(String.class)
+                                .single();
 
                 // Find alias names different from canonical name
                 List<String> aliasNames =
-                    allNames.stream().filter(n -> !n.equals(canonicalName)).distinct().toList();
+                        allNames.stream().filter(n -> !n.equals(canonicalName)).distinct().toList();
 
                 // Update relationships subject/object and subject_id/object_id to canonical
-                int repointedSubjects = jdbcClient
-                    .sql(
-                        """
-                            UPDATE relationships
-                            SET subject = :canonicalName,
-                                subject_id = :canonicalId
-                            FROM collections c
-                            WHERE relationships.collection_id = c.id
-                              AND c.name = :collection
-                              AND (:tag = ANY(relationships.tags) OR CAST(:tag AS text) IS NULL)
-                              -- Repointing also matches on NAME text, which is not scope-aware:
-                              -- without this, merging a case-variant pair in one version's scope
-                              -- would drag the OTHER version's identically-named edges onto this
-                              -- version's canonical entity.
-                              AND kg_canonical_tags(relationships.tags)
-                                  = kg_canonical_tags((SELECT tags FROM entities WHERE id = :canonicalId))
-                              AND (relationships.subject IN (:aliasNames) OR relationships.subject_id IN (:aliasIds))
-                            """)
-                    .param("canonicalName", canonicalName).param("canonicalId", canonicalId)
-                    .param("collection", collection).param("tag", tag)
-                    .param("aliasNames", aliasNames.isEmpty() ? List.of("") : aliasNames)
-                    .param("aliasIds", aliasIds).update();
+                int repointedSubjects =
+                        jdbcClient
+                                .sql(
+                                        """
+                                        UPDATE relationships
+                                        SET subject = :canonicalName,
+                                            subject_id = :canonicalId
+                                        FROM collections c
+                                        WHERE relationships.collection_id = c.id
+                                          AND c.name = :collection
+                                          AND (:tag = ANY(relationships.tags) OR CAST(:tag AS text) IS NULL)
+                                          -- Repointing also matches on NAME text, which is not scope-aware:
+                                          -- without this, merging a case-variant pair in one version's scope
+                                          -- would drag the OTHER version's identically-named edges onto this
+                                          -- version's canonical entity.
+                                          AND kg_canonical_tags(relationships.tags)
+                                              = kg_canonical_tags((SELECT tags FROM entities WHERE id = :canonicalId))
+                                          AND (relationships.subject IN (:aliasNames) OR relationships.subject_id IN (:aliasIds))
+                                        """)
+                                .param("canonicalName", canonicalName)
+                                .param("canonicalId", canonicalId)
+                                .param("collection", collection)
+                                .param("tag", tag)
+                                .param(
+                                        "aliasNames",
+                                        aliasNames.isEmpty() ? List.of("") : aliasNames)
+                                .param("aliasIds", aliasIds)
+                                .update();
 
-                int repointedObjects = jdbcClient
-                    .sql(
-                        """
-                            UPDATE relationships
-                            SET object = :canonicalName,
-                                object_id = :canonicalId
-                            FROM collections c
-                            WHERE relationships.collection_id = c.id
-                              AND c.name = :collection
-                              AND (:tag = ANY(relationships.tags) OR CAST(:tag AS text) IS NULL)
-                              -- Repointing also matches on NAME text, which is not scope-aware:
-                              -- without this, merging a case-variant pair in one version's scope
-                              -- would drag the OTHER version's identically-named edges onto this
-                              -- version's canonical entity.
-                              AND kg_canonical_tags(relationships.tags)
-                                  = kg_canonical_tags((SELECT tags FROM entities WHERE id = :canonicalId))
-                              AND (relationships.object IN (:aliasNames) OR relationships.object_id IN (:aliasIds))
-                            """)
-                    .param("canonicalName", canonicalName).param("canonicalId", canonicalId)
-                    .param("collection", collection).param("tag", tag)
-                    .param("aliasNames", aliasNames.isEmpty() ? List.of("") : aliasNames)
-                    .param("aliasIds", aliasIds).update();
+                int repointedObjects =
+                        jdbcClient
+                                .sql(
+                                        """
+                                        UPDATE relationships
+                                        SET object = :canonicalName,
+                                            object_id = :canonicalId
+                                        FROM collections c
+                                        WHERE relationships.collection_id = c.id
+                                          AND c.name = :collection
+                                          AND (:tag = ANY(relationships.tags) OR CAST(:tag AS text) IS NULL)
+                                          -- Repointing also matches on NAME text, which is not scope-aware:
+                                          -- without this, merging a case-variant pair in one version's scope
+                                          -- would drag the OTHER version's identically-named edges onto this
+                                          -- version's canonical entity.
+                                          AND kg_canonical_tags(relationships.tags)
+                                              = kg_canonical_tags((SELECT tags FROM entities WHERE id = :canonicalId))
+                                          AND (relationships.object IN (:aliasNames) OR relationships.object_id IN (:aliasIds))
+                                        """)
+                                .param("canonicalName", canonicalName)
+                                .param("canonicalId", canonicalId)
+                                .param("collection", collection)
+                                .param("tag", tag)
+                                .param(
+                                        "aliasNames",
+                                        aliasNames.isEmpty() ? List.of("") : aliasNames)
+                                .param("aliasIds", aliasIds)
+                                .update();
 
                 relationshipsRepointCount += (repointedSubjects + repointedObjects);
 
                 // Merge descriptions: longest non-empty description
-                Optional<String> mergedDescription = jdbcClient.sql("""
-                    SELECT description FROM entities
-                    WHERE id IN (:allIds) AND description IS NOT NULL AND description <> ''
-                    ORDER BY LENGTH(description) DESC
-                    LIMIT 1
-                    """).param("allIds", allIds).query(String.class).optional();
+                Optional<String> mergedDescription =
+                        jdbcClient
+                                .sql(
+                                        """
+                                        SELECT description FROM entities
+                                        WHERE id IN (:allIds) AND description IS NOT NULL AND description <> ''
+                                        ORDER BY LENGTH(description) DESC
+                                        LIMIT 1
+                                        """)
+                                .param("allIds", allIds)
+                                .query(String.class)
+                                .optional();
 
                 if (mergedDescription.isPresent()) {
-                    jdbcClient.sql(
-                        "UPDATE entities SET description = :description WHERE id = :canonicalId")
-                        .param("description", mergedDescription.get())
-                        .param("canonicalId", canonicalId).update();
+                    jdbcClient
+                            .sql(
+                                    "UPDATE entities SET description = :description WHERE id = :canonicalId")
+                            .param("description", mergedDescription.get())
+                            .param("canonicalId", canonicalId)
+                            .update();
                 }
 
                 // Delete alias entities
-                int deleted = jdbcClient.sql("DELETE FROM entities WHERE id IN (:aliasIds)")
-                    .param("aliasIds", aliasIds).update();
+                int deleted =
+                        jdbcClient
+                                .sql("DELETE FROM entities WHERE id IN (:aliasIds)")
+                                .param("aliasIds", aliasIds)
+                                .update();
 
                 rowsDeleted += deleted;
             }
@@ -162,29 +201,38 @@ public class KgConsolidator {
             // 2. Collapse duplicate relationship triples — within one tag scope only. The partition
             // is over the NAME text, so without kg_canonical_tags(r.tags) the same edge under two
             // versions collapses to one and the second version loses it.
-            int relationshipsCollapsed = jdbcClient.sql("""
-                WITH ranked AS (
-                  SELECT r.id,
-                    ROW_NUMBER() OVER (
-                      PARTITION BY LOWER(r.subject), LOWER(r.predicate), LOWER(r.object),
-                                   kg_canonical_tags(r.tags)
-                      ORDER BY LENGTH(COALESCE(r.description, '')) DESC, r.id
-                    ) AS rn
-                  FROM relationships r
-                  JOIN collections c ON r.collection_id = c.id
-                  WHERE c.name = :collection
-                    AND (:tag = ANY(r.tags) OR CAST(:tag AS text) IS NULL)
-                )
-                DELETE FROM relationships
-                WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
-                """).param("collection", collection).param("tag", tag).update();
+            int relationshipsCollapsed =
+                    jdbcClient
+                            .sql(
+                                    """
+                                    WITH ranked AS (
+                                      SELECT r.id,
+                                        ROW_NUMBER() OVER (
+                                          PARTITION BY LOWER(r.subject), LOWER(r.predicate), LOWER(r.object),
+                                                       kg_canonical_tags(r.tags)
+                                          ORDER BY LENGTH(COALESCE(r.description, '')) DESC, r.id
+                                        ) AS rn
+                                      FROM relationships r
+                                      JOIN collections c ON r.collection_id = c.id
+                                      WHERE c.name = :collection
+                                        AND (:tag = ANY(r.tags) OR CAST(:tag AS text) IS NULL)
+                                    )
+                                    DELETE FROM relationships
+                                    WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+                                    """)
+                            .param("collection", collection)
+                            .param("tag", tag)
+                            .update();
 
             log.info(
-                "KG consolidation complete. Groups: {}, Entities Deleted: {}, Relationships Repointed: {}, Relationships Collapsed: {}",
-                groups.size(), rowsDeleted, relationshipsRepointCount, relationshipsCollapsed);
+                    "KG consolidation complete. Groups: {}, Entities Deleted: {}, Relationships Repointed: {}, Relationships Collapsed: {}",
+                    groups.size(),
+                    rowsDeleted,
+                    relationshipsRepointCount,
+                    relationshipsCollapsed);
 
-            return new ConsolidationStats(groups.size(), rowsDeleted, relationshipsRepointCount,
-                relationshipsCollapsed);
+            return new ConsolidationStats(
+                    groups.size(), rowsDeleted, relationshipsRepointCount, relationshipsCollapsed);
         });
     }
 

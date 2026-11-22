@@ -34,9 +34,13 @@ public class SectionSummarizer {
     private final SystemPromptService systemPromptService;
     private final TransactionTemplate transactionTemplate;
 
-    public SectionSummarizer(GeneralSummarizer generalSummarizer, JdbcClient jdbcClient,
-        JdbcTemplate jdbcTemplate, @Value("${app.ai.summarize.concurrency}") int concurrency,
-        SystemPromptService systemPromptService, PlatformTransactionManager transactionManager) {
+    public SectionSummarizer(
+            GeneralSummarizer generalSummarizer,
+            JdbcClient jdbcClient,
+            JdbcTemplate jdbcTemplate,
+            @Value("${app.ai.summarize.concurrency}") int concurrency,
+            SystemPromptService systemPromptService,
+            PlatformTransactionManager transactionManager) {
         this.generalSummarizer = generalSummarizer;
         this.jdbcClient = jdbcClient;
         this.jdbcTemplate = jdbcTemplate;
@@ -59,28 +63,32 @@ public class SectionSummarizer {
 
     /**
      * @param systemPrompt the SUMMARIZE prompt to run with — required, and validated here rather
-     *        than per node. It used to be an optional "override" resolved inside
-     *        {@link #processNode}: once per node, inside the concurrent fan-out, falling back to
-     *        {@code getPrompt("default-summarize")} — a prompt name that exists in no deployment.
-     *        So the fallback always missed, every node summarized with a null system prompt, and
-     *        the job reported success. Resolving here instead means one check for a 27,000-node
-     *        corpus instead of 27,000, and a failure that lands before the first LLM call rather
-     *        than inside a {@code Future}.
-     *        <p>
-     *        The no-prompt overload is gone deliberately. It existed so a caller could omit the
-     *        argument, and the caller that did — the Confluence importer — is exactly the one whose
-     *        summaries came out as "Here is a summary of the section:". Making the parameter
-     *        required turns that into a compile error instead of a silent behaviour.
+     *     than per node. It used to be an optional "override" resolved inside {@link #processNode}:
+     *     once per node, inside the concurrent fan-out, falling back to {@code
+     *     getPrompt("default-summarize")} — a prompt name that exists in no deployment. So the
+     *     fallback always missed, every node summarized with a null system prompt, and the job
+     *     reported success. Resolving here instead means one check for a 27,000-node corpus instead
+     *     of 27,000, and a failure that lands before the first LLM call rather than inside a {@code
+     *     Future}.
+     *     <p>The no-prompt overload is gone deliberately. It existed so a caller could omit the
+     *     argument, and the caller that did — the Confluence importer — is exactly the one whose
+     *     summaries came out as "Here is a summary of the section:". Making the parameter required
+     *     turns that into a compile error instead of a silent behaviour.
      */
-    public void generateSummaries(UUID documentId, List<Section> sections, UUID jobId,
-        JobContext ctx, String systemPrompt) {
+    public void generateSummaries(
+            UUID documentId,
+            List<Section> sections,
+            UUID jobId,
+            JobContext ctx,
+            String systemPrompt) {
         if (sections.isEmpty()) {
             return;
         }
         if (systemPrompt == null || systemPrompt.isBlank()) {
             throw new IllegalArgumentException(
-                "A summarize system prompt is required to generate section summaries for document "
-                    + documentId + "; none was supplied.");
+                    "A summarize system prompt is required to generate section summaries for document "
+                            + documentId
+                            + "; none was supplied.");
         }
 
         log.info("Starting bottom-up hierarchical summarization for document {}", documentId);
@@ -105,7 +113,7 @@ public class SectionSummarizer {
         for (SectionNode node : nodeMap.values()) {
             if (node.path.size() > 1) {
                 List<String> parentPath =
-                    new ArrayList<>(node.path.subList(0, node.path.size() - 1));
+                        new ArrayList<>(node.path.subList(0, node.path.size() - 1));
                 SectionNode parentNode = nodeMap.get(parentPath);
                 if (parentNode != null) {
                     parentNode.children.add(node);
@@ -131,32 +139,41 @@ public class SectionSummarizer {
 
             log.info("Summarizing {} nodes at depth {}", levelNodes.size(), depth);
 
-            try (
-                ExecutorService delegate = Executors
-                    .newThreadPerTaskExecutor(Thread.ofVirtual().name("summarize-", 0).factory());
-                ExecutorService executor = new DelegatingSecurityContextExecutorService(delegate)) {
+            try (ExecutorService delegate =
+                            Executors.newThreadPerTaskExecutor(
+                                    Thread.ofVirtual().name("summarize-", 0).factory());
+                    ExecutorService executor =
+                            new DelegatingSecurityContextExecutorService(delegate)) {
                 List<Future<?>> futures = new ArrayList<>(levelNodes.size());
                 for (SectionNode node : levelNodes) {
-                    futures.add(executor.submit(() -> {
-                        try {
-                            if (cancelled.get() || (jobId != null && isJobCancelled(jobId))) {
-                                cancelled.set(true);
-                                return;
-                            }
-                            processNode(node, gate, systemPrompt);
-                        } catch (Exception e) {
-                            log.error("Failed to summarize section node: {}",
-                                String.join(" > ", node.path), e);
-                            node.summary = "Section summary unavailable.";
-                        } finally {
-                            int done = completedCount.incrementAndGet();
-                            if (ctx != null) {
-                                int progress = 75 + (int) ((done * 15.0) / totalNodes);
-                                ctx.report(JobStep.EXTRACT, progress, String
-                                    .format("Summarized %d of %d sections", done, totalNodes));
-                            }
-                        }
-                    }));
+                    futures.add(
+                            executor.submit(() -> {
+                                try {
+                                    if (cancelled.get()
+                                            || (jobId != null && isJobCancelled(jobId))) {
+                                        cancelled.set(true);
+                                        return;
+                                    }
+                                    processNode(node, gate, systemPrompt);
+                                } catch (Exception e) {
+                                    log.error(
+                                            "Failed to summarize section node: {}",
+                                            String.join(" > ", node.path),
+                                            e);
+                                    node.summary = "Section summary unavailable.";
+                                } finally {
+                                    int done = completedCount.incrementAndGet();
+                                    if (ctx != null) {
+                                        int progress = 75 + (int) ((done * 15.0) / totalNodes);
+                                        ctx.report(
+                                                JobStep.EXTRACT,
+                                                progress,
+                                                String.format(
+                                                        "Summarized %d of %d sections",
+                                                        done, totalNodes));
+                                    }
+                                }
+                            }));
                 }
 
                 for (Future<?> f : futures) {
@@ -176,38 +193,44 @@ public class SectionSummarizer {
         // 6. Delete legacy and batch-insert summaries to DB
         log.info("Persisting {} section summaries to database", nodeMap.size());
         transactionTemplate.executeWithoutResult(status -> {
-            jdbcClient.sql("DELETE FROM section_summaries WHERE document_id = :documentId")
-                .param("documentId", documentId).update();
+            jdbcClient
+                    .sql("DELETE FROM section_summaries WHERE document_id = :documentId")
+                    .param("documentId", documentId)
+                    .update();
 
             String sql =
-                """
+                    """
                     INSERT INTO section_summaries (id, document_id, heading_path, summary, summary_embedding)
                     VALUES (?, ?, ?, ?, ?::vector)
                     """;
 
-            jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-                @Override
-                public void setValues(PreparedStatement ps, int i) throws SQLException {
-                    SectionNode node = orderedNodes.get(i);
-                    ps.setObject(1, UUID.randomUUID());
-                    ps.setObject(2, documentId);
-                    ps.setArray(3, ps.getConnection().createArrayOf("text", node.path.toArray()));
-                    ps.setString(4, node.summary);
-                    ps.setNull(5, Types.OTHER);
-                }
+            jdbcTemplate.batchUpdate(
+                    sql,
+                    new BatchPreparedStatementSetter() {
+                        @Override
+                        public void setValues(PreparedStatement ps, int i) throws SQLException {
+                            SectionNode node = orderedNodes.get(i);
+                            ps.setObject(1, UUID.randomUUID());
+                            ps.setObject(2, documentId);
+                            ps.setArray(
+                                    3,
+                                    ps.getConnection().createArrayOf("text", node.path.toArray()));
+                            ps.setString(4, node.summary);
+                            ps.setNull(5, Types.OTHER);
+                        }
 
-                @Override
-                public int getBatchSize() {
-                    return orderedNodes.size();
-                }
-            });
+                        @Override
+                        public int getBatchSize() {
+                            return orderedNodes.size();
+                        }
+                    });
         });
 
         log.info("Section summarization completed successfully for document {}", documentId);
     }
 
     private void processNode(SectionNode node, Semaphore gate, String systemPrompt)
-        throws InterruptedException {
+            throws InterruptedException {
         String contentToSummarize;
         if (node.children.isEmpty()) {
             // Leaf node: summarize raw body
@@ -231,21 +254,27 @@ public class SectionSummarizer {
         try {
             log.info("Processing node summary: {}", String.join(" > ", node.path));
             String userMsg =
-                String.format("Section path: %s\n\n```markdown\n%s\n```\n\nWrite the summary now.",
-                    String.join(" > ", node.path), contentToSummarize);
+                    String.format(
+                            "Section path: %s\n\n```markdown\n%s\n```\n\nWrite the summary now.",
+                            String.join(" > ", node.path), contentToSummarize);
 
-            node.summary = generalSummarizer.summarize(contentToSummarize, "section_summary",
-                systemPrompt, userMsg);
+            node.summary =
+                    generalSummarizer.summarize(
+                            contentToSummarize, "section_summary", systemPrompt, userMsg);
         } finally {
             gate.release();
         }
     }
 
     private boolean isJobCancelled(UUID jobId) {
-        if (jobId == null)
-            return false;
-        String status = jdbcClient.sql("SELECT status FROM ingestion_jobs WHERE id = :id")
-            .param("id", jobId).query(String.class).optional().orElse("running");
+        if (jobId == null) return false;
+        String status =
+                jdbcClient
+                        .sql("SELECT status FROM ingestion_jobs WHERE id = :id")
+                        .param("id", jobId)
+                        .query(String.class)
+                        .optional()
+                        .orElse("running");
         return !"running".equals(status);
     }
 }

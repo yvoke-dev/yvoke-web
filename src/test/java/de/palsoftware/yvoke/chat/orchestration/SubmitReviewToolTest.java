@@ -39,8 +39,9 @@ class SubmitReviewToolTest {
         Verdict[] holder = new Verdict[1];
         SubmitReviewTool tool = toolCapturing(holder);
 
-        tool.call("{\"approved\":false,\"feedback\":\"missing citation\","
-            + "\"unsupported_claims\":[\"claim 1\",\"claim 2\"]}");
+        tool.call(
+                "{\"approved\":false,\"feedback\":\"missing citation\","
+                        + "\"unsupported_claims\":[\"claim 1\",\"claim 2\"]}");
 
         assertThat(holder[0].approved()).isFalse();
         assertThat(holder[0].feedback()).isEqualTo("missing citation");

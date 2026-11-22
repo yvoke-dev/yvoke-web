@@ -74,13 +74,20 @@ public class DocumentIngestService {
     private final SafeZipExtractor safeZipExtractor;
 
     @Autowired
-    public DocumentIngestService(EmbeddingService embeddingService,
-        DocumentRepository documentRepository, ChunkRepository chunkRepository,
-        KgWriteRepository kgRepository, DocumentKgExtractor kgExtractor,
-        KgConsolidator kgConsolidator, JdbcClient jdbcClient,
-        PlatformTransactionManager transactionManager, SectionSummarizer sectionSummarizer,
-        SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard,
-        IngestPrompts ingestPrompts, SafeZipExtractor safeZipExtractor) {
+    public DocumentIngestService(
+            EmbeddingService embeddingService,
+            DocumentRepository documentRepository,
+            ChunkRepository chunkRepository,
+            KgWriteRepository kgRepository,
+            DocumentKgExtractor kgExtractor,
+            KgConsolidator kgConsolidator,
+            JdbcClient jdbcClient,
+            PlatformTransactionManager transactionManager,
+            SectionSummarizer sectionSummarizer,
+            SystemPromptService systemPromptService,
+            UploadPathGuard uploadPathGuard,
+            IngestPrompts ingestPrompts,
+            SafeZipExtractor safeZipExtractor) {
         this.embeddingService = embeddingService;
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
@@ -93,21 +100,39 @@ public class DocumentIngestService {
         this.systemPromptService = systemPromptService;
         this.uploadPathGuard = uploadPathGuard;
         this.ingestPrompts = ingestPrompts;
-        this.safeZipExtractor = safeZipExtractor != null ? safeZipExtractor
-            : new SafeZipExtractor(ZipExtractionProperties.defaults());
+        this.safeZipExtractor =
+                safeZipExtractor != null
+                        ? safeZipExtractor
+                        : new SafeZipExtractor(ZipExtractionProperties.defaults());
     }
 
-    public DocumentIngestService(EmbeddingService embeddingService,
-        DocumentRepository documentRepository, ChunkRepository chunkRepository,
-        KgWriteRepository kgRepository, DocumentKgExtractor kgExtractor,
-        KgConsolidator kgConsolidator, JdbcClient jdbcClient,
-        PlatformTransactionManager transactionManager, SectionSummarizer sectionSummarizer,
-        SystemPromptService systemPromptService, UploadPathGuard uploadPathGuard,
-        IngestPrompts ingestPrompts) {
-        this(embeddingService, documentRepository, chunkRepository, kgRepository, kgExtractor,
-            kgConsolidator, jdbcClient, transactionManager, sectionSummarizer, systemPromptService,
-            uploadPathGuard, ingestPrompts,
-            new SafeZipExtractor(ZipExtractionProperties.defaults()));
+    public DocumentIngestService(
+            EmbeddingService embeddingService,
+            DocumentRepository documentRepository,
+            ChunkRepository chunkRepository,
+            KgWriteRepository kgRepository,
+            DocumentKgExtractor kgExtractor,
+            KgConsolidator kgConsolidator,
+            JdbcClient jdbcClient,
+            PlatformTransactionManager transactionManager,
+            SectionSummarizer sectionSummarizer,
+            SystemPromptService systemPromptService,
+            UploadPathGuard uploadPathGuard,
+            IngestPrompts ingestPrompts) {
+        this(
+                embeddingService,
+                documentRepository,
+                chunkRepository,
+                kgRepository,
+                kgExtractor,
+                kgConsolidator,
+                jdbcClient,
+                transactionManager,
+                sectionSummarizer,
+                systemPromptService,
+                uploadPathGuard,
+                ingestPrompts,
+                new SafeZipExtractor(ZipExtractionProperties.defaults()));
     }
 
     public JobCounts ingest(IngestionJob job, JobContext ctx) {
@@ -117,17 +142,23 @@ public class DocumentIngestService {
         Path file = uploadPathGuard.resolve(job.sourceRef());
 
         if (sourceFile.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            return processZipFile(job, ctx, file, collection, tags,
-                this::processSingleStandardFile);
+            return processZipFile(
+                    job, ctx, file, collection, tags, this::processSingleStandardFile);
         } else {
             String markdown = readSource(job.sourceRef());
-            return processSingleStandardFile(job.id(), collection, tags, sourceFile, markdown, ctx,
-                job.settings());
+            return processSingleStandardFile(
+                    job.id(), collection, tags, sourceFile, markdown, ctx, job.settings());
         }
     }
 
-    private JobCounts processSingleStandardFile(UUID jobId, String collection, List<String> tags,
-        String sourceFile, String markdown, JobContext ctx, Map<String, Object> settings) {
+    private JobCounts processSingleStandardFile(
+            UUID jobId,
+            String collection,
+            List<String> tags,
+            String sourceFile,
+            String markdown,
+            JobContext ctx,
+            Map<String, Object> settings) {
         // 1. chunk
         checkCancellation(jobId);
         ctx.report(JobStep.CHUNK, 5, "Parsing document Markdown structure: " + sourceFile);
@@ -137,23 +168,30 @@ public class DocumentIngestService {
         // summary cache key of every ancestor node and writes the row at a heading_path
         // TocService will never look up. See the unit test named for this rule.
         List<Section> unsplitSections =
-            MarkdownTree.dropEmptyPlaceholders(MarkdownTree.filterSections(parsed.sections()));
+                MarkdownTree.dropEmptyPlaceholders(MarkdownTree.filterSections(parsed.sections()));
         List<Section> sections = MarkdownTree.splitOversized(unsplitSections);
         if (sections.isEmpty()) {
             throw new IllegalStateException("No chunks produced from document: " + sourceFile);
         }
         List<String> chunkTexts = sections.stream().map(Section::toChunkText).toList();
-        ctx.report(JobStep.CHUNK, 25,
-            String.format("Parsed document into %d chunks", sections.size()));
+        ctx.report(
+                JobStep.CHUNK,
+                25,
+                String.format("Parsed document into %d chunks", sections.size()));
 
         // 2. embed (batched)
         checkCancellation(jobId);
-        ctx.report(JobStep.EMBED, 30,
-            String.format("Generating Voyage embeddings for %d chunks", sections.size()));
+        ctx.report(
+                JobStep.EMBED,
+                30,
+                String.format("Generating Voyage embeddings for %d chunks", sections.size()));
         List<float[]> embeddings = embeddingService.embedBatch(chunkTexts);
         if (embeddings.size() != sections.size()) {
-            throw new IllegalStateException("Embedding count " + embeddings.size()
-                + " does not match chunk count " + sections.size());
+            throw new IllegalStateException(
+                    "Embedding count "
+                            + embeddings.size()
+                            + " does not match chunk count "
+                            + sections.size());
         }
         ctx.report(JobStep.EMBED, 55, "Generated all Voyage embeddings");
 
@@ -161,7 +199,8 @@ public class DocumentIngestService {
         checkCancellation(jobId);
         ctx.report(JobStep.INSERT, 60, "Persisting document and chunks to Postgres");
         UUID documentId =
-            persistDocument(collection, tags, sourceFile, sections, embeddings, parsed.titleH1());
+                persistDocument(
+                        collection, tags, sourceFile, sections, embeddings, parsed.titleH1());
 
         // 4. summarize (opt-in). Off by default because it costs an LLM call per uncached
         // section; in practice it is usually free, since GeneralSummarizer keys summary_cache on
@@ -169,15 +208,22 @@ public class DocumentIngestService {
         // populated every sha.
         if (isSectionSummariesEnabled(settings)) {
             checkCancellation(jobId);
-            ctx.report(JobStep.EXTRACT, 80,
-                "Generating section summaries (LLM, cached by content)");
-            sectionSummarizer.generateSummaries(documentId, unsplitSections, jobId, ctx,
-                resolveSummarizePrompt(settings, "section summaries for " + sourceFile));
+            ctx.report(
+                    JobStep.EXTRACT, 80, "Generating section summaries (LLM, cached by content)");
+            sectionSummarizer.generateSummaries(
+                    documentId,
+                    unsplitSections,
+                    jobId,
+                    ctx,
+                    resolveSummarizePrompt(settings, "section summaries for " + sourceFile));
         }
         ctx.report(JobStep.INSERT, 100, "Ingestion completed successfully for " + sourceFile);
 
-        log.info("Document ingest complete: source={} chunks={} summaries={}", sourceFile,
-            sections.size(), isSectionSummariesEnabled(settings));
+        log.info(
+                "Document ingest complete: source={} chunks={} summaries={}",
+                sourceFile,
+                sections.size(),
+                isSectionSummariesEnabled(settings));
         return new JobCounts(1, sections.size(), 0, 0, 0);
     }
 
@@ -191,30 +237,39 @@ public class DocumentIngestService {
         List<ChunkRow> chunks = chunkRepository.findChunksByDocumentId(documentId, null);
         if (chunks.isEmpty()) {
             throw new IllegalStateException(
-                "Document has no chunks to extract a knowledge graph from: " + documentId);
+                    "Document has no chunks to extract a knowledge graph from: " + documentId);
         }
         List<String> chunkTexts = chunks.stream().map(ChunkRow::text).toList();
 
         checkCancellation(job.id());
-        ctx.report(JobStep.EXTRACT, 20,
-            String.format("Extracting knowledge graph from %d chunks (LLM)", chunks.size()));
+        ctx.report(
+                JobStep.EXTRACT,
+                20,
+                String.format("Extracting knowledge graph from %d chunks (LLM)", chunks.size()));
         // Required, and resolved before the extractor starts. The else-branch this replaces called
         // the no-prompt overload whenever no kgPrompt was selected, which ran the whole extraction
         // with an empty system prompt — the one that defines the strict-JSON shape. A kg-extract
         // job
         // exists only because somebody asked for it, so there is no "off" to check here: the job's
         // own existence is the opt-in.
-        KgExtractionResult kg = kgExtractor.extract(chunkTexts, job.id(), ctx, ingestPrompts
-            .requireKgPromptText(job.settings(), "a knowledge graph for document " + documentId));
+        KgExtractionResult kg =
+                kgExtractor.extract(
+                        chunkTexts,
+                        job.id(),
+                        ctx,
+                        ingestPrompts.requireKgPromptText(
+                                job.settings(), "a knowledge graph for document " + documentId));
         GraphCounts graphCounts = persistGraph(collection, tags, kg);
         persistChunkKgStatuses(chunks, kg);
-        ctx.report(JobStep.EXTRACT, 90,
-            graphCounts.skippedEntities() == 0 && graphCounts.skippedEdges() == 0
-                ? "Knowledge Graph persisted successfully"
-                : String.format(
-                    "Knowledge Graph persisted; skipped %d kind-less entit(ies) and %d edge(s) with"
-                        + " an undeclared or ambiguous endpoint",
-                    graphCounts.skippedEntities(), graphCounts.skippedEdges()));
+        ctx.report(
+                JobStep.EXTRACT,
+                90,
+                graphCounts.skippedEntities() == 0 && graphCounts.skippedEdges() == 0
+                        ? "Knowledge Graph persisted successfully"
+                        : String.format(
+                                "Knowledge Graph persisted; skipped %d kind-less entit(ies) and %d edge(s) with"
+                                        + " an undeclared or ambiguous endpoint",
+                                graphCounts.skippedEntities(), graphCounts.skippedEdges()));
 
         checkCancellation(job.id());
         ctx.report(JobStep.INJECT, 95, "Running Knowledge Graph consolidation");
@@ -226,33 +281,46 @@ public class DocumentIngestService {
             }
         }
 
-        documentRepository.markKgProcessed(documentId, OffsetDateTime.now().toString(),
-            graphCounts.entities(), graphCounts.edges());
+        documentRepository.markKgProcessed(
+                documentId,
+                OffsetDateTime.now().toString(),
+                graphCounts.entities(),
+                graphCounts.edges());
         ctx.report(JobStep.INJECT, 100, "Knowledge Graph processing completed successfully");
 
         log.info(
-            "KG processing complete: document={} chunks={} entities={} edges={} skippedChunks={}"
-                + " skippedEntities={} skippedEdges={}",
-            documentId, chunks.size(), graphCounts.entities(), graphCounts.edges(), kg.skipped(),
-            graphCounts.skippedEntities(), graphCounts.skippedEdges());
+                "KG processing complete: document={} chunks={} entities={} edges={} skippedChunks={}"
+                        + " skippedEntities={} skippedEdges={}",
+                documentId,
+                chunks.size(),
+                graphCounts.entities(),
+                graphCounts.edges(),
+                kg.skipped(),
+                graphCounts.skippedEntities(),
+                graphCounts.skippedEdges());
         // The skipped counts are REPORTED here, whereas the custom (jsonl) ingest path THROWS on
         // the equivalent loss. The corpus that path ingests is a deterministic export we control,
         // and its entities must each map to a document, so any gap is an export defect worth
         // stopping for. Here the graph comes from an LLM whose output is not predictable: a single
         // stray entity name would otherwise fail an entire kg-extract job, so the loss is made
         // visible in the job result instead of fatal.
-        return new JobCounts(0, chunks.size(), graphCounts.entities(), graphCounts.edges(), 0,
-            graphCounts.skippedEntities(), graphCounts.skippedEdges());
+        return new JobCounts(
+                0,
+                chunks.size(),
+                graphCounts.entities(),
+                graphCounts.edges(),
+                0,
+                graphCounts.skippedEntities(),
+                graphCounts.skippedEdges());
     }
 
     /**
      * Whether this job asked for section summaries. Absent means NO: summarising costs an LLM call
      * per uncached section, so it may only ever happen when the operator opted in.
      *
-     * <p>
-     * Accepts a boolean or its string form because the value reaches
-     * {@code ingestion_jobs.settings} as JSON from two different producers (the admin form and the
-     * upload API).
+     * <p>Accepts a boolean or its string form because the value reaches {@code
+     * ingestion_jobs.settings} as JSON from two different producers (the admin form and the upload
+     * API).
      */
     private boolean isSectionSummariesEnabled(@Nullable Map<String, Object> settings) {
         if (settings == null) {
@@ -268,42 +336,57 @@ public class DocumentIngestService {
     /**
      * The summarize prompt this job must use, or a failure naming what is missing.
      *
-     * <p>
-     * Was "the operator's chosen prompt, or null to let SectionSummarizer pick the default" — but
-     * there was no default to pick: SectionSummarizer looked up {@code "default-summarize"}, a name
-     * no deployment has ever had, and summarized with a null system prompt. Resolution is shared
-     * with {@code CustomIngestService} now (this method and its twin there were the same code) and
-     * refuses rather than returning null.
+     * <p>Was "the operator's chosen prompt, or null to let SectionSummarizer pick the default" —
+     * but there was no default to pick: SectionSummarizer looked up {@code "default-summarize"}, a
+     * name no deployment has ever had, and summarized with a null system prompt. Resolution is
+     * shared with {@code CustomIngestService} now (this method and its twin there were the same
+     * code) and refuses rather than returning null.
      */
     private String resolveSummarizePrompt(@Nullable Map<String, Object> settings, String what) {
         return ingestPrompts.requireSummarizePromptText(settings, what);
     }
 
     private void checkCancellation(UUID jobId) {
-        if (jobId == null)
-            return;
-        String status = jdbcClient.sql("SELECT status FROM ingestion_jobs WHERE id = :id")
-            .param("id", jobId).query(String.class).optional().orElse("running");
+        if (jobId == null) return;
+        String status =
+                jdbcClient
+                        .sql("SELECT status FROM ingestion_jobs WHERE id = :id")
+                        .param("id", jobId)
+                        .query(String.class)
+                        .optional()
+                        .orElse("running");
         if (!"running".equals(status)) {
             throw new IllegalStateException("Job was cancelled by administrator");
         }
     }
 
-    private UUID persistDocument(String collection, List<String> tags, String sourceFile,
-        List<Section> sections, List<float[]> embeddings, String titleH1) {
+    private UUID persistDocument(
+            String collection,
+            List<String> tags,
+            String sourceFile,
+            List<Section> sections,
+            List<float[]> embeddings,
+            String titleH1) {
         List<ChunkInsert> inserts = new ArrayList<>(sections.size());
         for (int i = 0; i < sections.size(); i++) {
             Section s = sections.get(i);
-            inserts.add(new ChunkInsert(s.toChunkText(), embeddings.get(i), s.headingPath(),
-                s.title(), s.depth(), i)); // sort_order = document-order index
+            inserts.add(
+                    new ChunkInsert(
+                            s.toChunkText(),
+                            embeddings.get(i),
+                            s.headingPath(),
+                            s.title(),
+                            s.depth(),
+                            i)); // sort_order = document-order index
         }
 
         return transactionTemplate.execute(status -> {
-            UUID documentId = documentRepository.upsertManualDocument(collection, tags, sourceFile,
-                KIND_STANDARD, titleH1);
+            UUID documentId =
+                    documentRepository.upsertManualDocument(
+                            collection, tags, sourceFile, KIND_STANDARD, titleH1);
             documentRepository.deleteContentForDocument(documentId);
-            documentRepository.insertChunks(documentId, collection, tags, sourceFile, KIND_STANDARD,
-                inserts);
+            documentRepository.insertChunks(
+                    documentId, collection, tags, sourceFile, KIND_STANDARD, inserts);
             documentRepository.updateIngestionStatus(documentId, "completed");
             return documentId;
         });
@@ -313,8 +396,10 @@ public class DocumentIngestService {
         List<ChunkKgStatus> updates = new ArrayList<>(kg.chunkStatuses().size());
         for (KgExtractionResult.ChunkStatus s : kg.chunkStatuses()) {
             if (s.index() < 0 || s.index() >= orderedChunks.size()) {
-                log.warn("KG chunk status index {} out of range for {} chunks; skipping", s.index(),
-                    orderedChunks.size());
+                log.warn(
+                        "KG chunk status index {} out of range for {} chunks; skipping",
+                        s.index(),
+                        orderedChunks.size());
                 continue;
             }
             updates.add(new ChunkKgStatus(orderedChunks.get(s.index()).id(), s.ok(), s.model()));
@@ -330,22 +415,24 @@ public class DocumentIngestService {
             // kind-NULL row that the kind-aware consolidator then refuses to merge; a kind is
             // mandatory now (entities.kind is NOT NULL since V3).
             List<KgWriteRepository.EntityUpsert> entitySpecs =
-                new ArrayList<>(kg.entities().size());
+                    new ArrayList<>(kg.entities().size());
             int kindless = 0;
             for (ExtractedEntity e : kg.entities()) {
                 if (e.kind() == null || e.kind().isBlank()) {
                     kindless++;
                     continue;
                 }
-                entitySpecs
-                    .add(new KgWriteRepository.EntityUpsert(e.name(), e.kind(), e.description()));
+                entitySpecs.add(
+                        new KgWriteRepository.EntityUpsert(e.name(), e.kind(), e.description()));
             }
             if (kindless > 0) {
-                log.warn("Dropped {} extracted entit(ies) without a kind in collection '{}'",
-                    kindless, collection);
+                log.warn(
+                        "Dropped {} extracted entit(ies) without a kind in collection '{}'",
+                        kindless,
+                        collection);
             }
             Map<String, UUID> idByKey =
-                kgRepository.upsertEntitiesBatch(collection, tags, entitySpecs);
+                    kgRepository.upsertEntitiesBatch(collection, tags, entitySpecs);
 
             // LLM-extracted edges carry no endpoint kind, so endpoints resolve by name against the
             // declared entities — and only when exactly one kind carries that name, mirroring the
@@ -358,7 +445,7 @@ public class DocumentIngestService {
             }
 
             List<KgWriteRepository.RelationshipUpsert> relSpecs =
-                new ArrayList<>(kg.relationships().size());
+                    new ArrayList<>(kg.relationships().size());
             int unresolved = 0;
             for (ExtractedRelationship r : kg.relationships()) {
                 UUID subjectId = resolveEndpointId(idsByName, r.subject());
@@ -367,14 +454,22 @@ public class DocumentIngestService {
                     unresolved++;
                     continue;
                 }
-                relSpecs.add(new KgWriteRepository.RelationshipUpsert(r.subject(), r.predicate(),
-                    r.object(), subjectId, objectId, r.description(), null));
+                relSpecs.add(
+                        new KgWriteRepository.RelationshipUpsert(
+                                r.subject(),
+                                r.predicate(),
+                                r.object(),
+                                subjectId,
+                                objectId,
+                                r.description(),
+                                null));
             }
             if (unresolved > 0) {
                 log.warn(
-                    "Skipped {} extracted relationship(s) in collection '{}' whose endpoints are not"
-                        + " declared entities (or are ambiguous across kinds)",
-                    unresolved, collection);
+                        "Skipped {} extracted relationship(s) in collection '{}' whose endpoints are not"
+                                + " declared entities (or are ambiguous across kinds)",
+                        unresolved,
+                        collection);
             }
             kgRepository.insertRelationshipsBatch(collection, tags, relSpecs);
             return new GraphCounts(idByKey.size(), relSpecs.size(), kindless, unresolved);
@@ -394,8 +489,8 @@ public class DocumentIngestService {
 
     private String readSource(String sourceRef) {
         try {
-            return new String(Files.readAllBytes(uploadPathGuard.resolve(sourceRef)),
-                StandardCharsets.UTF_8);
+            return new String(
+                    Files.readAllBytes(uploadPathGuard.resolve(sourceRef)), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read manual source: " + sourceRef, e);
         }
@@ -408,18 +503,23 @@ public class DocumentIngestService {
         Path file = uploadPathGuard.resolve(job.sourceRef());
 
         if (sourceFile.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            return processZipFile(job, ctx, file, collection, tags,
-                this::processSingleHierarchicalFile);
+            return processZipFile(
+                    job, ctx, file, collection, tags, this::processSingleHierarchicalFile);
         } else {
             String markdown = readSource(job.sourceRef());
-            return processSingleHierarchicalFile(job.id(), collection, tags, sourceFile, markdown,
-                ctx, job.settings());
+            return processSingleHierarchicalFile(
+                    job.id(), collection, tags, sourceFile, markdown, ctx, job.settings());
         }
     }
 
-    private JobCounts processSingleHierarchicalFile(UUID jobId, String collection,
-        List<String> tags, String sourceFile, String markdown, JobContext ctx,
-        Map<String, Object> settings) {
+    private JobCounts processSingleHierarchicalFile(
+            UUID jobId,
+            String collection,
+            List<String> tags,
+            String sourceFile,
+            String markdown,
+            JobContext ctx,
+            Map<String, Object> settings) {
         // 1. Chunk (bypass splitting)
         checkCancellation(jobId);
         ctx.report(JobStep.CHUNK, 5, "Parsing manual Markdown structure (unsplit): " + sourceFile);
@@ -429,49 +529,85 @@ public class DocumentIngestService {
         if (sections.isEmpty()) {
             throw new IllegalStateException("No sections produced from manual: " + sourceFile);
         }
-        ctx.report(JobStep.CHUNK, 25,
-            String.format("Parsed manual into %d unsplit sections", sections.size()));
+        ctx.report(
+                JobStep.CHUNK,
+                25,
+                String.format("Parsed manual into %d unsplit sections", sections.size()));
 
         // 2. Embed (skipped for hierarchical browsing-only documents)
         ctx.report(JobStep.EMBED, 55, "Skipped Voyage embeddings for hierarchical document");
 
         // 3. Insert (persist raw section texts without embeddings)
         checkCancellation(jobId);
-        ctx.report(JobStep.INSERT, 60,
-            "Persisting manual document and unsplit sections to Postgres");
-        UUID documentId = persistDocumentHierarchical(collection, tags, sourceFile, sections, null,
-            parsed.titleH1());
+        ctx.report(
+                JobStep.INSERT, 60, "Persisting manual document and unsplit sections to Postgres");
+        UUID documentId =
+                persistDocumentHierarchical(
+                        collection, tags, sourceFile, sections, null, parsed.titleH1());
         ctx.report(JobStep.INSERT, 75, "Sections persisted successfully");
 
         // 4. Summarize (Bottom-Up recursive summaries + embeddings)
         checkCancellation(jobId);
         ctx.report(JobStep.EXTRACT, 76, "Generating hierarchical section summaries (LLM)");
-        sectionSummarizer.generateSummaries(documentId, sections, jobId, ctx,
-            resolveSummarizePrompt(settings, "hierarchical section summaries for " + sourceFile));
+        sectionSummarizer.generateSummaries(
+                documentId,
+                sections,
+                jobId,
+                ctx,
+                resolveSummarizePrompt(
+                        settings, "hierarchical section summaries for " + sourceFile));
         ctx.report(JobStep.EXTRACT, 100, "Ingestion completed successfully for " + sourceFile);
-        log.info("Hierarchical manual ingest complete: source={} sections={}", sourceFile,
-            sections.size());
+        log.info(
+                "Hierarchical manual ingest complete: source={} sections={}",
+                sourceFile,
+                sections.size());
 
         return new JobCounts(1, sections.size(), 0, 0, 0);
     }
 
-    private UUID persistDocumentHierarchical(String collection, List<String> tags,
-        String sourceFile, List<Section> sections, List<float[]> embeddings, String titleH1) {
+    private UUID persistDocumentHierarchical(
+            String collection,
+            List<String> tags,
+            String sourceFile,
+            List<Section> sections,
+            List<float[]> embeddings,
+            String titleH1) {
         List<ChunkInsert> inserts = new ArrayList<>(sections.size());
         for (int i = 0; i < sections.size(); i++) {
             Section s = sections.get(i);
             String cleanText =
-                "#".repeat(s.depth()) + " " + s.title() + "\n\n" + s.body().stripTrailing() + "\n";
-            inserts.add(new ChunkInsert(cleanText, embeddings != null ? embeddings.get(i) : null,
-                s.headingPath(), s.title(), s.depth(), i)); // sort_order = document-order index
+                    "#".repeat(s.depth())
+                            + " "
+                            + s.title()
+                            + "\n\n"
+                            + s.body().stripTrailing()
+                            + "\n";
+            inserts.add(
+                    new ChunkInsert(
+                            cleanText,
+                            embeddings != null ? embeddings.get(i) : null,
+                            s.headingPath(),
+                            s.title(),
+                            s.depth(),
+                            i)); // sort_order = document-order index
         }
 
         return transactionTemplate.execute(status -> {
-            UUID documentId = documentRepository.upsertManualDocument(collection, tags, sourceFile,
-                DocumentKind.HIERARCHICAL.getValue(), titleH1);
+            UUID documentId =
+                    documentRepository.upsertManualDocument(
+                            collection,
+                            tags,
+                            sourceFile,
+                            DocumentKind.HIERARCHICAL.getValue(),
+                            titleH1);
             documentRepository.deleteContentForDocument(documentId);
-            documentRepository.insertChunks(documentId, collection, tags, sourceFile,
-                DocumentKind.HIERARCHICAL.getValue(), inserts);
+            documentRepository.insertChunks(
+                    documentId,
+                    collection,
+                    tags,
+                    sourceFile,
+                    DocumentKind.HIERARCHICAL.getValue(),
+                    inserts);
             documentRepository.updateIngestionStatus(documentId, "completed");
             return documentId;
         });
@@ -483,29 +619,41 @@ public class DocumentIngestService {
 
     @FunctionalInterface
     private interface FileProcessor {
-        JobCounts process(UUID jobId, String collection, List<String> tags, String sourceFile,
-            String markdown, JobContext ctx, Map<String, Object> settings);
+        JobCounts process(
+                UUID jobId,
+                String collection,
+                List<String> tags,
+                String sourceFile,
+                String markdown,
+                JobContext ctx,
+                Map<String, Object> settings);
     }
 
-    private JobCounts processZipFile(IngestionJob job, JobContext ctx, Path zipFile,
-        String collection, List<String> tags, FileProcessor processor) {
+    private JobCounts processZipFile(
+            IngestionJob job,
+            JobContext ctx,
+            Path zipFile,
+            String collection,
+            List<String> tags,
+            FileProcessor processor) {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("standard_ingest_");
             log.info("Extracting ZIP to temporary directory: {}", tempDir);
             unzip(zipFile, tempDir);
 
-            String documentGlob = job.settings() != null
-                ? (String) job.settings().getOrDefault("documentGlob", "**/*.md")
-                : "**/*.md";
+            String documentGlob =
+                    job.settings() != null
+                            ? (String) job.settings().getOrDefault("documentGlob", "**/*.md")
+                            : "**/*.md";
 
             Path finalTempDir = tempDir;
             PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + documentGlob);
             List<Path> markdownFiles = new ArrayList<>();
             try (var stream = Files.walk(finalTempDir)) {
                 stream.filter(Files::isRegularFile)
-                    .filter(p -> matcher.matches(finalTempDir.relativize(p)))
-                    .forEach(markdownFiles::add);
+                        .filter(p -> matcher.matches(finalTempDir.relativize(p)))
+                        .forEach(markdownFiles::add);
             }
 
             int totalDocs = 0;
@@ -519,10 +667,17 @@ public class DocumentIngestService {
                     int startProgress = (int) (((double) i / totalFiles) * 100);
                     int endProgress = (int) (((double) (i + 1) / totalFiles) * 100);
                     JobContext scaledCtx =
-                        new ScaledJobContext(ctx, startProgress, endProgress, relativePath);
+                            new ScaledJobContext(ctx, startProgress, endProgress, relativePath);
 
-                    JobCounts counts = processor.process(job.id(), collection, tags, relativePath,
-                        markdown, scaledCtx, job.settings());
+                    JobCounts counts =
+                            processor.process(
+                                    job.id(),
+                                    collection,
+                                    tags,
+                                    relativePath,
+                                    markdown,
+                                    scaledCtx,
+                                    job.settings());
                     totalDocs += counts.docs();
                     totalChunks += counts.chunks();
                 } catch (Exception e) {
@@ -535,8 +690,7 @@ public class DocumentIngestService {
             log.error("Failed to execute zip ingestion", e);
             throw new RuntimeException("Zip ingestion failed", e);
         } finally {
-            if (tempDir != null)
-                cleanDirectory(tempDir);
+            if (tempDir != null) cleanDirectory(tempDir);
         }
     }
 
@@ -546,12 +700,13 @@ public class DocumentIngestService {
 
     private void cleanDirectory(Path path) {
         try (var stream = Files.walk(path)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.delete(p);
-                } catch (IOException ignored) {
-                }
-            });
+            stream.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException ignored) {
+                        }
+                    });
         } catch (IOException ignored) {
         }
     }
@@ -564,8 +719,8 @@ public class DocumentIngestService {
         private final int endProgress;
         private final String filePrefix;
 
-        public ScaledJobContext(JobContext delegate, int startProgress, int endProgress,
-            String fileName) {
+        public ScaledJobContext(
+                JobContext delegate, int startProgress, int endProgress, String fileName) {
             this.delegate = delegate;
             this.startProgress = startProgress;
             this.endProgress = endProgress;

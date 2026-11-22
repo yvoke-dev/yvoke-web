@@ -39,7 +39,7 @@ class CallSpecialistToolTest {
         when(handler.apply("spec-a", "How do I configure X?")).thenReturn("SPECIALIST ANSWER");
 
         String out =
-            tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"How do I configure X?\"}");
+                tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"How do I configure X?\"}");
 
         assertThat(out).isEqualTo("SPECIALIST ANSWER");
         verify(handler).apply("spec-a", "How do I configure X?");
@@ -50,7 +50,8 @@ class CallSpecialistToolTest {
         String out = tool.call("{\"playbook_name\":\"spec-x\",\"question\":\"anything\"}");
 
         assertThat(out)
-            .isEqualTo("Error: 'spec-x' is not an available specialist. Choose one of: spec-a.");
+                .isEqualTo(
+                        "Error: 'spec-x' is not an available specialist. Choose one of: spec-a.");
         verifyNoInteractions(handler);
     }
 
@@ -59,7 +60,7 @@ class CallSpecialistToolTest {
         String out = tool.call("{\"question\":\"anything\"}");
 
         assertThat(out)
-            .isEqualTo("Error: 'null' is not an available specialist. Choose one of: spec-a.");
+                .isEqualTo("Error: 'null' is not an available specialist. Choose one of: spec-a.");
         verifyNoInteractions(handler);
     }
 
@@ -100,8 +101,8 @@ class CallSpecialistToolTest {
         when(handler.apply("spec-a", "anything")).thenThrow(providerFailure);
 
         assertThatThrownBy(
-            () -> tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"anything\"}"))
-            .isSameAs(providerFailure);
+                        () -> tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"anything\"}"))
+                .isSameAs(providerFailure);
     }
 
     /** Cancellation must reach the run loop intact rather than becoming a tool result. */
@@ -111,7 +112,7 @@ class CallSpecialistToolTest {
         when(handler.apply("spec-a", "anything")).thenThrow(cancelled);
 
         assertThatThrownBy(
-            () -> tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"anything\"}"))
-            .isSameAs(cancelled);
+                        () -> tool.call("{\"playbook_name\":\"spec-a\",\"question\":\"anything\"}"))
+                .isSameAs(cancelled);
     }
 }

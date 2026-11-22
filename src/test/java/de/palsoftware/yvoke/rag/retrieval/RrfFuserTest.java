@@ -91,8 +91,10 @@ public class RrfFuserTest {
         UUID semOnly = UUID.randomUUID();
         UUID ftOnly = UUID.randomUUID();
 
-        List<RrfFuser.IntermediateRrfResult> results = fuser
-            .fuse(List.of(createMockRow(semOnly, "sem")), List.of(createMockRow(ftOnly, "ft")));
+        List<RrfFuser.IntermediateRrfResult> results =
+                fuser.fuse(
+                        List.of(createMockRow(semOnly, "sem")),
+                        List.of(createMockRow(ftOnly, "ft")));
 
         assertThat(scoreOf(results, semOnly)).isEqualTo(scoreOf(results, ftOnly));
     }
@@ -114,8 +116,9 @@ public class RrfFuserTest {
 
         // `both` is rank 2 in each lane — beaten on rank in both, yet it must still lead.
         List<RrfFuser.IntermediateRrfResult> results =
-            fuser.fuse(List.of(createMockRow(semOnly, "s"), createMockRow(both, "b")),
-                List.of(createMockRow(ftOnly, "f"), createMockRow(both, "b")));
+                fuser.fuse(
+                        List.of(createMockRow(semOnly, "s"), createMockRow(both, "b")),
+                        List.of(createMockRow(ftOnly, "f"), createMockRow(both, "b")));
 
         assertThat(results.get(0).getRow().id()).isEqualTo(both);
         assertThat(scoreOf(results, both)).isGreaterThan(scoreOf(results, semOnly));
@@ -141,7 +144,7 @@ public class RrfFuserTest {
 
         // `high` tops the semantic lane, `low` tops the full-text lane: identical scores.
         List<RrfFuser.IntermediateRrfResult> results =
-            fuser.fuse(List.of(createMockRow(high, "s")), List.of(createMockRow(low, "f")));
+                fuser.fuse(List.of(createMockRow(high, "s")), List.of(createMockRow(low, "f")));
 
         assertThat(results.get(0).getRrfScore()).isEqualTo(results.get(1).getRrfScore());
         assertThat(results.get(0).getRow().id()).isEqualTo(low);
@@ -149,20 +152,35 @@ public class RrfFuserTest {
     }
 
     private double scoreOf(List<RrfFuser.IntermediateRrfResult> results, UUID id) {
-        return results.stream().filter(r -> r.getRow().id().equals(id)).findFirst().orElseThrow()
-            .getRrfScore();
+        return results.stream()
+                .filter(r -> r.getRow().id().equals(id))
+                .findFirst()
+                .orElseThrow()
+                .getRrfScore();
     }
 
     @Test
     public void testRrfFusionEmptyLanes() {
         RrfFuser fuser = new RrfFuser(60, 1.0, 1.0);
         List<RrfFuser.IntermediateRrfResult> results =
-            fuser.fuse(Collections.emptyList(), Collections.emptyList());
+                fuser.fuse(Collections.emptyList(), Collections.emptyList());
         assertThat(results).isEmpty();
     }
 
     private ChunkRow createMockRow(UUID id, String text) {
-        return new ChunkRow(id, UUID.randomUUID(), text, Collections.emptyList(), "", 1, 0, "1.0",
-            "file.md", "manual", "coll", Collections.emptyMap(), 0.0);
+        return new ChunkRow(
+                id,
+                UUID.randomUUID(),
+                text,
+                Collections.emptyList(),
+                "",
+                1,
+                0,
+                "1.0",
+                "file.md",
+                "manual",
+                "coll",
+                Collections.emptyMap(),
+                0.0);
     }
 }

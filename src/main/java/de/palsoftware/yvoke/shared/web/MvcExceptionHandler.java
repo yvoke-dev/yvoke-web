@@ -20,19 +20,18 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 /**
  * Unified error handling for server-rendered MVC controllers (ARC-11 / MNT-10).
  *
- * <p>
- * Replaces the copy-pasted {@code try/catch}+flash blocks that every admin form handler used to
+ * <p>Replaces the copy-pasted {@code try/catch}+flash blocks that every admin form handler used to
  * carry. When a classic browser form submission fails, the user is redirected back to the page that
  * hosted the form (its {@code Referer}) with a flash {@code error} message:
+ *
  * <ul>
- * <li><b>Validation</b> ({@link IllegalArgumentException}) keeps its own message — these are
- * intentional, user-facing rejections.</li>
- * <li><b>Unexpected</b> failures are logged server-side and surface only a fixed generic message,
- * never the raw exception detail (SEC-17).</li>
+ *   <li><b>Validation</b> ({@link IllegalArgumentException}) keeps its own message — these are
+ *       intentional, user-facing rejections.
+ *   <li><b>Unexpected</b> failures are logged server-side and surface only a fixed generic message,
+ *       never the raw exception detail (SEC-17).
  * </ul>
  *
- * <p>
- * Only classic browser form posts are redirected. AJAX/htmx/fetch requests, downloads, GET view
+ * <p>Only classic browser form posts are redirected. AJAX/htmx/fetch requests, downloads, GET view
  * renders and status-carrying {@link ResponseStatusException}s (e.g. a 404) are left with their
  * original behavior so nothing that relies on a fragment, a file body, or a real HTTP status code
  * regresses. {@code @RestController}s are handled separately by {@code ApiExceptionHandler}, which
@@ -43,7 +42,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class MvcExceptionHandler {
 
     static final String GENERIC_ERROR_MESSAGE =
-        "Something went wrong while processing your request. Please try again.";
+            "Something went wrong while processing your request. Please try again.";
 
     private static final String FALLBACK_REDIRECT = "redirect:/admin";
 
@@ -57,7 +56,7 @@ public class MvcExceptionHandler {
      */
     @ExceptionHandler(ResponseStatusException.class)
     public void handleStatus(ResponseStatusException ex, HttpServletResponse response)
-        throws IOException {
+            throws IOException {
         int status = ex.getStatusCode().value();
         String reason = ex.getReason();
         if (reason == null || reason.isBlank()) {
@@ -68,27 +67,36 @@ public class MvcExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public String handleValidation(IllegalArgumentException ex, HttpServletRequest request,
-        RedirectAttributes redirectAttributes) throws IllegalArgumentException {
+    public String handleValidation(
+            IllegalArgumentException ex,
+            HttpServletRequest request,
+            RedirectAttributes redirectAttributes)
+            throws IllegalArgumentException {
         if (!isNavigationalFormPost(request)) {
             throw ex;
         }
-        String message = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage()
-            : GENERIC_ERROR_MESSAGE;
+        String message =
+                (ex.getMessage() != null && !ex.getMessage().isBlank())
+                        ? ex.getMessage()
+                        : GENERIC_ERROR_MESSAGE;
         redirectAttributes.addFlashAttribute("error", message);
         return redirectBack(request);
     }
 
     @ExceptionHandler(Exception.class)
-    public String handleUnexpected(Exception ex, HttpServletRequest request,
-        RedirectAttributes redirectAttributes) throws Exception {
+    public String handleUnexpected(
+            Exception ex, HttpServletRequest request, RedirectAttributes redirectAttributes)
+            throws Exception {
         // Let access-denied keep flowing to Spring Security; leave non-navigational requests
         // (GET renders, downloads, htmx/XHR/fetch) with their original error behavior.
         if (ex instanceof AccessDeniedException || !isNavigationalFormPost(request)) {
             throw ex;
         }
-        log.error("Unhandled MVC exception on {} {}", request.getMethod(), request.getRequestURI(),
-            ex);
+        log.error(
+                "Unhandled MVC exception on {} {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                ex);
         redirectAttributes.addFlashAttribute("error", GENERIC_ERROR_MESSAGE);
         return redirectBack(request);
     }
@@ -100,8 +108,11 @@ public class MvcExceptionHandler {
      */
     private boolean isNavigationalFormPost(HttpServletRequest request) {
         String method = request.getMethod();
-        boolean stateChanging = "POST".equals(method) || "PUT".equals(method)
-            || "PATCH".equals(method) || "DELETE".equals(method);
+        boolean stateChanging =
+                "POST".equals(method)
+                        || "PUT".equals(method)
+                        || "PATCH".equals(method)
+                        || "DELETE".equals(method);
         if (!stateChanging) {
             return false;
         }
@@ -128,8 +139,11 @@ public class MvcExceptionHandler {
         try {
             URI uri = new URI(referer);
             String path = uri.getRawPath();
-            if (path == null || path.isBlank() || !path.startsWith("/") || path.startsWith("//")
-                || path.startsWith("/\\")) {
+            if (path == null
+                    || path.isBlank()
+                    || !path.startsWith("/")
+                    || path.startsWith("//")
+                    || path.startsWith("/\\")) {
                 return FALLBACK_REDIRECT;
             }
             String query = uri.getRawQuery();

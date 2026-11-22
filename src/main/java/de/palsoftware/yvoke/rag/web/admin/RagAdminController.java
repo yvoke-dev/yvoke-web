@@ -55,7 +55,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin")
 public class RagAdminController {
@@ -63,9 +62,9 @@ public class RagAdminController {
     private static final Logger log = LoggerFactory.getLogger(RagAdminController.class);
 
     /**
-     * How many rows of the fused ordering the console lists. The fused set runs to
-     * {@code semanticLimit + fullTextLimit} candidates, far more than fits the panel; the template
-     * states the total alongside, so a truncated list never reads as the whole ordering.
+     * How many rows of the fused ordering the console lists. The fused set runs to {@code
+     * semanticLimit + fullTextLimit} candidates, far more than fits the panel; the template states
+     * the total alongside, so a truncated list never reads as the whole ordering.
      */
     private static final int FUSION_TRACE_ROWS = 15;
 
@@ -81,23 +80,29 @@ public class RagAdminController {
     private final int logQueryMaxChars;
 
     /**
-     * Bound into the search form's {@code max} so the console cannot offer a Top-K that
-     * {@link HybridSearch} will silently clamp — a form accepting 50 against a ceiling of 20
-     * returns 20 rows with nothing on screen saying why.
+     * Bound into the search form's {@code max} so the console cannot offer a Top-K that {@link
+     * HybridSearch} will silently clamp — a form accepting 50 against a ceiling of 20 returns 20
+     * rows with nothing on screen saying why.
      */
     private final int maxLimit;
 
     private final AreaService areaService;
     private final AdminAuditLogger auditLogger;
 
-    public RagAdminController(HybridSearch hybridSearch,
-        RetrievalLogRepository retrievalLogRepository, RagAdminViewService ragAdminViewService,
-        CollectionService collectionService, PlaybookService playbookService,
-        SystemPromptService systemPromptService, RagService ragService, ObjectMapper objectMapper,
-        RetrievalTelemetryService telemetryService,
-        @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars,
-        @Value("${app.retrieval.max-limit}") int maxLimit, AreaService areaService,
-        AdminAuditLogger auditLogger) {
+    public RagAdminController(
+            HybridSearch hybridSearch,
+            RetrievalLogRepository retrievalLogRepository,
+            RagAdminViewService ragAdminViewService,
+            CollectionService collectionService,
+            PlaybookService playbookService,
+            SystemPromptService systemPromptService,
+            RagService ragService,
+            ObjectMapper objectMapper,
+            RetrievalTelemetryService telemetryService,
+            @Value("${app.retrieval.log-query-max-chars}") int logQueryMaxChars,
+            @Value("${app.retrieval.max-limit}") int maxLimit,
+            AreaService areaService,
+            AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.hybridSearch = hybridSearch;
         this.telemetryService = telemetryService;
@@ -126,24 +131,28 @@ public class RagAdminController {
     }
 
     @GetMapping("/search")
-    public String testSearch(@RequestParam(required = false) String query,
-        @RequestParam(required = false) String collection,
-        @RequestParam(required = false) String tag, @RequestParam(defaultValue = "8") Integer limit,
-        @RequestParam(required = false) Boolean semantic,
-        @RequestParam(required = false) Boolean fulltext, Model model) {
+    public String testSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String collection,
+            @RequestParam(required = false) String tag,
+            @RequestParam(defaultValue = "8") Integer limit,
+            @RequestParam(required = false) Boolean semantic,
+            @RequestParam(required = false) Boolean fulltext,
+            Model model) {
 
         log.info("RagAdminController: Accessing Search view");
         List<Collection> collections =
-            AreaAccessContext.isSuperAdmin() ? collectionService.listCollections()
-                : collectionService.listForAdminUser();
+                AreaAccessContext.isSuperAdmin()
+                        ? collectionService.listCollections()
+                        : collectionService.listForAdminUser();
         model.addAttribute("collections", collections);
 
         String activeCollection = collection;
         if (activeCollection != null && !activeCollection.isBlank()) {
             Optional<Collection> reqCol = collectionService.getCollection(activeCollection);
             if (reqCol.isPresent() && !AreaAccessContext.canAdministerArea(reqCol.get().area())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + activeCollection);
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Collection not found: " + activeCollection);
             }
             String colName = activeCollection;
             if (reqCol.isEmpty() && collections.stream().noneMatch(c -> c.name().equals(colName))) {
@@ -155,8 +164,13 @@ public class RagAdminController {
             activeCollection = null;
         }
 
-        List<String> tags = activeCollection != null ? collectionService
-            .getCollection(activeCollection).map(Collection::tags).orElse(List.of()) : List.of();
+        List<String> tags =
+                activeCollection != null
+                        ? collectionService
+                                .getCollection(activeCollection)
+                                .map(Collection::tags)
+                                .orElse(List.of())
+                        : List.of();
 
         String defaultTag = tags.isEmpty() ? null : tags.get(0);
         String tagParam;
@@ -171,15 +185,11 @@ public class RagAdminController {
         Boolean activeSemantic = semantic;
         Boolean activeFulltext = fulltext;
         if (query == null) {
-            if (activeSemantic == null)
-                activeSemantic = true;
-            if (activeFulltext == null)
-                activeFulltext = true;
+            if (activeSemantic == null) activeSemantic = true;
+            if (activeFulltext == null) activeFulltext = true;
         } else {
-            if (activeSemantic == null)
-                activeSemantic = false;
-            if (activeFulltext == null)
-                activeFulltext = false;
+            if (activeSemantic == null) activeSemantic = false;
+            if (activeFulltext == null) activeFulltext = false;
         }
 
         int clampedLimit = PagingParams.clampLimit(limit != null ? limit : 8, 8, maxLimit);
@@ -193,8 +203,14 @@ public class RagAdminController {
         model.addAttribute("fulltext", activeFulltext);
 
         if (query != null && !query.isBlank() && activeCollection != null) {
-            SearchOptions opts = new SearchOptions(activeCollection, clampedLimit, activeSemantic,
-                activeFulltext, tagParam, 0);
+            SearchOptions opts =
+                    new SearchOptions(
+                            activeCollection,
+                            clampedLimit,
+                            activeSemantic,
+                            activeFulltext,
+                            tagParam,
+                            0);
             SearchWithId search = hybridSearch.searchWithId(query, opts);
             model.addAttribute("results", ragAdminViewService.toSearchResults(search.results()));
 
@@ -204,33 +220,46 @@ public class RagAdminController {
             // and every field still looks plausible when it does.
             telemetryService.flush();
             Optional<RetrievalTelemetryRow> telemetry =
-                retrievalLogRepository.findTelemetryById(search.searchId());
+                    retrievalLogRepository.findTelemetryById(search.searchId());
 
-            model.addAttribute("telemetryPool",
-                parseJsonMap(telemetry.map(RetrievalTelemetryRow::poolsJson).orElse(null)));
-            model.addAttribute("telemetryFinal",
-                parseJsonMap(telemetry.map(RetrievalTelemetryRow::finalJson).orElse(null)));
-            model.addAttribute("telemetryRerank",
-                parseJsonMap(telemetry.map(RetrievalTelemetryRow::rerankJson).orElse(null)));
-            model.addAttribute("laneTrace",
-                telemetry.map(t -> RagAdminViewService.toLaneTrace(t, FUSION_TRACE_ROWS))
-                    .orElseGet(LaneTrace::empty));
+            model.addAttribute(
+                    "telemetryPool",
+                    parseJsonMap(telemetry.map(RetrievalTelemetryRow::poolsJson).orElse(null)));
+            model.addAttribute(
+                    "telemetryFinal",
+                    parseJsonMap(telemetry.map(RetrievalTelemetryRow::finalJson).orElse(null)));
+            model.addAttribute(
+                    "telemetryRerank",
+                    parseJsonMap(telemetry.map(RetrievalTelemetryRow::rerankJson).orElse(null)));
+            model.addAttribute(
+                    "laneTrace",
+                    telemetry
+                            .map(t -> RagAdminViewService.toLaneTrace(t, FUSION_TRACE_ROWS))
+                            .orElseGet(LaneTrace::empty));
         }
 
         return "admin/search";
     }
 
     @GetMapping("/logs")
-    public String retrievalLogs(@RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size, Model model) {
+    public String retrievalLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
 
         log.info("RagAdminController: Accessing Logs view");
-        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedSize =
+                PagingParams.clampSize(
+                        size,
+                        PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                        PagingParams.MAX_ADMIN_PAGE_SIZE);
         int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        List<RetrievalLogView> logs = ragAdminViewService.listLogs(clampedSize,
-            PagingParams.safeOffset(clampedPage, clampedSize), allowedAreasLower);
+        List<RetrievalLogView> logs =
+                ragAdminViewService.listLogs(
+                        clampedSize,
+                        PagingParams.safeOffset(clampedPage, clampedSize),
+                        allowedAreasLower);
         long totalCount = ragAdminViewService.countLogs(allowedAreasLower);
         int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
@@ -246,35 +275,44 @@ public class RagAdminController {
     @GetMapping("/playbooks")
     public String viewPlaybooks(Model model) {
         log.info("RagAdminController: Accessing Playbooks view");
-        model.addAttribute("playbooks", AreaAccessContext
-            .filterByAdminArea(playbookService.listAllPlaybooks(), Playbook::area));
-        model.addAttribute("areas",
-            AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
-        model.addAttribute("availableTools",
-            ragService.getToolRegistry().keySet().stream().sorted().collect(Collectors.toList()));
+        model.addAttribute(
+                "playbooks",
+                AreaAccessContext.filterByAdminArea(
+                        playbookService.listAllPlaybooks(), Playbook::area));
+        model.addAttribute(
+                "areas", AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
+        model.addAttribute(
+                "availableTools",
+                ragService.getToolRegistry().keySet().stream()
+                        .sorted()
+                        .collect(Collectors.toList()));
         return "admin/playbooks";
     }
 
     @PostMapping("/playbooks")
-    public String createOrUpdatePlaybook(@RequestParam String name, @RequestParam String title,
-        @RequestParam(required = false) String description, @RequestParam String templateText,
-        @RequestParam(required = false) List<String> tools,
-        @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
-        @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
-        @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam String area, @RequestParam(required = false, defaultValue = "1") int version,
-        RedirectAttributes redirectAttributes) {
+    public String createOrUpdatePlaybook(
+            @RequestParam String name,
+            @RequestParam String title,
+            @RequestParam(required = false) String description,
+            @RequestParam String templateText,
+            @RequestParam(required = false) List<String> tools,
+            @RequestParam(required = false, defaultValue = "false") boolean codeExecution,
+            @RequestParam(required = false, defaultValue = "specialist") String targetAgent,
+            @RequestParam(required = false, defaultValue = "false") boolean prototype,
+            @RequestParam String area,
+            @RequestParam(required = false, defaultValue = "1") int version,
+            RedirectAttributes redirectAttributes) {
 
         if (!AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized to manage playbooks in area: " + area);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized to manage playbooks in area: " + area);
         }
 
         Optional<Playbook> existing = playbookService.getPlaybook(name);
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Existing playbook belongs to another area: " + name);
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Existing playbook belongs to another area: " + name);
             }
             if (!existing.get().area().equalsIgnoreCase(area)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change playbook area.");
@@ -282,12 +320,29 @@ public class RagAdminController {
             }
         }
 
-        playbookService.savePlaybook(name, title, description, templateText, tools, codeExecution,
-            targetAgent, prototype, area, version);
-        auditLogger.log("SAVE_PLAYBOOK", name.trim(), Map.of("area", area.trim(), "version",
-            version, "targetAgent", targetAgent != null ? targetAgent : ""));
-        redirectAttributes.addFlashAttribute("success",
-            "Playbook '" + title + "' saved successfully.");
+        playbookService.savePlaybook(
+                name,
+                title,
+                description,
+                templateText,
+                tools,
+                codeExecution,
+                targetAgent,
+                prototype,
+                area,
+                version);
+        auditLogger.log(
+                "SAVE_PLAYBOOK",
+                name.trim(),
+                Map.of(
+                        "area",
+                        area.trim(),
+                        "version",
+                        version,
+                        "targetAgent",
+                        targetAgent != null ? targetAgent : ""));
+        redirectAttributes.addFlashAttribute(
+                "success", "Playbook '" + title + "' saved successfully.");
         return "redirect:/admin/playbooks";
     }
 
@@ -301,37 +356,45 @@ public class RagAdminController {
         byte[] bytes = md.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION,
-                ContentDisposition.attachment().filename(name + ".md", StandardCharsets.UTF_8)
-                    .build().toString())
-            .contentType(MediaType.parseMediaType("text/markdown")).contentLength(bytes.length)
-            .body(resource);
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(name + ".md", StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .contentType(MediaType.parseMediaType("text/markdown"))
+                .contentLength(bytes.length)
+                .body(resource);
     }
 
     @PostMapping("/playbooks/import")
-    public String importPlaybook(@RequestParam("file") MultipartFile file,
-        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
-        throws IOException {
+    public String importPlaybook(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String area,
+            RedirectAttributes redirectAttributes)
+            throws IOException {
         String content =
-            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
+                BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         String originalFilename = file.getOriginalFilename();
-        String fallbackName = originalFilename != null && originalFilename.contains(".")
-            ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
-            : originalFilename;
+        String fallbackName =
+                originalFilename != null && originalFilename.contains(".")
+                        ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
+                        : originalFilename;
 
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(content, fallbackName, r -> 1);
         String targetArea =
-            (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
+                (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
         if (!AreaAccessContext.canAdministerArea(targetArea)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized for area: " + targetArea);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized for area: " + targetArea);
         }
 
         Optional<Playbook> existing = playbookService.getPlaybook(parsed.name());
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Existing playbook belongs to another area: " + parsed.name());
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Existing playbook belongs to another area: " + parsed.name());
             }
             if (!existing.get().area().equalsIgnoreCase(targetArea)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change playbook area.");
@@ -340,10 +403,16 @@ public class RagAdminController {
         }
 
         Playbook imported = playbookService.importPlaybookFromMarkdown(content, fallbackName, area);
-        auditLogger.log("IMPORT_PLAYBOOK", imported.name(), Map.of("area",
-            imported.area() != null ? imported.area() : "", "version", imported.version()));
-        redirectAttributes.addFlashAttribute("success",
-            "Playbook '" + imported.title() + "' imported successfully.");
+        auditLogger.log(
+                "IMPORT_PLAYBOOK",
+                imported.name(),
+                Map.of(
+                        "area",
+                        imported.area() != null ? imported.area() : "",
+                        "version",
+                        imported.version()));
+        redirectAttributes.addFlashAttribute(
+                "success", "Playbook '" + imported.title() + "' imported successfully.");
         return "redirect:/admin/playbooks";
     }
 
@@ -354,37 +423,44 @@ public class RagAdminController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Playbook not found: " + name);
         }
         playbookService.deletePlaybook(name);
-        auditLogger.log("DELETE_PLAYBOOK", pb.get().name(),
-            Map.of("area", pb.get().area() != null ? pb.get().area() : ""));
+        auditLogger.log(
+                "DELETE_PLAYBOOK",
+                pb.get().name(),
+                Map.of("area", pb.get().area() != null ? pb.get().area() : ""));
         redirectAttributes.addFlashAttribute("success", "Playbook deleted successfully.");
         return "redirect:/admin/playbooks";
     }
 
     @GetMapping("/prompts")
     public String viewPrompts(Model model) {
-        model.addAttribute("prompts", AreaAccessContext
-            .filterByAdminArea(systemPromptService.listAllPrompts(), SystemPrompt::area));
-        model.addAttribute("areas",
-            AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
+        model.addAttribute(
+                "prompts",
+                AreaAccessContext.filterByAdminArea(
+                        systemPromptService.listAllPrompts(), SystemPrompt::area));
+        model.addAttribute(
+                "areas", AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
         return "admin/prompts";
     }
 
     @PostMapping("/prompts")
-    public String createOrUpdatePrompt(@RequestParam String name,
-        @RequestParam SystemPromptType type, @RequestParam(required = false) String description,
-        @RequestParam String systemPrompt, @RequestParam String area,
-        RedirectAttributes redirectAttributes) {
+    public String createOrUpdatePrompt(
+            @RequestParam String name,
+            @RequestParam SystemPromptType type,
+            @RequestParam(required = false) String description,
+            @RequestParam String systemPrompt,
+            @RequestParam String area,
+            RedirectAttributes redirectAttributes) {
 
         if (!AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized for area: " + area);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized for area: " + area);
         }
 
         Optional<SystemPrompt> existing = systemPromptService.getPrompt(name);
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Existing prompt belongs to another area: " + name);
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Existing prompt belongs to another area: " + name);
             }
             if (!existing.get().area().equalsIgnoreCase(area)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change prompt area.");
@@ -393,10 +469,10 @@ public class RagAdminController {
         }
 
         systemPromptService.savePrompt(name, type, systemPrompt, description, area);
-        auditLogger.log("SAVE_PROMPT", name.trim(),
-            Map.of("area", area.trim(), "type", type.name()));
-        redirectAttributes.addFlashAttribute("success",
-            "System prompt '" + name + "' saved successfully.");
+        auditLogger.log(
+                "SAVE_PROMPT", name.trim(), Map.of("area", area.trim(), "type", type.name()));
+        redirectAttributes.addFlashAttribute(
+                "success", "System prompt '" + name + "' saved successfully.");
         return "redirect:/admin/prompts";
     }
 
@@ -404,12 +480,14 @@ public class RagAdminController {
     public String deletePrompt(@RequestParam String name, RedirectAttributes redirectAttributes) {
         Optional<SystemPrompt> existing = systemPromptService.getPrompt(name);
         if (existing.isEmpty() || !AreaAccessContext.canAdministerArea(existing.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "System prompt not found: " + name);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "System prompt not found: " + name);
         }
         systemPromptService.deletePrompt(name);
-        auditLogger.log("DELETE_PROMPT", existing.get().name(),
-            Map.of("area", existing.get().area() != null ? existing.get().area() : ""));
+        auditLogger.log(
+                "DELETE_PROMPT",
+                existing.get().name(),
+                Map.of("area", existing.get().area() != null ? existing.get().area() : ""));
         redirectAttributes.addFlashAttribute("success", "System prompt deleted successfully.");
         return "redirect:/admin/prompts";
     }
@@ -418,45 +496,53 @@ public class RagAdminController {
     public ResponseEntity<Resource> exportPrompt(@RequestParam String name) {
         Optional<SystemPrompt> existing = systemPromptService.getPrompt(name);
         if (existing.isEmpty() || !AreaAccessContext.canAdministerArea(existing.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "System prompt not found: " + name);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "System prompt not found: " + name);
         }
         String md = systemPromptService.exportPromptToMarkdown(name);
         byte[] bytes = md.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION,
-                ContentDisposition.attachment().filename(name + ".md", StandardCharsets.UTF_8)
-                    .build().toString())
-            .contentType(MediaType.parseMediaType("text/markdown")).contentLength(bytes.length)
-            .body(resource);
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(name + ".md", StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .contentType(MediaType.parseMediaType("text/markdown"))
+                .contentLength(bytes.length)
+                .body(resource);
     }
 
     @PostMapping("/prompts/import")
-    public String importPrompt(@RequestParam("file") MultipartFile file,
-        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
-        throws IOException {
+    public String importPrompt(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String area,
+            RedirectAttributes redirectAttributes)
+            throws IOException {
         String content =
-            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
+                BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         String originalFilename = file.getOriginalFilename();
-        String fallbackName = originalFilename != null && originalFilename.contains(".")
-            ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
-            : originalFilename;
+        String fallbackName =
+                originalFilename != null && originalFilename.contains(".")
+                        ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
+                        : originalFilename;
 
         SystemPrompt parsed = SystemPromptService.parseMarkdown(content, fallbackName, area);
         String promptName = parsed.name();
         String targetArea =
-            (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
+                (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
         if (!AreaAccessContext.canAdministerArea(targetArea)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized for area: " + targetArea);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized for area: " + targetArea);
         }
 
         Optional<SystemPrompt> existing = systemPromptService.getPrompt(promptName);
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Existing prompt belongs to another area: " + promptName);
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Existing prompt belongs to another area: " + promptName);
             }
             if (!existing.get().area().equalsIgnoreCase(targetArea)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change prompt area.");
@@ -465,12 +551,17 @@ public class RagAdminController {
         }
 
         SystemPrompt imported =
-            systemPromptService.importPromptFromMarkdown(content, fallbackName, area);
-        auditLogger.log("IMPORT_PROMPT", imported.name(),
-            Map.of("area", imported.area() != null ? imported.area() : "", "type",
-                imported.type() != null ? imported.type().name() : ""));
-        redirectAttributes.addFlashAttribute("success",
-            "System prompt '" + imported.name() + "' imported successfully.");
+                systemPromptService.importPromptFromMarkdown(content, fallbackName, area);
+        auditLogger.log(
+                "IMPORT_PROMPT",
+                imported.name(),
+                Map.of(
+                        "area",
+                        imported.area() != null ? imported.area() : "",
+                        "type",
+                        imported.type() != null ? imported.type().name() : ""));
+        redirectAttributes.addFlashAttribute(
+                "success", "System prompt '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/prompts";
     }
 
@@ -479,10 +570,14 @@ public class RagAdminController {
     @GetMapping(value = "/prompts/kg-options", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public List<KgPromptOption> getKgPromptOptions() {
-        List<SystemPrompt> prompts = AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.KG), SystemPrompt::area);
+        List<SystemPrompt> prompts =
+                AreaAccessContext.filterByAdminArea(
+                        systemPromptService.listPromptsByType(SystemPromptType.KG),
+                        SystemPrompt::area);
         return prompts.stream()
-            .map(p -> new KgPromptOption(p.name(), p.description() != null ? p.description() : ""))
-            .toList();
+                .map(p ->
+                        new KgPromptOption(
+                                p.name(), p.description() != null ? p.description() : ""))
+                .toList();
     }
 }

@@ -30,17 +30,23 @@ public class GeneralSummarizer {
     private final int maxTokens;
     private final String thinkingLevel;
 
-    public GeneralSummarizer(LlmClient llmClient, JdbcClient jdbcClient, String model,
-        double temperature, int maxTokens) {
+    public GeneralSummarizer(
+            LlmClient llmClient,
+            JdbcClient jdbcClient,
+            String model,
+            double temperature,
+            int maxTokens) {
         this(llmClient, jdbcClient, model, temperature, maxTokens, null);
     }
 
     @Autowired
-    public GeneralSummarizer(LlmClient llmClient, JdbcClient jdbcClient,
-        @Value("${app.ai.summarize.model}") String model,
-        @Value("${app.ai.summarize.temperature}") double temperature,
-        @Value("${app.ai.summarize.max-tokens}") int maxTokens,
-        @Value("${app.ai.summarize.thinking-level}") String thinkingLevel) {
+    public GeneralSummarizer(
+            LlmClient llmClient,
+            JdbcClient jdbcClient,
+            @Value("${app.ai.summarize.model}") String model,
+            @Value("${app.ai.summarize.temperature}") double temperature,
+            @Value("${app.ai.summarize.max-tokens}") int maxTokens,
+            @Value("${app.ai.summarize.thinking-level}") String thinkingLevel) {
         this.llmClient = llmClient;
         this.jdbcClient = jdbcClient;
         this.model = model;
@@ -49,8 +55,8 @@ public class GeneralSummarizer {
         this.thinkingLevel = thinkingLevel;
     }
 
-    public String summarize(String content, String cacheKind, String systemPromptOverride,
-        String userMessage) {
+    public String summarize(
+            String content, String cacheKind, String systemPromptOverride, String userMessage) {
         if (content == null || content.strip().isEmpty()) {
             return "";
         }
@@ -64,8 +70,10 @@ public class GeneralSummarizer {
 
         log.debug("Summary cache miss for kind '{}' and SHA '{}'", cacheKind, sha);
         log.info(
-            "General Summarizer: cache miss for kind '{}' and SHA '{}', calling LLM model '{}'",
-            cacheKind, sha, model);
+                "General Summarizer: cache miss for kind '{}' and SHA '{}', calling LLM model '{}'",
+                cacheKind,
+                sha,
+                model);
 
         int maxAttempts = 3;
         String cleaned = "";
@@ -77,12 +85,17 @@ public class GeneralSummarizer {
                     break;
                 }
                 log.warn(
-                    "General Summarizer: Attempt {}/{} returned empty summary for kind '{}'. Retrying...",
-                    attempt, maxAttempts, cacheKind);
+                        "General Summarizer: Attempt {}/{} returned empty summary for kind '{}'. Retrying...",
+                        attempt,
+                        maxAttempts,
+                        cacheKind);
             } catch (Exception e) {
                 log.warn(
-                    "General Summarizer: Attempt {}/{} failed with exception for kind '{}': {}. Retrying...",
-                    attempt, maxAttempts, cacheKind, e.getMessage());
+                        "General Summarizer: Attempt {}/{} failed with exception for kind '{}': {}. Retrying...",
+                        attempt,
+                        maxAttempts,
+                        cacheKind,
+                        e.getMessage());
             }
             if (attempt < maxAttempts) {
                 try {
@@ -97,8 +110,9 @@ public class GeneralSummarizer {
         if (cleaned.isEmpty()) {
             cleaned = "Summary unavailable.";
             log.warn(
-                "General Summarizer: All {} attempts to summarize failed. Using fallback summary: \"{}\"",
-                maxAttempts, cleaned);
+                    "General Summarizer: All {} attempts to summarize failed. Using fallback summary: \"{}\"",
+                    maxAttempts,
+                    cleaned);
             return cleaned;
         }
 
@@ -108,16 +122,27 @@ public class GeneralSummarizer {
 
     private String callModel(String systemPromptOverride, String userMessage) {
         String activePrompt =
-            (systemPromptOverride != null && !systemPromptOverride.isBlank()) ? systemPromptOverride
-                : "";
+                (systemPromptOverride != null && !systemPromptOverride.isBlank())
+                        ? systemPromptOverride
+                        : "";
 
         log.info(
-            "LLM Request (General summarizer): model={}, temperature={}, maxTokens={}, promptLength={}",
-            model, temperature, maxTokens, userMessage.length());
+                "LLM Request (General summarizer): model={}, temperature={}, maxTokens={}, promptLength={}",
+                model,
+                temperature,
+                maxTokens,
+                userMessage.length());
 
-        LlmRequest request = new LlmRequest(model,
-            List.of(new LlmMessage("system", activePrompt), new LlmMessage("user", userMessage)),
-            temperature, maxTokens, null, thinkingLevel);
+        LlmRequest request =
+                new LlmRequest(
+                        model,
+                        List.of(
+                                new LlmMessage("system", activePrompt),
+                                new LlmMessage("user", userMessage)),
+                        temperature,
+                        maxTokens,
+                        null,
+                        thinkingLevel);
         // Summarization used to publish no usage event at all, so its spend never appeared in any
         // cost view. Accounting now happens in AccountingLlmClient; this only has to declare what
         // kind of call it is. Set on the calling thread because summarization fans out over
@@ -129,31 +154,41 @@ public class GeneralSummarizer {
         } finally {
             LlmCallContextHolder.clear();
         }
-        log.info("LLM Response (General summarizer): received summary (length={})",
-            response.length());
+        log.info(
+                "LLM Response (General summarizer): received summary (length={})",
+                response.length());
         return response;
     }
 
     /**
-     * Scoped to the caller's kind on purpose: {@code summary_cache} is shared with
-     * {@code DocumentKgExtractor}, which stores an extracted-graph JSON blob under
-     * {@code kind='kg'}. Keying on {@code source_sha} alone returned that blob as a prose summary
-     * for identical content. The table's PK is {@code source_sha} alone, so a foreign-kind row
-     * simply produces a miss and the summary is recomputed — a cache miss is the correct trade for
-     * not emitting another producer's payload as a summary.
+     * Scoped to the caller's kind on purpose: {@code summary_cache} is shared with {@code
+     * DocumentKgExtractor}, which stores an extracted-graph JSON blob under {@code kind='kg'}.
+     * Keying on {@code source_sha} alone returned that blob as a prose summary for identical
+     * content. The table's PK is {@code source_sha} alone, so a foreign-kind row simply produces a
+     * miss and the summary is recomputed — a cache miss is the correct trade for not emitting
+     * another producer's payload as a summary.
      */
     private Optional<String> getCachedSummary(String sha, String cacheKind) {
         return jdbcClient
-            .sql("SELECT summary FROM summary_cache WHERE source_sha = :sha AND kind = :kind")
-            .param("sha", sha).param("kind", cacheKind).query(String.class).optional();
+                .sql("SELECT summary FROM summary_cache WHERE source_sha = :sha AND kind = :kind")
+                .param("sha", sha)
+                .param("kind", cacheKind)
+                .query(String.class)
+                .optional();
     }
 
     private void putCachedSummary(String sha, String cacheKind, String summary) {
-        jdbcClient.sql("""
-            INSERT INTO summary_cache (source_sha, kind, summary)
-            VALUES (:sha, :kind, :summary)
-            ON CONFLICT (source_sha) DO NOTHING
-            """).param("sha", sha).param("kind", cacheKind).param("summary", summary).update();
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO summary_cache (source_sha, kind, summary)
+                        VALUES (:sha, :kind, :summary)
+                        ON CONFLICT (source_sha) DO NOTHING
+                        """)
+                .param("sha", sha)
+                .param("kind", cacheKind)
+                .param("summary", summary)
+                .update();
     }
 
     public static String computeSha256(String text) {
@@ -183,8 +218,9 @@ public class GeneralSummarizer {
         // 1. If model wrote a final "Summary:" marker after rambling, use only what comes after the
         // LAST such marker.
         Pattern embeddedSummaryPat =
-            Pattern.compile("(?:^|\\n)\\s*(?:\\*\\*\\s*)?summary(?:\\s*\\*\\*)?\\s*[:\\-]\\s*",
-                Pattern.CASE_INSENSITIVE);
+                Pattern.compile(
+                        "(?:^|\\n)\\s*(?:\\*\\*\\s*)?summary(?:\\s*\\*\\*)?\\s*[:\\-]\\s*",
+                        Pattern.CASE_INSENSITIVE);
         Matcher m = embeddedSummaryPat.matcher(text);
         int lastEnd = -1;
         while (m.find()) {
@@ -195,13 +231,18 @@ public class GeneralSummarizer {
         }
 
         // 2. Strip leak preambles iteratively
-        Pattern[] leakPats = new Pattern[] {
-            Pattern.compile("^\\s*we need to summarize.*?(?=\\n\\n|\\z)",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
-            Pattern.compile("^\\s*let me (read|analyze|look at|trace through).*?(?=\\n\\n|\\z)",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
-            Pattern.compile("^\\s*the function:\\s*.*?(?=\\n\\n|\\z)",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL)};
+        Pattern[] leakPats =
+                new Pattern[] {
+                    Pattern.compile(
+                            "^\\s*we need to summarize.*?(?=\\n\\n|\\z)",
+                            Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                    Pattern.compile(
+                            "^\\s*let me (read|analyze|look at|trace through).*?(?=\\n\\n|\\z)",
+                            Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                    Pattern.compile(
+                            "^\\s*the function:\\s*.*?(?=\\n\\n|\\z)",
+                            Pattern.CASE_INSENSITIVE | Pattern.DOTALL)
+                };
 
         for (int step = 0; step < 3; step++) {
             String before = text;
@@ -223,8 +264,10 @@ public class GeneralSummarizer {
         }
 
         // 4. Strip leading "Summary:", "Description:", "Reasoning:", etc. if any remains
-        text = text.replaceAll(
-            "^(?i)(summary|description|reasoning|analysis|thought|thinking)\\s*[:\\-]\\s*", "");
+        text =
+                text.replaceAll(
+                        "^(?i)(summary|description|reasoning|analysis|thought|thinking)\\s*[:\\-]\\s*",
+                        "");
 
         return text.trim();
     }

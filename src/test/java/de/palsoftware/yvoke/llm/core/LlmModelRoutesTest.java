@@ -10,8 +10,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The model → client mapping, parsed from one operator-typed property.
  *
- * <p>
- * Strict where {@code app.ai.provider} is lenient, and deliberately so: that property has
+ * <p>Strict where {@code app.ai.provider} is lenient, and deliberately so: that property has
  * deployments in the wild whose typos must not take them down, whereas this one is new and ships
  * empty, so rejecting an unknown route id costs nothing and prevents a model being answered by
  * silently the wrong provider.
@@ -30,27 +29,33 @@ class LlmModelRoutesTest {
         assertThat(parse("").isEmpty()).isTrue();
         assertThat(parse("   ").isEmpty()).isTrue();
         assertThat(parse("{}").isEmpty())
-            .as("an operator who cleared the mapping wrote {} rather than leaving it blank")
-            .isTrue();
+                .as("an operator who cleared the mapping wrote {} rather than leaving it blank")
+                .isTrue();
         assertThat(parse("").routeFor("anything")).isEmpty();
     }
 
     @Test
     void eachPairMapsItsModelToItsRoute() {
-        LlmModelRoutes routes = parse("""
-            {"gemini-3.6-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}""");
+        LlmModelRoutes routes =
+                parse(
+                        """
+                        {"gemini-3.6-flash": "gemini", "gpt-5.6-luna": "azure-openai-responses"}\
+                        """);
 
         assertThat(routes.routeFor("gemini-3.6-flash")).contains(LlmRouteId.GEMINI);
         assertThat(routes.routeFor("gpt-5.6-luna")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
-        assertThat(routes.declaredRoutes()).containsExactlyInAnyOrder(LlmRouteId.GEMINI,
-            LlmRouteId.AZURE_OPENAI_RESPONSES);
+        assertThat(routes.declaredRoutes())
+                .containsExactlyInAnyOrder(LlmRouteId.GEMINI, LlmRouteId.AZURE_OPENAI_RESPONSES);
     }
 
     /** A ConfigMap value is hand-formatted; surrounding space must not change the meaning. */
     @Test
     void surroundingWhitespaceIsTolerated() {
-        LlmModelRoutes routes = parse("""
-            { "gemini-3.6-flash" : " gemini " , "gpt-5.6-luna":"azure-openai-responses" }  """);
+        LlmModelRoutes routes =
+                parse(
+                        """
+                        { "gemini-3.6-flash" : " gemini " , "gpt-5.6-luna":"azure-openai-responses" }\
+                        """);
 
         assertThat(routes.routeFor("gemini-3.6-flash")).contains(LlmRouteId.GEMINI);
         assertThat(routes.routeFor("gpt-5.6-luna")).contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
@@ -72,14 +77,16 @@ class LlmModelRoutesTest {
     @Test
     void anUnknownRouteIdFailsRatherThanBeingIgnored() {
         assertThatThrownBy(() -> parse("{\"gpt-5.6-luna\": \"azure-openai\"}"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("azure-openai")
-            .hasMessageContaining("gpt-5.6-luna");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("azure-openai")
+                .hasMessageContaining("gpt-5.6-luna");
     }
 
     @Test
     void malformedJsonFailsRatherThanBeingIgnored() {
         assertThatThrownBy(() -> parse("{\"gpt-5.6-luna\": "))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("app.ai.model-routes");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("app.ai.model-routes");
     }
 
     /**
@@ -88,23 +95,25 @@ class LlmModelRoutesTest {
      */
     @Test
     void aJsonValueThatIsNotAnObjectFails() {
-        assertThatThrownBy(() -> parse("[\"gemini\"]")).isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("object");
+        assertThatThrownBy(() -> parse("[\"gemini\"]"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("object");
         assertThatThrownBy(() -> parse("\"gemini\"")).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void aNonStringRouteFails() {
         assertThatThrownBy(() -> parse("{\"gpt-5.6-luna\": 7}"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("gpt-5.6-luna");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("gpt-5.6-luna");
         assertThatThrownBy(() -> parse("{\"gpt-5.6-luna\": null}"))
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void aBlankModelNameFails() {
         assertThatThrownBy(() -> parse("{\"  \": \"gemini\"}"))
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
     }
 
     /**
@@ -113,9 +122,11 @@ class LlmModelRoutesTest {
      */
     @Test
     void aDuplicateModelFailsRatherThanLettingOneEntryWinSilently() {
-        assertThatThrownBy(() -> parse(
-            "{\"gpt-5.6-luna\": \"gemini\", \"GPT-5.6-LUNA\": \"azure-openai-responses\"}"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("gpt-5.6-luna");
+        assertThatThrownBy(() ->
+                        parse(
+                                "{\"gpt-5.6-luna\": \"gemini\", \"GPT-5.6-LUNA\": \"azure-openai-responses\"}"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("gpt-5.6-luna");
     }
 
     @Test
@@ -130,7 +141,7 @@ class LlmModelRoutesTest {
     void routeIdsAreReadFromTheirWireSpellingCaseInsensitively() {
         assertThat(LlmRouteId.fromWire("gemini")).contains(LlmRouteId.GEMINI);
         assertThat(LlmRouteId.fromWire("Azure-OpenAI-Responses"))
-            .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
+                .contains(LlmRouteId.AZURE_OPENAI_RESPONSES);
         assertThat(LlmRouteId.fromWire("openrouter")).contains(LlmRouteId.OPENROUTER);
         assertThat(LlmRouteId.fromWire("OpenRouter")).contains(LlmRouteId.OPENROUTER);
         assertThat(LlmRouteId.fromWire("cloudflare-gemini")).isEmpty();
@@ -143,7 +154,8 @@ class LlmModelRoutesTest {
     @Test
     void anInvalidRouteSpellingFailsInModelRoutesParse() {
         assertThatThrownBy(() -> parse("{\"deepseek/deepseek-v4.1-flash-1017\": \"open-router\"}"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("open-router")
-            .hasMessageContaining("deepseek/deepseek-v4.1-flash-1017");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("open-router")
+                .hasMessageContaining("deepseek/deepseek-v4.1-flash-1017");
     }
 }

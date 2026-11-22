@@ -17,23 +17,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * The first admin <em>write</em> path driven in a real browser, and the first browser test that
  * reads its result back out of the database.
  *
- * <p>
- * Playbooks gate every chat send — the client refuses to send without one — yet no test at any tier
- * posted to the playbook admin endpoints. A MockMvc POST submits parameters directly, so it proves
- * the controller while proving nothing about the form that feeds it: rename a field in the template
- * and a MockMvc test stays green while the real page silently stops sending that value. This test
- * was checked against exactly that failure — renaming the tools {@code <select>} makes it fail.
+ * <p>Playbooks gate every chat send — the client refuses to send without one — yet no test at any
+ * tier posted to the playbook admin endpoints. A MockMvc POST submits parameters directly, so it
+ * proves the controller while proving nothing about the form that feeds it: rename a field in the
+ * template and a MockMvc test stays green while the real page silently stops sending that value.
+ * This test was checked against exactly that failure — renaming the tools {@code <select>} makes it
+ * fail.
  *
- * <p>
- * It also drives the template body through the
- * <a href="https://github.com/Ionaru/easy-markdown-editor">EasyMDE</a> editor, which hides the real
- * {@code <textarea>}. Note that deleting the explicit sync-on-submit in
- * {@code admin/playbooks.html} does <em>not</em> break this test: CodeMirror installs its own
- * submit hook that copies the editor content back, so that block is belt-and-braces for the copy
- * and load-bearing only for its "Template Content is required" guard.
+ * <p>It also drives the template body through the <a
+ * href="https://github.com/Ionaru/easy-markdown-editor">EasyMDE</a> editor, which hides the real
+ * {@code <textarea>}. Note that deleting the explicit sync-on-submit in {@code
+ * admin/playbooks.html} does <em>not</em> break this test: CodeMirror installs its own submit hook
+ * that copies the editor content back, so that block is belt-and-braces for the copy and
+ * load-bearing only for its "Template Content is required" guard.
  *
- * <p>
- * Extends {@link AbstractE2E} with no extra {@code properties} and no extra mock beans, so it
+ * <p>Extends {@link AbstractE2E} with no extra {@code properties} and no extra mock beans, so it
  * reuses the shared e2e Spring context instead of minting a new one — see the context-cache pitfall
  * in CLAUDE.md.
  */
@@ -43,10 +41,9 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
     private static final String TITLE = "E2E Playbook CRUD";
     private static final String VERSION = "3";
     private static final String TEMPLATE_BODY =
-        "# Answer policy\n\nAlways cite the source document.";
+            "# Answer policy\n\nAlways cite the source document.";
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void removePlaybook() {
@@ -62,10 +59,11 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
     private void typeTemplateBody(String markdown) {
         Locator editor = page.locator(".CodeMirror");
         Assertions.assertThat(editor.count())
-            .as("EasyMDE did not initialise on #templateText — the CDN asset "
-                + "(cdn.jsdelivr.net/npm/easymde) is unreachable, so this form is not usable and the "
-                + "test cannot meaningfully exercise the template-body sync")
-            .isPositive();
+                .as(
+                        "EasyMDE did not initialise on #templateText — the CDN asset "
+                                + "(cdn.jsdelivr.net/npm/easymde) is unreachable, so this form is not usable and the "
+                                + "test cannot meaningfully exercise the template-body sync")
+                .isPositive();
         editor.click();
         page.keyboard().type(markdown);
     }
@@ -99,24 +97,34 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
         page.waitForURL(Pattern.compile(".*/admin/playbooks$"));
 
         // Reload-independent proof: the row is in the database with the body the editor held.
-        Assertions
-            .assertThat(jdbcTemplate.queryForObject(
-                "SELECT template_text FROM playbooks WHERE name = ?", String.class, NAME))
-            .contains("Always cite the source document.");
-        Assertions
-            .assertThat(jdbcTemplate.queryForObject(
-                "SELECT code_execution FROM playbooks WHERE name = ?", Boolean.class, NAME))
-            .isTrue();
-        Assertions
-            .assertThat(jdbcTemplate.queryForList(
-                "SELECT unnest(tools) FROM playbooks WHERE name = ?", String.class, NAME))
-            .containsExactly(firstTool);
-        Assertions.assertThat(jdbcTemplate
-            .queryForObject("SELECT title FROM playbooks WHERE name = ?", String.class, NAME))
-            .isEqualTo(TITLE);
-        Assertions.assertThat(jdbcTemplate
-            .queryForObject("SELECT version FROM playbooks WHERE name = ?", Integer.class, NAME))
-            .isEqualTo(Integer.parseInt(VERSION));
+        Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT template_text FROM playbooks WHERE name = ?",
+                                String.class,
+                                NAME))
+                .contains("Always cite the source document.");
+        Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT code_execution FROM playbooks WHERE name = ?",
+                                Boolean.class,
+                                NAME))
+                .isTrue();
+        Assertions.assertThat(
+                        jdbcTemplate.queryForList(
+                                "SELECT unnest(tools) FROM playbooks WHERE name = ?",
+                                String.class,
+                                NAME))
+                .containsExactly(firstTool);
+        Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT title FROM playbooks WHERE name = ?", String.class, NAME))
+                .isEqualTo(TITLE);
+        Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT version FROM playbooks WHERE name = ?",
+                                Integer.class,
+                                NAME))
+                .isEqualTo(Integer.parseInt(VERSION));
 
         // And it renders in the list after a fresh load, so the round trip is complete.
         page.navigate(url("/admin/playbooks"));
@@ -140,10 +148,11 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
     @Test
     void deletesAPlaybookFromTheList() {
         jdbcTemplate.update(
-            "INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, "
-                + "target_agent) VALUES (?, ?, 'seeded', 'Body.', '{}', false, 'specialist') "
-                + "ON CONFLICT (name) DO NOTHING",
-            NAME, TITLE);
+                "INSERT INTO playbooks (name, title, description, template_text, tools, code_execution, "
+                        + "target_agent) VALUES (?, ?, 'seeded', 'Body.', '{}', false, 'specialist') "
+                        + "ON CONFLICT (name) DO NOTHING",
+                NAME,
+                TITLE);
 
         loginAs("admin");
         page.navigate(url("/admin/playbooks"));
@@ -151,12 +160,18 @@ class AdminPlaybookCrudE2EIT extends AbstractE2E {
 
         // The delete form fires a native confirm(); Playwright auto-dismisses dialogs by default.
         page.onceDialog(dialog -> dialog.accept());
-        page.click("form[action$='/admin/playbooks/delete']:has(input[value='" + NAME + "']) "
-            + "button[type='submit']");
+        page.click(
+                "form[action$='/admin/playbooks/delete']:has(input[value='"
+                        + NAME
+                        + "']) "
+                        + "button[type='submit']");
         page.waitForURL(Pattern.compile(".*/admin/playbooks$"));
 
-        Assertions.assertThat(jdbcTemplate
-            .queryForObject("SELECT count(*) FROM playbooks WHERE name = ?", Integer.class, NAME))
-            .isZero();
+        Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM playbooks WHERE name = ?",
+                                Integer.class,
+                                NAME))
+                .isZero();
     }
 }

@@ -20,10 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The connector admin page's view of {@code confluence_instances}: it maps rows to
- * {@link ConfluenceInstanceView} (never the record, which carries the credential), owns the one
- * place where a submitted token is encrypted, and makes deleting an instance stop the work that
- * instance had already queued.
+ * The connector admin page's view of {@code confluence_instances}: it maps rows to {@link
+ * ConfluenceInstanceView} (never the record, which carries the credential), owns the one place
+ * where a submitted token is encrypted, and makes deleting an instance stop the work that instance
+ * had already queued.
  */
 @Service
 public class ConfluenceInstanceService {
@@ -36,9 +36,12 @@ public class ConfluenceInstanceService {
     private final CollectionRepository collectionRepository;
     private final JobProgressBroker progressBroker;
 
-    public ConfluenceInstanceService(ConfluenceInstanceRepository repository,
-        SecretCipher secretCipher, JobRepository jobRepository,
-        CollectionRepository collectionRepository, JobProgressBroker progressBroker) {
+    public ConfluenceInstanceService(
+            ConfluenceInstanceRepository repository,
+            SecretCipher secretCipher,
+            JobRepository jobRepository,
+            CollectionRepository collectionRepository,
+            JobProgressBroker progressBroker) {
         this.repository = repository;
         this.secretCipher = secretCipher;
         this.jobRepository = jobRepository;
@@ -54,7 +57,8 @@ public class ConfluenceInstanceService {
     public List<ConfluenceInstanceView> listInstances() {
         String keyId = secretCipher.keyId();
         return repository.findAll().stream()
-            .map(instance -> ConfluenceInstanceView.of(instance, keyId)).toList();
+                .map(instance -> ConfluenceInstanceView.of(instance, keyId))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -86,8 +90,7 @@ public class ConfluenceInstanceService {
     /**
      * Creates or updates an instance from the edited fields, attaching the credential.
      *
-     * <p>
-     * {@code draft} must carry no credential at all: it comes from a form DTO that has no token
+     * <p>{@code draft} must carry no credential at all: it comes from a form DTO that has no token
      * component, and this is the only place a token becomes ciphertext. The ciphertext and its key
      * fingerprint are ONE value and are always written together — a row holding one without the
      * other has a {@link ConfluenceInstance#tokenHealth(String)} that lies. A blank submitted token
@@ -95,31 +98,29 @@ public class ConfluenceInstanceService {
      * upsert COALESCEs it onto the stored ciphertext; {@code ''} would overwrite it and the next
      * sync would 401 with nothing in the UI to explain why).
      *
-     * <p>
-     * The target collection has to exist HERE. The form only checks that a name was typed, so an
-     * unknown collection used to be accepted and then failed at the first sync, from
-     * {@code CollectionTagEnqueueValidator}, on a page that says nothing about connectors. It is
-     * the same class of user error as a duplicate slug, so it is refused in the same place.
+     * <p>The target collection has to exist HERE. The form only checks that a name was typed, so an
+     * unknown collection used to be accepted and then failed at the first sync, from {@code
+     * CollectionTagEnqueueValidator}, on a page that says nothing about connectors. It is the same
+     * class of user error as a duplicate slug, so it is refused in the same place.
      *
      * @param submittedToken the plaintext token an administrator typed, or null/blank to keep the
-     *        stored one
+     *     stored one
      * @throws IllegalArgumentException if the draft already carries a credential, the submitted
-     *         token is an already-encrypted value, the domain is not an absolute http(s) URL, the
-     *         target collection does not exist, or the name/slug is already taken
+     *     token is an already-encrypted value, the domain is not an absolute http(s) URL, the
+     *     target collection does not exist, or the name/slug is already taken
      */
     /**
      * On an update, a blank tag keeps the stored one — the same contract the API token field
      * already uses ("leave blank to keep").
      *
-     * <p>
-     * The tag {@code <select>} is filled by an htmx swap into {@code #tag-container}. Saving before
-     * that swap lands — or after it fails — submits an empty value, which would otherwise write
-     * NULL over a configured tag and leave the instance ingesting untagged, with no error shown.
-     * Guarding here rather than in the browser means a slow or failed request cannot cause it.
-     * Blank still means "no tag" on create, which is the only way to express that.
+     * <p>The tag {@code <select>} is filled by an htmx swap into {@code #tag-container}. Saving
+     * before that swap lands — or after it fails — submits an empty value, which would otherwise
+     * write NULL over a configured tag and leave the instance ingesting untagged, with no error
+     * shown. Guarding here rather than in the browser means a slow or failed request cannot cause
+     * it. Blank still means "no tag" on create, which is the only way to express that.
      */
-    private static String resolveTargetTag(ConfluenceInstance draft,
-        Optional<ConfluenceInstance> existing) {
+    private static String resolveTargetTag(
+            ConfluenceInstance draft, Optional<ConfluenceInstance> existing) {
         if (draft.targetTag() != null && !draft.targetTag().isBlank()) {
             return draft.targetTag();
         }
@@ -129,93 +130,118 @@ public class ConfluenceInstanceService {
     public ConfluenceInstance save(ConfluenceInstance draft, @Nullable String submittedToken) {
         if (draft.apiTokenEnc() != null || draft.tokenKeyId() != null) {
             throw new IllegalArgumentException(
-                "The edited instance must not carry a credential; the API token is supplied "
-                    + "separately and encrypted here.");
+                    "The edited instance must not carry a credential; the API token is supplied "
+                            + "separately and encrypted here.");
         }
         String wantedCol = draft.targetCollection() == null ? "" : draft.targetCollection().trim();
         Optional<Collection> colOpt = collectionRepository.findByName(wantedCol);
         if (colOpt.isEmpty()) {
-            colOpt = collectionRepository.findAll().stream()
-                .filter(c -> c.name().equalsIgnoreCase(wantedCol)).findFirst();
+            colOpt =
+                    collectionRepository.findAll().stream()
+                            .filter(c -> c.name().equalsIgnoreCase(wantedCol))
+                            .findFirst();
         }
         if (colOpt.isEmpty()) {
-            throw new IllegalArgumentException("Collection '" + draft.targetCollection()
-                + "' does not exist; create it on the collections page first.");
+            throw new IllegalArgumentException(
+                    "Collection '"
+                            + draft.targetCollection()
+                            + "' does not exist; create it on the collections page first.");
         }
         String token =
-            submittedToken == null || submittedToken.isBlank() ? null : submittedToken.trim();
+                submittedToken == null || submittedToken.isBlank() ? null : submittedToken.trim();
         if (token != null && SecretCipher.isCiphertext(token)) {
             // SecretCipher.encrypt throws on an already-encrypted value; rejecting it here keeps a
             // pasted ciphertext (copied out of the database, say) a field error, not a 500.
             throw new IllegalArgumentException(
-                "That API token looks like an already-encrypted value. Paste the token from your "
-                    + "Atlassian account, or leave the field blank to keep the stored one.");
+                    "That API token looks like an already-encrypted value. Paste the token from your "
+                            + "Atlassian account, or leave the field blank to keep the stored one.");
         }
         Optional<ConfluenceInstance> existing =
-            draft.id() == null ? Optional.empty() : repository.findById(draft.id());
+                draft.id() == null ? Optional.empty() : repository.findById(draft.id());
         if (existing.isPresent() && token == null) {
             String existingDomain = ConfluenceDomains.canonicalizeOrKeep(existing.get().domain());
             String draftDomain = ConfluenceDomains.canonicalize(draft.domain());
             if (!Objects.equals(existingDomain, draftDomain)) {
                 throw new IllegalArgumentException(
-                    "Re-enter the API token when changing the Confluence domain.");
+                        "Re-enter the API token when changing the Confluence domain.");
             }
         }
         String apiTokenEnc = token == null ? null : secretCipher.encrypt(token);
         String tokenKeyId = token == null ? null : secretCipher.keyId();
 
-        ConfluenceInstance toSave = new ConfluenceInstance(draft.id(), draft.name(), draft.slug(),
-            draft.domain(), draft.email(), apiTokenEnc, tokenKeyId, draft.space(),
-            draft.rootPageId(), draft.includeLabels(), draft.excludeLabels(), colOpt.get().name(),
-            resolveTargetTag(draft, existing), draft.processAttachments(), draft.enabled(), null,
-            null);
+        ConfluenceInstance toSave =
+                new ConfluenceInstance(
+                        draft.id(),
+                        draft.name(),
+                        draft.slug(),
+                        draft.domain(),
+                        draft.email(),
+                        apiTokenEnc,
+                        tokenKeyId,
+                        draft.space(),
+                        draft.rootPageId(),
+                        draft.includeLabels(),
+                        draft.excludeLabels(),
+                        colOpt.get().name(),
+                        resolveTargetTag(draft, existing),
+                        draft.processAttachments(),
+                        draft.enabled(),
+                        null,
+                        null);
         try {
             return repository.upsert(toSave);
         } catch (DataIntegrityViolationException e) {
             // The upsert arbitrates on the PRIMARY KEY, so a name or slug already held by another
             // instance surfaces here instead of silently rewriting that other row.
-            log.warn("Confluence instance save violated a unique constraint (name={}, slug={})",
-                draft.name(), draft.slug(), e);
-            throw new IllegalArgumentException("Another Confluence instance already uses the name '"
-                + draft.name() + "' or the slug '" + draft.slug() + "'.", e);
+            log.warn(
+                    "Confluence instance save violated a unique constraint (name={}, slug={})",
+                    draft.name(),
+                    draft.slug(),
+                    e);
+            throw new IllegalArgumentException(
+                    "Another Confluence instance already uses the name '"
+                            + draft.name()
+                            + "' or the slug '"
+                            + draft.slug()
+                            + "'.",
+                    e);
         }
     }
 
     /**
      * Deletes an instance and CANCELS the work it had already queued.
      *
-     * <p>
-     * Queued jobs are cancelled rather than left behind: once the row is gone, every queued
+     * <p>Queued jobs are cancelled rather than left behind: once the row is gone, every queued
      * {@code confluence-page-import:<slug>} can only fail with "instance no longer exists, so its
      * API token cannot be resolved", so a deleted connector would otherwise turn into a wall of red
      * jobs an operator has to sweep up by hand. Queued jobs have not started, so cancelling them is
      * free; RUNNING jobs are deliberately untouched — they are mid-write and stop cooperatively
      * (stop those individually from the jobs page).
      *
-     * <p>
-     * Cancelling the queue is only half of it: the job most likely to be running is the CRAWL, and
-     * the crawl is the producer. {@code ConfluenceIngestService} therefore re-checks that this row
-     * still exists once per page batch, so a mid-crawl delete cannot immediately refill the queue
-     * this method just emptied.
+     * <p>Cancelling the queue is only half of it: the job most likely to be running is the CRAWL,
+     * and the crawl is the producer. {@code ConfluenceIngestService} therefore re-checks that this
+     * row still exists once per page batch, so a mid-crawl delete cannot immediately refill the
+     * queue this method just emptied.
      *
-     * <p>
-     * The sweep is by snapshotted instance ID first, then by the two slug-qualified kinds. The id
-     * is what makes it complete: the slug is editable, so a job queued before a rename carries the
-     * OLD slug in its kind and no kind-based cancel can reach it. The slug passes remain for jobs
-     * queued before ids were snapshotted. The bare kind is never used — it would match EVERY
+     * <p>The sweep is by snapshotted instance ID first, then by the two slug-qualified kinds. The
+     * id is what makes it complete: the slug is editable, so a job queued before a rename carries
+     * the OLD slug in its kind and no kind-based cancel can reach it. The slug passes remain for
+     * jobs queued before ids were snapshotted. The bare kind is never used — it would match EVERY
      * instance, and a pre-instances job belongs to no instance in particular.
      *
-     * <p>
-     * The delete goes through the repository, which publishes
-     * {@link ConfluenceInstanceCredentialsChangedEvent} — that is what drops the cached
-     * {@link org.springframework.web.client.RestClient}, which carries
-     * {@code Basic base64(email:token)} as a default header, instead of leaving it reachable in the
-     * heap until the next restart.
+     * <p>The delete goes through the repository, which publishes {@link
+     * ConfluenceInstanceCredentialsChangedEvent} — that is what drops the cached {@link
+     * org.springframework.web.client.RestClient}, which carries {@code Basic base64(email:token)}
+     * as a default header, instead of leaving it reachable in the heap until the next restart.
      */
     @Transactional
     public Deletion delete(UUID id) {
-        ConfluenceInstance instance = repository.findById(id).orElseThrow(
-            () -> new IllegalArgumentException("That Confluence instance no longer exists."));
+        ConfluenceInstance instance =
+                repository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "That Confluence instance no longer exists."));
         // By ID FIRST, because it is the only handle that survives a slug rename: a crawl fanning
         // out under ":old-slug" leaves jobs the slug-qualified cancel below cannot see, and they
         // would then fail one by one at execution with "instance no longer exists". Every
@@ -226,23 +252,31 @@ public class ConfluenceInstanceService {
         // They cannot double-count: a job cancelled by the pass above is no longer 'queued', so a
         // later pass does not match it.
         List<UUID> cancelledIds = new ArrayList<>();
-        cancelledIds.addAll(jobRepository.cancelQueuedBySetting(
-            ConfluenceIngestService.SETTING_INSTANCE_ID, instance.id().toString()));
-        cancelledIds.addAll(jobRepository
-            .cancelQueued(IngestJobKind.CONFLUENCE_IMPORT.getValue() + ":" + instance.slug()));
-        cancelledIds.addAll(jobRepository
-            .cancelQueued(IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue() + ":" + instance.slug()));
+        cancelledIds.addAll(
+                jobRepository.cancelQueuedBySetting(
+                        ConfluenceIngestService.SETTING_INSTANCE_ID, instance.id().toString()));
+        cancelledIds.addAll(
+                jobRepository.cancelQueued(
+                        IngestJobKind.CONFLUENCE_IMPORT.getValue() + ":" + instance.slug()));
+        cancelledIds.addAll(
+                jobRepository.cancelQueued(
+                        IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue() + ":" + instance.slug()));
         int cancelled = cancelledIds.size();
         // Same reason as the bulk admin cancel: rows updated directly leave any open job page
         // streaming a stale "Queued" with a live Stop button.
         // JobProgressBroker rather than JobService: JobService collects every JobHandler, and
         // ConfluenceIngestService is one, so injecting it here would close a bean cycle. This is
         // the same two lines JobService.publishSnapshot runs.
-        cancelledIds.forEach(jobId -> jobRepository.findById(jobId)
-            .ifPresent(job -> progressBroker.publish(ProgressEvent.of(job))));
+        cancelledIds.forEach(jobId ->
+                jobRepository
+                        .findById(jobId)
+                        .ifPresent(job -> progressBroker.publish(ProgressEvent.of(job))));
         repository.deleteById(id);
-        log.info("Deleted Confluence instance '{}' ({}); cancelled {} queued job(s)",
-            instance.name(), instance.slug(), cancelled);
+        log.info(
+                "Deleted Confluence instance '{}' ({}); cancelled {} queued job(s)",
+                instance.name(),
+                instance.slug(),
+                cancelled);
         return new Deletion(instance.name(), instance.slug(), cancelled);
     }
 }

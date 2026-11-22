@@ -22,8 +22,12 @@ class SystemPromptServiceTest {
 
     @Test
     void testExportAndImportPrompt() {
-        SystemPrompt prompt = new SystemPrompt("test-prompt", SystemPromptType.KG,
-            "System instruction content", "Test Description");
+        SystemPrompt prompt =
+                new SystemPrompt(
+                        "test-prompt",
+                        SystemPromptType.KG,
+                        "System instruction content",
+                        "Test Description");
         when(repository.findByName("test-prompt")).thenReturn(Optional.of(prompt));
 
         String exportedMd = service.exportPromptToMarkdown("test-prompt");
@@ -38,8 +42,13 @@ class SystemPromptServiceTest {
         assertEquals(SystemPromptType.KG, imported.type());
         assertEquals("System instruction content", imported.systemPrompt());
         assertEquals("Test Description", imported.description());
-        verify(repository).upsert("test-prompt", SystemPromptType.KG, "System instruction content",
-            "Test Description", "OIM");
+        verify(repository)
+                .upsert(
+                        "test-prompt",
+                        SystemPromptType.KG,
+                        "System instruction content",
+                        "Test Description",
+                        "OIM");
     }
 
     private static SystemPrompt prompt(String name, SystemPromptType type) {
@@ -49,20 +58,23 @@ class SystemPromptServiceTest {
     @Test
     void requirePromptReturnsThePromptWhenNameAndTypeMatch() {
         when(repository.findByName("oim-summarize"))
-            .thenReturn(Optional.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
-        assertEquals("BODY",
-            service.requirePrompt("oim-summarize", SystemPromptType.SUMMARIZE).systemPrompt());
+                .thenReturn(Optional.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
+        assertEquals(
+                "BODY",
+                service.requirePrompt("oim-summarize", SystemPromptType.SUMMARIZE).systemPrompt());
     }
 
     @Test
     void requirePromptRefusesAWrongTypedPrompt() {
         when(repository.findByName("oim-kg"))
-            .thenReturn(Optional.of(prompt("oim-kg", SystemPromptType.KG)));
+                .thenReturn(Optional.of(prompt("oim-kg", SystemPromptType.KG)));
         when(repository.findByType(SystemPromptType.SUMMARIZE))
-            .thenReturn(List.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
+                .thenReturn(List.of(prompt("oim-summarize", SystemPromptType.SUMMARIZE)));
 
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> service.requirePrompt("oim-kg", SystemPromptType.SUMMARIZE));
+        IllegalArgumentException e =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.requirePrompt("oim-kg", SystemPromptType.SUMMARIZE));
         assertTrue(e.getMessage().contains("is of type KG"), e.getMessage());
         assertTrue(e.getMessage().contains("SUMMARIZE prompt is required"), e.getMessage());
         assertTrue(e.getMessage().contains("oim-summarize"), "must list the valid names");
@@ -72,20 +84,28 @@ class SystemPromptServiceTest {
     void requirePromptRefusesAnUnknownName() {
         when(repository.findByName("nope")).thenReturn(Optional.empty());
         when(repository.findByType(SystemPromptType.KG)).thenReturn(List.of());
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> service.requirePrompt("nope", SystemPromptType.KG));
+        IllegalArgumentException e =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.requirePrompt("nope", SystemPromptType.KG));
         assertTrue(e.getMessage().contains("does not exist"), e.getMessage());
-        assertTrue(e.getMessage().contains("(none registered)"),
-            "an empty roster must say so rather than trailing an empty list");
+        assertTrue(
+                e.getMessage().contains("(none registered)"),
+                "an empty roster must say so rather than trailing an empty list");
     }
 
     @Test
     void requirePromptRefusesANullOrBlankName() {
-        when(repository.findByType(SystemPromptType.SUMMARIZE)).thenReturn(List
-            .of(prompt("b", SystemPromptType.SUMMARIZE), prompt("a", SystemPromptType.SUMMARIZE)));
+        when(repository.findByType(SystemPromptType.SUMMARIZE))
+                .thenReturn(
+                        List.of(
+                                prompt("b", SystemPromptType.SUMMARIZE),
+                                prompt("a", SystemPromptType.SUMMARIZE)));
         for (String bad : new String[] {null, "", "   "}) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.requirePrompt(bad, SystemPromptType.SUMMARIZE));
+            IllegalArgumentException e =
+                    assertThrows(
+                            IllegalArgumentException.class,
+                            () -> service.requirePrompt(bad, SystemPromptType.SUMMARIZE));
             assertTrue(e.getMessage().contains("was specified"), e.getMessage());
             assertTrue(e.getMessage().contains("a, b"), "names are sorted so the text is stable");
         }
@@ -97,7 +117,8 @@ class SystemPromptServiceTest {
         when(repository.findByName("x")).thenReturn(Optional.of(prompt("x", SystemPromptType.KG)));
         assertEquals("x", service.requirePrompt("x", null).name());
         IllegalArgumentException e =
-            assertThrows(IllegalArgumentException.class, () -> service.requirePrompt(null, null));
+                assertThrows(
+                        IllegalArgumentException.class, () -> service.requirePrompt(null, null));
         assertTrue(e.getMessage().contains("(no type given)"), e.getMessage());
     }
 
@@ -106,8 +127,10 @@ class SystemPromptServiceTest {
         service.savePrompt("p", SystemPromptType.KG, "text", null, " oim ");
         verify(repository).upsert("p", SystemPromptType.KG, "text", "", "OIM");
 
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> service.savePrompt("q", SystemPromptType.KG, "text", null, "SAP"));
+        IllegalArgumentException e =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.savePrompt("q", SystemPromptType.KG, "text", null, "SAP"));
         assertEquals("Area 'SAP' does not exist.", e.getMessage());
         verify(repository, never()).upsert(eq("q"), any(), any(), any(), any());
     }
@@ -115,80 +138,118 @@ class SystemPromptServiceTest {
     @Test
     void importReadsTheAreaFromTheFrontmatterOverTheFallback() {
         SystemPromptService twoAreas =
-            new SystemPromptService(repository, TestAreas.withAreas("OIM", "PingID"));
-        twoAreas.importPromptFromMarkdown("""
-            ---
-            name: p
-            type: KG
-            area: PingID
-            ---
-            text
-            """, null, "OIM");
+                new SystemPromptService(repository, TestAreas.withAreas("OIM", "PingID"));
+        twoAreas.importPromptFromMarkdown(
+                """
+                ---
+                name: p
+                type: KG
+                area: PingID
+                ---
+                text
+                """,
+                null,
+                "OIM");
         verify(repository).upsert("p", SystemPromptType.KG, "text", "", "PingID");
     }
 
     @Test
     void importPutsAFileWithoutAnAreaIntoTheFallback() {
-        service.importPromptFromMarkdown("""
-            ---
-            name: p
-            type: KG
-            ---
-            text
-            """, null, "OIM");
+        service.importPromptFromMarkdown(
+                """
+                ---
+                name: p
+                type: KG
+                ---
+                text
+                """,
+                null,
+                "OIM");
         verify(repository).upsert("p", SystemPromptType.KG, "text", "", "OIM");
     }
 
     @Test
     void exportWritesTheArea() {
-        when(repository.findByName("p")).thenReturn(Optional.of(
-            new SystemPrompt("p", SystemPromptType.KG, "text", "", null, null, false, "PingID")));
+        when(repository.findByName("p"))
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt(
+                                        "p",
+                                        SystemPromptType.KG,
+                                        "text",
+                                        "",
+                                        null,
+                                        null,
+                                        false,
+                                        "PingID")));
         assertTrue(service.exportPromptToMarkdown("p").contains("area: PingID"));
     }
 
     @Test
     void parseMarkdownRejectsMalformedYamlFrontmatter() {
-        assertThrows(IllegalArgumentException.class,
-            () -> SystemPromptService.parseMarkdown("---\nname: [unclosed\n---\ntext", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "---\nname: [unclosed\n---\ntext", "p", "OIM"));
     }
 
     @Test
     void parseMarkdownRejectsEmptyContentOrMissingFrontmatter() {
-        assertThrows(IllegalArgumentException.class,
-            () -> SystemPromptService.parseMarkdown(null, "p", "OIM"));
-        assertThrows(IllegalArgumentException.class,
-            () -> SystemPromptService.parseMarkdown("   ", "p", "OIM"));
-        assertThrows(IllegalArgumentException.class, () -> SystemPromptService
-            .parseMarkdown("Only body text without frontmatter", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SystemPromptService.parseMarkdown(null, "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SystemPromptService.parseMarkdown("   ", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "Only body text without frontmatter", "p", "OIM"));
     }
 
     @Test
     void parseMarkdownRejectsMissingOrEmptyType() {
-        assertThrows(IllegalArgumentException.class,
-            () -> SystemPromptService.parseMarkdown("---\nname: p\n---\nbody", "p", "OIM"));
-        assertThrows(IllegalArgumentException.class, () -> SystemPromptService
-            .parseMarkdown("---\nname: p\ntype:  \n---\nbody", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SystemPromptService.parseMarkdown("---\nname: p\n---\nbody", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "---\nname: p\ntype:  \n---\nbody", "p", "OIM"));
     }
 
     @Test
     void parseMarkdownRejectsRetiredChatAndUnknownTypes() {
-        assertThrows(IllegalArgumentException.class, () -> SystemPromptService
-            .parseMarkdown("---\nname: p\ntype: CHAT\n---\nbody", "p", "OIM"));
-        assertThrows(IllegalArgumentException.class, () -> SystemPromptService
-            .parseMarkdown("---\nname: p\ntype: agentic\n---\nbody", "p", "OIM"));
-        assertThrows(IllegalArgumentException.class, () -> SystemPromptService
-            .parseMarkdown("---\nname: p\ntype: UNKNOWN\n---\nbody", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "---\nname: p\ntype: CHAT\n---\nbody", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "---\nname: p\ntype: agentic\n---\nbody", "p", "OIM"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        SystemPromptService.parseMarkdown(
+                                "---\nname: p\ntype: UNKNOWN\n---\nbody", "p", "OIM"));
     }
 
     @Test
     void parseMarkdownAcceptsValidIngestionTypes() {
         SystemPrompt kg =
-            SystemPromptService.parseMarkdown("---\nname: p\ntype: KG\n---\nbody", "p", "OIM");
+                SystemPromptService.parseMarkdown("---\nname: p\ntype: KG\n---\nbody", "p", "OIM");
         assertEquals(SystemPromptType.KG, kg.type());
         assertEquals("body", kg.systemPrompt());
 
-        SystemPrompt sum = SystemPromptService
-            .parseMarkdown("---\nname: p\ntype: SUMMARIZE\n---\nbody", "p", "OIM");
+        SystemPrompt sum =
+                SystemPromptService.parseMarkdown(
+                        "---\nname: p\ntype: SUMMARIZE\n---\nbody", "p", "OIM");
         assertEquals(SystemPromptType.SUMMARIZE, sum.type());
     }
 }

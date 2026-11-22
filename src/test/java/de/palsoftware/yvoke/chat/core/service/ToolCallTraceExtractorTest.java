@@ -31,19 +31,24 @@ class ToolCallTraceExtractorTest {
     @Test
     void testExtractToolCalls_HappyPath() {
         LlmToolCall tc1 =
-            new LlmToolCall("call_1", "function", "search_corpus", "{\"query\":\"test\"}");
+                new LlmToolCall("call_1", "function", "search_corpus", "{\"query\":\"test\"}");
         LlmToolCall tc2 = new LlmToolCall("call_2", "function", "get_toc", "{\"doc\":\"1\"}");
 
         LlmMessage assistantMsg =
-            new LlmMessage("assistant", "", null, List.of(tc1, tc2), null, null);
+                new LlmMessage("assistant", "", null, List.of(tc1, tc2), null, null);
         LlmMessage toolMsg1 =
-            new LlmMessage("tool", "search results", null, null, "call_1", "search_corpus");
+                new LlmMessage("tool", "search results", null, null, "call_1", "search_corpus");
         LlmMessage toolMsg2 = new LlmMessage("tool", "toc", null, null, "call_2", "get_toc");
         LlmMessage finalAssistantMsg =
-            new LlmMessage("assistant", "Here is the final answer.", null, null, null, null);
+                new LlmMessage("assistant", "Here is the final answer.", null, null, null, null);
 
-        List<LlmMessage> messages = List.of(new LlmMessage("user", "Hello"), assistantMsg, toolMsg1,
-            toolMsg2, finalAssistantMsg);
+        List<LlmMessage> messages =
+                List.of(
+                        new LlmMessage("user", "Hello"),
+                        assistantMsg,
+                        toolMsg1,
+                        toolMsg2,
+                        finalAssistantMsg);
 
         List<ToolCallRecord> records = extractor.extract(messageId, messages);
 
@@ -75,24 +80,30 @@ class ToolCallTraceExtractorTest {
     void testDuplicateCallIdAcrossIterations_MaintainsMonotonicSeq() {
         // Turn 1
         LlmToolCall tcTurn1 =
-            new LlmToolCall("call_repeat", "function", "search_corpus", "{\"q\":\"a\"}");
+                new LlmToolCall("call_repeat", "function", "search_corpus", "{\"q\":\"a\"}");
         LlmMessage assistantTurn1 =
-            new LlmMessage("assistant", "", null, List.of(tcTurn1), null, null);
+                new LlmMessage("assistant", "", null, List.of(tcTurn1), null, null);
         LlmMessage toolTurn1 =
-            new LlmMessage("tool", "result_a", null, null, "call_repeat", "search_corpus");
+                new LlmMessage("tool", "result_a", null, null, "call_repeat", "search_corpus");
 
         // Turn 2 re-uses the exact same call ID "call_repeat"
         LlmToolCall tcTurn2 =
-            new LlmToolCall("call_repeat", "function", "search_corpus", "{\"q\":\"b\"}");
+                new LlmToolCall("call_repeat", "function", "search_corpus", "{\"q\":\"b\"}");
         LlmMessage assistantTurn2 =
-            new LlmMessage("assistant", "", null, List.of(tcTurn2), null, null);
+                new LlmMessage("assistant", "", null, List.of(tcTurn2), null, null);
         LlmMessage toolTurn2 =
-            new LlmMessage("tool", "result_b", null, null, "call_repeat", "search_corpus");
+                new LlmMessage("tool", "result_b", null, null, "call_repeat", "search_corpus");
 
         LlmMessage finalTurn = new LlmMessage("assistant", "Final done");
 
-        List<LlmMessage> messages = List.of(new LlmMessage("user", "Start"), assistantTurn1,
-            toolTurn1, assistantTurn2, toolTurn2, finalTurn);
+        List<LlmMessage> messages =
+                List.of(
+                        new LlmMessage("user", "Start"),
+                        assistantTurn1,
+                        toolTurn1,
+                        assistantTurn2,
+                        toolTurn2,
+                        finalTurn);
 
         List<ToolCallRecord> records = extractor.extract(messageId, messages);
 
@@ -113,10 +124,10 @@ class ToolCallTraceExtractorTest {
         // LLM emitted 2 tool calls, but stream interrupted after executing only the first
         LlmToolCall tc1 = new LlmToolCall("call_1", "function", "tool_ok", "{}");
         LlmToolCall tc2 =
-            new LlmToolCall("call_2", "function", "tool_abandoned", "{\"param\":\"val\"}");
+                new LlmToolCall("call_2", "function", "tool_abandoned", "{\"param\":\"val\"}");
 
         LlmMessage assistantMsg =
-            new LlmMessage("assistant", "", null, List.of(tc1, tc2), null, null);
+                new LlmMessage("assistant", "", null, List.of(tc1, tc2), null, null);
         LlmMessage toolMsg1 = new LlmMessage("tool", "ok", null, null, "call_1", "tool_ok");
         // No tool response for call_2!
 
@@ -137,25 +148,48 @@ class ToolCallTraceExtractorTest {
 
     @Test
     void testSanitizeNullBytesAndTypedErrorFlag() {
-        LlmToolCall tcErr = new LlmToolCall("call_err\u0000", "function", "tool\u0000name",
-            "{\"arg\":\"val\u0000\"}");
+        LlmToolCall tcErr =
+                new LlmToolCall(
+                        "call_err\u0000", "function", "tool\u0000name", "{\"arg\":\"val\u0000\"}");
         LlmToolCall tcLegit = new LlmToolCall("call_legit", "function", "search_corpus", "{}");
         LlmToolCall tcStrErr = new LlmToolCall("call_str_err", "function", "fetch_url", "{}");
 
         LlmMessage assistantMsg =
-            new LlmMessage("assistant", "", null, List.of(tcErr, tcLegit, tcStrErr), null, null);
+                new LlmMessage(
+                        "assistant", "", null, List.of(tcErr, tcLegit, tcStrErr), null, null);
         // Tool 1 failed with isError=true
-        LlmMessage toolMsg1 = new LlmMessage("tool", "Failed\u0000 to fetch", null, null,
-            "call_err\u0000", "tool\u0000name", true);
+        LlmMessage toolMsg1 =
+                new LlmMessage(
+                        "tool",
+                        "Failed\u0000 to fetch",
+                        null,
+                        null,
+                        "call_err\u0000",
+                        "tool\u0000name",
+                        true);
         // Tool 2 returned legitimate result with isError=false
-        LlmMessage toolMsg2 = new LlmMessage("tool", "Found 3 matching rows", null, null,
-            "call_legit", "search_corpus", false);
+        LlmMessage toolMsg2 =
+                new LlmMessage(
+                        "tool",
+                        "Found 3 matching rows",
+                        null,
+                        null,
+                        "call_legit",
+                        "search_corpus",
+                        false);
         // Tool 3 has typed isError=true
-        LlmMessage toolMsg3 = new LlmMessage("tool", "Error: connection refused", null, null,
-            "call_str_err", "fetch_url", true);
+        LlmMessage toolMsg3 =
+                new LlmMessage(
+                        "tool",
+                        "Error: connection refused",
+                        null,
+                        null,
+                        "call_str_err",
+                        "fetch_url",
+                        true);
 
         List<ToolCallRecord> records =
-            extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2, toolMsg3));
+                extractor.extract(messageId, List.of(assistantMsg, toolMsg1, toolMsg2, toolMsg3));
 
         assertThat(records).hasSize(3);
         ToolCallRecord r0 = records.get(0);
@@ -184,7 +218,7 @@ class ToolCallTraceExtractorTest {
         LlmToolCall tcBlank = new LlmToolCall("   ", "function", "   ", "{}");
 
         LlmMessage assistantMsg =
-            new LlmMessage("assistant", "", null, List.of(tcNull, tcBlank), null, null);
+                new LlmMessage("assistant", "", null, List.of(tcNull, tcBlank), null, null);
         LlmMessage toolMsg1 = new LlmMessage("tool", "res1", null, null, null, null);
         LlmMessage toolMsg2 = new LlmMessage("tool", "res2", null, null, null, null);
 

@@ -12,16 +12,37 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SsrfAddressValidatorTest {
 
     @ParameterizedTest
-    @ValueSource(strings = {"127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
-        "100.64.0.1", "100.100.100.200", "0.0.0.0", "0.1.2.3", "198.18.0.1", "224.0.0.1",
-        "255.255.255.255", "::1", "fc00::1", "fd12:3456:789a::1", "fe80::1", "ff02::1",
-        "::ffff:127.0.0.1", "::ffff:169.254.169.254", "::ffff:10.0.0.5"})
+    @ValueSource(
+            strings = {
+                "127.0.0.1",
+                "10.0.0.1",
+                "172.16.0.1",
+                "192.168.1.1",
+                "169.254.169.254",
+                "100.64.0.1",
+                "100.100.100.200",
+                "0.0.0.0",
+                "0.1.2.3",
+                "198.18.0.1",
+                "224.0.0.1",
+                "255.255.255.255",
+                "::1",
+                "fc00::1",
+                "fd12:3456:789a::1",
+                "fe80::1",
+                "ff02::1",
+                "::ffff:127.0.0.1",
+                "::ffff:169.254.169.254",
+                "::ffff:10.0.0.5"
+            })
     void blocksPrivateLoopbackMetadataCgnatUlaAndMappedAddresses(String literal) throws Exception {
         InetAddress addr = InetAddress.getByName(literal);
         assertThat(SsrfAddressValidator.isBlockedAddress(addr))
-            .as("address %s must be blocked", literal).isTrue();
+                .as("address %s must be blocked", literal)
+                .isTrue();
         assertThatThrownBy(() -> SsrfAddressValidator.resolveAndValidate(literal))
-            .isInstanceOf(BlockedHostException.class).hasMessageContaining("blocked address");
+                .isInstanceOf(BlockedHostException.class)
+                .hasMessageContaining("blocked address");
     }
 
     @ParameterizedTest
@@ -29,7 +50,8 @@ class SsrfAddressValidatorTest {
     void allowsPublicRoutableAddresses(String literal) throws Exception {
         InetAddress addr = InetAddress.getByName(literal);
         assertThat(SsrfAddressValidator.isBlockedAddress(addr))
-            .as("public address %s must be allowed", literal).isFalse();
+                .as("public address %s must be allowed", literal)
+                .isFalse();
         assertThat(SsrfAddressValidator.resolveAndValidate(literal)).isNotEmpty();
     }
 
@@ -37,6 +59,6 @@ class SsrfAddressValidatorTest {
     void rejectsNullAddressAndBlankHost() {
         assertThat(SsrfAddressValidator.isBlockedAddress(null)).isTrue();
         assertThatThrownBy(() -> SsrfAddressValidator.resolveAndValidate("  "))
-            .isInstanceOf(UnknownHostException.class);
+                .isInstanceOf(UnknownHostException.class);
     }
 }

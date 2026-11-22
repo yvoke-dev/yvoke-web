@@ -13,30 +13,36 @@ public class OrchestratorPropertiesTest {
 
     private OrchestratorProperties props(Profile... profiles) {
         return new OrchestratorProperties(
-            2, 8, 10, 50, new RoleDefaults(new RoleConfig("pro", "high"),
-                new RoleConfig("pro", "high"), new RoleConfig("flash", "medium")),
-            List.of(profiles));
+                2,
+                8,
+                10,
+                50,
+                new RoleDefaults(
+                        new RoleConfig("pro", "high"),
+                        new RoleConfig("pro", "high"),
+                        new RoleConfig("flash", "medium")),
+                List.of(profiles));
     }
 
     @Test
     public void resolvedLimitsFailFastWhenUnconfiguredOrNonPositive() {
         OrchestratorProperties missing = new OrchestratorProperties(2, 8, null, null, null, null);
         assertThatThrownBy(missing::resolvedMaxReviewRoundsLimit)
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(missing::resolvedMaxSpecialistCallsLimit)
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
 
         OrchestratorProperties zero = new OrchestratorProperties(2, 8, 0, -1, null, null);
         assertThatThrownBy(zero::resolvedMaxReviewRoundsLimit)
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(zero::resolvedMaxSpecialistCallsLimit)
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     public void resolve_inheritsDefaultsWhenNoOverride() {
         ResolvedProfile r =
-            props(new Profile("OIM", "o", "r", List.of("s1"), null, null, null)).resolve("OIM");
+                props(new Profile("OIM", "o", "r", List.of("s1"), null, null, null)).resolve("OIM");
 
         assertThat(r.orchestrator().model()).isEqualTo("pro");
         assertThat(r.specialist().model()).isEqualTo("flash");
@@ -47,9 +53,17 @@ public class OrchestratorPropertiesTest {
 
     @Test
     public void resolve_mergesPerRoleOverrideOverDefaults() {
-        Profile p = new Profile("PingID", "o", "r", List.of("s1"), null, null,
-            new RoleConfig("other-flash", null)); // override specialist model, keep default
-                                                  // thinking
+        Profile p =
+                new Profile(
+                        "PingID",
+                        "o",
+                        "r",
+                        List.of("s1"),
+                        null,
+                        null,
+                        new RoleConfig(
+                                "other-flash", null)); // override specialist model, keep default
+        // thinking
         ResolvedProfile r = props(p).resolve("PingID");
 
         assertThat(r.specialist().model()).isEqualTo("other-flash");
@@ -60,14 +74,18 @@ public class OrchestratorPropertiesTest {
     @Test
     public void resolve_unknownProfileThrows() {
         assertThatThrownBy(() -> props().resolve("nope"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Unknown orchestrator profile");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown orchestrator profile");
     }
 
     @Test
     public void profileNames_listsConfigured() {
-        assertThat(props(new Profile("OIM", "o", "r", List.of(), null, null, null),
-            new Profile("PingID", "o", "r", List.of(), null, null, null)).profileNames())
-            .containsExactly("OIM", "PingID");
+        assertThat(
+                        props(
+                                        new Profile("OIM", "o", "r", List.of(), null, null, null),
+                                        new Profile(
+                                                "PingID", "o", "r", List.of(), null, null, null))
+                                .profileNames())
+                .containsExactly("OIM", "PingID");
     }
 }

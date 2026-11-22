@@ -33,34 +33,29 @@ import org.springframework.web.context.WebApplicationContext;
 /**
  * The feedback dashboard's two htmx write cells and its filter/sort controls.
  *
- * <p>
- * {@code AdminFeedbackController} and {@code ChatAdminQueryRepository} had no tests whatsoever, so
- * the {@code sort} and {@code timeRange} SQL branches were dead to the suite and the two write
+ * <p>{@code AdminFeedbackController} and {@code ChatAdminQueryRepository} had no tests whatsoever,
+ * so the {@code sort} and {@code timeRange} SQL branches were dead to the suite and the two write
  * endpoints were never called. The writes return <em>fragments</em> ({@code :: reviewed-cell},
  * {@code :: notes-cell}), which is exactly what a whole-page GET can never exercise: a fragment
  * renders a sub-tree against a model containing only two attributes, so a stale expression in it
  * fails here and nowhere else.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.security.mock=true")
 public class AdminFeedbackWriteIT {
 
     private static final String OID = "it-feedback-owner";
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private ConversationRepository conversationRepository;
+    @Autowired private ConversationRepository conversationRepository;
 
-    @Autowired
-    private MessageRepository messageRepository;
+    @Autowired private MessageRepository messageRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private MockMvc mockMvc;
 
@@ -74,14 +69,24 @@ public class AdminFeedbackWriteIT {
         userRepository.upsert(OID, OID + "@local", "IT Feedback Owner");
         UUID userId = userRepository.findByEntraOid(OID).orElseThrow().id();
         conversationId = UUID.randomUUID();
-        conversationRepository.create(conversationId, userId, "IT feedback conversation", Map.of(),
-            "web");
+        conversationRepository.create(
+                conversationId, userId, "IT feedback conversation", Map.of(), "web");
         UUID messageId = UUID.randomUUID();
-        messageRepository.save(new Message(messageId, conversationId, "assistant", "An answer.",
-            List.of(), List.of(), Instant.now()));
+        messageRepository.save(
+                new Message(
+                        messageId,
+                        conversationId,
+                        "assistant",
+                        "An answer.",
+                        List.of(),
+                        List.of(),
+                        Instant.now()));
         feedbackId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO message_feedback (id, message_id, rating, comment) "
-            + "VALUES (?, ?, -1, 'Needs work.')", feedbackId, messageId);
+        jdbcTemplate.update(
+                "INSERT INTO message_feedback (id, message_id, rating, comment) "
+                        + "VALUES (?, ?, -1, 'Needs work.')",
+                feedbackId,
+                messageId);
     }
 
     @AfterEach
@@ -90,28 +95,35 @@ public class AdminFeedbackWriteIT {
     }
 
     private static OidcLoginRequestPostProcessor admin() {
-        return oidcLogin().idToken(token -> token.claim("oid", "it-feedback-admin")).authorities(
-            new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_USER"));
+        return oidcLogin()
+                .idToken(token -> token.claim("oid", "it-feedback-admin"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     private static OidcLoginRequestPostProcessor plainUser() {
-        return oidcLogin().idToken(token -> token.claim("oid", "it-feedback-user"))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+        return oidcLogin()
+                .idToken(token -> token.claim("oid", "it-feedback-user"))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     private Boolean reviewedFlag() {
-        return jdbcTemplate.queryForObject("SELECT reviewed FROM message_feedback WHERE id = ?",
-            Boolean.class, feedbackId);
+        return jdbcTemplate.queryForObject(
+                "SELECT reviewed FROM message_feedback WHERE id = ?", Boolean.class, feedbackId);
     }
 
     @Test
     public void togglingReviewedPersistsAndReturnsTheCellFragment() throws Exception {
         assertThat(reviewedFlag()).isFalse();
 
-        mockMvc
-            .perform(post("/admin/feedback/" + feedbackId + "/toggle-reviewed").with(csrf())
-                .with(admin()).param("reviewed", "true").header("HX-Request", "true"))
-            .andExpect(status().isOk());
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/toggle-reviewed")
+                                .with(csrf())
+                                .with(admin())
+                                .param("reviewed", "true")
+                                .header("HX-Request", "true"))
+                .andExpect(status().isOk());
 
         assertThat(reviewedFlag()).isTrue();
     }
@@ -119,10 +131,13 @@ public class AdminFeedbackWriteIT {
     /** The checkbox posts {@code on}, not {@code true}, when a browser submits it. */
     @Test
     public void theCheckboxOnValueIsAlsoAcceptedAsReviewed() throws Exception {
-        mockMvc
-            .perform(post("/admin/feedback/" + feedbackId + "/toggle-reviewed").with(csrf())
-                .with(admin()).param("reviewed", "on").header("HX-Request", "true"))
-            .andExpect(status().isOk());
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/toggle-reviewed")
+                                .with(csrf())
+                                .with(admin())
+                                .param("reviewed", "on")
+                                .header("HX-Request", "true"))
+                .andExpect(status().isOk());
 
         assertThat(reviewedFlag()).isTrue();
     }
@@ -131,34 +146,57 @@ public class AdminFeedbackWriteIT {
     public void anAbsentReviewedParamClearsTheFlag() throws Exception {
         jdbcTemplate.update("UPDATE message_feedback SET reviewed = true WHERE id = ?", feedbackId);
 
-        mockMvc.perform(post("/admin/feedback/" + feedbackId + "/toggle-reviewed").with(csrf())
-            .with(admin()).header("HX-Request", "true")).andExpect(status().isOk());
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/toggle-reviewed")
+                                .with(csrf())
+                                .with(admin())
+                                .header("HX-Request", "true"))
+                .andExpect(status().isOk());
 
         assertThat(reviewedFlag()).isFalse();
     }
 
     @Test
     public void savingNotesPersistsAndReturnsTheCellFragment() throws Exception {
-        mockMvc
-            .perform(post("/admin/feedback/" + feedbackId + "/notes").with(csrf()).with(admin())
-                .param("notes", "Chased with the author.").header("HX-Request", "true"))
-            .andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString("Chased with")));
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/notes")
+                                .with(csrf())
+                                .with(admin())
+                                .param("notes", "Chased with the author.")
+                                .header("HX-Request", "true"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("Chased with")));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT notes FROM message_feedback WHERE id = ?",
-            String.class, feedbackId)).isEqualTo("Chased with the author.");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT notes FROM message_feedback WHERE id = ?",
+                                String.class,
+                                feedbackId))
+                .isEqualTo("Chased with the author.");
     }
 
     @Test
     public void bothFeedbackWritesRequireAdmin() throws Exception {
-        mockMvc.perform(post("/admin/feedback/" + feedbackId + "/toggle-reviewed").with(csrf())
-            .with(plainUser()).param("reviewed", "true")).andExpect(status().isForbidden());
-        mockMvc.perform(post("/admin/feedback/" + feedbackId + "/notes").with(csrf())
-            .with(plainUser()).param("notes", "nope")).andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/toggle-reviewed")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("reviewed", "true"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        post("/admin/feedback/" + feedbackId + "/notes")
+                                .with(csrf())
+                                .with(plainUser())
+                                .param("notes", "nope"))
+                .andExpect(status().isForbidden());
 
         assertThat(reviewedFlag()).isFalse();
-        assertThat(jdbcTemplate.queryForObject("SELECT notes FROM message_feedback WHERE id = ?",
-            String.class, feedbackId)).isNull();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT notes FROM message_feedback WHERE id = ?",
+                                String.class,
+                                feedbackId))
+                .isNull();
     }
 
     /**
@@ -171,17 +209,21 @@ public class AdminFeedbackWriteIT {
     public void everyFilterAndSortCombinationRenders() throws Exception {
         for (String sort : new String[] {"newest", "oldest"}) {
             for (String timeRange : new String[] {"all", "day", "week", "month"}) {
-                mockMvc.perform(get("/admin/feedback").param("sort", sort)
-                    .param("timeRange", timeRange).with(admin())).andExpect(status().isOk());
+                mockMvc.perform(
+                                get("/admin/feedback")
+                                        .param("sort", sort)
+                                        .param("timeRange", timeRange)
+                                        .with(admin()))
+                        .andExpect(status().isOk());
             }
         }
         for (String rating : new String[] {"1", "-1"}) {
             mockMvc.perform(get("/admin/feedback").param("rating", rating).with(admin()))
-                .andExpect(status().isOk());
+                    .andExpect(status().isOk());
         }
         for (String reviewed : new String[] {"true", "false"}) {
             mockMvc.perform(get("/admin/feedback").param("reviewed", reviewed).with(admin()))
-                .andExpect(status().isOk());
+                    .andExpect(status().isOk());
         }
     }
 
@@ -192,6 +234,6 @@ public class AdminFeedbackWriteIT {
     @Test
     public void theSecondPageOfTheDashboardRenders() throws Exception {
         mockMvc.perform(get("/admin/feedback").param("page", "1").param("size", "1").with(admin()))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 }

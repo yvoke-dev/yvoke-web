@@ -7,9 +7,13 @@ package de.palsoftware.yvoke.ingest.core.model;
  * so adding a kind here requires no schema change and no change to the engine.
  */
 public enum IngestJobKind {
-    STANDARD("standard"), HIERARCHICAL("hierarchical"), KG_EXTRACT("kg-extract"), CONFLUENCE_IMPORT(
-        "confluence-import"), CONFLUENCE_PAGE_IMPORT(
-            "confluence-page-import"), CUSTOM("custom"), JSON_IMPORT("json-import");
+    STANDARD("standard"),
+    HIERARCHICAL("hierarchical"),
+    KG_EXTRACT("kg-extract"),
+    CONFLUENCE_IMPORT("confluence-import"),
+    CONFLUENCE_PAGE_IMPORT("confluence-page-import"),
+    CUSTOM("custom"),
+    JSON_IMPORT("json-import");
 
     private final String value;
 

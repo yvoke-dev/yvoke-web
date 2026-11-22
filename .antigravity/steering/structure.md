@@ -16,7 +16,6 @@ yvoke/
 │       └── spring_reviewer.md
 ├── .github/                # CI/CD (GitHub Actions)
 │   └── workflows/          # ci.yml (unit + IT with coverage, then Playwright e2e), release.yml (resolves the version, pins it into the k8s manifest, verifies, commits and tags), docker-build-publish.yml (reacts to the published release), postgres-image-publish.yml (manual pgvector + pg_search image)
-├── config/                 # eclipse-java-google-style.xml — the format Spotless applies
 ├── docker/                 # Docker config files
 │   ├── db/                 # Database migrations and Flyway Dockerfile
 │   │   └── migration/      # Flyway SQL scripts — consolidated V1__init_schema.sql (schema + indexes + partition triggers + tag-scoped graph identity + confluence_instances + job/document uniqueness, no seed) PLUS incremental V2..V18 (incl. message_tool_calls, agent_runs assistant_message_id, playbook_versions, conversation_area, retire_chat_system_prompts, hardening_leases_and_constraints); deferred V17 contract cleanup (areas.default_system_prompt, playbooks.system_prompt, CHAT row purge, ck_system_prompts_type) is scheduled for V19 in the next release after 1.3.0 is retired using idempotent DDL (`DROP COLUMN IF EXISTS`, `DELETE`, `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT`); add the next as V19, never edit an existing one

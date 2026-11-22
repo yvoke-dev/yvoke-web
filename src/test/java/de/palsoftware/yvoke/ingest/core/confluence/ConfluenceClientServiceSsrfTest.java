@@ -20,38 +20,45 @@ import org.springframework.web.client.RestClient;
 class ConfluenceClientServiceSsrfTest {
 
     private final ConfluenceClientService service =
-        new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5, true,
-            List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+            new ConfluenceClientService(
+                    mock(SecretCipher.class),
+                    RestClient.builder(),
+                    3,
+                    1,
+                    5,
+                    true,
+                    List.of(),
+                    ConfluenceClientService.MAX_ATTACHMENT_BYTES);
 
     @Test
     void rejectsLoopbackHost() {
         assertThatThrownBy(() -> service.getClient("http://localhost", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsPrivateRfc1918Host() {
         assertThatThrownBy(() -> service.getClient("https://10.0.0.5", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsLoopbackIpLiteral() {
         assertThatThrownBy(() -> service.getClient("http://127.0.0.1", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsNonHttpScheme() {
         assertThatThrownBy(() -> service.getClient("ftp://example.com", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsLinkLocalCloudMetadataAddress() {
         // The canonical SSRF target: the cloud instance-metadata endpoint (link-local).
         assertThatThrownBy(() -> service.getClient("http://169.254.169.254", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -61,12 +68,28 @@ class ConfluenceClientServiceSsrfTest {
      */
     @Test
     void rejectsAnInstanceWhoseStoredDomainResolvesToABlockedAddress() {
-        ConfluenceInstance instance = new ConfluenceInstance(UUID.randomUUID(), "Internal",
-            "internal", "http://10.0.0.5", "e@x.com", "tok", null, "SPACE", "1", null, null, "coll",
-            null, false, true, null, null);
+        ConfluenceInstance instance =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Internal",
+                        "internal",
+                        "http://10.0.0.5",
+                        "e@x.com",
+                        "tok",
+                        null,
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> service.getClient(instance))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -76,13 +99,29 @@ class ConfluenceClientServiceSsrfTest {
      */
     @Test
     void rejectsAnInstanceWhoseStoredDomainIsNotAUrl() {
-        ConfluenceInstance instance = new ConfluenceInstance(UUID.randomUUID(), "Legacy", "legacy",
-            "wiki.example.com", "e@x.com", "tok", null, "SPACE", "1", null, null, "coll", null,
-            false, true, null, null);
+        ConfluenceInstance instance =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Legacy",
+                        "legacy",
+                        "wiki.example.com",
+                        "e@x.com",
+                        "tok",
+                        null,
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThat(instance.domain()).isEqualTo("wiki.example.com");
         assertThatThrownBy(() -> service.getClient(instance))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -90,45 +129,79 @@ class ConfluenceClientServiceSsrfTest {
      * crawl path, and no test executes them: every crawl test drives a scripted subclass that
      * OVERRIDES that method, so both lines have run zero times since they were written. They are
      * what stands between a compromised (or merely hostile) Confluence and the instance's
-     * credentials: the crawl follows {@code _links.next} verbatim, so a response naming
-     * {@code 169.254.169.254} or another site would be fetched with this instance's
-     * {@code Basic base64(email:token)} default header attached — SSRF into the cloud metadata
-     * endpoint plus credential egress to an attacker-chosen host, and the crawl would report a
-     * perfectly ordinary page batch.
+     * credentials: the crawl follows {@code _links.next} verbatim, so a response naming {@code
+     * 169.254.169.254} or another site would be fetched with this instance's {@code Basic
+     * base64(email:token)} default header attached — SSRF into the cloud metadata endpoint plus
+     * credential egress to an attacker-chosen host, and the crawl would report a perfectly ordinary
+     * page batch.
      *
-     * <p>
-     * Both cases use IP literals, so {@code InetAddress.getAllByName} resolves them without DNS and
-     * nothing here touches the network. The instance deliberately carries NO stored token: if
-     * either guard stopped firing, the call would fail at client construction with
-     * {@code IllegalStateException} ("no API token is stored") rather than opening a socket — which
-     * keeps the test hermetic and still turns a removed guard red.
+     * <p>Both cases use IP literals, so {@code InetAddress.getAllByName} resolves them without DNS
+     * and nothing here touches the network. The instance deliberately carries NO stored token: if
+     * either guard stopped firing, the call would fail at client construction with {@code
+     * IllegalStateException} ("no API token is stored") rather than opening a socket — which keeps
+     * the test hermetic and still turns a removed guard red.
      */
     @Test
     void aCrawlPageUrlIsRefusedWhenItLeavesTheInstanceHostOrResolvesToABlockedAddress() {
-        ConfluenceInstance instance = new ConfluenceInstance(UUID.randomUUID(), "Hostile",
-            "hostile", "https://203.0.113.5", "e@x.com", null, null, "SPACE", "1", null, null,
-            "coll", null, false, true, null, null);
+        ConfluenceInstance instance =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Hostile",
+                        "hostile",
+                        "https://203.0.113.5",
+                        "e@x.com",
+                        null,
+                        null,
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         // A `next` link on the instance's OWN host pointing at the link-local metadata service:
         // the host check cannot see this one, only the address check can.
-        assertThatThrownBy(() -> service.fetchSearchPage(instance, "https://169.254.169.254",
-            URI.create("https://169.254.169.254/rest/api/content/search?cursor=x")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("blocked address");
+        assertThatThrownBy(() ->
+                        service.fetchSearchPage(
+                                instance,
+                                "https://169.254.169.254",
+                                URI.create(
+                                        "https://169.254.169.254/rest/api/content/search?cursor=x")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("blocked address");
 
         // A publicly routable but DIFFERENT host: it passes the address check, so only the
         // same-host check keeps the Authorization header from being sent to it.
-        assertThatThrownBy(() -> service.fetchSearchPage(instance, "https://203.0.113.5",
-            URI.create("https://198.51.100.7/rest/api/content/search?cursor=x")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("different host");
+        assertThatThrownBy(() ->
+                        service.fetchSearchPage(
+                                instance,
+                                "https://203.0.113.5",
+                                URI.create(
+                                        "https://198.51.100.7/rest/api/content/search?cursor=x")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different host");
     }
 
-    private static String cql(String space, String rootPageId, String includeLabels,
-        String excludeLabels) throws Exception {
+    private static String cql(
+            String space, String rootPageId, String includeLabels, String excludeLabels)
+            throws Exception {
         ConfluenceClientService client =
-            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5,
-                true, List.of(), ConfluenceClientService.MAX_ATTACHMENT_BYTES);
-        Method m = ConfluenceClientService.class.getDeclaredMethod("buildCqlQuery", String.class,
-            String.class, String.class, String.class);
+                new ConfluenceClientService(
+                        mock(SecretCipher.class),
+                        RestClient.builder(),
+                        3,
+                        1,
+                        5,
+                        true,
+                        List.of(),
+                        ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+        Method m =
+                ConfluenceClientService.class.getDeclaredMethod(
+                        "buildCqlQuery", String.class, String.class, String.class, String.class);
         m.setAccessible(true);
         return (String) m.invoke(client, space, rootPageId, includeLabels, excludeLabels);
     }
@@ -144,81 +217,123 @@ class ConfluenceClientServiceSsrfTest {
      */
     @Test
     void theCrawlQueryScopesToTheSpaceAndRootAndEscapesQuotesInEveryOperatorValue()
-        throws Exception {
+            throws Exception {
         assertThat(cql("SPACE", "12345", null, null))
-            .isEqualTo("type=page and space='SPACE' and (ancestor='12345' or id='12345')");
+                .isEqualTo("type=page and space='SPACE' and (ancestor='12345' or id='12345')");
 
         // Include labels are quoted AND escaped; exclude labels get one clause each.
         String withLabels = cql("SPACE", "12345", "de, en", "draft");
-        assertThat(withLabels).contains(" and label in (\"de\",\"en\")")
-            .contains(" and label!=\"draft\"");
+        assertThat(withLabels)
+                .contains(" and label in (\"de\",\"en\")")
+                .contains(" and label!=\"draft\"");
 
         // A value carrying quotes must not be able to close out of its literal.
         String injected = cql("SP'ACE", "12345", "x\" or type=page and space=\"OTHER", null);
-        assertThat(injected).as("a single quote in the space must stay escaped")
-            .contains("space='SP\\'ACE'");
-        assertThat(injected).as("a double quote in a label must stay escaped")
-            .doesNotContain("space=\"OTHER\"");
+        assertThat(injected)
+                .as("a single quote in the space must stay escaped")
+                .contains("space='SP\\'ACE'");
+        assertThat(injected)
+                .as("a double quote in a label must stay escaped")
+                .doesNotContain("space=\"OTHER\"");
         assertThat(injected).contains("\\\"");
     }
 
     @Test
     void rejectsPlainHttpInProductionAndEnforcesAllowedHosts() {
         assertThatThrownBy(() -> service.getClient("http://203.0.113.5", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("https");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("https");
 
         ConfluenceClientService allowlisted =
-            new ConfluenceClientService(mock(SecretCipher.class), RestClient.builder(), 1, 1, 5,
-                true, List.of("*.atlassian.net", "wiki.corp.example"), 1024);
+                new ConfluenceClientService(
+                        mock(SecretCipher.class),
+                        RestClient.builder(),
+                        1,
+                        1,
+                        5,
+                        true,
+                        List.of("*.atlassian.net", "wiki.corp.example"),
+                        1024);
         assertThatThrownBy(() -> allowlisted.getClient("https://203.0.113.5", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("allowed-hosts");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("allowed-hosts");
         assertThatThrownBy(
-            () -> allowlisted.getClient("https://evil-atlassian.net", "e@x.com", "tok"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("allowed-hosts");
+                        () -> allowlisted.getClient("https://evil-atlassian.net", "e@x.com", "tok"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("allowed-hosts");
     }
 
     @Test
     void testConnectionNeverLeaksRemoteResponseBodyAndStreamingDownloadEnforcesByteCap()
-        throws Exception {
+            throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/rest/api/space/SEC", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            byte[] secret = "AWS_IMDS_SECRET_TOKEN_XYZ".getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(403, secret.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(secret);
-            }
-        });
-        server.createContext("/download/huge", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            byte[] big = new byte[2048];
-            exchange.sendResponseHeaders(200, 0); // chunked: no Content-Length header
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(big);
-            }
-        });
+        server.createContext(
+                "/rest/api/space/SEC",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    byte[] secret = "AWS_IMDS_SECRET_TOKEN_XYZ".getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(403, secret.length);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(secret);
+                    }
+                });
+        server.createContext(
+                "/download/huge",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    byte[] big = new byte[2048];
+                    exchange.sendResponseHeaders(200, 0); // chunked: no Content-Length header
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(big);
+                    }
+                });
         server.start();
         try {
             String base = "http://127.0.0.1:" + server.getAddress().getPort();
-            ConfluenceClientService localService = new ConfluenceClientService(
-                mock(SecretCipher.class), RestClient.builder(), 1, 1, 5, false, List.of(), 512) {
-                @Override
-                public RestClient getClient(String domain, String email, String apiToken) {
-                    return RestClient.builder().baseUrl(base).build();
-                }
-            };
+            ConfluenceClientService localService =
+                    new ConfluenceClientService(
+                            mock(SecretCipher.class),
+                            RestClient.builder(),
+                            1,
+                            1,
+                            5,
+                            false,
+                            List.of(),
+                            512) {
+                        @Override
+                        public RestClient getClient(String domain, String email, String apiToken) {
+                            return RestClient.builder().baseUrl(base).build();
+                        }
+                    };
 
-            ConnectionTestResult res = localService.testConnection("https://203.0.113.5", "a@b.com",
-                "tok", "SEC", "1", null, null);
+            ConnectionTestResult res =
+                    localService.testConnection(
+                            "https://203.0.113.5", "a@b.com", "tok", "SEC", "1", null, null);
             assertThat(res.ok()).isFalse();
             assertThat(res.message()).isEqualTo("Atlassian API returned HTTP 403");
             assertThat(res.message()).doesNotContain("AWS_IMDS_SECRET_TOKEN_XYZ");
 
-            ConfluenceInstance inst = new ConfluenceInstance(UUID.randomUUID(), "Local", "local",
-                "https://203.0.113.5/wiki", "a@b.com", "tok", null, "SEC", "1", null, null, "coll",
-                null, false, true, null, null);
+            ConfluenceInstance inst =
+                    new ConfluenceInstance(
+                            UUID.randomUUID(),
+                            "Local",
+                            "local",
+                            "https://203.0.113.5/wiki",
+                            "a@b.com",
+                            "tok",
+                            null,
+                            "SEC",
+                            "1",
+                            null,
+                            null,
+                            "coll",
+                            null,
+                            false,
+                            true,
+                            null,
+                            null);
             assertThatThrownBy(() -> localService.downloadAttachment(inst, "/download/huge"))
-                .isInstanceOf(AttachmentTooLargeException.class);
+                    .isInstanceOf(AttachmentTooLargeException.class);
         } finally {
             server.stop(0);
         }

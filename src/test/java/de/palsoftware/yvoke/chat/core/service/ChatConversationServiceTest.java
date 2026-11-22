@@ -41,7 +41,7 @@ public class ChatConversationServiceTest {
     private ChatConversationService chatConversationService;
 
     private static final UUID DEFAULT_USER_ID =
-        UUID.fromString("00000000-0000-0000-0000-000000000001");
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @BeforeEach
     public void setUp() {
@@ -49,109 +49,144 @@ public class ChatConversationServiceTest {
         userService = mock(UserService.class);
         tagRepository = mock(TagRepository.class);
 
-        when(userService.getCurrentUser()).thenReturn(Optional
-            .of(new User(DEFAULT_USER_ID, "default-oid", "default@test.local", "Default", null)));
+        when(userService.getCurrentUser())
+                .thenReturn(
+                        Optional.of(
+                                new User(
+                                        DEFAULT_USER_ID,
+                                        "default-oid",
+                                        "default@test.local",
+                                        "Default",
+                                        null)));
 
-        ChatProperties chatProperties = new ChatProperties(true, List.of("gemini-3.1-flash-lite"),
-            true, false, "", Duration.ofMinutes(5), 100_000, 400_000);
+        ChatProperties chatProperties =
+                new ChatProperties(
+                        true,
+                        List.of("gemini-3.1-flash-lite"),
+                        true,
+                        false,
+                        "",
+                        Duration.ofMinutes(5),
+                        100_000,
+                        400_000);
 
-        chatConversationService = new ChatConversationService(conversationRepository, userService,
-            chatProperties, tagRepository);
+        chatConversationService =
+                new ChatConversationService(
+                        conversationRepository, userService, chatProperties, tagRepository);
     }
 
     @Test
     public void testCreateConversation() {
-        Conversation mockConv = new Conversation(UUID.randomUUID(), DEFAULT_USER_ID, "Title",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation mockConv =
+                new Conversation(
+                        UUID.randomUUID(),
+                        DEFAULT_USER_ID,
+                        "Title",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(any())).thenReturn(Optional.of(mockConv));
 
         Conversation result = chatConversationService.createConversation();
 
         assertThat(result).isNotNull();
-        verify(conversationRepository).create(any(UUID.class), eq(DEFAULT_USER_ID),
-            eq("New Conversation"), anyMap());
+        verify(conversationRepository)
+                .create(any(UUID.class), eq(DEFAULT_USER_ID), eq("New Conversation"), anyMap());
     }
 
     /**
      * What is seeded here IS the contract for a brand-new conversation, and the two halves of it
      * fail in opposite directions.
      *
-     * <p>
-     * A missing key is fatal on the next send: {@code ChatMessageService.resolveModelToUse} throws
-     * {@code IllegalStateException} on a blank model, so dropping the model seed makes every fresh
-     * conversation die on its first question with a generic system error the user cannot act on.
-     * The other three are read by the UI, and {@code thinking-level} additionally reaches the
+     * <p>A missing key is fatal on the next send: {@code ChatMessageService.resolveModelToUse}
+     * throws {@code IllegalStateException} on a blank model, so dropping the model seed makes every
+     * fresh conversation die on its first question with a generic system error the user cannot act
+     * on. The other three are read by the UI, and {@code thinking-level} additionally reaches the
      * provider — seed it with anything other than "medium" and every new conversation silently
      * starts on a different thinking budget, changing both answer quality and cost for every user,
      * with nothing on screen to show it happened.
      *
-     * <p>
-     * An EXTRA key is just as damaging, which is why this asserts on the whole map rather than
-     * checking four entries. {@code orchestrator-profile} is deliberately absent:
-     * {@code prepareAndSubmitAsync} routes to the multi-agent orchestrator whenever
-     * {@code orchestrator-profile} is present and non-blank, so seeding it — even with a value that
-     * merely looks like a sensible default — silently puts every new conversation into MAS mode,
+     * <p>An EXTRA key is just as damaging, which is why this asserts on the whole map rather than
+     * checking four entries. {@code orchestrator-profile} is deliberately absent: {@code
+     * prepareAndSubmitAsync} routes to the multi-agent orchestrator whenever {@code
+     * orchestrator-profile} is present and non-blank, so seeding it — even with a value that merely
+     * looks like a sensible default — silently puts every new conversation into MAS mode,
      * multiplying cost per turn and bypassing the playbook path entirely.
      *
-     * <p>
-     * {@code testCreateConversation} asserts only that {@code create} was called with
-     * {@code anyMap()}, so it passes against any seed at all, correct or not.
+     * <p>{@code testCreateConversation} asserts only that {@code create} was called with {@code
+     * anyMap()}, so it passes against any seed at all, correct or not.
      */
     @Test
     public void aNewConversationIsSeededWithExactlyTheDefaultSettings() {
-        Conversation created = new Conversation(UUID.randomUUID(), DEFAULT_USER_ID,
-            "New Conversation", Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation created =
+                new Conversation(
+                        UUID.randomUUID(),
+                        DEFAULT_USER_ID,
+                        "New Conversation",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(any())).thenReturn(Optional.of(created));
 
         chatConversationService.createConversation();
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> settingsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(conversationRepository).create(any(UUID.class), eq(DEFAULT_USER_ID),
-            eq("New Conversation"), settingsCaptor.capture());
+        verify(conversationRepository)
+                .create(
+                        any(UUID.class),
+                        eq(DEFAULT_USER_ID),
+                        eq("New Conversation"),
+                        settingsCaptor.capture());
 
         // The model is the FIRST entry of app.chat.allowed-models (here the one configured in
         // setUp) — the whitelist's head is the default, so reordering the list changes it.
-        assertThat(settingsCaptor.getValue()).containsOnly(entry("model", "gemini-3.1-flash-lite"),
-            entry("streaming", false), entry("show-thinking", false),
-            entry("show-prototypes", false), entry("thinking-level", "medium"));
+        assertThat(settingsCaptor.getValue())
+                .containsOnly(
+                        entry("model", "gemini-3.1-flash-lite"),
+                        entry("streaming", false),
+                        entry("show-thinking", false),
+                        entry("show-prototypes", false),
+                        entry("thinking-level", "medium"));
     }
 
     /**
      * With no allowed models configured, creating a conversation must FAIL rather than seed a blank
      * one — and it must fail before the row is written.
      *
-     * <p>
-     * {@code app.chat.allowed-models} carries {@code @NotEmpty}, but that constraint only binds
-     * configuration properties: it is bypassed by any programmatically-constructed
-     * {@code ChatProperties} and, more to the point, by a deployment that supplies the key with an
-     * empty value. {@code ChatPropertiesTest} pins the annotation and nothing pins this branch, so
-     * the guard is unexecuted today.
+     * <p>{@code app.chat.allowed-models} carries {@code @NotEmpty}, but that constraint only binds
+     * configuration properties: it is bypassed by any programmatically-constructed {@code
+     * ChatProperties} and, more to the point, by a deployment that supplies the key with an empty
+     * value. {@code ChatPropertiesTest} pins the annotation and nothing pins this branch, so the
+     * guard is unexecuted today.
      *
-     * <p>
-     * The regression that matters is not deleting the {@code throw} — it is softening the ternary
-     * above it to a harmless-looking default ({@code : ""}), which is what someone reaches for when
-     * a fresh environment refuses to open a chat. The conversation is then created and stored with
-     * a blank {@code model} setting, the page renders normally with an empty model picker, and the
-     * failure surfaces one step later and somewhere else: {@code resolveModelToUse} throws on the
-     * first question and the user gets the generic system error, on a conversation that already
-     * exists and whose title is about to be taken from the message that failed.
+     * <p>The regression that matters is not deleting the {@code throw} — it is softening the
+     * ternary above it to a harmless-looking default ({@code : ""}), which is what someone reaches
+     * for when a fresh environment refuses to open a chat. The conversation is then created and
+     * stored with a blank {@code model} setting, the page renders normally with an empty model
+     * picker, and the failure surfaces one step later and somewhere else: {@code resolveModelToUse}
+     * throws on the first question and the user gets the generic system error, on a conversation
+     * that already exists and whose title is about to be taken from the message that failed.
      *
-     * <p>
-     * The {@code never()} on the repository is the half that catches that: an assertion on the
+     * <p>The {@code never()} on the repository is the half that catches that: an assertion on the
      * exception alone would still pass if the row were written first and the throw came after.
      */
     @Test
     public void anEmptyAllowedModelListRefusesToCreateAConversationAtAll() {
-        ChatProperties noModels = new ChatProperties(true, List.of(), true, false, "",
-            Duration.ofMinutes(5), 100_000, 400_000);
-        ChatConversationService withoutModels = new ChatConversationService(conversationRepository,
-            userService, noModels, tagRepository);
+        ChatProperties noModels =
+                new ChatProperties(
+                        true, List.of(), true, false, "", Duration.ofMinutes(5), 100_000, 400_000);
+        ChatConversationService withoutModels =
+                new ChatConversationService(
+                        conversationRepository, userService, noModels, tagRepository);
 
         assertThatThrownBy(withoutModels::createConversation)
-            .as("a blank default model must fail here, not on the conversation's first question")
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("app.chat.allowed-models");
+                .as(
+                        "a blank default model must fail here, not on the conversation's first question")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("app.chat.allowed-models");
 
         verify(conversationRepository, never()).create(any(), any(), any(), any());
     }
@@ -165,13 +200,22 @@ public class ChatConversationServiceTest {
         User currentUser = new User(currentUserId, "entra-id-123", "me@test.local", "Me", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(currentUser));
 
-        Conversation otherConv = new Conversation(conversationId, otherUserId, "Secret Chat",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation otherConv =
+                new Conversation(
+                        conversationId,
+                        otherUserId,
+                        "Secret Chat",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(otherConv));
 
-        Assertions.assertThrows(AccessDeniedException.class, () -> {
-            chatConversationService.getConversation(conversationId);
-        });
+        Assertions.assertThrows(
+                AccessDeniedException.class,
+                () -> {
+                    chatConversationService.getConversation(conversationId);
+                });
     }
 
     @Test
@@ -183,13 +227,22 @@ public class ChatConversationServiceTest {
         User currentUser = new User(currentUserId, "entra-id-123", "me@test.local", "Me", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(currentUser));
 
-        Conversation otherConv = new Conversation(conversationId, otherUserId, "Secret Chat",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation otherConv =
+                new Conversation(
+                        conversationId,
+                        otherUserId,
+                        "Secret Chat",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(otherConv));
 
-        Assertions.assertThrows(AccessDeniedException.class, () -> {
-            chatConversationService.deleteConversation(conversationId);
-        });
+        Assertions.assertThrows(
+                AccessDeniedException.class,
+                () -> {
+                    chatConversationService.deleteConversation(conversationId);
+                });
         verify(conversationRepository, never()).delete(any());
     }
 
@@ -197,15 +250,25 @@ public class ChatConversationServiceTest {
     public void testUpdateModelRejectsModelOutsideAllowList() {
         UUID conversationId = UUID.randomUUID();
         // Owned conversation so the ownership check passes and we reach the whitelist validation.
-        Conversation conv = new Conversation(conversationId, DEFAULT_USER_ID, "Title",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        DEFAULT_USER_ID,
+                        "Title",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conv));
 
         // allowedModels is ["gemini-3.1-flash-lite"]; a model outside the whitelist must be refused
         // with a 400 and MUST NOT be persisted (SEC-04).
         ResponseStatusException ex =
-            Assertions.assertThrows(ResponseStatusException.class, () -> chatConversationService
-                .updateModel(conversationId, "attacker-picked-expensive-model"));
+                Assertions.assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                chatConversationService.updateModel(
+                                        conversationId, "attacker-picked-expensive-model"));
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         verify(conversationRepository, never()).updateSettings(any(), any());
@@ -218,39 +281,67 @@ public class ChatConversationServiceTest {
         UUID currentUserId = UUID.randomUUID();
         User currentUser = new User(currentUserId, "entra-id-123", "me@test.local", "Me", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(currentUser));
-        Conversation otherConv = new Conversation(conversationId, otherUserId, "Secret",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation otherConv =
+                new Conversation(
+                        conversationId,
+                        otherUserId,
+                        "Secret",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(otherConv));
 
         // A non-owner is denied (403) even when the requested model is itself invalid —
         // authorization
         // precedes payload validation.
-        Assertions.assertThrows(AccessDeniedException.class,
-            () -> chatConversationService.updateModel(conversationId, "not-an-allowed-model"));
+        Assertions.assertThrows(
+                AccessDeniedException.class,
+                () -> chatConversationService.updateModel(conversationId, "not-an-allowed-model"));
         verify(conversationRepository, never()).updateSettings(any(), any());
     }
 
     @Test
     public void testUpdateModelAcceptsWhitelistedModel() {
         UUID conversationId = UUID.randomUUID();
-        Conversation conv = new Conversation(conversationId, DEFAULT_USER_ID, "Title",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation conv =
+                new Conversation(
+                        conversationId,
+                        DEFAULT_USER_ID,
+                        "Title",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conv));
 
         chatConversationService.updateModel(conversationId, "gemini-3.1-flash-lite");
 
-        verify(conversationRepository).mergeSettings(eq(conversationId),
-            argThat((Map<String, Object> m) -> "gemini-3.1-flash-lite".equals(m.get("model"))));
+        verify(conversationRepository)
+                .mergeSettings(
+                        eq(conversationId),
+                        argThat((Map<String, Object> m) ->
+                                "gemini-3.1-flash-lite".equals(m.get("model"))));
     }
 
     @Test
     public void updateSettingsMergesIntoTheStoredMapInsteadOfReplacingIt() {
         UUID id = UUID.randomUUID();
         Conversation existing =
-            new Conversation(
-                id, DEFAULT_USER_ID, "Title", Map.of("model", "gemini-3.1-flash-lite",
-                    "thinking-level", "high", "orchestrator-profile", "oim"),
-                null, null, Collections.emptyList());
+                new Conversation(
+                        id,
+                        DEFAULT_USER_ID,
+                        "Title",
+                        Map.of(
+                                "model",
+                                "gemini-3.1-flash-lite",
+                                "thinking-level",
+                                "high",
+                                "orchestrator-profile",
+                                "oim"),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
 
         chatConversationService.updateSettings(id, Map.of("streaming", true));
@@ -265,9 +356,15 @@ public class ChatConversationServiceTest {
     @Test
     public void updateSettingsLetsTheIncomingValueWinWithoutDroppingTheRest() {
         UUID id = UUID.randomUUID();
-        Conversation existing = new Conversation(id, DEFAULT_USER_ID, "Title",
-            Map.of("model", "gemini-3.1-flash-lite", "thinking-level", "high"), null, null,
-            Collections.emptyList());
+        Conversation existing =
+                new Conversation(
+                        id,
+                        DEFAULT_USER_ID,
+                        "Title",
+                        Map.of("model", "gemini-3.1-flash-lite", "thinking-level", "high"),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(conversationRepository.findById(id)).thenReturn(Optional.of(existing));
 
         chatConversationService.updateSetting(id, ConversationSetting.THINKING_LEVEL, "low");
@@ -277,11 +374,13 @@ public class ChatConversationServiceTest {
         verify(conversationRepository).mergeSettings(ArgumentMatchers.eq(id), captor.capture());
         assertThat(captor.getValue()).containsOnly(entry("thinking-level", "low"));
 
-        assertThatThrownBy(() -> chatConversationService.updateSetting(id,
-            ConversationSetting.THINKING_LEVEL, "turbo"))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        chatConversationService.updateSetting(
+                                id, ConversationSetting.THINKING_LEVEL, "turbo"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     /**
@@ -293,14 +392,12 @@ public class ChatConversationServiceTest {
      * every sidebar row and every folder listing — the chat index turns into a wall of text, and
      * the layout breaks for every conversation the user can see, not just that one.
      *
-     * <p>
-     * The exact split matters as much as the cap: 77 characters plus a three-character ellipsis is
-     * what makes the result exactly 80 wide, which is what the sidebar CSS is sized for. Cutting at
-     * 80 and appending "..." would yield 83 and quietly overflow; cutting at 77 without the
+     * <p>The exact split matters as much as the cap: 77 characters plus a three-character ellipsis
+     * is what makes the result exactly 80 wide, which is what the sidebar CSS is sized for. Cutting
+     * at 80 and appending "..." would yield 83 and quietly overflow; cutting at 77 without the
      * ellipsis would present a truncated sentence as if it were the whole title.
      *
-     * <p>
-     * Both boundaries are pinned here because the branch is {@code > 80}, not {@code >= 80}: a
+     * <p>Both boundaries are pinned here because the branch is {@code > 80}, not {@code >= 80}: a
      * message of exactly 80 characters must pass through untouched, so an off-by-one that rewrites
      * it as 77 + "..." — losing three characters of a title that already fitted — fails on the
      * second assertion. The leading/trailing whitespace on the long input pins the {@code trim()}
@@ -319,16 +416,16 @@ public class ChatConversationServiceTest {
         chatConversationService.autoTitle(conversationId, exactly80);
 
         ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
-        verify(conversationRepository, times(2)).updateTitle(eq(conversationId),
-            titleCaptor.capture());
+        verify(conversationRepository, times(2))
+                .updateTitle(eq(conversationId), titleCaptor.capture());
         List<String> titles = titleCaptor.getAllValues();
         assertThat(titles.get(0)).hasSize(80).endsWith("...").isEqualTo("x".repeat(77) + "...");
         assertThat(titles.get(1)).isEqualTo(exactly80);
     }
 
     private Conversation conv(UUID userId, List<String> tags) {
-        return new Conversation(UUID.randomUUID(), userId, "Title", Collections.emptyMap(), null,
-            null, tags);
+        return new Conversation(
+                UUID.randomUUID(), userId, "Title", Collections.emptyMap(), null, null, tags);
     }
 
     @Test
@@ -352,9 +449,9 @@ public class ChatConversationServiceTest {
         List<Conversation> otherPublic = List.of(c5, c6);
         List<Conversation> all = List.of(c1, c2, c3, c4, c5, c6);
         when(conversationRepository.listOwned(eq(currentUserId), eq(100), eq(0), any()))
-            .thenReturn(owned);
+                .thenReturn(owned);
         when(conversationRepository.listOtherPublic(eq(currentUserId), eq(100), eq(0), any()))
-            .thenReturn(otherPublic);
+                .thenReturn(otherPublic);
 
         ConversationSidebar sidebar = chatConversationService.buildSidebar();
 
@@ -363,8 +460,8 @@ public class ChatConversationServiceTest {
         // Folder names are the CONVERSATIONS' own tags, derived from the list already loaded above
         // — not a global registry, which used to mix corpus version tags into this datalist and
         // exposed folder names from conversations the caller cannot see.
-        assertThat(sidebar.allTags()).containsExactly("alpha", "Beta", "public", "shared", "x",
-            "y");
+        assertThat(sidebar.allTags())
+                .containsExactly("alpha", "Beta", "public", "shared", "x", "y");
         verifyNoInteractions(tagRepository);
 
         // Private/owned buckets.
@@ -387,21 +484,30 @@ public class ChatConversationServiceTest {
     @Test
     public void testChatDisabledThrowsException() {
         ChatProperties disabledProperties =
-            new ChatProperties(false, List.of("gemini-3.1-flash-lite"), true, false, "",
-                Duration.ofMinutes(5), 100_000, 400_000);
-        ChatConversationService disabledService = new ChatConversationService(
-            conversationRepository, userService, disabledProperties, tagRepository);
+                new ChatProperties(
+                        false,
+                        List.of("gemini-3.1-flash-lite"),
+                        true,
+                        false,
+                        "",
+                        Duration.ofMinutes(5),
+                        100_000,
+                        400_000);
+        ChatConversationService disabledService =
+                new ChatConversationService(
+                        conversationRepository, userService, disabledProperties, tagRepository);
 
-        Assertions.assertThrows(IllegalStateException.class, () -> {
-            disabledService.createConversation();
-        });
+        Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> {
+                    disabledService.createConversation();
+                });
     }
 
     /**
      * The {@code public} tag grants READS to non-owners, never writes.
      *
-     * <p>
-     * Sharing is one tag away, has no confirmation step and no per-person control, so the read
+     * <p>Sharing is one tag away, has no confirmation step and no per-person control, so the read
      * carve-out is deliberately wide — which is exactly why the write side has to be narrow. Every
      * mutating path calls {@code verifyOwnership(id, false)}; passing {@code true} anywhere would
      * let any signed-in colleague retag, re-model, stop or delete a conversation they can merely
@@ -415,36 +521,45 @@ public class ChatConversationServiceTest {
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
         // Owned by someone else, and shared — so this viewer may READ it.
-        Conversation shared = new Conversation(conversationId, UUID.randomUUID(), "Shared Chat",
-            Collections.emptyMap(), null, null, List.of("public"));
+        Conversation shared =
+                new Conversation(
+                        conversationId,
+                        UUID.randomUUID(),
+                        "Shared Chat",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        List.of("public"));
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(shared));
 
-        Assertions.assertThrows(AccessDeniedException.class,
-            () -> chatConversationService.updateSettings(conversationId, Map.of("k", "v")));
+        Assertions.assertThrows(
+                AccessDeniedException.class,
+                () -> chatConversationService.updateSettings(conversationId, Map.of("k", "v")));
         verify(conversationRepository, never()).updateSettings(any(), any());
     }
 
     /**
-     * A conversation's stored model outlives the whitelist. Retiring a model from
-     * {@code app.chat.allowed-models} leaves every conversation pinned to it still naming it, and
-     * the two halves of the app then disagreed about what that meant: the picker rendered no
-     * matching option so the browser selected the FIRST one, while the send path read the stored
-     * value straight out of the settings map. The UI said one model and the answer came from
-     * another, with nothing anywhere reporting it — and the obvious repair does not work either,
-     * because the picker already displays the default, so choosing it fires no change event and
-     * posts nothing. One resolver, three callers, no hand-written fallback left to drift.
+     * A conversation's stored model outlives the whitelist. Retiring a model from {@code
+     * app.chat.allowed-models} leaves every conversation pinned to it still naming it, and the two
+     * halves of the app then disagreed about what that meant: the picker rendered no matching
+     * option so the browser selected the FIRST one, while the send path read the stored value
+     * straight out of the settings map. The UI said one model and the answer came from another,
+     * with nothing anywhere reporting it — and the obvious repair does not work either, because the
+     * picker already displays the default, so choosing it fires no change event and posts nothing.
+     * One resolver, three callers, no hand-written fallback left to drift.
      */
     @Test
     public void aRetiredModelFallsBackToTheDefaultRatherThanRunningOnSilently() {
         List<String> allowed = List.of("gemini-3.8-flash", "gpt-5.4-mini");
 
         assertThat(ChatConversationService.effectiveModel("gpt-5.4-mini", allowed))
-            .as("a model still on the whitelist is left exactly as stored")
-            .isEqualTo("gpt-5.4-mini");
+                .as("a model still on the whitelist is left exactly as stored")
+                .isEqualTo("gpt-5.4-mini");
         assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", allowed))
-            .as("a retired model becomes the default — element 0, the same value a new"
-                + " conversation is stamped with")
-            .isEqualTo("gemini-3.8-flash");
+                .as(
+                        "a retired model becomes the default — element 0, the same value a new"
+                                + " conversation is stamped with")
+                .isEqualTo("gemini-3.8-flash");
     }
 
     /**
@@ -456,9 +571,9 @@ public class ChatConversationServiceTest {
     @Test
     public void anEmptyWhitelistPassesTheStoredModelThroughUntouched() {
         assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", List.of()))
-            .isEqualTo("gemini-3.6-flash");
+                .isEqualTo("gemini-3.6-flash");
         assertThat(ChatConversationService.effectiveModel("gemini-3.6-flash", null))
-            .isEqualTo("gemini-3.6-flash");
+                .isEqualTo("gemini-3.6-flash");
     }
 
     /**
@@ -469,17 +584,17 @@ public class ChatConversationServiceTest {
     @Test
     public void aMissingStoredModelIsReturnedUnchangedForTheCallerToHandle() {
         assertThat(ChatConversationService.effectiveModel(null, List.of("gemini-3.8-flash")))
-            .isNull();
+                .isNull();
         assertThat(ChatConversationService.effectiveModel("  ", List.of("gemini-3.8-flash")))
-            .isEqualTo("  ");
+                .isEqualTo("  ");
     }
 
     @Test
     public void theInstanceOverloadReadsTheConfiguredWhitelist() {
         assertThat(chatConversationService.effectiveModel("gemini-3.1-flash-lite"))
-            .isEqualTo("gemini-3.1-flash-lite");
+                .isEqualTo("gemini-3.1-flash-lite");
         assertThat(chatConversationService.effectiveModel("retired-model"))
-            .isEqualTo("gemini-3.1-flash-lite");
+                .isEqualTo("gemini-3.1-flash-lite");
     }
 
     @AfterEach
@@ -494,16 +609,28 @@ public class ChatConversationServiceTest {
         User user = new User(userId, "entra-owner", "owner@test.local", "O", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(user));
 
-        Conversation conv = new Conversation(convId, userId, "Title", Collections.emptyMap(),
-            Instant.now(), Instant.now(), List.of(), "web", "Finance");
+        Conversation conv =
+                new Conversation(
+                        convId,
+                        userId,
+                        "Title",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of(),
+                        "web",
+                        "Finance");
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, false))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -514,16 +641,28 @@ public class ChatConversationServiceTest {
         User viewer = new User(viewerId, "entra-viewer", "viewer@test.local", "V", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
 
-        Conversation conv = new Conversation(convId, ownerId, "Title", Collections.emptyMap(),
-            Instant.now(), Instant.now(), List.of("public"), "web", "Finance");
+        Conversation conv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "Title",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of("public"),
+                        "web",
+                        "Finance");
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, true))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -533,42 +672,70 @@ public class ChatConversationServiceTest {
         User user = new User(userId, "entra-owner", "owner@test.local", "O", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(user));
 
-        Conversation conv = new Conversation(convId, userId, "Title", Collections.emptyMap(),
-            Instant.now(), Instant.now(), List.of(), "web", "OIM");
+        Conversation conv =
+                new Conversation(
+                        convId,
+                        userId,
+                        "Title",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of(),
+                        "web",
+                        "OIM");
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         // Should not throw
         chatConversationService.verifyConversationOwnership(conv, false);
     }
 
     @Test
-    public void verifyConversationOwnership_withNullArea_allowsOwnerAndAllAreasPublicViewerButDeniesRestrictedPublicViewer() {
+    public void
+            verifyConversationOwnership_withNullArea_allowsOwnerAndAllAreasPublicViewerButDeniesRestrictedPublicViewer() {
         UUID convId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID viewerId = UUID.randomUUID();
         User owner = new User(ownerId, "entra-owner", "owner@test.local", "O", null);
         User viewer = new User(viewerId, "entra-viewer", "viewer@test.local", "V", null);
 
-        Conversation conv = new Conversation(convId, ownerId, "Title", Collections.emptyMap(),
-            Instant.now(), Instant.now(), List.of("public"), "web", null);
+        Conversation conv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "Title",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of("public"),
+                        "web",
+                        null);
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
         when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
         chatConversationService.verifyConversationOwnership(conv, false);
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_OIM"));
         when(userService.getCurrentUser()).thenReturn(Optional.of(viewer));
         assertThatThrownBy(() -> chatConversationService.verifyConversationOwnership(conv, true))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("viewer", "pass", "ROLE_USER", "AREA_USER_*"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "viewer", "pass", "ROLE_USER", "AREA_USER_*"));
         chatConversationService.verifyConversationOwnership(conv, true);
     }
 
@@ -578,8 +745,10 @@ public class ChatConversationServiceTest {
         User user = new User(userId, "entra-user", "user@test.local", "U", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(user));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         chatConversationService.listAllConversations(20, 0);
 
@@ -587,58 +756,69 @@ public class ChatConversationServiceTest {
     }
 
     @Test
-    public void verifyConversationOwnership_claudePluginConversation_allowsReadButRejectsWriteEvenForOwner() {
+    public void
+            verifyConversationOwnership_claudePluginConversation_allowsReadButRejectsWriteEvenForOwner() {
         UUID convId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         User owner = new User(ownerId, "entra-owner", "owner@test.local", "Owner", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(owner));
 
         Conversation pluginConv =
-            new Conversation(convId, ownerId, "Plugin Turn", Collections.emptyMap(), Instant.now(),
-                Instant.now(), List.of(), "claude-plugin", "OIM");
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "Plugin Turn",
+                        Collections.emptyMap(),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of(),
+                        "claude-plugin",
+                        "OIM");
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(pluginConv));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "owner", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         // Read-only access (getConversation / verifyConversationOwnership(..., true)) is allowed
         // for owner
         assertThat(chatConversationService.getConversation(convId)).contains(pluginConv);
 
         // Mutating access is rejected even for the owner
-        assertThatThrownBy(
-            () -> chatConversationService.verifyConversationOwnership(pluginConv, false))
-            .isInstanceOf(AccessDeniedException.class)
-            .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+        assertThatThrownBy(() ->
+                        chatConversationService.verifyConversationOwnership(pluginConv, false))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
 
         assertThatThrownBy(() -> chatConversationService.deleteConversation(convId))
-            .isInstanceOf(AccessDeniedException.class)
-            .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Cannot modify claude-plugin feedback conversation: " + convId);
+        assertThatThrownBy(() ->
+                        chatConversationService.updateSettings(convId, Map.of("streaming", true)))
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(
-            () -> chatConversationService.updateSettings(convId, Map.of("streaming", true)))
-            .isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(
-            () -> chatConversationService.updateModel(convId, "gemini-3.1-flash-lite"))
-            .isInstanceOf(AccessDeniedException.class);
+                        () -> chatConversationService.updateModel(convId, "gemini-3.1-flash-lite"))
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> chatConversationService.addTag(convId, "tag1"))
-            .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> chatConversationService.removeTag(convId, "tag1"))
-            .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class);
 
         // Non-owner attempting a write gets the generic AccessDeniedException without revealing
         // that the conversation's source is claude-plugin
         User nonOwner =
-            new User(UUID.randomUUID(), "entra-other", "other@test.local", "Other", null);
+                new User(UUID.randomUUID(), "entra-other", "other@test.local", "Other", null);
         when(userService.getCurrentUser()).thenReturn(Optional.of(nonOwner));
-        assertThatThrownBy(
-            () -> chatConversationService.verifyConversationOwnership(pluginConv, false))
-            .isInstanceOf(AccessDeniedException.class)
-            .hasMessage("Access denied to conversation: " + convId)
-            .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
+        assertThatThrownBy(() ->
+                        chatConversationService.verifyConversationOwnership(pluginConv, false))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Access denied to conversation: " + convId)
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
         assertThatThrownBy(() -> chatConversationService.deleteConversation(convId))
-            .isInstanceOf(AccessDeniedException.class)
-            .hasMessage("Access denied to conversation: " + convId)
-            .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Access denied to conversation: " + convId)
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("claude-plugin"));
 
         verify(conversationRepository, never()).delete(any());
         verify(conversationRepository, never()).updateSettings(any(), any());
@@ -649,17 +829,24 @@ public class ChatConversationServiceTest {
     public void orphanedNullOwnerConversationNeverMatchesMissingCurrentUser() {
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
         UUID orphanedId = UUID.randomUUID();
-        Conversation orphaned = new Conversation(orphanedId, null, "Orphaned",
-            Collections.emptyMap(), null, null, Collections.emptyList());
+        Conversation orphaned =
+                new Conversation(
+                        orphanedId,
+                        null,
+                        "Orphaned",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
 
         assertThatThrownBy(() -> chatConversationService.createConversation())
-            .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(
-            () -> chatConversationService.verifyConversationOwnership(orphaned, true))
-            .isInstanceOf(AccessDeniedException.class);
+                        () -> chatConversationService.verifyConversationOwnership(orphaned, true))
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(
-            () -> chatConversationService.verifyConversationOwnership(orphaned, false))
-            .isInstanceOf(AccessDeniedException.class);
+                        () -> chatConversationService.verifyConversationOwnership(orphaned, false))
+                .isInstanceOf(AccessDeniedException.class);
         assertThat(ChatConversationService.isOwner(null, null)).isFalse();
     }
 
@@ -668,21 +855,32 @@ public class ChatConversationServiceTest {
         UUID ownerId = UUID.randomUUID();
         UUID viewerId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();
-        Conversation publicConv = new Conversation(convId, ownerId, "Shared",
-            Collections.emptyMap(), null, null, List.of("public"), "web", "OIM");
+        Conversation publicConv =
+                new Conversation(
+                        convId,
+                        ownerId,
+                        "Shared",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        List.of("public"),
+                        "web",
+                        "OIM");
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(publicConv));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         // Owner sees feedback
         when(userService.getCurrentUser())
-            .thenReturn(Optional.of(new User(ownerId, "oid-1", "o@x", "Owner", null)));
+                .thenReturn(Optional.of(new User(ownerId, "oid-1", "o@x", "Owner", null)));
         assertThat(chatConversationService.canViewFeedback(convId)).isTrue();
 
         // Non-owner public viewer does NOT see private feedback comments
         when(userService.getCurrentUser())
-            .thenReturn(Optional.of(new User(viewerId, "oid-2", "v@x", "Viewer", null)));
+                .thenReturn(Optional.of(new User(viewerId, "oid-2", "v@x", "Viewer", null)));
         assertThat(chatConversationService.canViewFeedback(convId)).isFalse();
     }
 }

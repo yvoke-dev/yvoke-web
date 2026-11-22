@@ -11,25 +11,44 @@ import org.junit.jupiter.api.Test;
 class ConfluenceInstanceViewTest {
 
     private static ConfluenceInstance instance(String apiTokenEnc, String tokenKeyId) {
-        return new ConfluenceInstance(UUID.randomUUID(), "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", apiTokenEnc, tokenKeyId, "DOCS",
-            "12345", "public", "draft", "OIM - Docs", "10.0", true, true, null, null);
+        return new ConfluenceInstance(
+                UUID.randomUUID(),
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                apiTokenEnc,
+                tokenKeyId,
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                true,
+                true,
+                null,
+                null);
     }
 
     /**
      * The whole point of the view: the record it is mapped from carries the token ciphertext and
-     * the key fingerprint, and it travels to a Thymeleaf template where one
-     * {@code ${x.apiTokenEnc}} renders a credential into HTML. Making the component absent is what
-     * turns "we don't do that" into "it cannot be done".
+     * the key fingerprint, and it travels to a Thymeleaf template where one {@code
+     * ${x.apiTokenEnc}} renders a credential into HTML. Making the component absent is what turns
+     * "we don't do that" into "it cannot be done".
      */
     @Test
     void theViewHasNoTokenComponentAtAll() {
-        String[] components = Arrays.stream(ConfluenceInstanceView.class.getRecordComponents())
-            .map(RecordComponent::getName).toArray(String[]::new);
+        String[] components =
+                Arrays.stream(ConfluenceInstanceView.class.getRecordComponents())
+                        .map(RecordComponent::getName)
+                        .toArray(String[]::new);
 
         assertThat(components).doesNotContain("apiTokenEnc", "tokenKeyId");
-        assertThat(components).noneMatch(
-            name -> name.toLowerCase(Locale.ROOT).contains("token") && !name.equals("tokenHealth"));
+        assertThat(components)
+                .noneMatch(name ->
+                        name.toLowerCase(Locale.ROOT).contains("token")
+                                && !name.equals("tokenHealth"));
     }
 
     @Test
@@ -58,10 +77,11 @@ class ConfluenceInstanceViewTest {
     @Test
     void aRotatedKeyIsReportedAsUndecryptableAndAMissingTokenAsMissing() {
         assertThat(
-            ConfluenceInstanceView.of(instance("enc:ciphertext", "keyA"), "keyB").tokenHealth())
-            .isEqualTo(TokenHealth.UNDECRYPTABLE);
+                        ConfluenceInstanceView.of(instance("enc:ciphertext", "keyA"), "keyB")
+                                .tokenHealth())
+                .isEqualTo(TokenHealth.UNDECRYPTABLE);
         assertThat(ConfluenceInstanceView.of(instance(null, null), "keyA").tokenHealth())
-            .isEqualTo(TokenHealth.MISSING);
+                .isEqualTo(TokenHealth.MISSING);
     }
 
     /**
@@ -71,9 +91,25 @@ class ConfluenceInstanceViewTest {
      */
     @Test
     void aRowWithAMalformedStoredDomainStillMaps() {
-        ConfluenceInstance broken = new ConfluenceInstance(UUID.randomUUID(), "Legacy", "legacy",
-            "acme.atlassian.net", "svc@example.com", null, null, "DOCS", "12345", null, null,
-            "OIM - Docs", null, false, true, null, null);
+        ConfluenceInstance broken =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Legacy",
+                        "legacy",
+                        "acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        null,
+                        null,
+                        "OIM - Docs",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         ConfluenceInstanceView view = ConfluenceInstanceView.of(broken, "keyA");
 

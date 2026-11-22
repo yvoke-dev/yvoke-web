@@ -8,24 +8,40 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Loads every admin page in a real browser as an admin and asserts none raises an uncaught
- * JavaScript error. This catches client-side breakage that server-side render tests
- * ({@link de.palsoftware.yvoke.web.AllPagesRenderSmokeIT}) cannot — notably the documented
- * Temporal-Dead-Zone init-order pitfall in the inline module scripts, which throws a
- * {@code ReferenceError} at page init.
+ * JavaScript error. This catches client-side breakage that server-side render tests ({@link
+ * de.palsoftware.yvoke.web.AllPagesRenderSmokeIT}) cannot — notably the documented
+ * Temporal-Dead-Zone init-order pitfall in the inline module scripts, which throws a {@code
+ * ReferenceError} at page init.
  *
- * <p>
- * The page-error listener itself lives in {@link AbstractE2E}, so every e2e test now fails on an
+ * <p>The page-error listener itself lives in {@link AbstractE2E}, so every e2e test now fails on an
  * uncaught error; what this class adds is breadth (all 19 nav pages) and a per-page assertion so a
  * failure names the page. Uncaught errors only (high signal) — benign {@code console.error} network
  * noise from the CDN assets is deliberately not failed on.
  */
 class AdminPagesConsoleE2EIT extends AbstractE2E {
 
-    private static final List<String> ADMIN_PAGES = List.of("/admin", "/admin/jobs", "/admin/audit",
-        "/admin/collections", "/admin/documents", "/admin/kg", "/admin/json-objects",
-        "/admin/ingest", "/admin/connectors", "/admin/search", "/admin/logs", "/admin/playbooks",
-        "/admin/prompts", "/admin/conversations", "/admin/feedback", "/admin/agent-runs",
-        "/admin/costs", "/admin/pricing", "/admin/orchestrators", "/admin/areas");
+    private static final List<String> ADMIN_PAGES =
+            List.of(
+                    "/admin",
+                    "/admin/jobs",
+                    "/admin/audit",
+                    "/admin/collections",
+                    "/admin/documents",
+                    "/admin/kg",
+                    "/admin/json-objects",
+                    "/admin/ingest",
+                    "/admin/connectors",
+                    "/admin/search",
+                    "/admin/logs",
+                    "/admin/playbooks",
+                    "/admin/prompts",
+                    "/admin/conversations",
+                    "/admin/feedback",
+                    "/admin/agent-runs",
+                    "/admin/costs",
+                    "/admin/pricing",
+                    "/admin/orchestrators",
+                    "/admin/areas");
 
     @Test
     void adminPagesLoadWithoutUncaughtJsErrors() {
@@ -47,9 +63,9 @@ class AdminPagesConsoleE2EIT extends AbstractE2E {
     /**
      * Proves the shared listener actually fires. Without this, a wiring mistake (listener
      * registered after the first navigation, wrong Playwright event, errors swallowed) would make
-     * every {@code assertNoPageErrors} call above — and the automatic one in
-     * {@code AbstractE2E.closePage} — a silent no-op that passes forever. Lives here because this
-     * class is the mechanism's main user.
+     * every {@code assertNoPageErrors} call above — and the automatic one in {@code
+     * AbstractE2E.closePage} — a silent no-op that passes forever. Lives here because this class is
+     * the mechanism's main user.
      */
     @Test
     void harnessDetectsAnUncaughtJsError() {

@@ -30,8 +30,9 @@ public class ConversationRowMapper implements RowMapper<Conversation> {
         Map<String, Object> settings = Collections.emptyMap();
         if (settingsStr != null && !settingsStr.isBlank()) {
             try {
-                settings = objectMapper.readValue(settingsStr,
-                    new TypeReference<Map<String, Object>>() {});
+                settings =
+                        objectMapper.readValue(
+                                settingsStr, new TypeReference<Map<String, Object>>() {});
             } catch (JsonProcessingException e) {
                 log.warn("Failed to deserialize settings JSONB: {}", settingsStr, e);
             }
@@ -42,9 +43,15 @@ public class ConversationRowMapper implements RowMapper<Conversation> {
 
         List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
 
-        return new Conversation(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
-            rs.getString("title"), settings, createdTs != null ? createdTs.toInstant() : null,
-            updatedTs != null ? updatedTs.toInstant() : null, tags, rs.getString("source"),
-            rs.getString("area"));
+        return new Conversation(
+                rs.getObject("id", UUID.class),
+                rs.getObject("user_id", UUID.class),
+                rs.getString("title"),
+                settings,
+                createdTs != null ? createdTs.toInstant() : null,
+                updatedTs != null ? updatedTs.toInstant() : null,
+                tags,
+                rs.getString("source"),
+                rs.getString("area"));
     }
 }

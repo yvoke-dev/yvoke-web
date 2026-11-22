@@ -28,12 +28,14 @@ public class AdminFeedbackController {
     }
 
     @GetMapping("/feedback")
-    public String feedbackDashboard(@RequestParam(required = false) String rating,
-        @RequestParam(required = false) Boolean reviewed,
-        @RequestParam(defaultValue = "all") String timeRange,
-        @RequestParam(defaultValue = "newest") String sort,
-        @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
-        Model model) {
+    public String feedbackDashboard(
+            @RequestParam(required = false) String rating,
+            @RequestParam(required = false) Boolean reviewed,
+            @RequestParam(defaultValue = "all") String timeRange,
+            @RequestParam(defaultValue = "newest") String sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
 
         Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
         long positiveCount = adminQueryRepository.countFeedbackByRating(1, areas);
@@ -41,15 +43,24 @@ public class AdminFeedbackController {
         long totalCount = positiveCount + negativeCount;
         double positiveRatio = totalCount > 0 ? (positiveCount * 100.0) / totalCount : 0.0;
 
-        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedSize =
+                PagingParams.clampSize(
+                        size,
+                        PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                        PagingParams.MAX_ADMIN_PAGE_SIZE);
         int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         long filteredCount =
-            adminQueryRepository.countFilteredFeedback(rating, reviewed, timeRange, areas);
+                adminQueryRepository.countFilteredFeedback(rating, reviewed, timeRange, areas);
         int totalPages = PagingParams.totalPages(filteredCount, clampedSize);
         List<ChatAdminQueryRepository.FeedbackComment> feedbackList =
-            adminQueryRepository.listFeedback(rating, reviewed, timeRange, sort, clampedSize,
-                PagingParams.safeOffset(clampedPage, clampedSize), areas);
+                adminQueryRepository.listFeedback(
+                        rating,
+                        reviewed,
+                        timeRange,
+                        sort,
+                        clampedSize,
+                        PagingParams.safeOffset(clampedPage, clampedSize),
+                        areas);
 
         model.addAttribute("positiveCount", positiveCount);
         model.addAttribute("negativeCount", negativeCount);
@@ -70,14 +81,16 @@ public class AdminFeedbackController {
     }
 
     @PostMapping("/feedback/{id}/toggle-reviewed")
-    public String toggleReviewed(@PathVariable UUID id,
-        @RequestParam(value = "reviewed", required = false) String reviewedParam, Model model) {
+    public String toggleReviewed(
+            @PathVariable UUID id,
+            @RequestParam(value = "reviewed", required = false) String reviewedParam,
+            Model model) {
         Optional<String> area = adminQueryRepository.findFeedbackArea(id);
         if (!AreaAccessContext.canAdministerArea(area.orElse(null))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Feedback not found: " + id);
         }
         boolean reviewed =
-            "true".equalsIgnoreCase(reviewedParam) || "on".equalsIgnoreCase(reviewedParam);
+                "true".equalsIgnoreCase(reviewedParam) || "on".equalsIgnoreCase(reviewedParam);
         adminQueryRepository.setFeedbackReviewed(id, reviewed);
 
         model.addAttribute("feedbackId", id.toString());
@@ -86,8 +99,10 @@ public class AdminFeedbackController {
     }
 
     @PostMapping("/feedback/{id}/notes")
-    public String updateNotes(@PathVariable UUID id,
-        @RequestParam(value = "notes", required = false) String notes, Model model) {
+    public String updateNotes(
+            @PathVariable UUID id,
+            @RequestParam(value = "notes", required = false) String notes,
+            Model model) {
         Optional<String> area = adminQueryRepository.findFeedbackArea(id);
         if (!AreaAccessContext.canAdministerArea(area.orElse(null))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Feedback not found: " + id);

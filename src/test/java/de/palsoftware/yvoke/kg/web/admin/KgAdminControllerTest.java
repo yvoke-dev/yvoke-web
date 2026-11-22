@@ -58,13 +58,20 @@ public class KgAdminControllerTest {
         collectionService = mock(CollectionService.class);
 
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
         when(collectionService.getCollection("OIM")).thenReturn(Optional.of(collection("OIM")));
 
-        controller = new KgAdminController(kgAdminViewService, kgReadRepository, kgWriteRepository,
-            kgConsolidator, auditLogRepository, userService, collectionService);
+        controller =
+                new KgAdminController(
+                        kgAdminViewService,
+                        kgReadRepository,
+                        kgWriteRepository,
+                        kgConsolidator,
+                        auditLogRepository,
+                        userService,
+                        collectionService);
         redirectAttributes = mock(RedirectAttributes.class);
     }
 
@@ -102,8 +109,8 @@ public class KgAdminControllerTest {
 
         assertThat(view).isEqualTo("redirect:/admin/kg");
         verify(kgConsolidator).consolidate("OIM", "9.3");
-        verify(auditLogRepository).log(eq("anonymous_admin"), eq("CONSOLIDATE_KG"), eq("OIM 9.3"),
-            anyMap());
+        verify(auditLogRepository)
+                .log(eq("anonymous_admin"), eq("CONSOLIDATE_KG"), eq("OIM 9.3"), anyMap());
     }
 
     /**
@@ -121,7 +128,7 @@ public class KgAdminControllerTest {
         // resolvable would assert behaviour production does not have.
         when(collectionService.getCollection("oim")).thenReturn(Optional.of(collection("OIM")));
         when(kgConsolidator.consolidate("OIM", "9.3"))
-            .thenReturn(new KgConsolidator.ConsolidationStats(1, 2, 3, 4));
+                .thenReturn(new KgConsolidator.ConsolidationStats(1, 2, 3, 4));
 
         controller.consolidateKg("oim", "9.3", redirectAttributes);
 
@@ -145,19 +152,30 @@ public class KgAdminControllerTest {
         verify(redirectAttributes).addFlashAttribute(eq("error"), anyString());
         verify(redirectAttributes, never()).addFlashAttribute(eq("success"), anyString());
         verify(kgConsolidator, never()).consolidate(anyString(), anyString());
-        verify(auditLogRepository, never()).log(anyString(), eq("CONSOLIDATE_KG"), anyString(),
-            anyMap());
+        verify(auditLogRepository, never())
+                .log(anyString(), eq("CONSOLIDATE_KG"), anyString(), anyMap());
     }
 
     @Test
     public void kgOverview_areaAdmin_filtersScopesToAdministeredCollections() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of("9.3"),
-            OffsetDateTime.now(), "OIM");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM",
+                        "desc",
+                        List.of("9.3"),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.listForAdminUser()).thenReturn(List.of(oimCol));
-        when(kgAdminViewService.listScopes()).thenReturn(List
-            .of(new KgScopeView("OIM", "9.3", 10, 20), new KgScopeView("Finance", "1.0", 50, 60)));
+        when(kgAdminViewService.listScopes())
+                .thenReturn(
+                        List.of(
+                                new KgScopeView("OIM", "9.3", 10, 20),
+                                new KgScopeView("Finance", "1.0", 50, 60)));
 
         Model model = new ConcurrentModel();
         String view = controller.kgOverview(model);
@@ -171,35 +189,61 @@ public class KgAdminControllerTest {
 
     @Test
     public void viewKg_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         Model model = new ConcurrentModel();
-        assertThrows(ResponseStatusException.class,
-            () -> controller.viewKg("Finance", null, null, null, null, 2, 0, model));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.viewKg("Finance", null, null, null, null, 2, 0, model));
     }
 
     @Test
     public void clearGraph_unauthorizedArea_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.clearGraph("Finance", "1.0", redirectAttributes));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.clearGraph("Finance", "1.0", redirectAttributes));
     }
 
     @Test
     public void consolidateKg_unauthorizedArea_refused() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         String view = controller.consolidateKg("Finance", "1.0", redirectAttributes);
@@ -210,7 +254,7 @@ public class KgAdminControllerTest {
     }
 
     private static Collection collection(String storedName) {
-        return new Collection(UUID.randomUUID(), storedName, "desc", List.of("9.3"),
-            OffsetDateTime.now(), "OIM");
+        return new Collection(
+                UUID.randomUUID(), storedName, "desc", List.of("9.3"), OffsetDateTime.now(), "OIM");
     }
 }

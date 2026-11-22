@@ -37,7 +37,7 @@ class AdminFeedbackControllerTest {
         controller = new AdminFeedbackController(queryRepository);
         model = new ConcurrentModel();
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
     }
 
     @AfterEach
@@ -51,7 +51,7 @@ class AdminFeedbackControllerTest {
         when(queryRepository.countFeedbackByRating(-1, null)).thenReturn(2L);
         when(queryRepository.countFilteredFeedback(null, null, "all", null)).thenReturn(7L);
         when(queryRepository.listFeedback(null, null, "all", "newest", 20, 0, null))
-            .thenReturn(List.of());
+                .thenReturn(List.of());
 
         String view = controller.feedbackDashboard(null, null, "all", "newest", 0, 20, model);
 
@@ -68,15 +68,19 @@ class AdminFeedbackControllerTest {
     @Test
     void areaAdminFeedbackDashboardScopesToAdministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         Set<String> areas = Set.of("finance");
         when(queryRepository.countFeedbackByRating(1, areas)).thenReturn(3L);
         when(queryRepository.countFeedbackByRating(-1, areas)).thenReturn(1L);
         when(queryRepository.countFilteredFeedback(null, null, "all", areas)).thenReturn(4L);
         when(queryRepository.listFeedback(null, null, "all", "newest", 20, 0, areas))
-            .thenReturn(List.of());
+                .thenReturn(List.of());
 
         String view = controller.feedbackDashboard(null, null, "all", "newest", 0, 20, model);
 
@@ -105,9 +109,13 @@ class AdminFeedbackControllerTest {
     @Test
     void areaAdminCanToggleReviewedInAdministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID feedbackId = UUID.randomUUID();
         when(queryRepository.findFeedbackArea(feedbackId)).thenReturn(Optional.of("finance"));
 
@@ -121,23 +129,32 @@ class AdminFeedbackControllerTest {
     @Test
     void areaAdminCannotToggleReviewedInUnadministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID feedbackId = UUID.randomUUID();
         when(queryRepository.findFeedbackArea(feedbackId)).thenReturn(Optional.of("hr"));
 
         assertThatThrownBy(() -> controller.toggleReviewed(feedbackId, "true", model))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
         verify(queryRepository, never()).setFeedbackReviewed(any(), anyBoolean());
     }
 
     @Test
     void areaAdminCanUpdateNotesInAdministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID feedbackId = UUID.randomUUID();
         when(queryRepository.findFeedbackArea(feedbackId)).thenReturn(Optional.of("finance"));
 
@@ -151,14 +168,19 @@ class AdminFeedbackControllerTest {
     @Test
     void areaAdminCannotUpdateNotesInUnadministeredArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-                List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                    new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin",
+                                "pass",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                        new SimpleGrantedAuthority("AREA_ADMIN_FINANCE"))));
         UUID feedbackId = UUID.randomUUID();
         when(queryRepository.findFeedbackArea(feedbackId)).thenReturn(Optional.of("hr"));
 
         assertThatThrownBy(() -> controller.updateNotes(feedbackId, "checked", model))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
         verify(queryRepository, never()).setFeedbackNotes(any(), anyString());
     }
 }

@@ -33,24 +33,37 @@ class JobServiceTest {
 
         // findById returns a benign snapshot so publishSnapshot/report don't NPE.
         when(jobRepository.findById(any(UUID.class)))
-            .thenAnswer(inv -> Optional.of(job(inv.getArgument(0), JobStatus.RUNNING)));
+                .thenAnswer(inv -> Optional.of(job(inv.getArgument(0), JobStatus.RUNNING)));
     }
 
     private JobService service(JobHandler... handlers) {
-        return new JobService(jobRepository, progressBroker, List.of(handlers), List.of(),
-            "uploads");
+        return new JobService(
+                jobRepository, progressBroker, List.of(handlers), List.of(), "uploads");
     }
 
     private static IngestionJob job(UUID id, JobStatus status) {
-        return new IngestionJob(id, ItTestJobHandler.KIND, "ref", "1.0", "col", status, null, 0, 1,
-            null, null, OffsetDateTime.now(), null, null);
+        return new IngestionJob(
+                id,
+                ItTestJobHandler.KIND,
+                "ref",
+                "1.0",
+                "col",
+                status,
+                null,
+                0,
+                1,
+                null,
+                null,
+                OffsetDateTime.now(),
+                null,
+                null);
     }
 
     @Test
     void enqueueRejectsBlankFields() {
         JobService service = service();
         assertThatThrownBy(() -> service.enqueue(new EnqueueRequest("", "ref", "1.0", "col")))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         verify(jobRepository, never()).enqueue(any());
     }
 
@@ -61,11 +74,11 @@ class JobServiceTest {
         JobService service = service();
 
         EnqueueResult result =
-            service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
+                service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
 
         assertThat(result).isEqualTo(EnqueueResult.created(id));
         verify(jobRepository)
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
+                .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
     }
 
     /**
@@ -80,7 +93,7 @@ class JobServiceTest {
         JobService service = service();
 
         EnqueueResult result =
-            service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
+                service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
 
         assertThat(result.created()).isFalse();
         assertThat(result.jobId()).isEqualTo(active);
@@ -91,17 +104,28 @@ class JobServiceTest {
         UUID id = UUID.randomUUID();
         when(jobRepository.enqueue(any())).thenReturn(EnqueueResult.created(id));
         // A validator that normalizes the version; the engine must persist the normalized request.
-        EnqueueValidator normalizeVersion = req -> new EnqueueRequest(req.kind(), req.sourceRef(),
-            "2.0", req.collection(), req.settings());
-        JobService service = new JobService(jobRepository, progressBroker, List.of(),
-            List.of(normalizeVersion), "uploads");
+        EnqueueValidator normalizeVersion =
+                req ->
+                        new EnqueueRequest(
+                                req.kind(),
+                                req.sourceRef(),
+                                "2.0",
+                                req.collection(),
+                                req.settings());
+        JobService service =
+                new JobService(
+                        jobRepository,
+                        progressBroker,
+                        List.of(),
+                        List.of(normalizeVersion),
+                        "uploads");
 
         EnqueueResult result =
-            service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
+                service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
 
         assertThat(result.jobId()).isEqualTo(id);
         verify(jobRepository)
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "2.0", "col"));
+                .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "2.0", "col"));
     }
 
     /**
@@ -109,9 +133,8 @@ class JobServiceTest {
      * request the previous one RETURNED, and the request finally persisted is the last one's
      * output.
      *
-     * <p>
-     * Nothing in the engine re-reads the original request after the fold, so a validator that only
-     * inspects is indistinguishable from one that normalizes unless the accumulator is carried
+     * <p>Nothing in the engine re-reads the original request after the fold, so a validator that
+     * only inspects is indistinguishable from one that normalizes unless the accumulator is carried
      * forward. Exactly one implementation exists today — {@code CollectionTagEnqueueValidator},
      * which trims every tag AND replaces the caller's spelling of the collection with the
      * catalogue's stored {@code col.name()} — so the fold currently looks like a loop over a single
@@ -122,17 +145,16 @@ class JobServiceTest {
      * carrying whichever version won. There is no exception and no log line — the job is simply
      * enqueued against something nobody checked.
      *
-     * <p>
-     * {@code enqueueAppliesValidatorsInOrder} does not cover this despite its name: it constructs
-     * the service with {@code List.of(normalizeVersion)} — ONE validator — so it proves only that a
-     * normalized request reaches the repository. It stays green if the loop is reversed, and it
-     * stays green if the accumulator is dropped in favour of validating {@code req} every time.
+     * <p>{@code enqueueAppliesValidatorsInOrder} does not cover this despite its name: it
+     * constructs the service with {@code List.of(normalizeVersion)} — ONE validator — so it proves
+     * only that a normalized request reaches the repository. It stays green if the loop is
+     * reversed, and it stays green if the accumulator is dropped in favour of validating {@code
+     * req} every time.
      *
-     * <p>
-     * Note what is deliberately NOT pinned here: no {@code @Order} exists on any
-     * {@code EnqueueValidator} (the repo's only {@code @Order}s are on {@code SecurityConfig}'s
-     * four chains and the two exception advices), so WHICH bean Spring puts first in the injected
-     * list is Spring's contract, not this one — the interface javadoc's "bean-discovery order" is
+     * <p>Note what is deliberately NOT pinned here: no {@code @Order} exists on any {@code
+     * EnqueueValidator} (the repo's only {@code @Order}s are on {@code SecurityConfig}'s four
+     * chains and the two exception advices), so WHICH bean Spring puts first in the injected list
+     * is Spring's contract, not this one — the interface javadoc's "bean-discovery order" is
      * descriptive prose. What the engine owns, and what this test holds it to, is that it applies
      * the validators in the order it was GIVEN and folds each result into the next.
      */
@@ -144,41 +166,59 @@ class JobServiceTest {
         // Each validator records the collection it was HANDED and then rewrites it, so the recorded
         // sequence proves both the order and that the second saw the first's output.
         StringBuilder collectionSeenByEachValidator = new StringBuilder();
-        EnqueueValidator first = req -> {
-            collectionSeenByEachValidator.append(req.collection()).append('|');
-            return new EnqueueRequest(req.kind(), req.sourceRef(), req.tags(), "after-first",
-                req.settings());
-        };
-        EnqueueValidator second = req -> {
-            collectionSeenByEachValidator.append(req.collection()).append('|');
-            return new EnqueueRequest(req.kind(), req.sourceRef(), req.tags(),
-                req.collection() + "+second", req.settings());
-        };
-        JobService service = new JobService(jobRepository, progressBroker, List.of(),
-            List.of(first, second), "uploads");
+        EnqueueValidator first =
+                req -> {
+                    collectionSeenByEachValidator.append(req.collection()).append('|');
+                    return new EnqueueRequest(
+                            req.kind(), req.sourceRef(), req.tags(), "after-first", req.settings());
+                };
+        EnqueueValidator second =
+                req -> {
+                    collectionSeenByEachValidator.append(req.collection()).append('|');
+                    return new EnqueueRequest(
+                            req.kind(),
+                            req.sourceRef(),
+                            req.tags(),
+                            req.collection() + "+second",
+                            req.settings());
+                };
+        JobService service =
+                new JobService(
+                        jobRepository,
+                        progressBroker,
+                        List.of(),
+                        List.of(first, second),
+                        "uploads");
 
         EnqueueResult result =
-            service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
+                service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col"));
 
         assertThat(result.jobId()).isEqualTo(id);
         assertThat(collectionSeenByEachValidator.toString())
-            .as("the second validator must see what the first returned, not the original request")
-            .isEqualTo("col|after-first|");
+                .as(
+                        "the second validator must see what the first returned, not the original request")
+                .isEqualTo("col|after-first|");
         verify(jobRepository)
-            .enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "after-first+second"));
+                .enqueue(
+                        new EnqueueRequest(
+                                ItTestJobHandler.KIND, "ref", "1.0", "after-first+second"));
     }
 
     @Test
     void enqueuePropagatesValidatorFailure() {
-        EnqueueValidator rejecting = req -> {
-            throw new IllegalArgumentException("nope");
-        };
+        EnqueueValidator rejecting =
+                req -> {
+                    throw new IllegalArgumentException("nope");
+                };
         JobService service =
-            new JobService(jobRepository, progressBroker, List.of(), List.of(rejecting), "uploads");
+                new JobService(
+                        jobRepository, progressBroker, List.of(), List.of(rejecting), "uploads");
 
-        assertThatThrownBy(
-            () -> service.enqueue(new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("nope");
+        assertThatThrownBy(() ->
+                        service.enqueue(
+                                new EnqueueRequest(ItTestJobHandler.KIND, "ref", "1.0", "col")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nope");
         verify(jobRepository, never()).enqueue(any());
     }
 
@@ -186,7 +226,7 @@ class JobServiceTest {
     void executeMarksCompletedWhenCountsValid() {
         UUID id = UUID.randomUUID();
         JobHandler handler =
-            handler(ItTestJobHandler.KIND, true, ctx -> new JobCounts(1, 8, 5, 7, 10));
+                handler(ItTestJobHandler.KIND, true, ctx -> new JobCounts(1, 8, 5, 7, 10));
         JobService service = service(handler);
 
         service.execute(job(id, JobStatus.RUNNING));
@@ -199,7 +239,7 @@ class JobServiceTest {
     void executeMarksFailedWhenExpectedEntitiesAreZero() {
         UUID id = UUID.randomUUID();
         JobHandler handler =
-            handler(ItTestJobHandler.KIND, true, ctx -> new JobCounts(10, 50, 0, 200, 0));
+                handler(ItTestJobHandler.KIND, true, ctx -> new JobCounts(10, 50, 0, 200, 0));
         JobService service = service(handler);
 
         service.execute(job(id, JobStatus.RUNNING));
@@ -212,19 +252,17 @@ class JobServiceTest {
      * A handler that returns {@code null} counts MUST fail the job with a message, not escape as an
      * NPE.
      *
-     * <p>
-     * {@code validateCounts} runs OUTSIDE {@code execute}'s try/catch — that catch wraps only
+     * <p>{@code validateCounts} runs OUTSIDE {@code execute}'s try/catch — that catch wraps only
      * {@code handler.run(ctx)} — so anything thrown while validating propagates all the way out of
      * {@code JobService.execute}. {@code JobWorker.dispatch} runs that call inside an executor task
      * whose {@code finally} only decrements {@code activeCount}: nothing calls {@code markFailed},
-     * so the row stays {@code running} forever. It is never re-queued either, because
-     * {@code requeueOrphans()} only runs on the startup sweep. The job hangs at whatever progress
-     * it reached, blocks its own {@code sourceRef} from being re-enqueued (the active-job adoption
+     * so the row stays {@code running} forever. It is never re-queued either, because {@code
+     * requeueOrphans()} only runs on the startup sweep. The job hangs at whatever progress it
+     * reached, blocks its own {@code sourceRef} from being re-enqueued (the active-job adoption
      * check in {@code JobRepository.enqueue} treats it as still live), and gives the operator no
      * error to read.
      *
-     * <p>
-     * The existing coverage cannot see this. Every other {@code execute} test hands back a real
+     * <p>The existing coverage cannot see this. Every other {@code execute} test hands back a real
      * {@code JobCounts}, and the one closest to it — {@code executeMarksFailedWhenExpectedEntities
      * AreZero} — proves only the zero-entities branch, which is precisely the branch that
      * DEREFERENCES the null. A handler returning null is not hypothetical: any {@code run} whose
@@ -239,8 +277,8 @@ class JobServiceTest {
         JobService service = service(handler);
 
         assertThatCode(() -> service.execute(job(id, JobStatus.RUNNING)))
-            .as("a null JobCounts must never escape execute() as an exception")
-            .doesNotThrowAnyException();
+                .as("a null JobCounts must never escape execute() as an exception")
+                .doesNotThrowAnyException();
 
         verify(jobRepository).markFailed(eq(id), eq("handler returned no counts"));
         verify(jobRepository, never()).markCompleted(any(), any());
@@ -249,9 +287,13 @@ class JobServiceTest {
     @Test
     void executeMarksFailedWhenHandlerThrows() {
         UUID id = UUID.randomUUID();
-        JobHandler handler = handler(ItTestJobHandler.KIND, false, ctx -> {
-            throw new IllegalStateException("boom");
-        });
+        JobHandler handler =
+                handler(
+                        ItTestJobHandler.KIND,
+                        false,
+                        ctx -> {
+                            throw new IllegalStateException("boom");
+                        });
         JobService service = service(handler);
 
         service.execute(job(id, JobStatus.RUNNING));
@@ -263,8 +305,7 @@ class JobServiceTest {
      * A non-blank progress message MUST be persisted to {@code ingestion_jobs.summary}; a null or
      * blank one MUST NOT be written at all.
      *
-     * <p>
-     * The message used to travel only on the SSE {@code ProgressEvent}. SSE here has no replay
+     * <p>The message used to travel only on the SSE {@code ProgressEvent}. SSE here has no replay
      * buffer and the terminal snapshot carries a different message, so a handler's account of what
      * it did survived for milliseconds and only for an operator who already had the page open —
      * while {@code connectors.html} sends them to the job page precisely to read it. Dropping the
@@ -272,28 +313,35 @@ class JobServiceTest {
      * chunk count) unrecoverable the instant it is emitted, with nothing in the UI hinting that a
      * message ever existed.
      *
-     * <p>
-     * The blank half matters just as much and in the opposite direction: the two-arg
-     * {@code report(step, progress)} delegates to the three-arg form with a null message, so EVERY
-     * plain progress tick would otherwise overwrite {@code summary} — erasing the real message
-     * recorded moments earlier and leaving a job whose summary is blank exactly when a handler was
-     * chattiest. Nothing else in the suite constructs {@code DefaultJobContext} or calls
-     * {@code report} at all, so neither half has a witness today.
+     * <p>The blank half matters just as much and in the opposite direction: the two-arg {@code
+     * report(step, progress)} delegates to the three-arg form with a null message, so EVERY plain
+     * progress tick would otherwise overwrite {@code summary} — erasing the real message recorded
+     * moments earlier and leaving a job whose summary is blank exactly when a handler was
+     * chattiest. Nothing else in the suite constructs {@code DefaultJobContext} or calls {@code
+     * report} at all, so neither half has a witness today.
      */
     @Test
     void aReportedMessagePersistsToTheJobSummaryAndABlankOneDoesNot() {
         UUID reported = UUID.randomUUID();
         UUID silent = UUID.randomUUID();
-        JobHandler reporting = handler("summary-reporting", false, ctx -> {
-            ctx.report(JobStep.CHUNK, 10, "Parsed 3 chunks");
-            return new JobCounts(1, 3, 0, 0, 0);
-        });
-        JobHandler quiet = handler("summary-silent", false, ctx -> {
-            ctx.report(JobStep.CHUNK, 10, null);
-            ctx.report(JobStep.EMBED, 20, "   ");
-            ctx.report(JobStep.INSERT, 30); // two-arg form: message is null
-            return new JobCounts(1, 3, 0, 0, 0);
-        });
+        JobHandler reporting =
+                handler(
+                        "summary-reporting",
+                        false,
+                        ctx -> {
+                            ctx.report(JobStep.CHUNK, 10, "Parsed 3 chunks");
+                            return new JobCounts(1, 3, 0, 0, 0);
+                        });
+        JobHandler quiet =
+                handler(
+                        "summary-silent",
+                        false,
+                        ctx -> {
+                            ctx.report(JobStep.CHUNK, 10, null);
+                            ctx.report(JobStep.EMBED, 20, "   ");
+                            ctx.report(JobStep.INSERT, 30); // two-arg form: message is null
+                            return new JobCounts(1, 3, 0, 0, 0);
+                        });
         JobService service = service(reporting, quiet);
 
         service.execute(qualifiedJob(reported, "summary-reporting"));
@@ -311,36 +359,37 @@ class JobServiceTest {
      * A handler's reported progress is arbitrary arithmetic and MUST be clamped to 0–100 before it
      * reaches either consumer — the {@code ingestion_jobs.progress} row AND the SSE frame.
      *
-     * <p>
-     * Out-of-range values are not hypothetical: every batching handler computes progress as a
-     * ratio, and {@code ScaledJobContext} rescales it a second time on the zip path
-     * ({@code start + (progress / 100.0) * (end - start)}), so an off-by-one item count or an empty
-     * denominator produces 101, 150 or a negative just as easily as it produces 60. Both consumers
-     * treat the number as a percentage with no validation of their own: {@code job-detail.html}
-     * feeds it straight into the progress bar's width, so 150 paints a bar past its own container,
-     * and a negative paints nothing at all — an operator watching a job that is in fact advancing
-     * sees a bar stuck at zero and concludes the worker has hung.
+     * <p>Out-of-range values are not hypothetical: every batching handler computes progress as a
+     * ratio, and {@code ScaledJobContext} rescales it a second time on the zip path ({@code start +
+     * (progress / 100.0) * (end - start)}), so an off-by-one item count or an empty denominator
+     * produces 101, 150 or a negative just as easily as it produces 60. Both consumers treat the
+     * number as a percentage with no validation of their own: {@code job-detail.html} feeds it
+     * straight into the progress bar's width, so 150 paints a bar past its own container, and a
+     * negative paints nothing at all — an operator watching a job that is in fact advancing sees a
+     * bar stuck at zero and concludes the worker has hung.
      *
-     * <p>
-     * The two writes are the point of this test. {@code report} writes the number twice — once
-     * through {@code jobRepository.updateProgress} and once into a freshly built
-     * {@link ProgressEvent} — and the clamp is a single local computed before both. Clamping only
-     * on the way to the database (or only on the way to the broker) leaves the persisted row and
-     * the live stream disagreeing about the same instant, which is unfalsifiable from either side.
+     * <p>The two writes are the point of this test. {@code report} writes the number twice — once
+     * through {@code jobRepository.updateProgress} and once into a freshly built {@link
+     * ProgressEvent} — and the clamp is a single local computed before both. Clamping only on the
+     * way to the database (or only on the way to the broker) leaves the persisted row and the live
+     * stream disagreeing about the same instant, which is unfalsifiable from either side.
      *
-     * <p>
-     * Nothing else in the suite exercises the range at all: every other test that calls
-     * {@code report} passes an already-valid percentage, so the clamp could be deleted outright and
-     * the whole class would stay green.
+     * <p>Nothing else in the suite exercises the range at all: every other test that calls {@code
+     * report} passes an already-valid percentage, so the clamp could be deleted outright and the
+     * whole class would stay green.
      */
     @Test
     void reportedProgressOutsideTheRangeIsClampedBeforeItIsWritten() {
         UUID id = UUID.randomUUID();
-        JobHandler handler = handler(ItTestJobHandler.KIND, false, ctx -> {
-            ctx.report(JobStep.CHUNK, 150);
-            ctx.report(JobStep.EMBED, -5);
-            return new JobCounts(1, 3, 0, 0, 0);
-        });
+        JobHandler handler =
+                handler(
+                        ItTestJobHandler.KIND,
+                        false,
+                        ctx -> {
+                            ctx.report(JobStep.CHUNK, 150);
+                            ctx.report(JobStep.EMBED, -5);
+                            return new JobCounts(1, 3, 0, 0, 0);
+                        });
         JobService service = service(handler);
 
         service.execute(job(id, JobStatus.RUNNING));
@@ -355,8 +404,8 @@ class JobServiceTest {
         ArgumentCaptor<ProgressEvent> events = ArgumentCaptor.forClass(ProgressEvent.class);
         verify(progressBroker, atLeastOnce()).publish(events.capture());
         assertThat(events.getAllValues())
-            .as("no frame may ever carry a percentage the UI cannot render")
-            .allSatisfy(e -> assertThat(e.progress()).isBetween(0, 100));
+                .as("no frame may ever carry a percentage the UI cannot render")
+                .allSatisfy(e -> assertThat(e.progress()).isBetween(0, 100));
     }
 
     @Test
@@ -380,10 +429,14 @@ class JobServiceTest {
     void executeRoutesAnInstanceQualifiedKindToTheBaseKindHandler() {
         UUID id = UUID.randomUUID();
         AtomicBoolean ran = new AtomicBoolean();
-        JobHandler handler = handler("confluence-page-import", false, ctx -> {
-            ran.set(true);
-            return new JobCounts(1, 3, 0, 0, 0);
-        });
+        JobHandler handler =
+                handler(
+                        "confluence-page-import",
+                        false,
+                        ctx -> {
+                            ran.set(true);
+                            return new JobCounts(1, 3, 0, 0, 0);
+                        });
         JobService service = service(handler);
 
         service.execute(qualifiedJob(id, "confluence-page-import:icc-wiki"));
@@ -396,11 +449,11 @@ class JobServiceTest {
     @Test
     void getStepsForKindRoutesAnInstanceQualifiedKindToTheBaseKindHandler() {
         JobHandler handler =
-            handler("confluence-page-import", false, ctx -> new JobCounts(1, 1, 0, 0, 0));
+                handler("confluence-page-import", false, ctx -> new JobCounts(1, 1, 0, 0, 0));
         JobService service = service(handler);
 
         assertThat(service.getStepsForKind("confluence-page-import:icc-wiki"))
-            .isEqualTo(handler.steps());
+                .isEqualTo(handler.steps());
         assertThat(service.getStepsForKind("confluence-page-import")).isEqualTo(handler.steps());
     }
 
@@ -411,13 +464,14 @@ class JobServiceTest {
 
         service.execute(qualifiedJob(id, "confluence-page-import:icc-wiki"));
 
-        verify(jobRepository).markFailed(eq(id),
-            contains("no handler for kind=confluence-page-import:icc-wiki"));
+        verify(jobRepository)
+                .markFailed(
+                        eq(id), contains("no handler for kind=confluence-page-import:icc-wiki"));
     }
 
     @Test
     void executeCleansUpStagedUploadInsideUploadDirWhenNoOtherActiveJobReferencesIt()
-        throws Exception {
+            throws Exception {
         Path uploadRoot = Files.createTempDirectory("yvoke-job-cleanup-");
         Path customDir = Files.createTempDirectory(uploadRoot, "custom_");
         Path staged = customDir.resolve("export.zip");
@@ -425,15 +479,33 @@ class JobServiceTest {
         Path outside = Files.createTempFile("outside-", ".txt");
         try {
             JobHandler ok =
-                handler(ItTestJobHandler.KIND, false, ctx -> new JobCounts(1, 1, 0, 0, 0));
-            JobService svc = new JobService(jobRepository, progressBroker, List.of(ok), List.of(),
-                uploadRoot.toString());
+                    handler(ItTestJobHandler.KIND, false, ctx -> new JobCounts(1, 1, 0, 0, 0));
+            JobService svc =
+                    new JobService(
+                            jobRepository,
+                            progressBroker,
+                            List.of(ok),
+                            List.of(),
+                            uploadRoot.toString());
 
             // Active sibling job -> file must NOT be deleted
             when(jobRepository.countActiveJobsBySourceRef(staged.toString())).thenReturn(1L);
-            IngestionJob sharedJob = new IngestionJob(UUID.randomUUID(), ItTestJobHandler.KIND,
-                staged.toString(), "1.0", "col", JobStatus.RUNNING, null, 0, 1, null, null,
-                OffsetDateTime.now(), null, null);
+            IngestionJob sharedJob =
+                    new IngestionJob(
+                            UUID.randomUUID(),
+                            ItTestJobHandler.KIND,
+                            staged.toString(),
+                            "1.0",
+                            "col",
+                            JobStatus.RUNNING,
+                            null,
+                            0,
+                            1,
+                            null,
+                            null,
+                            OffsetDateTime.now(),
+                            null,
+                            null);
             svc.execute(sharedJob);
             assertThat(Files.exists(staged)).isTrue();
 
@@ -445,9 +517,22 @@ class JobServiceTest {
 
             // Path outside uploadRoot -> never deleted
             when(jobRepository.countActiveJobsBySourceRef(outside.toString())).thenReturn(0L);
-            IngestionJob outsideJob = new IngestionJob(UUID.randomUUID(), ItTestJobHandler.KIND,
-                outside.toString(), "1.0", "col", JobStatus.RUNNING, null, 0, 1, null, null,
-                OffsetDateTime.now(), null, null);
+            IngestionJob outsideJob =
+                    new IngestionJob(
+                            UUID.randomUUID(),
+                            ItTestJobHandler.KIND,
+                            outside.toString(),
+                            "1.0",
+                            "col",
+                            JobStatus.RUNNING,
+                            null,
+                            0,
+                            1,
+                            null,
+                            null,
+                            OffsetDateTime.now(),
+                            null,
+                            null);
             svc.execute(outsideJob);
             assertThat(Files.exists(outside)).isTrue();
         } finally {
@@ -459,8 +544,21 @@ class JobServiceTest {
     }
 
     private static IngestionJob qualifiedJob(UUID id, String kind) {
-        return new IngestionJob(id, kind, "ref", "1.0", "col", JobStatus.RUNNING, null, 0, 1, null,
-            null, OffsetDateTime.now(), null, null);
+        return new IngestionJob(
+                id,
+                kind,
+                "ref",
+                "1.0",
+                "col",
+                JobStatus.RUNNING,
+                null,
+                0,
+                1,
+                null,
+                null,
+                OffsetDateTime.now(),
+                null,
+                null);
     }
 
     private interface RunFn {

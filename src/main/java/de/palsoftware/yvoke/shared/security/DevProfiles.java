@@ -16,7 +16,9 @@ public final class DevProfiles {
 
     private DevProfiles() {}
 
-    /** @return true if any active profile is one of the recognised development profiles. */
+    /**
+     * @return true if any active profile is one of the recognised development profiles.
+     */
     public static boolean anyActive(Environment environment) {
         for (String profile : environment.getActiveProfiles()) {
             if (NAMES.contains(profile.toLowerCase(Locale.ROOT))) {

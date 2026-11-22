@@ -48,40 +48,94 @@ class ConfluenceInstanceServiceTest {
 
         when(secretCipher.keyId()).thenReturn("keyA");
         when(secretCipher.encrypt(anyString()))
-            .thenAnswer(invocation -> "enc:" + invocation.getArgument(0));
+                .thenAnswer(invocation -> "enc:" + invocation.getArgument(0));
         when(repository.upsert(any()))
-            .thenAnswer(invocation -> invocation.getArgument(0, ConfluenceInstance.class));
-        when(collectionRepository.findByName("OIM - Docs")).thenReturn(Optional
-            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", List.of("10.0"), null)));
+                .thenAnswer(invocation -> invocation.getArgument(0, ConfluenceInstance.class));
+        when(collectionRepository.findByName("OIM - Docs"))
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        UUID.randomUUID(),
+                                        "OIM - Docs",
+                                        "docs",
+                                        List.of("10.0"),
+                                        null)));
 
         progressBroker = mock(JobProgressBroker.class);
-        service = new ConfluenceInstanceService(repository, secretCipher, jobRepository,
-            collectionRepository, progressBroker);
+        service =
+                new ConfluenceInstanceService(
+                        repository,
+                        secretCipher,
+                        jobRepository,
+                        collectionRepository,
+                        progressBroker);
     }
 
     private static ConfluenceInstance stored(String apiTokenEnc, String tokenKeyId) {
-        return new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", apiTokenEnc, tokenKeyId, "DOCS",
-            "12345", "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+        return new ConfluenceInstance(
+                INSTANCE_ID,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                apiTokenEnc,
+                tokenKeyId,
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                false,
+                true,
+                null,
+                null);
     }
 
     /** Exactly what the form produces: every editable field, and never a credential. */
     private static ConfluenceInstance draft(UUID id) {
-        return new ConfluenceInstance(id, "iCC Wiki", "icc-wiki", "https://acme.atlassian.net/wiki",
-            "svc@example.com", null, null, "DOCS", "12345", "public", "draft", "OIM - Docs", "10.0",
-            false, true, null, null);
+        return new ConfluenceInstance(
+                id,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                null,
+                null,
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                false,
+                true,
+                null,
+                null);
     }
 
     /** A queued page job as it reads AFTER the bulk cancel committed. */
     private static IngestionJob cancelledJob(UUID id) {
-        return new IngestionJob(id, "confluence-page-import:icc-wiki", "12345", "10.0",
-            "OIM - Docs", JobStatus.CANCELLED, null, 0, 1, null, null, OffsetDateTime.now(), null,
-            null);
+        return new IngestionJob(
+                id,
+                "confluence-page-import:icc-wiki",
+                "12345",
+                "10.0",
+                "OIM - Docs",
+                JobStatus.CANCELLED,
+                null,
+                0,
+                1,
+                null,
+                null,
+                OffsetDateTime.now(),
+                null,
+                null);
     }
 
     private ConfluenceInstance captureUpsert() {
         ArgumentCaptor<ConfluenceInstance> captor =
-            ArgumentCaptor.forClass(ConfluenceInstance.class);
+                ArgumentCaptor.forClass(ConfluenceInstance.class);
         verify(repository).upsert(captor.capture());
         return captor.getValue();
     }
@@ -93,12 +147,13 @@ class ConfluenceInstanceServiceTest {
     @Test
     void listingMapsEveryRowToAViewWithItsTokenHealth() {
         when(repository.findAll())
-            .thenReturn(List.of(stored("enc:ciphertext", "keyA"), stored(null, null)));
+                .thenReturn(List.of(stored("enc:ciphertext", "keyA"), stored(null, null)));
 
         List<ConfluenceInstanceView> views = service.listInstances();
 
-        assertThat(views).extracting(ConfluenceInstanceView::tokenHealth)
-            .containsExactly(TokenHealth.OK, TokenHealth.MISSING);
+        assertThat(views)
+                .extracting(ConfluenceInstanceView::tokenHealth)
+                .containsExactly(TokenHealth.OK, TokenHealth.MISSING);
     }
 
     @Test
@@ -106,16 +161,21 @@ class ConfluenceInstanceServiceTest {
         when(secretCipher.keyId()).thenReturn("keyB");
         when(repository.findAll()).thenReturn(List.of(stored("enc:ciphertext", "keyA")));
 
-        assertThat(service.listInstances()).singleElement()
-            .extracting(ConfluenceInstanceView::tokenHealth).isEqualTo(TokenHealth.UNDECRYPTABLE);
+        assertThat(service.listInstances())
+                .singleElement()
+                .extracting(ConfluenceInstanceView::tokenHealth)
+                .isEqualTo(TokenHealth.UNDECRYPTABLE);
     }
 
     @Test
     void findViewMapsTheRowAndAnUnknownIdIsEmpty() {
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
 
-        assertThat(service.findView(INSTANCE_ID)).isPresent().get()
-            .extracting(ConfluenceInstanceView::slug).isEqualTo("icc-wiki");
+        assertThat(service.findView(INSTANCE_ID))
+                .isPresent()
+                .get()
+                .extracting(ConfluenceInstanceView::slug)
+                .isEqualTo("icc-wiki");
         assertThat(service.findView(UUID.randomUUID())).isEmpty();
     }
 
@@ -158,7 +218,8 @@ class ConfluenceInstanceServiceTest {
     @Test
     void anAlreadyEncryptedTokenIsRejectedBeforeAnythingIsWritten() {
         assertThatThrownBy(() -> service.save(draft(INSTANCE_ID), "enc:pasted-ciphertext"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already-encrypted");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already-encrypted");
 
         verify(repository, never()).upsert(any());
         verify(secretCipher, never()).encrypt(anyString());
@@ -170,7 +231,7 @@ class ConfluenceInstanceServiceTest {
         ConfluenceInstance smuggled = stored("enc:ciphertext", "keyA");
 
         assertThatThrownBy(() -> service.save(smuggled, null))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         verify(repository, never()).upsert(any());
     }
 
@@ -182,27 +243,45 @@ class ConfluenceInstanceServiceTest {
     @Test
     void aDuplicateNameOrSlugBecomesAReadableRejection() {
         when(repository.upsert(any()))
-            .thenThrow(new DuplicateKeyException("uq_confluence_instances_slug"));
+                .thenThrow(new DuplicateKeyException("uq_confluence_instances_slug"));
 
         assertThatThrownBy(() -> service.save(draft(null), null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("icc-wiki");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("icc-wiki");
     }
 
     /**
      * The form only checks that a collection name was typed, so a collection that does not exist
-     * used to be accepted and then failed much later — at the first sync, from
-     * {@code CollectionTagEnqueueValidator}, on a page that says nothing about connectors. It is
-     * the same class of user error as a duplicate slug, so it is rejected in the same place and
-     * reads the same way.
+     * used to be accepted and then failed much later — at the first sync, from {@code
+     * CollectionTagEnqueueValidator}, on a page that says nothing about connectors. It is the same
+     * class of user error as a duplicate slug, so it is rejected in the same place and reads the
+     * same way.
      */
     @Test
     void aTargetCollectionThatDoesNotExistIsRefusedBeforeAnythingIsWritten() {
-        ConfluenceInstance draft = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345", null,
-            null, "Gone Collection", null, false, true, null, null);
+        ConfluenceInstance draft =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        null,
+                        null,
+                        "Gone Collection",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> service.save(draft, null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Gone Collection");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Gone Collection");
 
         verify(repository, never()).upsert(any());
     }
@@ -217,12 +296,35 @@ class ConfluenceInstanceServiceTest {
     @Test
     void targetCollectionIsResolvedCaseInsensitivelyToCanonicalName() {
         when(collectionRepository.findByName("oim - docs")).thenReturn(Optional.empty());
-        when(collectionRepository.findAll()).thenReturn(List
-            .of(new Collection(UUID.randomUUID(), "OIM - Docs", "docs", List.of("10.0"), null)));
+        when(collectionRepository.findAll())
+                .thenReturn(
+                        List.of(
+                                new Collection(
+                                        UUID.randomUUID(),
+                                        "OIM - Docs",
+                                        "docs",
+                                        List.of("10.0"),
+                                        null)));
 
-        ConfluenceInstance lowerDraft = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "oim - docs", "10.0", false, true, null, null);
+        ConfluenceInstance lowerDraft =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "oim - docs",
+                        "10.0",
+                        false,
+                        true,
+                        null,
+                        null);
         service.save(lowerDraft, null);
 
         assertThat(captureUpsert().targetCollection()).isEqualTo("OIM - Docs");
@@ -230,11 +332,14 @@ class ConfluenceInstanceServiceTest {
 
     @Test
     void aMalformedDomainIsRefusedByTheRepositoryAndReachesTheCallerAsAFieldError() {
-        when(repository.upsert(any())).thenThrow(
-            new IllegalArgumentException("Confluence base URL must use http(s): acme.example.com"));
+        when(repository.upsert(any()))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Confluence base URL must use http(s): acme.example.com"));
 
         assertThatThrownBy(() -> service.save(draft(INSTANCE_ID), null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("http(s)");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("http(s)");
     }
 
     // ------------------------------------------------------------------
@@ -251,9 +356,9 @@ class ConfluenceInstanceServiceTest {
     void deletingAnInstanceCancelsItsQueuedCrawlAndPageJobsFirst() {
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
         when(jobRepository.cancelQueued("confluence-import:icc-wiki"))
-            .thenReturn(List.of(UUID.randomUUID()));
+                .thenReturn(List.of(UUID.randomUUID()));
         when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
-            .thenReturn(IntStream.range(0, 41).mapToObj(i -> UUID.randomUUID()).toList());
+                .thenReturn(IntStream.range(0, 41).mapToObj(i -> UUID.randomUUID()).toList());
 
         ConfluenceInstanceService.Deletion deletion = service.delete(INSTANCE_ID);
 
@@ -280,7 +385,7 @@ class ConfluenceInstanceServiceTest {
         // Nothing matches the CURRENT slug — those jobs were queued as ":old-slug".
         when(jobRepository.cancelQueued(anyString())).thenReturn(List.of());
         when(jobRepository.cancelQueuedBySetting("instanceId", INSTANCE_ID.toString()))
-            .thenReturn(IntStream.range(0, 37).mapToObj(i -> UUID.randomUUID()).toList());
+                .thenReturn(IntStream.range(0, 37).mapToObj(i -> UUID.randomUUID()).toList());
 
         ConfluenceInstanceService.Deletion deletion = service.delete(INSTANCE_ID);
 
@@ -294,24 +399,21 @@ class ConfluenceInstanceServiceTest {
      * changes state without the job engine seeing it — and each must still produce a terminal
      * progress frame.
      *
-     * <p>
-     * Same failure as the bulk admin cancel: a job-detail page open on one of those jobs is
+     * <p>Same failure as the bulk admin cancel: a job-detail page open on one of those jobs is
      * subscribed to {@link de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker} waiting
      * for a terminal frame that can now never be produced, because no worker will ever run a
      * cancelled job. The page streams "Queued" with a live Stop button forever, and the broker has
      * no replay buffer, so the frame must be published here or not at all.
      *
-     * <p>
-     * This path is structurally more fragile than the admin one and therefore needs its own
+     * <p>This path is structurally more fragile than the admin one and therefore needs its own
      * witness: it CANNOT call {@code JobService.publishSnapshot}. {@code JobService} collects every
      * {@code JobHandler} bean and {@code ConfluenceIngestService} is one, so injecting it here
-     * would close a bean cycle — the two lines are inlined against {@code JobRepository} +
-     * {@code JobProgressBroker} instead. A duplicated implementation is exactly the kind that gets
-     * dropped by a later edit, and the two existing delete tests would not notice: they assert only
-     * {@code Deletion.cancelledQueuedJobs}, which counts the ids rather than using them.
+     * would close a bean cycle — the two lines are inlined against {@code JobRepository} + {@code
+     * JobProgressBroker} instead. A duplicated implementation is exactly the kind that gets dropped
+     * by a later edit, and the two existing delete tests would not notice: they assert only {@code
+     * Deletion.cancelledQueuedJobs}, which counts the ids rather than using them.
      *
-     * <p>
-     * The status on the frame matters as much as the frame itself: the page closes the stream on
+     * <p>The status on the frame matters as much as the frame itself: the page closes the stream on
      * {@code isTerminalStatus(data.status)}, so a frame that still said {@code queued} would leave
      * the emitter open and the Stop button live — a published-but-useless notification.
      */
@@ -321,9 +423,9 @@ class ConfluenceInstanceServiceTest {
         UUID pageJob = UUID.randomUUID();
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(stored("enc:c", "keyA")));
         when(jobRepository.cancelQueued("confluence-import:icc-wiki"))
-            .thenReturn(List.of(crawlJob));
+                .thenReturn(List.of(crawlJob));
         when(jobRepository.cancelQueued("confluence-page-import:icc-wiki"))
-            .thenReturn(List.of(pageJob));
+                .thenReturn(List.of(pageJob));
         // The cancel already committed, so the row the snapshot re-reads is terminal.
         when(jobRepository.findById(crawlJob)).thenReturn(Optional.of(cancelledJob(crawlJob)));
         when(jobRepository.findById(pageJob)).thenReturn(Optional.of(cancelledJob(pageJob)));
@@ -332,15 +434,18 @@ class ConfluenceInstanceServiceTest {
 
         ArgumentCaptor<ProgressEvent> published = ArgumentCaptor.forClass(ProgressEvent.class);
         verify(progressBroker, times(2)).publish(published.capture());
-        assertThat(published.getAllValues()).extracting(ProgressEvent::jobId)
-            .as("one frame per cancelled job, or that job's open page never learns")
-            .containsExactly(crawlJob, pageJob);
-        assertThat(published.getAllValues()).allSatisfy(event -> {
-            assertThat(event.status()).isEqualTo(JobStatus.CANCELLED.dbValue());
-            assertThat(event.isTerminal())
-                .as("a non-terminal frame leaves the SSE stream and the Stop button alive")
-                .isTrue();
-        });
+        assertThat(published.getAllValues())
+                .extracting(ProgressEvent::jobId)
+                .as("one frame per cancelled job, or that job's open page never learns")
+                .containsExactly(crawlJob, pageJob);
+        assertThat(published.getAllValues())
+                .allSatisfy(event -> {
+                    assertThat(event.status()).isEqualTo(JobStatus.CANCELLED.dbValue());
+                    assertThat(event.isTerminal())
+                            .as(
+                                    "a non-terminal frame leaves the SSE stream and the Stop button alive")
+                            .isTrue();
+                });
     }
 
     @Test
@@ -348,7 +453,7 @@ class ConfluenceInstanceServiceTest {
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.delete(INSTANCE_ID))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
 
         verify(jobRepository, never()).cancelQueued(anyString());
         verify(jobRepository, never()).cancelQueuedBySetting(anyString(), anyString());
@@ -364,9 +469,25 @@ class ConfluenceInstanceServiceTest {
     void aBlankTargetTagOnUpdateKeepsTheStoredOne() {
         ConfluenceInstance existing = stored(null, null);
         when(repository.findById(INSTANCE_ID)).thenReturn(Optional.of(existing));
-        ConfluenceInstance draft = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "  ", false, true, null, null);
+        ConfluenceInstance draft =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "  ",
+                        false,
+                        true,
+                        null,
+                        null);
 
         service.save(draft, null);
 
@@ -376,9 +497,25 @@ class ConfluenceInstanceServiceTest {
     /** A submitted tag still wins — this is "keep on blank", not "never change". */
     @Test
     void aSubmittedTargetTagOnUpdateIsWritten() {
-        ConfluenceInstance draft = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "9.3.1", false, true, null, null);
+        ConfluenceInstance draft =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "9.3.1",
+                        false,
+                        true,
+                        null,
+                        null);
 
         service.save(draft, null);
 
@@ -388,9 +525,25 @@ class ConfluenceInstanceServiceTest {
     /** Blank is the only way to express "no tag" on create, so it must survive there. */
     @Test
     void aBlankTargetTagOnCreateIsKeptBlank() {
-        ConfluenceInstance draft = new ConfluenceInstance(null, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "OIM - Docs", null, false, true, null, null);
+        ConfluenceInstance draft =
+                new ConfluenceInstance(
+                        null,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         service.save(draft, "tok");
 
@@ -400,17 +553,33 @@ class ConfluenceInstanceServiceTest {
     @Test
     void changingDomainWithBlankOrNullTokenIsRefusedBeforeUpsert() {
         when(repository.findById(INSTANCE_ID))
-            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
-        ConfluenceInstance moved = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://attacker.example.com/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+                .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance moved =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://attacker.example.com/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> service.save(moved, ""))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Re-enter the API token when changing the Confluence domain.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Re-enter the API token when changing the Confluence domain.");
         assertThatThrownBy(() -> service.save(moved, null))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Re-enter the API token when changing the Confluence domain.");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Re-enter the API token when changing the Confluence domain.");
 
         verify(repository, never()).upsert(any());
         verify(secretCipher, never()).encrypt(anyString());
@@ -419,10 +588,26 @@ class ConfluenceInstanceServiceTest {
     @Test
     void updatingNonDomainFieldsOrSameCanonicalDomainWithBlankTokenSucceedsWithSingleLookup() {
         when(repository.findById(INSTANCE_ID))
-            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
-        ConfluenceInstance edited = new ConfluenceInstance(INSTANCE_ID, "Renamed Wiki", "icc-wiki",
-            "https://ACME.atlassian.net/", "svc@example.com", null, null, "NEWSPACE", "12345",
-            "public", "draft", "OIM - Docs", "  ", false, true, null, null);
+                .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance edited =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "Renamed Wiki",
+                        "icc-wiki",
+                        "https://ACME.atlassian.net/",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "NEWSPACE",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "  ",
+                        false,
+                        true,
+                        null,
+                        null);
 
         service.save(edited, "");
 
@@ -436,10 +621,26 @@ class ConfluenceInstanceServiceTest {
     @Test
     void changingDomainWithFreshlySubmittedTokenSucceeds() {
         when(repository.findById(INSTANCE_ID))
-            .thenReturn(Optional.of(stored("enc:secret", "keyA")));
-        ConfluenceInstance moved = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://new-site.atlassian.net/wiki", "svc@example.com", null, null, "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+                .thenReturn(Optional.of(stored("enc:secret", "keyA")));
+        ConfluenceInstance moved =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://new-site.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true,
+                        null,
+                        null);
 
         service.save(moved, "fresh-token");
 

@@ -57,17 +57,31 @@ public class LifecycleServiceTest {
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
         lifecycleService =
-            new LifecycleService(documentRepository, kgRepository, collectionRepository,
-                jsonObjectService, tagRepository, auditLogRepository, userService);
+                new LifecycleService(
+                        documentRepository,
+                        kgRepository,
+                        collectionRepository,
+                        jsonObjectService,
+                        tagRepository,
+                        auditLogRepository,
+                        userService);
     }
 
     @SuppressWarnings("unchecked")
     @Test
     public void testDeleteDocument() {
         UUID docId = UUID.randomUUID();
-        DocumentRow mockDoc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual",
-            "Test Document", Map.of("tag", "9.3", "source_file", "source.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow mockDoc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Test Document",
+                        Map.of("tag", "9.3", "source_file", "source.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(mockDoc));
 
         lifecycleService.deleteDocument(docId);
@@ -75,8 +89,12 @@ public class LifecycleServiceTest {
         verify(documentRepository).deleteById(docId);
 
         ArgumentCaptor<Map<String, Object>> detailsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditLogRepository).log(eq("anonymous_admin"), eq("DELETE_DOCUMENT"),
-            eq(docId.toString()), detailsCaptor.capture());
+        verify(auditLogRepository)
+                .log(
+                        eq("anonymous_admin"),
+                        eq("DELETE_DOCUMENT"),
+                        eq(docId.toString()),
+                        detailsCaptor.capture());
 
         Map<String, Object> details = detailsCaptor.getValue();
         assertThat(details.get("title")).isEqualTo("Test Document");
@@ -86,28 +104,34 @@ public class LifecycleServiceTest {
 
     /**
      * Three properties of the cascade that nothing currently pins. {@code testDeleteCollection}
-     * uses plain {@code verify()} (no {@code InOrder}) and never stubs
-     * {@code collectionRepository.findByName}, so the JSON branch is not even executed;
-     * {@code testDeleteDocument} never asserts what a single-document delete must NOT touch; and no
-     * test reads the annotations at all.
+     * uses plain {@code verify()} (no {@code InOrder}) and never stubs {@code
+     * collectionRepository.findByName}, so the JSON branch is not even executed; {@code
+     * testDeleteDocument} never asserts what a single-document delete must NOT touch; and no test
+     * reads the annotations at all.
      *
-     * <p>
-     * Losing {@code @Transactional} leaves a half-destroyed collection — entities and documents
+     * <p>Losing {@code @Transactional} leaves a half-destroyed collection — entities and documents
      * gone, the {@code collections} row and its {@code chunks} partition still there — together
      * with an audit row claiming a completed deletion, which is worse than the failure it hides.
-     * Reordering it so the {@code collections} row goes first fires
-     * {@code trg_collections_create_chunks_partition}'s drop side while content still references
-     * the row. And adding a graph or JSON cascade to the SINGLE-document delete destroys entities
-     * shared across the whole tag scope: the graph is keyed on
-     * {@code (collection, kind, name, tags)}, not on the document, so deleting one page would take
-     * out every other document's entities with it.
+     * Reordering it so the {@code collections} row goes first fires {@code
+     * trg_collections_create_chunks_partition}'s drop side while content still references the row.
+     * And adding a graph or JSON cascade to the SINGLE-document delete destroys entities shared
+     * across the whole tag scope: the graph is keyed on {@code (collection, kind, name, tags)}, not
+     * on the document, so deleting one page would take out every other document's entities with it.
      */
     @Test
     public void aCollectionDeleteIsTransactionalAndCascadesInOrderWhileADocumentDeleteDoesNot() {
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual", "Shared Page",
-            Map.of("tag", "9.3", "source_file", "source.md"), "completed", Collections.emptyList(),
-            Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Shared Page",
+                        Map.of("tag", "9.3", "source_file", "source.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
 
         lifecycleService.deleteDocument(docId);
@@ -117,36 +141,57 @@ public class LifecycleServiceTest {
         verifyNoInteractions(kgRepository, jsonObjectService, tagRepository);
 
         UUID collectionId = UUID.randomUUID();
-        when(collectionRepository.findByName("OIM")).thenReturn(Optional.of(
-            new Collection(collectionId, "OIM", "corpus", List.of("9.3"), OffsetDateTime.now())));
+        when(collectionRepository.findByName("OIM"))
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        collectionId,
+                                        "OIM",
+                                        "corpus",
+                                        List.of("9.3"),
+                                        OffsetDateTime.now())));
         when(documentRepository.deleteByCollection("OIM")).thenReturn(7);
 
         lifecycleService.deleteCollection("OIM");
 
-        InOrder ordered = inOrder(documentRepository, kgRepository, jsonObjectService,
-            collectionRepository, auditLogRepository);
+        InOrder ordered =
+                inOrder(
+                        documentRepository,
+                        kgRepository,
+                        jsonObjectService,
+                        collectionRepository,
+                        auditLogRepository);
         ordered.verify(documentRepository).deleteByCollection("OIM");
         ordered.verify(kgRepository).deleteCollectionGraph("OIM");
         ordered.verify(jsonObjectService).deleteObjectsByCollection(collectionId);
         ordered.verify(collectionRepository).deleteById(collectionId);
         // The audit row is written INSIDE the transaction, i.e. after the last cascade step, so a
         // rollback takes the "deleted" record with it.
-        ordered.verify(auditLogRepository).log(eq("anonymous_admin"), eq("DELETE_COLLECTION"),
-            eq("OIM"), any());
+        ordered.verify(auditLogRepository)
+                .log(eq("anonymous_admin"), eq("DELETE_COLLECTION"), eq("OIM"), any());
 
-        List<String> transactionalMethods = Arrays
-            .stream(LifecycleService.class.getDeclaredMethods())
-            .filter(m -> m.isAnnotationPresent(Transactional.class)).map(Method::getName).toList();
-        assertThat(transactionalMethods).contains("deleteDocument", "deleteCollection",
-            "removeTagFromCollection");
+        List<String> transactionalMethods =
+                Arrays.stream(LifecycleService.class.getDeclaredMethods())
+                        .filter(m -> m.isAnnotationPresent(Transactional.class))
+                        .map(Method::getName)
+                        .toList();
+        assertThat(transactionalMethods)
+                .contains("deleteDocument", "deleteCollection", "removeTagFromCollection");
     }
 
     @SuppressWarnings("unchecked")
     @Test
     public void testDeleteCollection() {
         UUID collectionId = UUID.randomUUID();
-        when(collectionRepository.findByName("OIM")).thenReturn(Optional.of(
-            new Collection(collectionId, "OIM", "corpus", List.of("9.3"), OffsetDateTime.now())));
+        when(collectionRepository.findByName("OIM"))
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        collectionId,
+                                        "OIM",
+                                        "corpus",
+                                        List.of("9.3"),
+                                        OffsetDateTime.now())));
         when(documentRepository.deleteByCollection("OIM")).thenReturn(7);
 
         lifecycleService.deleteCollection("OIM");
@@ -158,8 +203,12 @@ public class LifecycleServiceTest {
         verify(collectionRepository).deleteById(collectionId);
 
         ArgumentCaptor<Map<String, Object>> detailsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditLogRepository).log(eq("anonymous_admin"), eq("DELETE_COLLECTION"), eq("OIM"),
-            detailsCaptor.capture());
+        verify(auditLogRepository)
+                .log(
+                        eq("anonymous_admin"),
+                        eq("DELETE_COLLECTION"),
+                        eq("OIM"),
+                        detailsCaptor.capture());
 
         Map<String, Object> details = detailsCaptor.getValue();
         assertThat(details.get("collection")).isEqualTo("OIM");

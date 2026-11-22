@@ -10,9 +10,8 @@ import java.net.UnknownHostException;
  * metadata, RFC 1918 private, CGNAT, IPv6 ULA, multicast, unspecified, broadcast, reserved, and
  * IPv4-mapped IPv6).
  *
- * <p>
- * Used both upfront during URL validation and at connect time inside Apache HttpClient's
- * {@code DnsResolver} to defeat DNS rebinding.
+ * <p>Used both upfront during URL validation and at connect time inside Apache HttpClient's {@code
+ * DnsResolver} to defeat DNS rebinding.
  */
 public final class SsrfAddressValidator {
 
@@ -29,7 +28,10 @@ public final class SsrfAddressValidator {
         for (InetAddress addr : addresses) {
             if (isBlockedAddress(addr)) {
                 throw new BlockedHostException(
-                    "Host resolves to a blocked address (" + addr.getHostAddress() + "): " + host);
+                        "Host resolves to a blocked address ("
+                                + addr.getHostAddress()
+                                + "): "
+                                + host);
             }
         }
         return addresses;
@@ -39,8 +41,11 @@ public final class SsrfAddressValidator {
         if (addr == null) {
             return true;
         }
-        if (addr.isLoopbackAddress() || addr.isAnyLocalAddress() || addr.isLinkLocalAddress()
-            || addr.isMulticastAddress() || addr.isSiteLocalAddress()) {
+        if (addr.isLoopbackAddress()
+                || addr.isAnyLocalAddress()
+                || addr.isLinkLocalAddress()
+                || addr.isMulticastAddress()
+                || addr.isSiteLocalAddress()) {
             return true;
         }
         byte[] raw = addr.getAddress();
@@ -61,9 +66,11 @@ public final class SsrfAddressValidator {
                 }
                 try {
                     InetAddress mapped = InetAddress.getByAddress(v4);
-                    return mapped.isLoopbackAddress() || mapped.isAnyLocalAddress()
-                        || mapped.isLinkLocalAddress() || mapped.isMulticastAddress()
-                        || mapped.isSiteLocalAddress();
+                    return mapped.isLoopbackAddress()
+                            || mapped.isAnyLocalAddress()
+                            || mapped.isLinkLocalAddress()
+                            || mapped.isMulticastAddress()
+                            || mapped.isSiteLocalAddress();
                 } catch (UnknownHostException e) {
                     return true;
                 }

@@ -43,8 +43,12 @@ class WebSearchToolCallbackTest {
         WebSearchService service = mock(WebSearchService.class);
         when(service.isAvailable()).thenReturn(true);
         when(service.search("OIM 9.3.1 hotfix 4380945"))
-            .thenReturn(List.of(new WebSearchResult("KB 4380945",
-                "https://support.oneidentity.com/kb/4380945", "Hotfix advisory for OIM 9.3.1.")));
+                .thenReturn(
+                        List.of(
+                                new WebSearchResult(
+                                        "KB 4380945",
+                                        "https://support.oneidentity.com/kb/4380945",
+                                        "Hotfix advisory for OIM 9.3.1.")));
 
         WebSearchToolCallback callback = new WebSearchToolCallback(service, objectMapper);
         String output = callback.call("{\"query\": \"  OIM 9.3.1 hotfix 4380945  \"}");
@@ -55,15 +59,21 @@ class WebSearchToolCallbackTest {
         assertThat(json.path("results")).hasSize(1);
         assertThat(json.at("/results/0/title").asText()).isEqualTo("KB 4380945");
         assertThat(json.at("/results/0/url").asText())
-            .isEqualTo("https://support.oneidentity.com/kb/4380945");
+                .isEqualTo("https://support.oneidentity.com/kb/4380945");
         assertThat(json.at("/results/0/snippet").asText())
-            .isEqualTo("Hotfix advisory for OIM 9.3.1.");
+                .isEqualTo("Hotfix advisory for OIM 9.3.1.");
     }
 
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(
-        strings = {"   ", "{}", "{\"query\": \"\"}", "{\"query\": \"   \"}", "{\"query\": null}"})
+            strings = {
+                "   ",
+                "{}",
+                "{\"query\": \"\"}",
+                "{\"query\": \"   \"}",
+                "{\"query\": null}"
+            })
     void callReturnsValidationErrorForMissingOrBlankQuery(String args) {
         WebSearchService service = mock(WebSearchService.class);
         when(service.isAvailable()).thenReturn(true);
@@ -80,7 +90,7 @@ class WebSearchToolCallbackTest {
 
         String oversized = "q".repeat(501);
         assertThat(callback.call("{\"query\": \"" + oversized + "\"}"))
-            .isEqualTo("Error: 'query' exceeds maximum length of 500 characters.");
+                .isEqualTo("Error: 'query' exceeds maximum length of 500 characters.");
     }
 
     @Test
@@ -95,14 +105,14 @@ class WebSearchToolCallbackTest {
     void callReturnsDisabledErrorWhenServiceIsNullOrUnavailable() {
         WebSearchToolCallback nullServiceCallback = new WebSearchToolCallback(null, objectMapper);
         assertThat(nullServiceCallback.call("{\"query\": \"OIM\"}"))
-            .isEqualTo("Error: WebSearch is not enabled in this deployment.");
+                .isEqualTo("Error: WebSearch is not enabled in this deployment.");
 
         WebSearchService unavailableService = mock(WebSearchService.class);
         when(unavailableService.isAvailable()).thenReturn(false);
         WebSearchToolCallback unavailableCallback =
-            new WebSearchToolCallback(unavailableService, objectMapper);
+                new WebSearchToolCallback(unavailableService, objectMapper);
         assertThat(unavailableCallback.call("{\"query\": \"OIM\"}"))
-            .isEqualTo("Error: WebSearch is not enabled in this deployment.");
+                .isEqualTo("Error: WebSearch is not enabled in this deployment.");
     }
 
     @Test
@@ -110,11 +120,12 @@ class WebSearchToolCallbackTest {
         WebSearchService service = mock(WebSearchService.class);
         when(service.isAvailable()).thenReturn(true);
         when(service.search("OIM"))
-            .thenThrow(new IllegalStateException("HTTP 502 from upstream internal-host"));
+                .thenThrow(new IllegalStateException("HTTP 502 from upstream internal-host"));
 
         WebSearchToolCallback callback = new WebSearchToolCallback(service, objectMapper);
 
         assertThatThrownBy(() -> callback.call("{\"query\": \"OIM\"}"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("502");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("502");
     }
 }

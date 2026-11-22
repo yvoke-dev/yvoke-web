@@ -42,9 +42,12 @@ public class PlaybookValidationController {
     private final GenerationConcurrencyLimiter concurrencyLimiter;
 
     @Autowired
-    public PlaybookValidationController(ChatConversationService chatConversationService,
-        PlaybookService playbookService, LlmClient llmClient, ObjectMapper objectMapper,
-        GenerationConcurrencyLimiter concurrencyLimiter) {
+    public PlaybookValidationController(
+            ChatConversationService chatConversationService,
+            PlaybookService playbookService,
+            LlmClient llmClient,
+            ObjectMapper objectMapper,
+            GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatConversationService = chatConversationService;
         this.playbookService = playbookService;
         this.llmClient = llmClient;
@@ -52,16 +55,24 @@ public class PlaybookValidationController {
         this.concurrencyLimiter = concurrencyLimiter;
     }
 
-    public PlaybookValidationController(ChatConversationService chatConversationService,
-        PlaybookService playbookService, LlmClient llmClient, ObjectMapper objectMapper) {
-        this(chatConversationService, playbookService, llmClient, objectMapper,
-            new GenerationConcurrencyLimiter(0));
+    public PlaybookValidationController(
+            ChatConversationService chatConversationService,
+            PlaybookService playbookService,
+            LlmClient llmClient,
+            ObjectMapper objectMapper) {
+        this(
+                chatConversationService,
+                playbookService,
+                llmClient,
+                objectMapper,
+                new GenerationConcurrencyLimiter(0));
     }
 
     @PostMapping("/{id}/validate-playbook")
-    public ValidationResponse validatePlaybook(@PathVariable UUID id,
-        @RequestParam("content") String content,
-        @RequestParam(value = "promptName", required = false) String promptName) {
+    public ValidationResponse validatePlaybook(
+            @PathVariable UUID id,
+            @RequestParam("content") String content,
+            @RequestParam(value = "promptName", required = false) String promptName) {
 
         if (!chatConversationService.isPlaybookValidationEnabled()) {
             return new ValidationResponse(true, "", null);
@@ -73,7 +84,9 @@ public class PlaybookValidationController {
         int maxMessageChars = chatConversationService.getMaxMessageChars();
         if (maxMessageChars > 0 && content.length() > maxMessageChars) {
             throw new IllegalArgumentException(
-                "Message exceeds maximum allowed length of " + maxMessageChars + " characters.");
+                    "Message exceeds maximum allowed length of "
+                            + maxMessageChars
+                            + " characters.");
         }
 
         Conversation conversation = chatConversationService.verifyOwnership(id, false);
@@ -82,30 +95,37 @@ public class PlaybookValidationController {
             Set<String> defaultPlaybooks = playbookService.listDefaultPlaybookNames();
             if (promptName != null && !promptName.isBlank()) {
                 if (defaultPlaybooks.stream()
-                    .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
+                        .anyMatch(dp -> dp.equalsIgnoreCase(promptName.trim()))) {
                     return new ValidationResponse(true, "", null);
                 }
                 Optional<Playbook> requestedPlaybook =
-                    playbookService.getPlaybook(promptName.trim());
-                if (requestedPlaybook.isPresent() && requestedPlaybook.get().area() != null
-                    && !requestedPlaybook.get().area().isBlank()
-                    && !AreaAccessContext.canAccessUserArea(requestedPlaybook.get().area())) {
+                        playbookService.getPlaybook(promptName.trim());
+                if (requestedPlaybook.isPresent()
+                        && requestedPlaybook.get().area() != null
+                        && !requestedPlaybook.get().area().isBlank()
+                        && !AreaAccessContext.canAccessUserArea(requestedPlaybook.get().area())) {
                     return new ValidationResponse(false, "Playbook not found: " + promptName, null);
                 }
             }
 
             if (!concurrencyLimiter.tryAcquire()) {
-                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Server is busy processing other requests. Please retry shortly.");
+                throw new ResponseStatusException(
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "Server is busy processing other requests. Please retry shortly.");
             }
             acquired = true;
 
-            LlmCallContextHolder.set(conversation.id(), null, null, conversation.userId(),
-                "playbook_validator", "validator");
+            LlmCallContextHolder.set(
+                    conversation.id(),
+                    null,
+                    null,
+                    conversation.userId(),
+                    "playbook_validator",
+                    "validator");
             boolean showPrototypes = false;
             if (conversation.settings() != null) {
                 Object val =
-                    conversation.settings().get(ConversationSetting.SHOW_PROTOTYPES.getValue());
+                        conversation.settings().get(ConversationSetting.SHOW_PROTOTYPES.getValue());
                 if (val instanceof Boolean b) {
                     showPrototypes = b;
                 } else if (val != null) {
@@ -113,13 +133,16 @@ public class PlaybookValidationController {
                 }
             }
             boolean finalShowPrototypes = showPrototypes;
-            List<Playbook> candidatePlaybooks = AreaAccessContext
-                .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
-            List<Playbook> playbooks = candidatePlaybooks.stream()
-                .filter(p -> finalShowPrototypes || !p.prototype())
-                .filter(
-                    p -> defaultPlaybooks.stream().noneMatch(dp -> dp.equalsIgnoreCase(p.name())))
-                .toList();
+            List<Playbook> candidatePlaybooks =
+                    AreaAccessContext.filterByUserArea(
+                            playbookService.listSpecializedPlaybooks(), Playbook::area);
+            List<Playbook> playbooks =
+                    candidatePlaybooks.stream()
+                            .filter(p -> finalShowPrototypes || !p.prototype())
+                            .filter(p ->
+                                    defaultPlaybooks.stream()
+                                            .noneMatch(dp -> dp.equalsIgnoreCase(p.name())))
+                            .toList();
 
             String stored = null;
             if (conversation.settings() != null) {
@@ -141,13 +164,18 @@ public class PlaybookValidationController {
 
             StringBuilder playbooksBuilder = new StringBuilder();
             for (Playbook playbook : playbooks) {
-                playbooksBuilder.append(playbook.name()).append(" | ").append(playbook.title())
-                    .append(" | ").append(playbook.description()).append("\n");
+                playbooksBuilder
+                        .append(playbook.name())
+                        .append(" | ")
+                        .append(playbook.title())
+                        .append(" | ")
+                        .append(playbook.description())
+                        .append("\n");
             }
             String playbooksList = playbooksBuilder.toString().trim();
 
             String systemPrompt =
-                """
+                    """
                     You are a playbook validator for a technical knowledge-base assistant.
                     Your task is to analyze the user's question, evaluate if their selected playbook is the most appropriate one, and if not, suggest the single best playbook from the list of available playbooks.
 
@@ -173,19 +201,31 @@ public class PlaybookValidationController {
                       "suggestedPlaybookName": string (the name of the suggested playbook from the available list if incorrect, otherwise null)
                     }
                     """
-                    .formatted(playbooksList, content, promptName != null ? promptName : "");
+                            .formatted(
+                                    playbooksList, content, promptName != null ? promptName : "");
 
             List<LlmMessage> messages =
-                List.of(new LlmMessage("system", systemPrompt), new LlmMessage("user", content));
+                    List.of(
+                            new LlmMessage("system", systemPrompt),
+                            new LlmMessage("user", content));
 
-            LlmRequest request = new LlmRequest(model, messages, 0.0, 500, Collections.emptyList(),
-                "low", "application/json", null, null, false);
+            LlmRequest request =
+                    new LlmRequest(
+                            model,
+                            messages,
+                            0.0,
+                            500,
+                            Collections.emptyList(),
+                            "low",
+                            "application/json",
+                            null,
+                            null,
+                            false);
             LlmResponse response = llmClient.generate(request);
-
 
             String cleaned = cleanMarkdown(response.content());
             ValidationResponse validationResponse =
-                objectMapper.readValue(cleaned, ValidationResponse.class);
+                    objectMapper.readValue(cleaned, ValidationResponse.class);
 
             String suggested = validationResponse.suggestedPlaybookName();
             if (suggested != null && !suggested.isBlank()) {
@@ -194,8 +234,11 @@ public class PlaybookValidationController {
                 }
                 boolean exists = playbooks.stream().anyMatch(p -> p.name().equals(suggested));
                 if (!exists) {
-                    validationResponse = new ValidationResponse(validationResponse.plausible(),
-                        validationResponse.reason(), null);
+                    validationResponse =
+                            new ValidationResponse(
+                                    validationResponse.plausible(),
+                                    validationResponse.reason(),
+                                    null);
                 }
             }
             return validationResponse;

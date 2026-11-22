@@ -14,26 +14,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * The identity columns are written from TWO places with different claim availability, so the upsert
  * has to be non-destructive. {@code UserService.syncUser} runs on browser login and reads the OIDC
- * ID token, where {@code name} and {@code preferred_username} are present by default.
- * {@code UserService.getCurrentUser} runs on EVERY bearer request (MCP and the desktop API) and
- * reads the ACCESS token, where those are Entra *optional* claims that are absent unless the app
- * registration adds them — and it passes whatever it found straight through, nulls included.
+ * ID token, where {@code name} and {@code preferred_username} are present by default. {@code
+ * UserService.getCurrentUser} runs on EVERY bearer request (MCP and the desktop API) and reads the
+ * ACCESS token, where those are Entra *optional* claims that are absent unless the app registration
+ * adds them — and it passes whatever it found straight through, nulls included.
  *
- * <p>
- * Config matches the other repository ITs exactly so this class reuses their cached Spring context
- * rather than minting a new one (CLAUDE.md § 6, TestContext cache thrash).
+ * <p>Config matches the other repository ITs exactly so this class reuses their cached Spring
+ * context rather than minting a new one (CLAUDE.md § 6, TestContext cache thrash).
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class UserRepositoryIT {
 
     private static final String ENTRA_OID = "user-repo-it-oid";
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     public void setUp() {
@@ -65,10 +65,12 @@ public class UserRepositoryIT {
         userRepository.upsert(ENTRA_OID, null, null);
 
         User after = userRepository.findByEntraOid(ENTRA_OID).orElseThrow();
-        assertThat(after.email()).as("a null claim must not overwrite a known email")
-            .isEqualTo("alice@corp.com");
-        assertThat(after.displayName()).as("a null claim must not overwrite a known display name")
-            .isEqualTo("Alice Smith");
+        assertThat(after.email())
+                .as("a null claim must not overwrite a known email")
+                .isEqualTo("alice@corp.com");
+        assertThat(after.displayName())
+                .as("a null claim must not overwrite a known display name")
+                .isEqualTo("Alice Smith");
     }
 
     /** The complement: a token that DOES carry the claims must still update them. */
