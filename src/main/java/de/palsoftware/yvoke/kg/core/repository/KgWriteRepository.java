@@ -564,7 +564,7 @@ public class KgWriteRepository {
                         ps.setObject(1, UUID.randomUUID());
                         ps.setObject(2, collectionId);
                         ps.setString(3, r.subject());
-                        ps.setString(4, r.predicate());
+                        ps.setString(4, r.predicate().strip());
                         ps.setString(5, r.object());
                         ps.setObject(6, r.subjectId());
                         ps.setObject(7, r.objectId());
@@ -582,8 +582,9 @@ public class KgWriteRepository {
     }
 
     /** Edge identity: the two endpoint ids plus the predicate — never the (ambiguous) name text. */
-    private static String relKey(UUID subjectId, String predicate, UUID objectId) {
-        return subjectId + "|" + predicate.toLowerCase(Locale.ROOT) + "|" + objectId;
+    static String relKey(UUID subjectId, @Nullable String predicate, UUID objectId) {
+        String normalized = predicate == null ? "" : predicate.strip().toLowerCase(Locale.ROOT);
+        return subjectId + "|" + normalized + "|" + objectId;
     }
 
     /**

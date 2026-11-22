@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -59,5 +60,25 @@ class KgWriteRepositoryCanonicalTagsTest {
         // two separate ones.
         assertThat(KgWriteRepository.canonicalTags(List.of("10.0", "9.3.1")))
                 .containsExactly("10.0", "9.3.1");
+    }
+
+    @Test
+    void relKeyNormalizesPredicateWhitespaceAndCase() {
+        UUID subjectId = UUID.randomUUID();
+        UUID objectId = UUID.randomUUID();
+        String expected = KgWriteRepository.relKey(subjectId, "fk_to", objectId);
+
+        assertThat(KgWriteRepository.relKey(subjectId, "  fk_to  ", objectId)).isEqualTo(expected);
+        assertThat(KgWriteRepository.relKey(subjectId, "\u2003FK_TO\t\n", objectId))
+                .isEqualTo(expected);
+    }
+
+    @Test
+    void relKeyHandlesNullPredicateWithoutThrowing() {
+        UUID subjectId = UUID.randomUUID();
+        UUID objectId = UUID.randomUUID();
+
+        assertThat(KgWriteRepository.relKey(subjectId, null, objectId))
+                .isEqualTo(subjectId + "||" + objectId);
     }
 }
